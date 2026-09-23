@@ -309,16 +309,7 @@ TEST_CASE("Bool Interpreter Test") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("Bool Compiler Test") {
-	const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
-	for (const auto& backend : nautilus::testing::availableBackends()) {
-		for (const auto& traceMode : traceModes) {
-			DYNAMIC_SECTION(backend + "_" + traceMode) {
-				auto engine = nautilus::testing::makeEngine(
-				    backend, [&](engine::Options& options) { options.setOption("engine.traceMode", traceMode); });
-				boolTest(engine);
-			}
-		}
-	}
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { boolTest(engine); }, false);
 }
 #endif
 } // namespace nautilus::engine

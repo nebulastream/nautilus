@@ -23,9 +23,8 @@
 #include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/config.hpp"
-#include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
-#include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -53,28 +52,6 @@ inline bool checkTestFile(std::string actual, const std::string category, const 
 	return testing::checkReferenceDump(actual, category, group, name, extension);
 }
 
-using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
-                                                          const engine::Options&, common::Arena&);
-
-static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
-    {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
-    {"LazyTraceContext", tracing::LazyTraceContext::Trace},
-};
-
-/// The two tracers agree on the trace of an ordinary function, which is why the fixtures
-/// below share one dump per stage. A region is the exception: only lazyTracing scopes a
-/// region body, so only its dumps carry the region blocks and attributes, while
-/// exceptionBasedTracing inlines the body and produces the dump of the same function
-/// written without region() at all (docs/region.md). Each tracer therefore gets its own
-/// golden for the region fixtures.
-static auto lazyTraceContext = std::vector<std::tuple<std::string, TraceFn>> {
-    {"LazyTraceContext", tracing::LazyTraceContext::Trace},
-};
-
-static auto exceptionBasedTraceContext = std::vector<std::tuple<std::string, TraceFn>> {
-    {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
-};
-
 // Exception-handling trace fixtures live in the shared common header so the
 // LLVM IR suite reuses the exact same functions.
 using nautilus::testing::exceptionCallWithCleanup;
@@ -83,8 +60,7 @@ using nautilus::testing::GoldenExceptionCleanup;
 using nautilus::testing::goldenThrowWithCleanup;
 using nautilus::testing::goldenThrowWithoutCleanup;
 
-void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests,
-                   const std::vector<std::tuple<std::string, TraceFn>>& contexts = traceContexts) {
+void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
 	// disable logging of addresses such that the trace is deterministic
 	nautilus::log::options::setLogAddresses(false);
 	// and of source locations, so a checked-in dump does not depend on where the build
@@ -92,84 +68,77 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 	// names and ids survive, which is what these dumps are pinning; the exact line each
 	// region() sits on is asserted in RegionTest.cpp instead.
 	nautilus::log::options::setLogSourceLocations(false);
-	for (auto& [ctxName, traceFn] : contexts) {
-		DYNAMIC_SECTION(ctxName) {
-			for (auto& [name, func] : tests) {
-				DYNAMIC_SECTION(name) {
-					auto rootFunction = compiler::CompilableFunction("execute", func);
-					std::list<compiler::CompilableFunction> functionsToTrace;
-					functionsToTrace.push_back(rootFunction);
+	for (auto& [name, func] : tests) {
+		DYNAMIC_SECTION(name) {
+			auto rootFunction = compiler::CompilableFunction("execute", func);
+			std::list<compiler::CompilableFunction> functionsToTrace;
+			functionsToTrace.push_back(rootFunction);
 
-					// Trace all functions (initially just "execute", but may include nested functions)
+			// Trace all functions (initially just "execute", but may include nested functions)
 
-					common::Arena arena;
-					auto executionTrace = traceFn(functionsToTrace, engine::Options(), arena);
-					DYNAMIC_SECTION("tracing") {
-						REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
-					}
-					auto ssaCreationPhase = tracing::SSACreationPhase();
-					auto afterSSA =
-					    ssaCreationPhase.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace)));
-					DYNAMIC_SECTION("after_ssa") {
-						REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
-					}
-					DYNAMIC_SECTION("ssa_verify") {
-						for (const auto& fnName : afterSSA->getFunctionNames()) {
-							auto ssaResult = tracing::VerifySSA(*afterSSA->getFunction(fnName));
-							if (!ssaResult.valid) {
-								for (const auto& error : ssaResult.errors) {
-									FAIL(error);
-								}
-							}
+			common::Arena arena;
+			auto executionTrace = tracing::TraceContext::Trace(functionsToTrace, engine::Options(), arena);
+			DYNAMIC_SECTION("tracing") {
+				REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
+			}
+			auto ssaCreationPhase = tracing::SSACreationPhase();
+			auto afterSSA = ssaCreationPhase.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace)));
+			DYNAMIC_SECTION("after_ssa") {
+				REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
+			}
+			DYNAMIC_SECTION("ssa_verify") {
+				for (const auto& fnName : afterSSA->getFunctionNames()) {
+					auto ssaResult = tracing::VerifySSA(*afterSSA->getFunction(fnName));
+					if (!ssaResult.valid) {
+						for (const auto& error : ssaResult.errors) {
+							FAIL(error);
 						}
 					}
-					DYNAMIC_SECTION("ir") {
-						auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-						[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
-						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name, ".nautilus"));
-					}
-					DYNAMIC_SECTION("after_constant_folding") {
-						// Re-run the tracing pipeline for this section since
-						// earlier ones consumed their IR.
-						auto rootFunction3 = compiler::CompilableFunction("execute", func);
-						std::list<compiler::CompilableFunction> functionsToTrace3;
-						functionsToTrace3.push_back(rootFunction3);
-						common::Arena arena3;
-						auto executionTrace3 = traceFn(functionsToTrace3, engine::Options(), arena3);
-						auto ssaCreationPhase3 = tracing::SSACreationPhase();
-						auto afterSSA3 =
-						    ssaCreationPhase3.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace3)));
-						auto irGenerationPhase3 = tracing::TraceToIRConversionPhase();
-						auto ir3 = irGenerationPhase3.apply(std::move(afterSSA3));
-						engine::Options passOpts;
-						compiler::ir::IRPassManager passManager(passOpts);
-						passManager.addPass(std::make_unique<compiler::ir::ConstantFoldingAndCopyPropagationPass>());
-						passManager.run(*ir3);
-						REQUIRE(checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name,
-						                      ".nautilus"));
-					}
-					DYNAMIC_SECTION("after_empty_block_elim") {
-						// Re-run the tracing pipeline: the previous section
-						// moved `afterSSA` into its IR conversion, so we
-						// need a fresh IR here.
-						auto rootFunction2 = compiler::CompilableFunction("execute", func);
-						std::list<compiler::CompilableFunction> functionsToTrace2;
-						functionsToTrace2.push_back(rootFunction2);
-						common::Arena arena2;
-						auto executionTrace2 = traceFn(functionsToTrace2, engine::Options(), arena2);
-						auto ssaCreationPhase2 = tracing::SSACreationPhase();
-						auto afterSSA2 =
-						    ssaCreationPhase2.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace2)));
-						auto irGenerationPhase2 = tracing::TraceToIRConversionPhase();
-						auto ir2 = irGenerationPhase2.apply(std::move(afterSSA2));
-						engine::Options passOpts;
-						compiler::ir::IRPassManager passManager(passOpts);
-						passManager.addPass(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
-						passManager.run(*ir2);
-						REQUIRE(checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name,
-						                      ".nautilus"));
-					}
 				}
+			}
+			DYNAMIC_SECTION("ir") {
+				auto irGenerationPhase = tracing::TraceToIRConversionPhase();
+				[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
+				REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name, ".nautilus"));
+			}
+			DYNAMIC_SECTION("after_constant_folding") {
+				// Re-run the tracing pipeline for this section since
+				// earlier ones consumed their IR.
+				auto rootFunction3 = compiler::CompilableFunction("execute", func);
+				std::list<compiler::CompilableFunction> functionsToTrace3;
+				functionsToTrace3.push_back(rootFunction3);
+				common::Arena arena3;
+				auto executionTrace3 = tracing::TraceContext::Trace(functionsToTrace3, engine::Options(), arena3);
+				auto ssaCreationPhase3 = tracing::SSACreationPhase();
+				auto afterSSA3 =
+				    ssaCreationPhase3.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace3)));
+				auto irGenerationPhase3 = tracing::TraceToIRConversionPhase();
+				auto ir3 = irGenerationPhase3.apply(std::move(afterSSA3));
+				engine::Options passOpts;
+				compiler::ir::IRPassManager passManager(passOpts);
+				passManager.addPass(std::make_unique<compiler::ir::ConstantFoldingAndCopyPropagationPass>());
+				passManager.run(*ir3);
+				REQUIRE(checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name, ".nautilus"));
+			}
+			DYNAMIC_SECTION("after_empty_block_elim") {
+				// Re-run the tracing pipeline: the previous section
+				// moved `afterSSA` into its IR conversion, so we
+				// need a fresh IR here.
+				auto rootFunction2 = compiler::CompilableFunction("execute", func);
+				std::list<compiler::CompilableFunction> functionsToTrace2;
+				functionsToTrace2.push_back(rootFunction2);
+				common::Arena arena2;
+				auto executionTrace2 = tracing::TraceContext::Trace(functionsToTrace2, engine::Options(), arena2);
+				auto ssaCreationPhase2 = tracing::SSACreationPhase();
+				auto afterSSA2 =
+				    ssaCreationPhase2.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace2)));
+				auto irGenerationPhase2 = tracing::TraceToIRConversionPhase();
+				auto ir2 = irGenerationPhase2.apply(std::move(afterSSA2));
+				engine::Options passOpts;
+				compiler::ir::IRPassManager passManager(passOpts);
+				passManager.addPass(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
+				passManager.run(*ir2);
+				REQUIRE(checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name, ".nautilus"));
 			}
 		}
 	}
@@ -183,40 +152,34 @@ TEST_CASE("Exception handling call trace golden") {
 	    {"withCleanup", details::createFunctionWrapper(exceptionCallWithCleanup)},
 	};
 
-	for (const auto& [ctxName, traceFn] : traceContexts) {
-		DYNAMIC_SECTION(ctxName) {
-			for (const auto& [name, function] : tests) {
-				DYNAMIC_SECTION(name) {
-					common::Arena arena;
-					std::list<compiler::CompilableFunction> functions;
-					functions.emplace_back("execute", function);
-					auto trace = traceFn(functions, engine::Options {}, arena);
-					auto traceDump = trace->toString();
-					traceDump.pop_back();
-					REQUIRE(checkTestFile(traceDump, "exception-handling-tests", "tracing", name));
+	for (const auto& [name, function] : tests) {
+		DYNAMIC_SECTION(name) {
+			common::Arena arena;
+			std::list<compiler::CompilableFunction> functions;
+			functions.emplace_back("execute", function);
+			auto trace = tracing::TraceContext::Trace(functions, engine::Options {}, arena);
+			auto traceDump = trace->toString();
+			traceDump.pop_back();
+			REQUIRE(checkTestFile(traceDump, "exception-handling-tests", "tracing", name));
 
-					auto afterSsa =
-					    tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace)));
-					auto afterSsaDump = afterSsa->toString();
-					afterSsaDump.pop_back();
-					REQUIRE(checkTestFile(afterSsaDump, "exception-handling-tests", "after_ssa", name));
+			auto afterSsa = tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace)));
+			auto afterSsaDump = afterSsa->toString();
+			afterSsaDump.pop_back();
+			REQUIRE(checkTestFile(afterSsaDump, "exception-handling-tests", "after_ssa", name));
 
-					DYNAMIC_SECTION("after_region_pass") {
-						common::Arena arena2;
-						std::list<compiler::CompilableFunction> functions2;
-						functions2.emplace_back("execute", function);
-						auto trace2 = traceFn(functions2, engine::Options {}, arena2);
-						auto afterSsa2 =
-						    tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace2)));
-						auto ir = tracing::TraceToIRConversionPhase().apply(std::move(afterSsa2));
-						engine::Options passOpts;
-						compiler::ir::IRPassManager passManager(passOpts);
-						passManager.addPass(std::make_unique<compiler::ir::ExceptionRegionPreparationPass>());
-						passManager.run(*ir);
-						REQUIRE(
-						    checkTestFile(ir->toString(), "exception-tests", "after_region_pass", name, ".nautilus"));
-					}
-				}
+			DYNAMIC_SECTION("after_region_pass") {
+				common::Arena arena2;
+				std::list<compiler::CompilableFunction> functions2;
+				functions2.emplace_back("execute", function);
+				auto trace2 = tracing::TraceContext::Trace(functions2, engine::Options {}, arena2);
+				auto afterSsa2 =
+				    tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace2)));
+				auto ir = tracing::TraceToIRConversionPhase().apply(std::move(afterSsa2));
+				engine::Options passOpts;
+				compiler::ir::IRPassManager passManager(passOpts);
+				passManager.addPass(std::make_unique<compiler::ir::ExceptionRegionPreparationPass>());
+				passManager.run(*ir);
+				REQUIRE(checkTestFile(ir->toString(), "exception-tests", "after_region_pass", name, ".nautilus"));
 			}
 		}
 	}
@@ -423,8 +386,7 @@ TEST_CASE("Static Trace Test") {
 TEST_CASE("SSA creation reclaims scratch storage for a 4k static square sum") {
 	auto function = details::createFunctionWrapper(staticSquareSum<4000>);
 	common::Arena arena;
-	std::shared_ptr<tracing::ExecutionTrace> trace =
-	    tracing::ExceptionBasedTraceContext::trace(function, engine::Options(), arena);
+	std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(function, engine::Options(), arena);
 	// Exhaust the current arena chunk so SSA's locality scratch allocation must
 	// grow the trace arena rather than fitting in unused tail space.
 	arena.allocate(common::Arena::MAX_CHUNK_SIZE, alignof(std::max_align_t));
@@ -849,17 +811,7 @@ TEST_CASE("Region Trace Test") {
 	    {"regionNested", details::createFunctionWrapper(regionNested)},
 	    {"regionBranch", details::createFunctionWrapper(regionBranch)},
 	};
-	runTraceTests("region-tests", tests, lazyTraceContext);
-}
-
-// The other half of the claim: under exceptionBasedTracing a region is not there at all.
-// Same fixture, its own dumps -- no region blocks, no attributes, nothing that says a
-// region() was ever written.
-TEST_CASE("Region Trace Test - exceptionBasedTracing inlines regions") {
-	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
-	    {"regionNested_inlined", details::createFunctionWrapper(regionNested)},
-	};
-	runTraceTests("region-tests", tests, exceptionBasedTraceContext);
+	runTraceTests("region-tests", tests);
 }
 
 TEST_CASE("Nautilus Function Call Trace Test") {

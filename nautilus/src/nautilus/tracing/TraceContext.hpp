@@ -1,9 +1,18 @@
-
 #pragma once
 
-#include "ExceptionBasedTraceContext.hpp"
+#include "ExecutionTrace.hpp"
+#include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
+#include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/options.hpp"
+#include "nautilus/tracing/TracingInterface.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
+#include "tag/Tag.hpp"
+#include "tag/TagRecorder.hpp"
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <deque>
 #include <functional>
 #include <list>
@@ -11,30 +20,230 @@
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
+
+namespace nautilus {
+class NautilusFunctionDefinition;
+}
 
 namespace nautilus::tracing {
-class ExecutionTrace;
+class TraceModule;
+
+struct StaticVarHolder {
+	explicit StaticVarHolder(const void* ptr, size_t size) : ptr(ptr), size(size) {
+	}
+
+private:
+	const void* ptr;
+	size_t size;
+	friend uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data);
+	friend size_t getStaticVarValue(const StaticVarHolder& holder);
+};
+
+inline size_t getStaticVarValue(const StaticVarHolder& holder) {
+	size_t result = 0;
+	std::memcpy(&result, holder.ptr, holder.size);
+	return result;
+}
 
 /**
- * @brief Exception-free tracing context that always completes function execution.
+ * @brief Efficiently tracks reference counts and computes an incremental hash of alive variables.
  *
- * This is an alternative to ExceptionBasedTraceContext that eliminates the need for TraceTerminationException.
- * Instead of throwing an exception when a path is fully explored or a merge/loop is detected,
- * it enters "passive mode" where all tracing operations become no-ops and traceBool() returns
- * false to guide the function to its natural exit.
+ * ValueRefs are dense small integers (ExecutionTrace::getNextValueRef() is a plain incrementing
+ * counter), so reference counts are stored in a vector indexed by id rather than a hash map.
+ * The hash reflects both which variables are alive and their reference counts, updated
+ * incrementally in O(1) time.
  *
- * Key differences from ExceptionBasedTraceContext:
- * - No exceptions thrown during tracing - the traced function always returns normally
- * - Uses SymbolicExecutionContext::recordNoThrow() instead of record()
- * - When termination is detected, enters passive mode (paused_ = true)
- * - In passive mode, traceBool() returns false (guarantees loop termination)
- * - All other trace methods return dummyRef_ or are no-ops in passive mode
+ * Implementation details:
+ * - Uses XOR-based hashing for O(1) incremental updates
+ * - Each variable ID is mixed with a constant multiplier for better hash distribution
+ * - The hash incorporates both variable identity (ID) and reference count
+ * - Uses a growable vector indexed by id - no allocation on increment/decrement beyond
+ *   the amortized growth needed to cover the highest id seen so far
+ * - A separate alive-count is maintained so size() stays O(1) even though zero-count
+ *   entries are not removed from the vector
  *
- * Both LazyTraceContext and ExceptionBasedTraceContext produce identical ExecutionTrace output.
- * The choice between them is made via the engine option "engine.traceMode" (values: "exceptionBasedTracing",
- * "lazyTracing").
+ * Performance characteristics:
+ * - increment(): O(1) amortized - vector index + two XOR operations, two multiplications
+ * - decrement(): O(1) - vector index + two XOR operations, two multiplications
+ * - hash(): O(1) - returns cached value
+ * - size(): O(1) - returns cached alive count
+ *
+ * @note Changed from a hash map (which erased entries to bound its size) to a vector indexed
+ * by ValueRef. This trades peak-alive-sized memory for maxRef-sized memory in exchange for
+ * removing the malloc/free pair that the map's insert/erase pair cost per traced value.
  */
-class LazyTraceContext final : public TraceContextBase {
+class AliveVariableHash {
+	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15; // Golden ratio constant for good mixing
+
+	std::vector<uint32_t> counts;
+	size_t aliveCount = 0;
+	uint64_t alive_hash = 0;
+
+public:
+	/**
+	 * @brief Default constructor. No initialization needed as counts are zero-initialized.
+	 */
+	AliveVariableHash() = default;
+
+	/**
+	 * @brief Increments the reference count for a variable and updates the hash.
+	 *
+	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
+	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
+	 *
+	 * @param id Variable identifier (32-bit value)
+	 */
+	inline void increment(uint32_t id) noexcept {
+		if (id >= counts.size()) {
+			counts.resize(id + 1, 0);
+		}
+		uint32_t& c = counts[id];
+		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		if (c == 0) {
+			++aliveCount;
+		}
+		++c;
+		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+	}
+
+	/**
+	 * @brief Decrements the reference count for a variable and updates the hash.
+	 *
+	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
+	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
+	 *
+	 * @param id Variable identifier (32-bit value), previously passed to increment()
+	 */
+	inline void decrement(uint32_t id) noexcept {
+		// Releasing a ref this scope never took is legitimate and must not underflow.
+		// A scope's environment is reset between exploration passes (resume()), but a
+		// C++ val<T> can outlive the pass that created it -- a std::optional or vector
+		// declared outside a region() and written inside it holds its ref into the next
+		// pass, and releases it there. The count for that ref is already zero, and there
+		// is nothing to give back. Underflowing here used to be masked by reset()
+		// unconditionally refilling the vector; it no longer is, and the invariant that
+		// aliveCount equals the number of non-zero entries is what reset() and
+		// forEachAlive now rely on to stay O(1).
+		if (id >= counts.size() || counts[id] == 0) {
+			return;
+		}
+		uint32_t& c = counts[id];
+		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		--c;
+		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		if (c == 0) {
+			--aliveCount;
+		}
+	}
+
+	/**
+	 * @brief Returns the current hash value representing the state of alive variables.
+	 *
+	 * The hash reflects both which variables have non-zero reference counts and the
+	 * magnitude of those counts. This value is maintained incrementally and can be
+	 * retrieved in O(1) time.
+	 *
+	 * @return 64-bit hash value representing current variable state
+	 */
+	inline uint64_t hash() const noexcept {
+		return alive_hash;
+	}
+
+	/**
+	 * @brief Returns the number of currently-alive variables (non-zero reference count).
+	 * @return Number of currently-alive variables
+	 */
+	inline size_t size() const noexcept {
+		return aliveCount;
+	}
+
+	/**
+	 * @brief Returns whether @p id currently has a non-zero reference count.
+	 */
+	inline bool isAlive(uint32_t id) const noexcept {
+		return id < counts.size() && counts[id] != 0;
+	}
+
+	/**
+	 * @brief Invokes @p fn(id, count) for every currently-alive variable.
+	 *
+	 * Used at a region boundary, to hand the region's still-alive refs over to the
+	 * enclosing scope (see docs/region.md). Nothing being alive is the overwhelmingly
+	 * common case there, and ids are global and dense, so the scan would otherwise be
+	 * linear in the highest ref the *whole* trace has reached -- paid once per region,
+	 * which is quadratic over a function built out of many regions. Both the empty
+	 * early-out and the alive-count countdown below exist to keep that off the profile.
+	 */
+	template <typename F>
+	inline void forEachAlive(F&& fn) const {
+		if (aliveCount == 0) {
+			return;
+		}
+		size_t remaining = aliveCount;
+		for (size_t id = 0; id < counts.size() && remaining > 0; id++) {
+			if (counts[id] != 0) {
+				--remaining;
+				fn(static_cast<uint32_t>(id), counts[id]);
+			}
+		}
+	}
+
+	/**
+	 * @brief Resets all reference counts and hash to initial state.
+	 *
+	 * Zeroes every slot in the backing vector rather than shrinking it, so the vector's
+	 * capacity - and thus the highest id it can hold without reallocating - is retained
+	 * across trace iterations.
+	 */
+	inline void reset() noexcept {
+		// aliveCount is by construction the number of non-zero entries, so when it is
+		// zero every slot is already zero and the fill is pure cost. That is the normal
+		// state at the end of a pass -- the traced body returned, so its val<T>s were
+		// destructed -- and the fill is linear in the highest ref seen, paid once per
+		// pass of every scope.
+		if (aliveCount != 0) {
+			std::fill(counts.begin(), counts.end(), 0);
+			aliveCount = 0;
+		}
+		alive_hash = 0;
+	}
+};
+
+/**
+ * @brief State that requires initialization for tracing operations.
+ * This is initialized in the trace context when tracing begins and reset when it ends.
+ * Holds references to stack-allocated objects.
+ */
+struct TraceState {
+	TagRecorder& tagRecorder;
+	ExecutionTrace& executionTrace;
+	SymbolicExecutionContext& symbolicExecutionContext;
+	const engine::Options& options;
+	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
+	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
+
+	TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts);
+};
+
+/**
+ * @brief Records a symbolic execution trace of a Nautilus function.
+ *
+ * The traced function is executed once per explored path. When a path reaches a point that
+ * was already explored (a fully explored branch, a control-flow merge or a loop back-edge),
+ * the context enters "passive mode" instead of aborting the execution: every trace method
+ * becomes a no-op that returns dummyRef_, and traceBool() returns false so the function runs
+ * to its natural exit. The traced function therefore always returns normally, which keeps
+ * the C++ destructors of its locals (and of any val<T> it holds) running in order.
+ *
+ * Lifecycle:
+ * 1. startTrace() pops a function off the work-list and creates its ExecutionTrace,
+ *    TagRecorder and SymbolicExecutionContext; TraceState holds references to them.
+ * 2. runScope() re-invokes the function once per explored path, calling resume() before
+ *    each pass to reset the per-pass state (staticVars, aliveVars, destructors, paused_).
+ * 3. Nautilus functions invoked while tracing are appended to the work-list and traced in turn.
+ */
+class TraceContext final : public TracingInterface {
 public:
 	// --- TracingInterface overrides ---
 
@@ -77,10 +286,13 @@ public:
 	void freeValRef(ValueRef ref) override;
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
+	void registerDestructor(const TypedValueRef& address, void* destructor) override;
+	void unregisterDestructor(const TypedValueRef& address) override;
+	void transferDestructor(const TypedValueRef& from, const TypedValueRef& to) override;
 
 	// --- Non-interface public API ---
 
-	~LazyTraceContext() override = default;
+	~TraceContext() override = default;
 
 	/**
 	 * @brief Resets persistent state between trace iterations.
@@ -89,15 +301,15 @@ public:
 	void resume();
 
 	/**
-	 * @brief Initialize the completing trace context with references to stack-allocated objects.
+	 * @brief Initialize the thread-local trace context with references to stack-allocated objects
+	 * and register it as the active tracer.
 	 */
-	static LazyTraceContext* initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-	                                    SymbolicExecutionContext& symbolicExecutionContext,
-	                                    const engine::Options& options);
+	static TraceContext* initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
+	                                SymbolicExecutionContext& symbolicExecutionContext, const engine::Options& options);
 
 	/**
-	 * @brief Main tracing entry point.  Unlike ExceptionBasedTraceContext::trace(),
-	 * this method never uses try/catch - the traced function always returns normally.
+	 * @brief Single-function tracing entry point. Traces @p traceFunction alone; Nautilus
+	 * functions it invokes are recorded as calls but not traced.
 	 * @param traceFunction The function to trace.
 	 * @param options Engine options for configuration.
 	 * @param arena Arena used to allocate the trace's Blocks and TraceOperations;
@@ -121,7 +333,7 @@ public:
 	static std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functions,
 	                                          const engine::Options& options, Arena& arena);
 
-	LazyTraceContext() = default;
+	TraceContext() = default;
 
 private:
 	bool isFollowing();
@@ -130,6 +342,8 @@ private:
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
+	std::string getMangledName(void* fnptr);
+	std::string getFunctionName(void* fnptr, const std::string& mangledName);
 
 	/**
 	 * @brief Runs the symbolic-execution loop of one *trace scope* to completion.
@@ -163,14 +377,14 @@ private:
 	/// Prepares this (possibly pooled) context to trace the body of the region @p attributes
 	/// describes, opened by @p parent and recorded into @p parent's trace between @p entry
 	/// and @p exit.
-	void initRegionScope(LazyTraceContext& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder,
+	void initRegionScope(TraceContext& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder,
 	                     const RegionAttributes& attributes);
 
 	/// Returns the pooled context used for regions opened by this scope, creating it on
 	/// first use. Regions nest strictly LIFO and a scope traces at most one region at a
 	/// time, so one slot per scope covers a whole nesting chain and each depth's
 	/// SymbolicExecutionContext (and its tag map) is allocated once per thread.
-	LazyTraceContext& acquireChildScope();
+	TraceContext& acquireChildScope();
 
 	/// A region recorded in the enclosing trace: the block its body starts in and the
 	/// block the enclosing scope continues in afterwards.
@@ -179,18 +393,25 @@ private:
 		uint32_t exitBlock;
 	};
 
+	// Injected state - holds references to the objects of the function or region scope being traced.
+	// Empty when not tracing and stored inline to avoid a per-trace heap allocation.
+	std::optional<TraceState> state;
+
+	std::unordered_map<void*, std::string> mangledNameCache;
+	std::vector<FunctionCall::Destructor> activeDestructors;
+
 	/// The block a pass of this scope rewinds to before re-invoking the body.
 	/// 0 for a function scope (the trace's own entry block).
 	uint32_t entryBlock_ = 0;
 
 	/// Non-null exactly for a region scope: the scope that opened this region.
 	/// Read on the freeValRef hot path, so it stays a plain member here.
-	LazyTraceContext* parent_ = nullptr;
+	TraceContext* parent_ = nullptr;
 
 	/// Everything a scope needs only once region() is involved, held behind one pointer
 	/// and allocated on first use.
 	///
-	/// This is deliberately not inlined into the object. A LazyTraceContext is otherwise
+	/// This is deliberately not inlined into the object. A TraceContext is otherwise
 	/// small and its hot members (state, staticVars, aliveVars, paused_) are touched on
 	/// every traced operation and every val<T> construction; carrying ~250 bytes of
 	/// region state inline pushed them apart and cost 9-13% on tracing benchmarks that
@@ -240,7 +461,7 @@ private:
 		/// LIFO and a scope traces at most one region at a time, so one slot per scope
 		/// covers a whole nesting chain and each depth's SymbolicExecutionContext (and its
 		/// tag map) is allocated once per thread.
-		std::unique_ptr<LazyTraceContext> childScope;
+		std::unique_ptr<TraceContext> childScope;
 	};
 
 	/// Sized for the branches structurally inside one region body, not a whole function.
@@ -253,7 +474,7 @@ private:
 	/// one tracing session: the function work-list, the registered-function set and
 	/// the (mangled/normalized) function-name caches. Always the outermost context;
 	/// `this` for a function scope.
-	LazyTraceContext* session_ = this;
+	TraceContext* session_ = this;
 
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars;

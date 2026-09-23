@@ -24,7 +24,7 @@
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
 #include "nautilus/logging.hpp"
-#include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <list>
@@ -238,10 +238,9 @@ val<int64_t> regionEscapeWithMultipleCopies() {
 // A live value built in ONE branch arm and carried out of the region. Each arm
 // constructs a different value with no merge point between them, so which one
 // escapes depends on which arm ran -- the region equivalent of returning a
-// value from the lambda. lazyTracing's per-pass escape-set check rejects it;
-// exceptionBasedTracing traces one arm per engagement and accepts it. Escaping
-// by assignment to a captured val<T> (regionBranchWritesDifferentVars above)
-// merges across branches and works under both.
+// value from the lambda. The tracer's per-pass escape-set check rejects it.
+// Escaping by assignment to a captured val<T> (regionBranchWritesDifferentVars
+// above) merges across branches and works.
 val<int64_t> regionEscapeAcrossBranch(val<int64_t> x) {
 	std::optional<val<int64_t>> slot;
 	region([&]() {
@@ -704,14 +703,14 @@ val<int64_t> countedUnregioned(val<int64_t> a, val<int64_t> b, val<int64_t> c) {
 	return sum;
 }
 
-/// Traces @p func with the lazy tracer and returns its IR after the two block-level
+/// Traces @p func and returns its IR after the two block-level
 /// cleanup passes the default pipeline runs.
 std::shared_ptr<compiler::ir::IRGraph> traceToCleanedIr(const std::function<void()>& func) {
 	auto rootFunction = compiler::CompilableFunction("execute", func);
 	std::list<compiler::CompilableFunction> functionsToTrace;
 	functionsToTrace.push_back(rootFunction);
 	common::Arena arena;
-	auto traceModule = tracing::LazyTraceContext::Trace(functionsToTrace, engine::Options(), arena);
+	auto traceModule = tracing::TraceContext::Trace(functionsToTrace, engine::Options(), arena);
 	auto ssa = tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(traceModule)));
 	auto ir = tracing::TraceToIRConversionPhase().apply(std::move(ssa));
 	engine::Options passOpts;
@@ -736,7 +735,7 @@ TEST_CASE("Region Bounds Branch Exploration To The Region", "[region]") {
 	{
 		auto wrapper = details::createFunctionWrapper(countedRegioned);
 		std::list<compiler::CompilableFunction> functions {compiler::CompilableFunction("execute", wrapper)};
-		tracing::LazyTraceContext::Trace(functions, engine::Options(), arena);
+		tracing::TraceContext::Trace(functions, engine::Options(), arena);
 	}
 	const auto regionedFunctionPasses = functionPasses;
 	const auto totalRegionBodyPasses = regionBodyPasses;
@@ -746,7 +745,7 @@ TEST_CASE("Region Bounds Branch Exploration To The Region", "[region]") {
 		auto wrapper = details::createFunctionWrapper(countedUnregioned);
 		std::list<compiler::CompilableFunction> functions {compiler::CompilableFunction("execute", wrapper)};
 		common::Arena unregionedArena;
-		tracing::LazyTraceContext::Trace(functions, engine::Options(), unregionedArena);
+		tracing::TraceContext::Trace(functions, engine::Options(), unregionedArena);
 	}
 	const auto unregionedFunctionPasses = functionPasses;
 
@@ -868,9 +867,9 @@ struct SourceLocationPrintingGuard {
 	bool previous;
 };
 
-std::unique_ptr<tracing::TraceModule> traceWithLazyTracer(const std::function<void()>& func, common::Arena& arena) {
+std::unique_ptr<tracing::TraceModule> traceRegionTestFunction(const std::function<void()>& func, common::Arena& arena) {
 	std::list<compiler::CompilableFunction> functions {compiler::CompilableFunction("execute", func)};
-	return tracing::LazyTraceContext::Trace(functions, engine::Options(), arena);
+	return tracing::TraceContext::Trace(functions, engine::Options(), arena);
 }
 
 } // namespace
@@ -879,7 +878,7 @@ std::unique_ptr<tracing::TraceModule> traceWithLazyTracer(const std::function<vo
 // trace can be read back against the source it came from.
 TEST_CASE("Region Attributes Are Recorded In The Trace", "[region]") {
 	common::Arena arena;
-	auto module = traceWithLazyTracer(details::createFunctionWrapper(regionAttributed), arena);
+	auto module = traceRegionTestFunction(details::createFunctionWrapper(regionAttributed), arena);
 	auto* trace = module->getFunction("execute");
 	REQUIRE(trace != nullptr);
 
@@ -1067,7 +1066,7 @@ TEST_CASE("Region IR Table Holds One Entry Per Call Site", "[region]") {
 // turns it off, and the region is still named in every place it was named before.
 TEST_CASE("Region Dumps Can Omit The Source Location", "[region]") {
 	common::Arena arena;
-	auto module = traceWithLazyTracer(details::createFunctionWrapper(regionAttributed), arena);
+	auto module = traceRegionTestFunction(details::createFunctionWrapper(regionAttributed), arena);
 	auto* trace = module->getFunction("execute");
 	REQUIRE(trace != nullptr);
 	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionAttributed));
@@ -1123,7 +1122,7 @@ TEST_CASE("Region Dumps Can Omit The Source Location", "[region]") {
 // position, so the recorded attributes point at the user's code and not at the helper.
 TEST_CASE("Region Attributes Can Be Supplied Explicitly", "[region]") {
 	common::Arena arena;
-	auto module = traceWithLazyTracer(details::createFunctionWrapper(regionThroughHelper), arena);
+	auto module = traceRegionTestFunction(details::createFunctionWrapper(regionThroughHelper), arena);
 	auto* trace = module->getFunction("execute");
 	REQUIRE(trace != nullptr);
 
@@ -1141,13 +1140,11 @@ TEST_CASE("Region Diagnostics Name The Region", "[region]") {
 	if (backends.empty()) {
 		SKIP("no compilation backend available");
 	}
-	auto lazyEngine = nautilus::testing::makeEngine(backends.front(), [](engine::Options& opts) {
-		opts.setOption("engine.traceMode", std::string("lazyTracing"));
-	});
+	auto engine = nautilus::testing::makeEngine(backends.front());
 
 	std::string diagnosis = "<no exception thrown>";
 	try {
-		lazyEngine.registerFunction(regionNamedEscape);
+		engine.registerFunction(regionNamedEscape);
 	} catch (const std::exception& e) {
 		diagnosis = e.what();
 	}
@@ -1158,94 +1155,55 @@ TEST_CASE("Region Diagnostics Name The Region", "[region]") {
 }
 
 TEST_CASE("Region Compiler Test", "[region]") {
-	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { runRegionTests(engine); });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { runRegionTests(engine); }, false);
 }
 
-// Every way a value created inside a region body can outlive it. lazyTracing rejects all
-// of them; see LazyTraceContext::traceScopeExit for why it cannot do anything else. What
-// is pinned here is that each is *diagnosed* -- an exception naming region(), not a crash
-// and not a silently wrong trace -- and that exceptionBasedTracing, which inlines region
-// bodies into the enclosing function, still traces every one of them correctly.
+// Every way a value created inside a region body can outlive it. The tracer rejects all
+// of them; see TraceContext::traceScopeExit for why it cannot do anything else. What is
+// pinned here is that each is *diagnosed* -- an exception naming region(), not a crash
+// and not a silently wrong trace.
 //
 // The supported way to carry a value out of a region is to assign to a val<T> declared
 // outside it; regionEscapedValue and regionBranchWritesDifferentVars in the suite above
-// cover that and work under both tracers.
+// cover that.
 namespace {
 
-/// Registers @p fn on a fresh lazyTracing engine and requires it to be rejected.
+/// Registers @p fn on a fresh engine and requires it to be rejected.
 /// Note the real backend: the "interpreter" engine sets engine.Compilation = false and so
 /// never traces at all, which would make every one of these checks vacuously pass.
 template <typename F>
-void requireRejectedByLazyTracing(const std::string& backend, const char* name, F fn) {
-	auto lazyEngine = nautilus::testing::makeEngine(backend, [](engine::Options& opts) {
-		opts.setOption("engine.backend", std::string("mlir"));
-		opts.setOption("debug", true);
-		opts.setOption("dump.before_llvm_optimization", true);
-
-		opts.setOption("engine.traceMode", std::string("lazyTracing"));
-	});
+void requireRejected(const std::string& backend, const char* name, F fn) {
+	auto engine = nautilus::testing::makeEngine(backend);
 	std::string diagnosis = "<no exception thrown>";
 	try {
-		lazyEngine.registerFunction(fn);
+		engine.registerFunction(fn);
 	} catch (const std::exception& e) {
 		diagnosis = e.what();
 	}
 	INFO(name << ": " << diagnosis);
 	REQUIRE(diagnosis.find("region()") != std::string::npos);
-	REQUIRE(diagnosis.find("exceptionBasedTracing") != std::string::npos);
 }
 
 } // namespace
 
 TEST_CASE("Region Rejects Values Outliving The Body", "[region]") {
-	// Both halves are decided while tracing, before code generation, so one backend is
+	// Rejection is decided while tracing, before code generation, so one backend is
 	// enough here; the suite above covers these paths across every backend.
 	const auto backends = nautilus::testing::availableBackends();
 	if (backends.empty()) {
 		SKIP("no compilation backend available");
 	}
 	const auto& backend = backends.front();
-	auto ebEngine = nautilus::testing::makeEngine(backend, [](engine::Options& opts) {
-		opts.setOption("engine.traceMode", std::string("exceptionBasedTracing"));
-		opts.setOption("engine.backend", std::string("mlir"));
-		opts.setOption("debug", true);
-		opts.setOption("dump.before_llvm_optimization", true);
-	});
-
-	SECTION("exceptionBasedTracing traces them") {
-		REQUIRE(ebEngine.registerFunction(regionNestedEscapeToOuter)() == 7);
-		REQUIRE(ebEngine.registerFunction(regionNestedEscapeToFunction)() == 14);
-		REQUIRE(ebEngine.registerFunction(regionTripleNestedEscape)() == 7);        // ((1) + 2) + 4
-		REQUIRE(ebEngine.registerFunction(regionMultipleEscapes)() == 7);           // 1 + 2 + 4
-		REQUIRE(ebEngine.registerFunction(regionEscapeWithMultipleCopies)() == 15); // 5 * 3
-		REQUIRE(ebEngine.registerFunction(regionSiblingNestedEscapes)() == 6);      // 1 + 5
-		REQUIRE(ebEngine.registerFunction(regionNestedEscapeStaticUnroll)() == 6);  // 1 + 2 + 3
-
-		auto inLoop = ebEngine.registerFunction(regionNestedEscapeInLoop);
-		REQUIRE(inLoop(3) == 9);
-		REQUIRE(inLoop(0) == 0);
-
-		auto liveEscape = ebEngine.registerFunction(regionLiveEscapeWithInternalBranch);
-		REQUIRE(liveEscape(1) == 8);  // 7 + 1
-		REQUIRE(liveEscape(-1) == 9); // 7 + 2
-
-		auto acrossBranch = ebEngine.registerFunction(regionEscapeAcrossBranch);
-		REQUIRE(acrossBranch(1) == 10);
-		REQUIRE(acrossBranch(-1) == 20);
-	}
-
-	SECTION("lazyTracing rejects them") {
-		requireRejectedByLazyTracing(backend, "regionNestedEscapeToOuter", regionNestedEscapeToOuter);
-		requireRejectedByLazyTracing(backend, "regionNestedEscapeToFunction", regionNestedEscapeToFunction);
-		requireRejectedByLazyTracing(backend, "regionTripleNestedEscape", regionTripleNestedEscape);
-		requireRejectedByLazyTracing(backend, "regionMultipleEscapes", regionMultipleEscapes);
-		requireRejectedByLazyTracing(backend, "regionEscapeWithMultipleCopies", regionEscapeWithMultipleCopies);
-		requireRejectedByLazyTracing(backend, "regionSiblingNestedEscapes", regionSiblingNestedEscapes);
-		requireRejectedByLazyTracing(backend, "regionNestedEscapeInLoop", regionNestedEscapeInLoop);
-		requireRejectedByLazyTracing(backend, "regionNestedEscapeStaticUnroll", regionNestedEscapeStaticUnroll);
-		requireRejectedByLazyTracing(backend, "regionLiveEscapeWithInternalBranch", regionLiveEscapeWithInternalBranch);
-		requireRejectedByLazyTracing(backend, "regionEscapeAcrossBranch", regionEscapeAcrossBranch);
-	}
+	requireRejected(backend, "regionNestedEscapeToOuter", regionNestedEscapeToOuter);
+	requireRejected(backend, "regionNestedEscapeToFunction", regionNestedEscapeToFunction);
+	requireRejected(backend, "regionTripleNestedEscape", regionTripleNestedEscape);
+	requireRejected(backend, "regionMultipleEscapes", regionMultipleEscapes);
+	requireRejected(backend, "regionEscapeWithMultipleCopies", regionEscapeWithMultipleCopies);
+	requireRejected(backend, "regionSiblingNestedEscapes", regionSiblingNestedEscapes);
+	requireRejected(backend, "regionNestedEscapeInLoop", regionNestedEscapeInLoop);
+	requireRejected(backend, "regionNestedEscapeStaticUnroll", regionNestedEscapeStaticUnroll);
+	requireRejected(backend, "regionLiveEscapeWithInternalBranch", regionLiveEscapeWithInternalBranch);
+	requireRejected(backend, "regionEscapeAcrossBranch", regionEscapeAcrossBranch);
 }
 
 #else

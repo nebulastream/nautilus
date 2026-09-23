@@ -58,7 +58,7 @@ TEST_CASE("TrieNode::append grows past its initial inline capacity while keeping
 }
 
 TEST_CASE("TrieNode tries sharing one arena do not cross-contaminate", "[Trie]") {
-	// Mirrors LazyTraceContext::startTrace, which builds one TagRecorder (and
+	// Mirrors TraceContext::startTrace, which builds one TagRecorder (and
 	// therefore one trie) per traced function but hands all of them the same
 	// compile-scoped Arena. Independent tries in that arena must stay distinct.
 	common::Arena arena;

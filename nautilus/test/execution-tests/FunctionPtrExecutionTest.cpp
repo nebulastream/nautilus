@@ -160,14 +160,13 @@ TEST_CASE("Function Ptr Interpreter Test") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("Function Ptr Compiler Test") {
-	nautilus::testing::forEachBackendWithTraceMode(
-	    [](engine::NautilusEngine& engine) { functionPtrTests(engine); },
-	    [](engine::Options& options) {
-		    if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
-			    options.setOption("engine.Compilation", true);
-			    options.setOption("mlir.enableMultithreading", false);
-		    }
-	    });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { functionPtrTests(engine); }, false,
+	                                  [](engine::Options& options) {
+		                                  if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
+			                                  options.setOption("engine.Compilation", true);
+			                                  options.setOption("mlir.enableMultithreading", false);
+		                                  }
+	                                  });
 }
 #endif
 

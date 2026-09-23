@@ -7,14 +7,12 @@
 #include <unordered_map>
 
 namespace nautilus::tracing {
-class TagRecorder;
-
-class ExceptionBasedTraceContext;
-class LazyTraceContext;
+class TraceContext;
 
 /**
- * @brief Result of a non-throwing record operation.
- * Used by LazyTraceContext to avoid TraceTerminationException.
+ * @brief Result of recording or following a branch during symbolic execution.
+ * shouldTerminate signals that the current path reached an already fully explored branch,
+ * after which the trace context enters passive mode.
  */
 struct RecordResult {
 	bool branchDirection;
@@ -48,13 +46,6 @@ public:
 	enum class MODE : uint8_t { FOLLOW, RECORD };
 
 	/**
-	 * @brief Performs a symbolic execution of a CMP operation.
-	 * Depending on all previous executions this function determines if a branch should be explored or not.
-	 * @return the return value of this branch
-	 */
-	bool executeCMP(TagRecorder& tr);
-
-	/**
 	 * @brief Check if we should continue the symbolic execution or if we evaluated all possible execution passes.
 	 * @return false if all execution passes through a function have been evaluated.
 	 */
@@ -74,34 +65,20 @@ public:
 	MODE getCurrentMode() const;
 
 	/**
-	 * @brief Records a new cmp operation. Throws TraceTerminationException on SecondVisit.
-	 * @param tag The snapshot tag for this branch
-	 * @return the branch direction
-	 */
-	bool record(const Snapshot& tag);
-
-	/**
-	 * @brief Non-throwing variant of record(). Returns a RecordResult instead of throwing.
-	 * Used by LazyTraceContext to avoid TraceTerminationException.
+	 * @brief Records a new cmp operation.
 	 * @param tag The snapshot tag for this branch
 	 * @return RecordResult with branch direction and termination signal
 	 */
-	RecordResult recordNoThrow(const Snapshot& tag);
-
-	bool shouldFollow();
-
-	bool follow();
+	RecordResult record(const Snapshot& tag);
 
 	/**
-	 * @brief Non-throwing variant of follow(). Returns a RecordResult instead of throwing.
-	 * Used by LazyTraceContext to avoid TraceTerminationException.
+	 * @brief Follows the next branch decision of the current execution path.
 	 * @return RecordResult with branch direction and termination signal
 	 */
-	RecordResult followNoThrow();
+	RecordResult follow();
 
 private:
-	friend ExceptionBasedTraceContext;
-	friend LazyTraceContext;
+	friend TraceContext;
 	/**
 	 * @brief Symbolic execution mode.
 	 * That identifies if, we follow a previously recorded execution or if we record a new one.

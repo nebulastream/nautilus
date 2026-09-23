@@ -5,7 +5,7 @@
 #include "nautilus/config.hpp"
 #include "nautilus/gpu/backends.hpp"
 #include "nautilus/gpu/config.hpp"
-#include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
+#include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
@@ -51,7 +51,7 @@ static std::shared_ptr<compiler::ir::IRGraph> traceToIR(std::function<void()> wr
 	std::list<compiler::CompilableFunction> functionsToTrace;
 	functionsToTrace.push_back(rootFunction);
 	common::Arena arena;
-	auto traceModule = tracing::ExceptionBasedTraceContext::Trace(functionsToTrace, engine::Options(), arena);
+	auto traceModule = tracing::TraceContext::Trace(functionsToTrace, engine::Options(), arena);
 	auto ssaPhase = tracing::SSACreationPhase();
 	auto afterSSA = ssaPhase.apply(std::shared_ptr<tracing::TraceModule>(std::move(traceModule)));
 	auto irPhase = tracing::TraceToIRConversionPhase();

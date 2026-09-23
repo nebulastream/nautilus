@@ -37,12 +37,11 @@ val<int32_t> invokeThrowingWithStruct() {
 	return result.get(&ExceptionResult::value);
 }
 
-engine::NautilusEngine makeBcEngine(const std::string& traceMode, const std::string& dispatch) {
+engine::NautilusEngine makeBcEngine(const std::string& dispatch) {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
 	options.setOption("engine.backend", std::string("bc"));
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
-	options.setOption("engine.traceMode", traceMode);
 	options.setOption("bc.dispatch", dispatch);
 	return engine::NautilusEngine {options};
 }
@@ -52,7 +51,7 @@ engine::NautilusEngine makeBcEngine(const std::string& traceMode, const std::str
 TEST_CASE("BC backend unwinds destructors under every dispatch mode") {
 	for (const auto& dispatch : {std::string("call"), std::string("switch"), std::string("threaded")}) {
 		DYNAMIC_SECTION(dispatch) {
-			auto engine = makeBcEngine("lazyTracing", dispatch);
+			auto engine = makeBcEngine(dispatch);
 			auto function = engine.registerFunction(invokeThrowingWithStruct);
 			destructorCalls = 0;
 			REQUIRE_THROWS_AS(function(), std::runtime_error);

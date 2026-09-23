@@ -15,18 +15,14 @@
 #include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/config.hpp"
-#include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
-#include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
 #include <list>
 
 namespace nautilus::engine {
-
-using TraceFn = std::unique_ptr<tracing::ExecutionTrace> (*)(std::function<void()>&, const engine::Options&,
-                                                             common::Arena&);
 
 static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
     {"add", details::createFunctionWrapper(int8AddExpression)},
@@ -47,33 +43,27 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
     {"chainedIf100Region", details::createFunctionWrapper(chainedIf100Region)},
 };
 
-static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
-    {"trace", tracing::ExceptionBasedTraceContext::trace},
-    {"completing_trace", tracing::LazyTraceContext::trace},
-};
-
 TEST_CASE("Tracing Benchmark") {
 	// Route every sample's arena through a single ArenaPool so chunk memory
 	// is recycled across samples (and across the many iterations within each
 	// sample).  This matches the intended Engine/JIT integration where a
 	// long-lived ArenaPool serves many compilations.
 	for (auto& [name, func] : tests) {
-		for (auto& [ctxName, traceFn] : traceContexts) {
-			auto benchName = ctxName + "_" + name;
-			auto fn = traceFn;
-			common::ArenaPool pool;
-			Catch::Benchmark::Benchmark(std::string(benchName))
-			    .operator=([&func, fn, &pool](Catch::Benchmark::Chronometer meter) {
-				    meter.measure([&func, fn, &pool] {
-					    auto arena = pool.acquire();
-					    auto trace = fn(func, engine::Options(), *arena);
-					    // Drop the trace first; then the arena handle goes
-					    // out of scope and is recycled into the pool.
-					    trace.reset();
-					    return 0;
-				    });
+		// The "completing_trace_" prefix is kept so results stay comparable with the
+		// published benchmark history of this tracer.
+		auto benchName = "completing_trace_" + name;
+		common::ArenaPool pool;
+		Catch::Benchmark::Benchmark(std::string(benchName))
+		    .operator=([&func, &pool](Catch::Benchmark::Chronometer meter) {
+			    meter.measure([&func, &pool] {
+				    auto arena = pool.acquire();
+				    auto trace = tracing::TraceContext::trace(func, engine::Options(), *arena);
+				    // Drop the trace first; then the arena handle goes
+				    // out of scope and is recycled into the pool.
+				    trace.reset();
+				    return 0;
 			    });
-		}
+		    });
 	}
 }
 
@@ -91,7 +81,7 @@ TEST_CASE("SSA Creation Benchmark") {
 
 			for (int index = 0; index < meter.runs(); ++index) {
 				auto arena = common::ArenaPool::makeStandalone();
-				traces.emplace_back(tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), *arena));
+				traces.emplace_back(tracing::TraceContext::trace(func, engine::Options(), *arena));
 				arenas.emplace_back(std::move(arena));
 			}
 
@@ -113,7 +103,7 @@ TEST_CASE("SSA Creation Benchmark") {
 				auto arena = common::ArenaPool::makeStandalone();
 				std::list<compiler::CompilableFunction> functions;
 				functions.emplace_back("execute", func);
-				modules.emplace_back(tracing::ExceptionBasedTraceContext::Trace(functions, engine::Options(), *arena));
+				modules.emplace_back(tracing::TraceContext::Trace(functions, engine::Options(), *arena));
 				arenas.emplace_back(std::move(arena));
 			}
 
@@ -184,8 +174,7 @@ TEST_CASE("SSA Creation Benchmark") {
 
 		    for (int index = 0; index < meter.runs(); ++index) {
 			    auto arena = common::ArenaPool::makeStandalone();
-			    traces.emplace_back(
-			        tracing::ExceptionBasedTraceContext::trace(function1000, engine::Options(), *arena));
+			    traces.emplace_back(tracing::TraceContext::trace(function1000, engine::Options(), *arena));
 			    arenas.emplace_back(std::move(arena));
 		    }
 
@@ -205,8 +194,7 @@ TEST_CASE("SSA Creation Benchmark") {
 
 		    for (int index = 0; index < meter.runs(); ++index) {
 			    auto arena = common::ArenaPool::makeStandalone();
-			    traces.emplace_back(
-			        tracing::ExceptionBasedTraceContext::trace(function2000, engine::Options(), *arena));
+			    traces.emplace_back(tracing::TraceContext::trace(function2000, engine::Options(), *arena));
 			    arenas.emplace_back(std::move(arena));
 		    }
 
@@ -226,8 +214,7 @@ TEST_CASE("SSA Creation Benchmark") {
 
 		    for (int index = 0; index < meter.runs(); ++index) {
 			    auto arena = common::ArenaPool::makeStandalone();
-			    traces.emplace_back(
-			        tracing::ExceptionBasedTraceContext::trace(function4000, engine::Options(), *arena));
+			    traces.emplace_back(tracing::TraceContext::trace(function4000, engine::Options(), *arena));
 			    arenas.emplace_back(std::move(arena));
 		    }
 
@@ -252,7 +239,7 @@ TEST_CASE("IR Creation Benchmark") {
 		Catch::Benchmark::Benchmark("ir_" + name).operator=([&func, &pool](Catch::Benchmark::Chronometer meter) {
 			auto traceArena = pool.acquire();
 			std::shared_ptr<tracing::ExecutionTrace> trace =
-			    tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), *traceArena);
+			    tracing::TraceContext::trace(func, engine::Options(), *traceArena);
 			auto ssaCreationPhase = tracing::SSACreationPhase();
 			auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
 
@@ -299,7 +286,7 @@ TEST_CASE("Backend Compilation Benchmark") {
 			    .operator=([&func, &registry, backend, &pool](Catch::Benchmark::Chronometer meter) {
 				    auto traceArena = pool.acquire();
 				    std::shared_ptr<tracing::ExecutionTrace> trace =
-				        tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), *traceArena);
+				        tracing::TraceContext::trace(func, engine::Options(), *traceArena);
 				    auto ssaCreationPhase = tracing::SSACreationPhase();
 				    auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
 

@@ -16,12 +16,12 @@
 // -----------------------------------------------------------------------------
 //
 // Every conditional in user code lowers to a single CMP operation tagged by
-// `recordSnapshot()` (`ExceptionBasedTraceContext.cpp:473`).  A tag is the
+// `TraceContext::recordSnapshot()` (`TraceContext.cpp`).  A tag is the
 // pair `(stack_trace_hash, staticValueHash ^ aliveVars.hash())`
 // (`Snapshot.hpp`).  The symbolic executor (`SymbolicExecutionContext`)
 // visits each unique tag at most twice — once down the `true` arm, once
 // down the `false` arm.  After the second visit, that tag is pruned
-// (`SymbolicExecutionContext.cpp:35-39`).  Total iterations:
+// (`SymbolicExecutionContext::record`).  Total iterations:
 //
 //     iterations  ==  Σ ( 2  for each distinct tag )
 //
@@ -82,7 +82,7 @@
 //    A `NautilusFunction` wraps the callee in a tracing boundary;
 //    every unique callee reached during tracing is enqueued in
 //    `functionsToTrace` and traced independently
-//    (`ExceptionBasedTraceContext.cpp:160-164`).  Depth-N call chain
+//    (`TraceContext::registerNautilusFunction`).  Depth-N call chain
 //    => N traces.  Each individual trace is small, but the overhead
 //    of starting fresh symbolic-execution loops compounds.  See the
 //    `multipleReturnsRoot` fixture in `NautilusFunction.hpp`.
