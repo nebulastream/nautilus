@@ -483,4 +483,24 @@ val<int64_t> issue487_swappedCallSites(val<int64_t*> left, val<int64_t*> right, 
 	return issue487_nestedLoop(left, right);
 }
 
+// The callee reads an argument that is the same on both paths before the swapped ones, so the
+// paths agree on the first operation after the call and tracing cannot tell them apart. Only
+// keeping the two call sites apart in the host code (-enable-tail-merge=false) makes this correct.
+inline val<int64_t> issue487_readContextFirst(const val<int64_t*>& context, const val<int64_t*>& outer,
+                                              const val<int64_t*>& inner) {
+	val<int64_t> base = invoke(issue487_length, context);
+	val<int64_t> one = 1;
+	val<int64_t> a = *(outer + one);
+	val<int64_t> b = *(inner + one);
+	return base * 1000 + a * 10 + b;
+}
+
+val<int64_t> issue487_sharedArgumentFirst(val<int64_t*> context, val<int64_t*> left, val<int64_t*> right,
+                                          val<bool> swap) {
+	if (swap) {
+		return issue487_readContextFirst(context, right, left);
+	}
+	return issue487_readContextFirst(context, left, right);
+}
+
 } // namespace nautilus::engine

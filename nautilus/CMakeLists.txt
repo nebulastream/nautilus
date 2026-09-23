@@ -18,6 +18,12 @@ get_source(nautilus NAUTILUS_SOURCE_FILES)
 # Add Library
 # nautilus tracing requires frame-pointers
 target_compile_options(nautilus INTERFACE -fno-omit-frame-pointer)
+# Tracing tells call sites apart by their return addresses. Clang's tail merging folds identical
+# calls from sibling branches into one call site, e.g. f(a, b) / f(b, a) with const val<T>&
+# parameters, and tracing then merges both paths into one (issue #487). With LTO, codegen runs at
+# link time, so the option also has to reach the linker (-Wl,-mllvm,-enable-tail-merge=false).
+target_compile_options(nautilus INTERFACE
+        "$<$<COMPILE_LANG_AND_ID:CXX,Clang,AppleClang>:SHELL:-mllvm -enable-tail-merge=false>")
 target_sources(nautilus PRIVATE ${NAUTILUS_SOURCE_FILES})
 target_include_directories(nautilus PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

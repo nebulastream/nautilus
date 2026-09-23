@@ -455,6 +455,14 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(left, right, false) == 1245);
 		REQUIRE(f(left, right, true) == 205);
 	}
+	SECTION("issue487_sharedArgumentFirst") {
+		int64_t context[1] = {7};
+		int64_t left[2] = {1, 1};
+		int64_t right[2] = {1, 2};
+		auto f = engine.registerFunction(issue487_sharedArgumentFirst);
+		REQUIRE(f(context, left, right, false) == 7012);
+		REQUIRE(f(context, left, right, true) == 7021);
+	}
 
 	SECTION("chainedIf100") {
 		auto f = engine.registerFunction(chainedIf100);
