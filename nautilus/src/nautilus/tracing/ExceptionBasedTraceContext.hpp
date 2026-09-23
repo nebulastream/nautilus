@@ -242,6 +242,7 @@ public:
 	std::string getFunctionName(void* fnptr, const std::string& mangledName);
 	void registerDestructor(const TypedValueRef& address, void* destructor) override;
 	void unregisterDestructor(const TypedValueRef& address) override;
+	void transferDestructor(const TypedValueRef& from, const TypedValueRef& to) override;
 
 protected:
 	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext).

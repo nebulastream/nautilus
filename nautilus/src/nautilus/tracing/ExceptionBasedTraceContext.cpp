@@ -75,6 +75,14 @@ void TraceContextBase::unregisterDestructor(const TypedValueRef& address) {
 	}
 }
 
+void TraceContextBase::transferDestructor(const TypedValueRef& from, const TypedValueRef& to) {
+	auto it = std::find_if(activeDestructors.rbegin(), activeDestructors.rend(),
+	                       [&](const FunctionCall::Destructor& destructor) { return destructor.address == from; });
+	if (it != activeDestructors.rend()) {
+		it->address = to;
+	}
+}
+
 TypedValueRef& ExceptionBasedTraceContext::registerFunctionArgument(Type type, size_t index) {
 	return state->executionTrace.setArgument(type, index);
 }

@@ -136,6 +136,38 @@ val<int32_t> invokeThrowingAfterMove() {
 	return 0;
 }
 
+// Move-assigns a val<Struct> and lets the destination leave scope normally
+// before a later throw (#484). Move assignment stores into the destination's
+// existing pointer slot, so the cleanup registered for `source` must be handed
+// over to `destination`; otherwise it outlives `destination`'s normal
+// destruction and the throw destructs the moved value a second time.
+val<int32_t> invokeThrowingAfterMoveAssignedScope() {
+	{
+		val<ExceptionResult> destination;
+		invoke(writeResult, &destination, val<int32_t> {1});
+		val<ExceptionResult> source;
+		invoke(writeResult, &source, val<int32_t> {2});
+		destination = std::move(source);
+	}
+	invoke(throwWithoutStruct);
+	return 0;
+}
+
+// Move-assigns a val<Struct> while a sibling constructed after the source is
+// still live, then throws. The handed-over cleanup must keep the source's
+// original position: `sibling` is destroyed before the moved value.
+val<int32_t> invokeThrowingAfterMoveAssign() {
+	val<ExceptionResult> destination;
+	invoke(writeResult, &destination, val<int32_t> {1});
+	val<ExceptionResult> source;
+	invoke(writeResult, &source, val<int32_t> {2});
+	val<ExceptionResult> sibling;
+	invoke(writeResult, &sibling, val<int32_t> {3});
+	destination = std::move(source);
+	invoke(throwWhileWriting, &destination, val<int32_t> {99});
+	return 0;
+}
+
 // ---------------------------------------------------------------------------
 // Nested Nautilus function calls: the caller's live val<Struct> destructors
 // must be carried across the nested-call boundary so they run if the nested
@@ -932,6 +964,49 @@ TEST_CASE("moving a live struct preserves reverse construction order") {
 					// storage) destructs second, in its original construction-order slot.
 					REQUIRE(destructorValues[0] == 2);
 					REQUIRE(destructorValues[1] == 1);
+				}
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// val<Struct> move assignment must hand the source's landing-pad cleanup over
+// to the destination (#484), see invokeThrowingAfterMoveAssign* above.
+// ---------------------------------------------------------------------------
+TEST_CASE("move assignment does not leave a stale cleanup") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
+				DYNAMIC_SECTION(traceMode) {
+					auto engine = backend.makeEngine(traceMode);
+					auto function = engine.registerFunction(invokeThrowingAfterMoveAssignedScope);
+					destructorCalls = 0;
+					REQUIRE_THROWS_AS(function(), std::runtime_error);
+					// The assignment destroys destination's old value (1); the moved
+					// value (2) is destroyed once at scope exit, not again by the throw.
+					REQUIRE(destructorCalls == 2);
+					REQUIRE(destructorValues[0] == 1);
+					REQUIRE(destructorValues[1] == 2);
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("move assignment preserves reverse construction order") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
+				DYNAMIC_SECTION(traceMode) {
+					auto engine = backend.makeEngine(traceMode);
+					auto function = engine.registerFunction(invokeThrowingAfterMoveAssign);
+					destructorCalls = 0;
+					REQUIRE_THROWS_AS(function(), std::runtime_error);
+					REQUIRE(destructorCalls == 3);
+					REQUIRE(destructorValues[0] == 1);
+					REQUIRE(destructorValues[1] == 3);
+					REQUIRE(destructorValues[2] == 2);
 				}
 			}
 		}
