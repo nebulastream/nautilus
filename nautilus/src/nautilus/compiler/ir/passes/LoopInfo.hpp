@@ -16,29 +16,29 @@ class BasicBlockInvocation;
  * @brief Shared natural-loop recognizer for the IR passes.
  *
  * The matcher was originally private to `StrengthReductionPass.cpp`; it is
- * extracted here (behavior-preserving) so both `StrengthReductionPass` and
+ * extracted here so both `StrengthReductionPass` and
  * `LoopInvariantCodeMotionPass` share one definition of "a loop this pass is
  * allowed to touch". Scope is deliberately narrow: only a single-latch,
- * single-preheader natural loop is recognized. Anything more general
+ * single-preheader natural loop is recognized, with the textbook definition
+ * of a back edge (its target dominates its source). Anything more general
  * (multiple latches/preheaders, irreducible control flow) is conservatively
  * skipped -- the passes built on this leave such loops untouched.
  */
 
-/// Forward-reachability (via successor edges, >= 1 step) from every block,
-/// memoized per block. Function CFGs here are small (tens of blocks), so a
-/// plain per-block BFS is more than fast enough.
-class Reachability {
-public:
-	const std::unordered_set<BasicBlock*>& from(BasicBlock* start);
-
-private:
-	std::unordered_map<BasicBlock*, std::unordered_set<BasicBlock*>> cache_;
-};
+/// True iff @p fn's control-flow graph contains a cycle, reachable or not.
+/// One depth-first walk over every block looking for an edge back into a
+/// block still on the walk's stack: O(blocks + edges), and independent of
+/// the loop shapes @ref findNaturalLoops would or would not recognize -- an
+/// analysis that only needs "can this function loop at all?" (see
+/// `FunctionAttributeInferencePass`) must not pay for recognizing loops, and
+/// must see the irreducible ones the recognizer skips.
+bool containsLoop(const FunctionOperation& fn);
 
 /// A recognized natural loop: `header` has exactly two predecessor edges, one
-/// forward edge from `preheader` and one back edge from `latch`, each a single
-/// invocation whose argument arity matches the header. `body` is the header
-/// plus every block reachable from it that can also reach the latch. The
+/// forward edge from `preheader` and one back edge from `latch` (an edge whose
+/// source the header dominates), each a single invocation whose argument arity
+/// matches the header. `body` is the header plus every reachable block from
+/// which the latch can be reached without passing through the header. The
 /// preheader is guaranteed to lie *outside* `body`.
 struct NaturalLoop {
 	BasicBlock* header;
@@ -50,6 +50,9 @@ struct NaturalLoop {
 };
 
 /// Returns every natural loop in @p fn, in block-list order of the headers.
+/// Costs one dominator-tree construction plus O(blocks + edges) for the
+/// classification and O(sum of the loop bodies) for collecting them; it never
+/// materializes per-block reachability sets.
 std::vector<NaturalLoop> findNaturalLoops(FunctionOperation& fn);
 
 /// A control-flow edge into a successor rebinds every argument to a *fresh*

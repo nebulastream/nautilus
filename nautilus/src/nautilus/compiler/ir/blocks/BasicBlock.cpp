@@ -59,6 +59,19 @@ void BasicBlock::removeArgument(size_t index) {
 	}
 }
 
+void BasicBlock::removeArguments(std::span<const size_t> indices) {
+	size_t kept = 0;
+	size_t nextRemoved = 0;
+	for (size_t i = 0; i < arguments.size(); ++i) {
+		if (nextRemoved < indices.size() && indices[nextRemoved] == i) {
+			++nextRemoved;
+			continue;
+		}
+		arguments[kept++] = arguments[i];
+	}
+	arguments.resize(kept);
+}
+
 uint64_t BasicBlock::getIndexOfArgument(Operation* arg) {
 	for (uint64_t i = 0; i < arguments.size(); i++) {
 		if (arguments[i] == arg) {

@@ -171,6 +171,11 @@ public:
 	/// argument list in the same slot (`BasicBlockInvocation::removeArgument`).
 	void removeArgument(size_t index);
 
+	/// Removes every argument slot whose index is in @p indices (ascending, no
+	/// duplicates) in one compaction pass. Same contract as @ref removeArgument
+	/// for the invocation side of the arity invariant.
+	void removeArguments(std::span<const size_t> indices);
+
 	void replaceTerminatorOperation(Operation* newTerminatorOperation);
 
 	[[nodiscard]] std::pair<const BasicBlock*, const BasicBlock*> getNextBlocks();
