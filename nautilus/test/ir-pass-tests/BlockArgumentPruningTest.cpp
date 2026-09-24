@@ -323,6 +323,55 @@ TEST_CASE("BlockArgumentPruning: argument used only by dead code dies with it in
 	requireVerifierClean(*irGraph);
 }
 
+TEST_CASE("BlockArgumentPruning: a value threaded through a chain of blocks folds to its definition") {
+	namespace ir = compiler::ir;
+	auto irGraph = std::make_shared<IRGraph>("prune-chain");
+	auto& arena = irGraph->getArena();
+
+	// entry: v = 42; u = 7; br b1(v, u)
+	// b_k(x_k, y_k): br b_{k+1}(x_k, y_k)   for k = 1..chainLength-1
+	// b_last(x, y): return x               -- y is threaded but never read
+	constexpr size_t chainLength = 6;
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+	auto* v = entry->addOperation<ir::ConstIntOperation>(OperationIdentifier {1}, 42, Type::i32);
+	auto* u = entry->addOperation<ir::ConstIntOperation>(OperationIdentifier {2}, 7, Type::i32);
+
+	std::vector<BasicBlock*> blocks {entry};
+	uint32_t nextId = 10;
+	for (size_t k = 1; k <= chainLength; ++k) {
+		auto* x = arena.create<BasicBlockArgument>(OperationIdentifier {nextId++}, Type::i32);
+		auto* y = arena.create<BasicBlockArgument>(OperationIdentifier {nextId++}, Type::i32);
+		auto* block = arena.create<BasicBlock>(arena, BlockIdentifier {static_cast<uint32_t>(k)},
+		                                       std::vector<BasicBlockArgument*> {x, y});
+		blocks.push_back(block);
+	}
+	entry->addNextBlock(blocks[1], std::vector<Operation*> {v, u});
+	for (size_t k = 1; k < chainLength; ++k) {
+		const auto& args = blocks[k]->getArguments();
+		blocks[k]->addNextBlock(blocks[k + 1], std::vector<Operation*> {args[0], args[1]});
+	}
+	auto* last = blocks[chainLength];
+	last->addOperation<ir::ReturnOperation>(last->getArguments()[0]);
+
+	auto* fn = arena.create<FunctionOperation>("execute", blocks, std::vector<Type> {}, std::vector<std::string> {},
+	                                           Type::i32);
+	irGraph->addFunctionOperation(fn);
+
+	runPass(*irGraph);
+
+	// Every hop agreed on the value from the hop before, and entry dominates
+	// the whole chain: all slots fold to `v` (the read one) or vanish (the
+	// unread one), and the return names the constant directly.
+	for (size_t k = 1; k <= chainLength; ++k) {
+		REQUIRE(blocks[k]->getArguments().empty());
+		auto invocations = getSuccessorInvocations(*blocks[k - 1]->getTerminatorOp());
+		REQUIRE(invocations.size() == 1);
+		REQUIRE(invocations.front()->getArguments().empty());
+	}
+	REQUIRE(last->getTerminatorOp()->getInputs()[0] == v);
+	requireVerifierClean(*irGraph);
+}
+
 TEST_CASE("BlockArgumentPruning: idempotent on an already-pruned graph") {
 	auto ir = IRGraphFixtures::makeNaturalLoopGraph();
 	auto* header = findBlock(*ir, 1);

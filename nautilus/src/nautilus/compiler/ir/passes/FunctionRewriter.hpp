@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory_resource>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -36,6 +37,16 @@ class FunctionOperation;
  * after that is O(affected uses/args/edges), never O(function) again --
  * this is what turns a per-pass whole-function rescan into an incremental
  * update.
+ *
+ * The table is bump-allocated from a session-owned monotonic buffer and
+ * released in bulk with the session. Every pass builds a fresh table, so
+ * on a large function the table's own allocation would otherwise dominate
+ * the pass (one heap node per value plus one heap vector per use list, and
+ * the same number of frees at the end): the buffer turns that into a few
+ * large allocations. Entries are never given back individually -- a use
+ * list that grows leaves its old storage behind -- which is bounded by a
+ * constant factor of the final table and is exactly what a per-pass
+ * session can afford.
  *
  * Session discipline: while a rewriter is live, every mutation of its
  * function must go through it. Bypassing it (raw `BasicBlock::removeOperation`,
@@ -67,6 +78,12 @@ public:
 	};
 
 	static constexpr uint32_t destructorOperandBase = 0x80000000u;
+
+	/// One block-argument slot, for @ref removeBlockArguments.
+	struct BlockArgumentSlot {
+		BasicBlock* block;
+		size_t index;
+	};
 
 	/// @param ir  Optional. When supplied, dead-code elimination resolves a
 	///            call's callee through the module function table and can drop
@@ -156,8 +173,24 @@ public:
 	/// index of @p block *and* the @p index-th argument of every invocation
 	/// targeting @p block (including multiple invocations from the same
 	/// predecessor). Throws `RuntimeException` (mutating nothing) if the
-	/// argument has uses.
+	/// argument has uses. A single-slot @ref removeBlockArguments.
 	void removeBlockArgument(BasicBlock* block, size_t index);
+
+	/// Removes every listed slot at once: any number of blocks, any number
+	/// of slots per block, in any order (a slot listed twice counts once).
+	/// Same precondition and exception as @ref removeBlockArgument, checked
+	/// for every slot before anything is mutated.
+	///
+	/// Removing a slot shifts the operand index of every later argument of
+	/// every invocation targeting that block, and the use table records
+	/// those indices. Rather than dropping and re-deriving each invocation's
+	/// use edges one slot at a time -- which scans the full use list of
+	/// every value the invocation passes, once per removed slot -- this
+	/// walks the use list of each value any rewritten invocation passes
+	/// exactly once and patches or drops its entries in place. For a value
+	/// passed through every block of the function that is the difference
+	/// between O(blocks) and O(blocks^2) per pruning round.
+	void removeBlockArguments(std::span<const BlockArgumentSlot> slots);
 
 	/// Appends an argument of the given @p stamp to @p block and exactly one
 	/// value per invocation targeting @p block: @p valueForEdge is invoked
@@ -232,8 +265,10 @@ private:
 	FunctionOperation& fn_;
 	common::Arena& arena_;
 	const IRGraph* ir_ = nullptr;
-	std::unordered_map<const Operation*, std::vector<Use>> uses_;
-	std::unordered_map<const Operation*, BasicBlock*> defBlock_;
+	/// Backs `uses_` and `defBlock_`; declared before them so it outlives them.
+	std::pmr::monotonic_buffer_resource tableMemory_;
+	std::pmr::unordered_map<const Operation*, std::pmr::vector<Use>> uses_;
+	std::pmr::unordered_map<const Operation*, BasicBlock*> defBlock_;
 	uint32_t nextId_ = 0;
 };
 

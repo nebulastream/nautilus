@@ -40,8 +40,38 @@ std::vector<BasicBlockInvocation*> invocationsTargeting(BasicBlock* block) {
 
 } // namespace
 
+namespace {
+
+/// Block arguments plus operations: the number of `defBlock_` entries, and an
+/// upper bound on the number of distinct values with a use list.
+size_t countDefinitions(const FunctionOperation& fn) {
+	size_t count = 0;
+	for (const auto* block : fn.getBasicBlocks()) {
+		count += block->getArguments().size() + block->getOperations().size();
+	}
+	return count;
+}
+
+/// Rough bytes the two tables need for @p definitions entries, so the first
+/// buffer already holds a typical session and growth stays geometric from
+/// there. A hash node, its use list's first storage and a bucket slot come to
+/// well under this per definition.
+size_t initialTableBytes(size_t definitions) {
+	constexpr size_t bytesPerDefinition = 128;
+	constexpr size_t minimum = 4 * 1024;
+	return std::max(minimum, definitions * bytesPerDefinition);
+}
+
+} // namespace
+
 FunctionRewriter::FunctionRewriter(FunctionOperation& fn, common::Arena& arena, const IRGraph* ir)
-    : fn_(fn), arena_(arena), ir_(ir) {
+    : fn_(fn), arena_(arena), ir_(ir), tableMemory_(initialTableBytes(countDefinitions(fn))), uses_(&tableMemory_),
+      defBlock_(&tableMemory_) {
+	const size_t definitions = countDefinitions(fn);
+	// Sized once: a rehash would abandon the old bucket array inside the
+	// monotonic buffer.
+	uses_.reserve(definitions);
+	defBlock_.reserve(definitions);
 	uint32_t maxId = 0;
 	for (auto* block : fn_.getBasicBlocks()) {
 		for (auto* arg : block->getArguments()) {
@@ -140,7 +170,7 @@ void FunctionRewriter::replaceAllUses(Operation* from, Operation* to) {
 	if (it == uses_.end()) {
 		return;
 	}
-	std::vector<Use> moved = std::move(it->second);
+	auto moved = std::move(it->second);
 	uses_.erase(it);
 	for (auto& u : moved) {
 		setOperand(u.user, u.operandIndex, to);
@@ -201,30 +231,115 @@ size_t FunctionRewriter::eraseIfDead(Operation* op) {
 }
 
 void FunctionRewriter::removeBlockArgument(BasicBlock* block, size_t index) {
-	const auto& args = block->getArguments();
-	if (index >= args.size()) {
-		throw RuntimeException("FunctionRewriter::removeBlockArgument: index " + std::to_string(index) +
-		                       " out of range for block " + std::to_string(block->getIdentifier().getId()));
-	}
-	BasicBlockArgument* arg = args[index];
-	if (useCount(arg) != 0) {
-		throw RuntimeException("FunctionRewriter::removeBlockArgument: argument " + arg->getIdentifier().toString() +
-		                       " of block " + std::to_string(block->getIdentifier().getId()) + " still has " +
-		                       std::to_string(useCount(arg)) + " use(s)");
+	const BlockArgumentSlot slot {block, index};
+	removeBlockArguments(std::span<const BlockArgumentSlot>(&slot, 1));
+}
+
+void FunctionRewriter::removeBlockArguments(std::span<const BlockArgumentSlot> slots) {
+	// Group by block, in first-seen order, so the result does not depend on
+	// hash iteration.
+	std::vector<BasicBlock*> blocks;
+	std::unordered_map<BasicBlock*, std::vector<size_t>> indicesOf;
+	for (const auto& slot : slots) {
+		const auto& args = slot.block->getArguments();
+		if (slot.index >= args.size()) {
+			throw RuntimeException("FunctionRewriter::removeBlockArguments: index " + std::to_string(slot.index) +
+			                       " out of range for block " + std::to_string(slot.block->getIdentifier().getId()));
+		}
+		BasicBlockArgument* arg = args[slot.index];
+		if (useCount(arg) != 0) {
+			throw RuntimeException("FunctionRewriter::removeBlockArguments: argument " +
+			                       arg->getIdentifier().toString() + " of block " +
+			                       std::to_string(slot.block->getIdentifier().getId()) + " still has " +
+			                       std::to_string(useCount(arg)) + " use(s)");
+		}
+		auto [it, inserted] = indicesOf.try_emplace(slot.block);
+		if (inserted) {
+			blocks.push_back(slot.block);
+		}
+		it->second.push_back(slot.index);
 	}
 
-	auto targetInvocations = invocationsTargeting(block);
-	for (auto* inv : targetInvocations) {
-		// Removing a middle argument shifts every later operand index, so
-		// the recorded use edges for this invocation are re-derived from
-		// scratch rather than patched in place.
-		unregisterUser(inv);
-		inv->removeArgument(index);
-		registerUses(inv);
+	static constexpr uint32_t removedSlot = ~0u;
+	// Per rewritten invocation: old operand index -> new operand index, or
+	// `removedSlot`. Shared by every invocation targeting the same block.
+	std::vector<std::vector<uint32_t>> remaps;
+	remaps.reserve(blocks.size());
+	std::unordered_map<const Operation*, const std::vector<uint32_t>*> remapOf;
+	// Every value some rewritten invocation passes, in first-seen order.
+	std::vector<const Operation*> touched;
+	std::unordered_set<const Operation*> touchedSet;
+
+	for (auto* block : blocks) {
+		auto& indices = indicesOf[block];
+		std::sort(indices.begin(), indices.end());
+		indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+
+		// Sized by the widest argument list in play so that, should an
+		// invocation carry more arguments than the block declares (arity
+		// drift the verifier reports), its surplus entries still shift
+		// consistently instead of being dropped.
+		auto targetInvocations = invocationsTargeting(block);
+		size_t arity = block->getArguments().size();
+		for (auto* inv : targetInvocations) {
+			arity = std::max(arity, inv->getArguments().size());
+		}
+		auto& remap = remaps.emplace_back(arity, removedSlot);
+		uint32_t next = 0;
+		size_t nextRemoved = 0;
+		for (size_t i = 0; i < arity; ++i) {
+			if (nextRemoved < indices.size() && indices[nextRemoved] == i) {
+				++nextRemoved;
+				continue;
+			}
+			remap[i] = next++;
+		}
+
+		for (auto* inv : targetInvocations) {
+			for (auto* value : inv->getArguments()) {
+				if (value != nullptr && touchedSet.insert(value).second) {
+					touched.push_back(value);
+				}
+			}
+			remapOf.emplace(inv, &remap);
+			inv->removeArguments(indices);
+		}
+
+		for (const size_t index : indices) {
+			BasicBlockArgument* arg = block->getArguments()[index];
+			defBlock_.erase(arg);
+			uses_.erase(arg);
+		}
+		block->removeArguments(indices);
 	}
-	block->removeArgument(index);
-	defBlock_.erase(arg);
-	uses_.erase(arg);
+
+	// One pass over each affected value's use list: entries of a rewritten
+	// invocation move to their new index or disappear with their slot; every
+	// other entry is untouched.
+	for (const auto* value : touched) {
+		auto it = uses_.find(value);
+		if (it == uses_.end()) {
+			continue;
+		}
+		auto& vec = it->second;
+		size_t kept = 0;
+		for (size_t i = 0; i < vec.size(); ++i) {
+			Use use = vec[i];
+			if (auto remapIt = remapOf.find(use.user); remapIt != remapOf.end()) {
+				const auto& remap = *remapIt->second;
+				const uint32_t mapped = use.operandIndex < remap.size() ? remap[use.operandIndex] : removedSlot;
+				if (mapped == removedSlot) {
+					continue;
+				}
+				use.operandIndex = mapped;
+			}
+			vec[kept++] = use;
+		}
+		vec.resize(kept);
+		if (vec.empty()) {
+			uses_.erase(it);
+		}
+	}
 }
 
 BasicBlockArgument*

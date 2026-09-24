@@ -317,15 +317,21 @@ TEST_CASE("LICM: a loop whose body contains a nested loop is conservatively skip
 	// v1 does not hoist out of a loop that contains a nested loop: doing so
 	// would give the hoisted value a live range spanning the inner loop's back
 	// edge, which the direct-lowering interpreter backends miscompile. The
-	// `N*N` multiply must therefore stay put in the inner latch (block 4).
+	// `N*N` multiply must therefore not reach the function entry (block 0).
+	//
+	// The inner loop is an ordinary single-latch natural loop of its own, and
+	// hoisting out of *it* is a single-loop hoist: the value lands in the inner
+	// preheader (block 2), inside the outer loop, and is recomputed on every
+	// outer iteration -- it never crosses a loop it was not hoisted from.
 	auto ir = makeNestedLoop();
 	REQUIRE(countInBlock(blockWithId(*ir, 4), Operation::OperationType::MulOp) == 1);
 
 	compiler::ir::rebuildPredecessorLists(*ir);
 	LoopInvariantCodeMotionPass pass;
-	CHECK_FALSE(pass.apply(*ir)); // nothing is hoisted -> no change
+	CHECK(pass.apply(*ir)); // the inner loop's hoist is a change
 
-	CHECK(countInBlock(blockWithId(*ir, 4), Operation::OperationType::MulOp) == 1);
+	CHECK(countInBlock(blockWithId(*ir, 4), Operation::OperationType::MulOp) == 0);
+	CHECK(countInBlock(blockWithId(*ir, 2), Operation::OperationType::MulOp) == 1);
 	CHECK(countInBlock(blockWithId(*ir, 0), Operation::OperationType::MulOp) == 0);
 	REQUIRE(IRVerifier::verify(*ir).ok());
 }
