@@ -1,6 +1,7 @@
 #include "nautilus/compiler/ir/passes/Dominators.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include <algorithm>
+#include <utility>
 
 namespace nautilus::compiler::ir {
 
@@ -107,6 +108,31 @@ Dominators::Dominators(const FunctionOperation& fn) {
 			}
 		}
 	}
+
+	// Number the dominator tree in DFS preorder so `dominates` is an interval
+	// test instead of a walk up the idom chain. Children are listed in RPO
+	// order, which keeps the numbering deterministic (D3).
+	std::vector<std::vector<size_t>> children(rpo_.size());
+	for (size_t i = 1; i < rpo_.size(); ++i) {
+		children[idom_[i]].push_back(i);
+	}
+	treeIn_.assign(rpo_.size(), 0);
+	treeOut_.assign(rpo_.size(), 0);
+	size_t counter = 0;
+	std::vector<std::pair<size_t, size_t>> stack; // (node, next child index)
+	stack.emplace_back(0, 0);
+	treeIn_[0] = counter++;
+	while (!stack.empty()) {
+		auto& [node, next] = stack.back();
+		if (next < children[node].size()) {
+			const size_t child = children[node][next++];
+			treeIn_[child] = counter++;
+			stack.emplace_back(child, 0);
+			continue;
+		}
+		treeOut_[node] = counter;
+		stack.pop_back();
+	}
 }
 
 bool Dominators::isReachable(const BasicBlock* block) const {
@@ -125,15 +151,9 @@ bool Dominators::dominates(const BasicBlock* a, const BasicBlock* b) const {
 	if (aIt == rpoIndex_.end()) {
 		return false;
 	}
-	size_t cur = bIt->second;
-	const size_t target = aIt->second;
-	while (cur != 0) {
-		cur = idom_[cur];
-		if (cur == target) {
-			return true;
-		}
-	}
-	return false;
+	const size_t aIdx = aIt->second;
+	const size_t bIdx = bIt->second;
+	return treeIn_[aIdx] <= treeIn_[bIdx] && treeOut_[bIdx] <= treeOut_[aIdx];
 }
 
 const std::vector<const BasicBlock*>& Dominators::reversePostOrder() const {

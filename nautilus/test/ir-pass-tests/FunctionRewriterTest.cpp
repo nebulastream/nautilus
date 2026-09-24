@@ -401,6 +401,84 @@ TEST_CASE("FunctionRewriter M7: removing a live argument throws and mutates noth
 	REQUIRE(ir->toString() == before);
 }
 
+TEST_CASE("FunctionRewriter M7: removeBlockArguments removes slots of several blocks in one batch") {
+	auto ir = std::make_shared<IRGraph>("batch-remove");
+	auto& arena = ir->getArena();
+
+	// entry(cond): c = 7; if cond ? a(c, c, c) : b(c, c)
+	// a(a0, a1, a2): return a1        -- a0, a2 unused
+	// b(b0, b1):     return b0        -- b1 unused
+	auto* a0 = arena.create<BasicBlockArgument>(OperationIdentifier {10}, Type::i32);
+	auto* a1 = arena.create<BasicBlockArgument>(OperationIdentifier {11}, Type::i32);
+	auto* a2 = arena.create<BasicBlockArgument>(OperationIdentifier {12}, Type::i32);
+	auto* blockA = arena.create<BasicBlock>(arena, BlockIdentifier {1}, std::vector<BasicBlockArgument*> {a0, a1, a2});
+	blockA->addOperation<ReturnOperation>(a1);
+
+	auto* b0 = arena.create<BasicBlockArgument>(OperationIdentifier {20}, Type::i32);
+	auto* b1 = arena.create<BasicBlockArgument>(OperationIdentifier {21}, Type::i32);
+	auto* blockB = arena.create<BasicBlock>(arena, BlockIdentifier {2}, std::vector<BasicBlockArgument*> {b0, b1});
+	blockB->addOperation<ReturnOperation>(b0);
+
+	auto* cond = arena.create<BasicBlockArgument>(OperationIdentifier {1}, Type::b);
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {cond});
+	auto* c = entry->addOperation<ConstIntOperation>(OperationIdentifier {2}, 7, Type::i32);
+	auto* ifOp = arena.create<IfOperation>(arena, cond, 0.5);
+	ifOp->setTrueBlockInvocation(blockA);
+	ifOp->setFalseBlockInvocation(blockB);
+	for (int i = 0; i < 3; ++i) {
+		ifOp->getTrueBlockInvocation().addArgument(arena, c);
+	}
+	for (int i = 0; i < 2; ++i) {
+		ifOp->getFalseBlockInvocation().addArgument(arena, c);
+	}
+	entry->addOperation(ifOp);
+
+	auto* fn =
+	    arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry, blockA, blockB},
+	                                    std::vector<Type> {Type::b}, std::vector<std::string> {"cond"}, Type::i32);
+	ir->addFunctionOperation(fn);
+	rebuildPredecessorLists(*ir);
+	FunctionRewriter rewriter(*fn, arena);
+	REQUIRE(rewriter.useCount(c) == 5);
+
+	// A live slot anywhere in the batch rejects the whole batch untouched.
+	const auto before = ir->toString();
+	const std::vector<FunctionRewriter::BlockArgumentSlot> withLive {{blockA, 0}, {blockB, 0}};
+	REQUIRE_THROWS_AS(rewriter.removeBlockArguments(withLive), RuntimeException);
+	REQUIRE(ir->toString() == before);
+	REQUIRE(rewriter.useCount(c) == 5);
+
+	// Slots in any order, a duplicate included: two blocks shrink at once.
+	const std::vector<FunctionRewriter::BlockArgumentSlot> slots {{blockA, 2}, {blockB, 1}, {blockA, 0}, {blockA, 2}};
+	rewriter.removeBlockArguments(slots);
+
+	REQUIRE(blockA->getArguments() == std::vector<BasicBlockArgument*> {a1});
+	REQUIRE(blockB->getArguments() == std::vector<BasicBlockArgument*> {b0});
+	REQUIRE(ifOp->getTrueBlockInvocation().getArguments().size() == 1);
+	REQUIRE(ifOp->getFalseBlockInvocation().getArguments().size() == 1);
+
+	// The surviving invocation arguments moved to slot 0, and the use table
+	// says so -- the removed edges are gone, the kept ones re-indexed.
+	REQUIRE(rewriter.useCount(c) == 2);
+	for (const auto& use : rewriter.usesOf(c)) {
+		REQUIRE(use.operandIndex == 0);
+		REQUIRE((use.user == &ifOp->getTrueBlockInvocation() || use.user == &ifOp->getFalseBlockInvocation()));
+	}
+	REQUIRE(rewriter.definingBlock(a0) == nullptr);
+	REQUIRE(rewriter.definingBlock(a2) == nullptr);
+	REQUIRE(rewriter.definingBlock(b1) == nullptr);
+	REQUIRE(rewriter.definingBlock(a1) == blockA);
+	requireVerifierClean(*ir);
+
+	// The table stays usable for further rewrites through the re-indexed edges.
+	auto* d = rewriter.createBeforeTerminator<ConstIntOperation>(entry, rewriter.freshId(), 8, Type::i32);
+	rewriter.replaceAllUses(c, d);
+	REQUIRE(ifOp->getTrueBlockInvocation().getArguments()[0] == d);
+	REQUIRE(ifOp->getFalseBlockInvocation().getArguments()[0] == d);
+	REQUIRE(rewriter.useCount(c) == 0);
+	requireVerifierClean(*ir);
+}
+
 // ── M8: atomic block-argument addition ──────────────────────────────────
 
 TEST_CASE("FunctionRewriter M8: addBlockArgument on the natural loop -- distinct preheader/latch values") {
