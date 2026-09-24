@@ -220,6 +220,8 @@ struct TraceState {
 	ExecutionTrace& executionTrace;
 	SymbolicExecutionContext& symbolicExecutionContext;
 	const engine::Options& options;
+	/// `engine.normalizeFunctionNames`, read once: it is consulted on every traced call.
+	bool normalizeFunctionNames;
 	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
 	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
 
@@ -342,10 +344,18 @@ private:
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
-	std::string getMangledName(void* fnptr);
-	/// engine.resolveFunctionNames: whether callee names are looked up with dladdr (see getMangledName).
-	bool resolveFunctionNames() const;
-	std::string getFunctionName(void* fnptr, const std::string& mangledName);
+	/// The normalized name ("runtimeFuncN") of the native callee @p fnptr when
+	/// `engine.normalizeFunctionNames` is set, empty otherwise. Indices follow the order
+	/// callees are first traced in, so this is assigned at trace time; every other name is
+	/// resolved once tracing is done (see resolveCalleeNames). Session-wide, so a region
+	/// scope numbers a callee the same way its enclosing function does.
+	std::string normalizedFunctionName(void* fnptr);
+
+	/// Fills in the symbol and display names of every native callee and destructor recorded
+	/// in @p trace. Tracing records only their pointers: resolving a name costs a dladdr
+	/// symbol-table scan, which is paid here once per callee instead of once per traced call
+	/// site and scope, and is cached process-wide beyond that (see resolveFunctionName).
+	static void resolveCalleeNames(ExecutionTrace& trace, const engine::Options& options);
 
 	/**
 	 * @brief Runs the symbolic-execution loop of one *trace scope* to completion.
@@ -399,7 +409,6 @@ private:
 	// Empty when not tracing and stored inline to avoid a per-trace heap allocation.
 	std::optional<TraceState> state;
 
-	std::unordered_map<void*, std::string> mangledNameCache;
 	std::vector<FunctionCall::Destructor> activeDestructors;
 
 	/// The block a pass of this scope rewinds to before re-invoking the body.
@@ -474,7 +483,7 @@ private:
 
 	/// The context that owns the cross-scope bookkeeping shared by every scope of
 	/// one tracing session: the function work-list, the registered-function set and
-	/// the (mangled/normalized) function-name caches. Always the outermost context;
+	/// the normalized function-name cache. Always the outermost context;
 	/// `this` for a function scope.
 	TraceContext* session_ = this;
 

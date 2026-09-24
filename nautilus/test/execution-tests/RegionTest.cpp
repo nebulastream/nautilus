@@ -28,7 +28,11 @@
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <list>
+#include <map>
 #include <memory>
+#include <set>
+#include <utility>
+#include <variant>
 #endif
 
 namespace nautilus::engine {
@@ -1204,6 +1208,82 @@ TEST_CASE("Region Rejects Values Outliving The Body", "[region]") {
 	requireRejected(backend, "regionNestedEscapeStaticUnroll", regionNestedEscapeStaticUnroll);
 	requireRejected(backend, "regionLiveEscapeWithInternalBranch", regionLiveEscapeWithInternalBranch);
 	requireRejected(backend, "regionEscapeAcrossBranch", regionEscapeAcrossBranch);
+}
+
+// Native callees are named after tracing, from one process-wide cache, rather than per
+// scope while tracing: a region scope used to resolve (and, with normalization on,
+// number) every potentially-throwing invoke() target and every destructor on its own,
+// paying a dladdr symbol-table scan per region scope and giving one callee a different
+// normalized name inside a region than outside it (issue #491).
+namespace {
+
+int64_t regionNameCallee(int64_t x) {
+	return x + 1;
+}
+
+int64_t regionNameNoexceptCallee(int64_t x) noexcept {
+	return x + 2;
+}
+
+val<int64_t> regionNamedCalls(val<int64_t> x) {
+	val<int64_t> v = invoke(regionNameCallee, x);
+	v = invoke(regionNameNoexceptCallee, v);
+	region("outer", [&]() {
+		v = invoke(regionNameCallee, v);
+		region("inner", [&]() {
+			v = invoke(regionNameCallee, v);
+			v = invoke(regionNameNoexceptCallee, v);
+		});
+	});
+	return v;
+}
+
+/// Every native call recorded in @p trace, keyed by callee: the display and symbol names
+/// each of its call sites was given.
+std::map<void*, std::set<std::pair<std::string, std::string>>> nativeCallNames(tracing::ExecutionTrace& trace) {
+	std::map<void*, std::set<std::pair<std::string, std::string>>> names;
+	for (auto* block : trace.getBlocks()) {
+		for (auto* operation : block->operations) {
+			for (auto& input : operation->input) {
+				if (auto** call = std::get_if<tracing::FunctionCall*>(&input);
+				    call != nullptr && (*call)->kind == tracing::CalleeKind::External) {
+					names[(*call)->ptr].emplace((*call)->functionName, (*call)->mangledName);
+				}
+			}
+		}
+	}
+	return names;
+}
+
+} // namespace
+
+TEST_CASE("Region Native Callees Are Named Like Unregioned Ones", "[region]") {
+	auto normalize = GENERATE(false, true);
+	Options options;
+	options.setOption("engine.normalizeFunctionNames", normalize);
+	common::Arena arena;
+	std::list<compiler::CompilableFunction> functions {
+	    compiler::CompilableFunction("execute", details::createFunctionWrapper(regionNamedCalls))};
+	auto module = tracing::TraceContext::Trace(functions, options, arena);
+	auto* trace = module->getFunction("execute");
+	REQUIRE(trace != nullptr);
+	INFO("normalize: " << normalize << "\ntrace:\n" << trace->toString());
+
+	auto names = nativeCallNames(*trace);
+	REQUIRE(names.size() == 2);
+	std::set<std::string> displayNames;
+	for (const auto& [ptr, callSiteNames] : names) {
+		// One callee, one name: every call site agrees, in or out of a region.
+		REQUIRE(callSiteNames.size() == 1);
+		const auto& [functionName, mangledName] = *callSiteNames.begin();
+		REQUIRE_FALSE(functionName.empty());
+		REQUIRE_FALSE(mangledName.empty());
+		displayNames.insert(functionName);
+	}
+	REQUIRE(displayNames.size() == 2);
+	if (normalize) {
+		REQUIRE(displayNames == std::set<std::string> {"runtimeFunc0", "runtimeFunc1"});
+	}
 }
 
 #else

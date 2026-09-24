@@ -1,5 +1,6 @@
 
 #include "TraceContext.hpp"
+#include "FunctionNameCache.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
@@ -11,8 +12,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
-#include <cxxabi.h>
-#include <dlfcn.h>
 #include <fmt/format.h>
 #include <sstream>
 
@@ -29,7 +28,8 @@ namespace nautilus::tracing {
 static thread_local TraceContext traceContext;
 
 TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
-    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts) {
+    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts),
+      normalizeFunctionNames(opts.getOptionOrDefault("engine.normalizeFunctionNames", false)) {
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
 }
 
@@ -52,13 +52,10 @@ void TraceContext::resume() {
 }
 
 void TraceContext::registerDestructor(const TypedValueRef& address, void* destructor) {
-	// Name caches are session-wide: see traceCall.
-	auto mangledName = session_->getMangledName(destructor);
-	activeDestructors.push_back(
-	    FunctionCall::Destructor {.address = address,
-	                              .functionName = session_->getFunctionName(destructor, mangledName),
-	                              .mangledName = std::move(mangledName),
-	                              .ptr = destructor});
+	activeDestructors.push_back(FunctionCall::Destructor {.address = address,
+	                                                      .functionName = session_->normalizedFunctionName(destructor),
+	                                                      .mangledName = {},
+	                                                      .ptr = destructor});
 }
 
 void TraceContext::unregisterDestructor(const TypedValueRef& address) {
@@ -228,15 +225,14 @@ TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
 	if (paused_) {
 		return dummyRef_;
 	}
-	// Name caches are session-wide: a call traced inside a region must normalize to
+	// Normalization is session-wide: a call traced inside a region must normalize to
 	// the same name as the same call traced outside one.
-	auto mangledName = session_->getMangledName(fptn);
-	auto functionName = session_->getFunctionName(fptn, mangledName);
+	auto functionName = session_->normalizedFunctionName(fptn);
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
-		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
-		                                                                        .mangledName = mangledName,
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = std::move(functionName),
+		                                                                        .mangledName = {},
 		                                                                        .ptr = fptn,
 		                                                                        .arguments = arguments,
 		                                                                        .fnAttrs = fnAttrs,
@@ -251,14 +247,12 @@ TypedValueRef& TraceContext::traceCallWithExceptionHandling(void* fptn, Type res
 	if (paused_) {
 		return dummyRef_;
 	}
-	// Name caches are session-wide: see traceCall.
-	auto mangledName = session_->getMangledName(fptn);
-	auto functionName = session_->getFunctionName(fptn, mangledName);
+	auto functionName = session_->normalizedFunctionName(fptn);
 	auto op = Op::CALL_WITH_EXCEPTION_HANDLING;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
-		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
-		                                                                        .mangledName = mangledName,
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = std::move(functionName),
+		                                                                        .mangledName = {},
 		                                                                        .ptr = fptn,
 		                                                                        .captureFunc = captureFunc,
 		                                                                        .arguments = arguments,
@@ -767,6 +761,7 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 
 	// Clean up: reset state pointer. activeTracer is cleared by ActiveTracerGuard.
 	tc->state.reset();
+	resolveCalleeNames(*executionTrace, options);
 
 	log::trace("Final trace: {}", *executionTrace);
 
@@ -843,6 +838,7 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 		runScope(wrapperFunc);
 
 		state.reset();
+		resolveCalleeNames(executionTrace, options);
 		log::trace("Final trace: {}", executionTrace);
 	}
 
@@ -904,61 +900,62 @@ std::string TraceContext::formatStaticVars() const {
 	return result;
 }
 
-std::string TraceContext::getMangledName(void* fnptr) {
-	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
-		return it->second;
+std::string TraceContext::normalizedFunctionName(void* fnptr) {
+	if (!state->normalizeFunctionNames) {
+		return {};
 	}
-
-	// dladdr scans the symbol table of the object containing fnptr, which costs about a
-	// millisecond per callee in large binaries. Callees are keyed by address, so the name is
-	// only a label: with engine.resolveFunctionNames=false the lookup is skipped and the
-	// callee is named by its address, as when dladdr finds no symbol.
-	if (resolveFunctionNames()) {
-		Dl_info info;
-		if (dladdr(fnptr, &info) != 0 && info.dli_sname != nullptr) {
-			mangledNameCache[fnptr] = info.dli_sname;
-			return info.dli_sname;
-		}
+	auto [it, inserted] = state->normalizedFunctionNameCache.try_emplace(fnptr, state->nextNormalizedFunctionIndex);
+	if (inserted) {
+		state->nextNormalizedFunctionIndex++;
 	}
-	std::stringstream ss;
-	ss << fnptr;
-	std::string ptrStr = ss.str();
-	mangledNameCache[fnptr] = ptrStr;
-	return ptrStr;
+	return "runtimeFunc" + std::to_string(it->second);
 }
 
-bool TraceContext::resolveFunctionNames() const {
-	return state->options.getOptionOrDefault("engine.resolveFunctionNames", true);
-}
-
-std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
-	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
-
-	if (normalizeFunctionNames) {
-		auto it = state->normalizedFunctionNameCache.find(fnptr);
-		if (it != state->normalizedFunctionNameCache.end()) {
-			return "runtimeFunc" + std::to_string(it->second);
+void TraceContext::resolveCalleeNames(ExecutionTrace& trace, const engine::Options& options) {
+	const bool demangleFunctionNames = options.getOptionOrDefault("engine.demangleFunctionNames", true);
+	// Callees are keyed by address, so a name is only a label. Without a lookup a callee is
+	// named by its address, exactly as when dladdr finds no symbol for it.
+	const bool resolveFunctionNames = options.getOptionOrDefault("engine.resolveFunctionNames", true);
+	auto resolve = [&](void* fnptr, std::string& functionName, std::string& mangledName) {
+		if (!mangledName.empty()) {
+			return;
 		}
-		uint32_t index = state->nextNormalizedFunctionIndex++;
-		state->normalizedFunctionNameCache[fnptr] = index;
-		return "runtimeFunc" + std::to_string(index);
+		if (!resolveFunctionNames) {
+			std::stringstream ss;
+			ss << fnptr;
+			mangledName = ss.str();
+			if (functionName.empty()) {
+				functionName = mangledName;
+			}
+			return;
+		}
+		const auto& resolved = resolveFunctionName(fnptr);
+		mangledName = resolved.mangled;
+		// Already set when the name was normalized at trace time.
+		if (functionName.empty()) {
+			functionName = demangleFunctionNames ? resolved.demangled : resolved.mangled;
+		}
+	};
+	auto resolveDestructors = [&](std::vector<FunctionCall::Destructor>& destructors) {
+		for (auto& destructor : destructors) {
+			resolve(destructor.ptr, destructor.functionName, destructor.mangledName);
+		}
+	};
+	for (auto* block : trace.getBlocks()) {
+		for (auto* operation : block->operations) {
+			for (auto& input : operation->input) {
+				if (auto** call = std::get_if<FunctionCall*>(&input); call != nullptr && *call != nullptr) {
+					if ((*call)->kind == CalleeKind::External) {
+						resolve((*call)->ptr, (*call)->functionName, (*call)->mangledName);
+					}
+					resolveDestructors((*call)->destructors);
+				} else if (auto** indirect = std::get_if<IndirectFunctionCall*>(&input);
+				           indirect != nullptr && *indirect != nullptr) {
+					resolveDestructors((*indirect)->destructors);
+				}
+			}
+		}
 	}
-
-	bool demangleFunctionNames = state->options.getOptionOrDefault("engine.demangleFunctionNames", true);
-
-	if (!demangleFunctionNames || !resolveFunctionNames()) {
-		return mangledName;
-	}
-
-	int status;
-	char* demangled = __cxxabiv1::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
-	if (status == 0 && demangled != nullptr) {
-		std::string result(demangled);
-		std::free(demangled);
-		return result;
-	}
-
-	return mangledName;
 }
 
 constexpr size_t fnv_prime = 0x100000001b3;

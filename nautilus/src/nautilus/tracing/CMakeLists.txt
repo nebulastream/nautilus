@@ -9,6 +9,7 @@ if (ENABLE_TRACING)
             ExecutionTrace.cpp
             TracingUtil.cpp
             TraceContext.cpp
+            FunctionNameCache.cpp
             TraceOperation.cpp
             Snapshot.cpp)
 endif ()
