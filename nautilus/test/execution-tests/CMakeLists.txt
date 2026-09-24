@@ -20,6 +20,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         DumpHelperTest.cpp
         FunctionPtrExecutionTest.cpp
 		InvokeExceptionExecutionTest.cpp
+        ResolveFunctionNamesTest.cpp
         NoThrowInferenceIntegrationTest.cpp
         MemoryIntrinsicExecutionTest.cpp
         ModuleLifecycleTest.cpp

@@ -343,6 +343,8 @@ private:
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
 	std::string getMangledName(void* fnptr);
+	/// engine.resolveFunctionNames: whether callee names are looked up with dladdr (see getMangledName).
+	bool resolveFunctionNames() const;
 	std::string getFunctionName(void* fnptr, const std::string& mangledName);
 
 	/**
