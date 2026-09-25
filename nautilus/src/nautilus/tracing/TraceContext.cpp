@@ -52,11 +52,13 @@ void TraceContext::resume() {
 }
 
 void TraceContext::registerDestructor(const TypedValueRef& address, void* destructor) {
-	auto mangledName = getMangledName(destructor);
-	activeDestructors.push_back(FunctionCall::Destructor {.address = address,
-	                                                      .functionName = getFunctionName(destructor, mangledName),
-	                                                      .mangledName = std::move(mangledName),
-	                                                      .ptr = destructor});
+	// Name caches are session-wide: see traceCall.
+	auto mangledName = session_->getMangledName(destructor);
+	activeDestructors.push_back(
+	    FunctionCall::Destructor {.address = address,
+	                              .functionName = session_->getFunctionName(destructor, mangledName),
+	                              .mangledName = std::move(mangledName),
+	                              .ptr = destructor});
 }
 
 void TraceContext::unregisterDestructor(const TypedValueRef& address) {
@@ -249,8 +251,9 @@ TypedValueRef& TraceContext::traceCallWithExceptionHandling(void* fptn, Type res
 	if (paused_) {
 		return dummyRef_;
 	}
-	auto mangledName = getMangledName(fptn);
-	auto functionName = getFunctionName(fptn, mangledName);
+	// Name caches are session-wide: see traceCall.
+	auto mangledName = session_->getMangledName(fptn);
+	auto functionName = session_->getFunctionName(fptn, mangledName);
 	auto op = Op::CALL_WITH_EXCEPTION_HANDLING;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
@@ -906,16 +909,26 @@ std::string TraceContext::getMangledName(void* fnptr) {
 		return it->second;
 	}
 
-	Dl_info info;
-	if (dladdr(fnptr, &info) != 0 && info.dli_sname != nullptr) {
-		mangledNameCache[fnptr] = info.dli_sname;
-		return info.dli_sname;
+	// dladdr scans the symbol table of the object containing fnptr, which costs about a
+	// millisecond per callee in large binaries. Callees are keyed by address, so the name is
+	// only a label: with engine.resolveFunctionNames=false the lookup is skipped and the
+	// callee is named by its address, as when dladdr finds no symbol.
+	if (resolveFunctionNames()) {
+		Dl_info info;
+		if (dladdr(fnptr, &info) != 0 && info.dli_sname != nullptr) {
+			mangledNameCache[fnptr] = info.dli_sname;
+			return info.dli_sname;
+		}
 	}
 	std::stringstream ss;
 	ss << fnptr;
 	std::string ptrStr = ss.str();
 	mangledNameCache[fnptr] = ptrStr;
 	return ptrStr;
+}
+
+bool TraceContext::resolveFunctionNames() const {
+	return state->options.getOptionOrDefault("engine.resolveFunctionNames", true);
 }
 
 std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
@@ -933,7 +946,7 @@ std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangle
 
 	bool demangleFunctionNames = state->options.getOptionOrDefault("engine.demangleFunctionNames", true);
 
-	if (!demangleFunctionNames) {
+	if (!demangleFunctionNames || !resolveFunctionNames()) {
 		return mangledName;
 	}
 
