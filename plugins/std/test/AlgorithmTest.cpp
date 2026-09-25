@@ -13,6 +13,26 @@ struct AbsLess {
 	}
 };
 
+struct PotentiallyThrowingLess {
+	bool operator()(int32_t a, int32_t b) const {
+		return a < b;
+	}
+};
+
+// The runtime functions are noexcept iff the comparator and moving elements cannot throw.
+static_assert(noexcept(nautilus::detail::sort_impl<int32_t, std::less<>>(nullptr, nullptr)));
+static_assert(noexcept(nautilus::detail::sort_impl<int32_t, std::greater<int32_t>>(nullptr, nullptr)));
+static_assert(noexcept(nautilus::detail::stable_sort_impl<int32_t, AbsLess>(nullptr, nullptr)));
+static_assert(noexcept(nautilus::detail::nth_element_impl<double, std::less<>>(nullptr, nullptr, nullptr)));
+static_assert(noexcept(nautilus::detail::partial_sort_copy_impl<int64_t, std::less<>>(nullptr, nullptr, nullptr,
+                                                                                      nullptr)));
+static_assert(noexcept(nautilus::detail::is_sorted_impl<uint8_t, std::less_equal<uint8_t>>(nullptr, nullptr)));
+static_assert(noexcept(nautilus::detail::min_element_impl<int32_t*, std::less<int32_t*>>(nullptr, nullptr)));
+static_assert(!noexcept(nautilus::detail::sort_impl<int32_t, PotentiallyThrowingLess>(nullptr, nullptr)));
+static_assert(!noexcept(nautilus::detail::nth_element_impl<int32_t, PotentiallyThrowingLess>(nullptr, nullptr,
+                                                                                             nullptr)));
+static_assert(!noexcept(nautilus::detail::max_element_impl<int32_t, PotentiallyThrowingLess>(nullptr, nullptr)));
+
 void algoSort(val<int32_t*> array, val<size_t> size) {
 	nautilus::sort(array, array + size);
 }
@@ -38,6 +58,12 @@ val<size_t> algoPartialSortCopy(val<int32_t*> array, val<size_t> size, val<int32
 val<int32_t> algoNthElement(val<int32_t*> array, val<size_t> size, val<size_t> n) {
 	auto nth = array + n;
 	nautilus::nth_element(array, nth, array + size);
+	return *nth;
+}
+
+val<int32_t> algoNthElementPotentiallyThrowing(val<int32_t*> array, val<size_t> size, val<size_t> n) {
+	auto nth = array + n;
+	nautilus::nth_element<PotentiallyThrowingLess>(array, nth, array + size);
 	return *nth;
 }
 
@@ -128,6 +154,11 @@ void algorithmTest(engine::NautilusEngine& engine) {
 				REQUIRE(values[i] >= values[n]);
 			}
 		}
+	}
+	SECTION("nth_element with potentially throwing comparator") {
+		auto f = engine.registerFunction(algoNthElementPotentiallyThrowing);
+		std::vector<int32_t> values = {8, 3, 7, 1, 9, 2};
+		REQUIRE(f(values.data(), values.size(), (size_t) 2) == 3);
 	}
 	SECTION("nth_element median of doubles") {
 		auto f = engine.registerFunction(algoMedian);

@@ -252,8 +252,26 @@ void sortDescending(val<int32_t*> values, val<size_t> size) {
 ```
 
 For a `val<std::vector<T>>`, pass `vec.data()` and `vec.data() + vec.size()`.
+
 The runtime call is marked `noexcept` (and gets the `nounwind` attribute) when
-neither the comparator nor moving elements can throw.
+neither the comparator nor moving elements can throw. The standard ordering
+function objects (`std::less`, `std::greater`, `std::less_equal`,
+`std::greater_equal`) count as non-throwing for arithmetic and pointer
+elements, even in their typed form (e.g. `std::less<int>`), which is not
+declared `noexcept`.
+
+The runtime functions are annotated as inlining candidates for the
+[`nautilus-inlining`](functions.md#nautilus_inline-macro) plugin. To inline
+the algorithms into the generated code, compile the translation unit that uses
+them with `nautilus_inline(<target>)`, include `<nautilus/inline.hpp>`, link
+`nautilus-inlining` and enable `mlir.inline_invoke_calls`:
+
+```cmake
+target_link_libraries(my_query_engine PRIVATE nautilus nautilus-std nautilus-inlining)
+nautilus_inline(my_query_engine)
+```
+
+Otherwise, each algorithm is a regular call into the host binary.
 
 ---
 
@@ -362,6 +380,8 @@ from inside a traced function for debugging or simple output.
   - `STDProxyTest.cpp` — exercises the C-stdlib wrappers
   - `StringTest.cpp`, `VectorTest.cpp`, `OstreamTest.cpp`, `AtomicTest.cpp`,
     `AlgorithmTest.cpp`
+  - `AlgorithmInliningTest.cpp` (separate `nautilus-std-inlining-tests`
+    executable, built with the inlining plugin and the MLIR backend)
   - `BitIntrinsicExecutionTest.cpp` and `MemoryIntrinsicExecutionTest.cpp`
   - `LLVMIRBitIntrinsicTest.cpp` and `LLVMIRCMathIntrinsicTest.cpp`, which
     diff generated LLVM IR against the reference files in
