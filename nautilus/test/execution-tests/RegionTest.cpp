@@ -7,6 +7,7 @@
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <source_location>
@@ -28,7 +29,11 @@
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <list>
+#include <map>
 #include <memory>
+#include <set>
+#include <utility>
+#include <variant>
 #endif
 
 namespace nautilus::engine {
@@ -1204,6 +1209,150 @@ TEST_CASE("Region Rejects Values Outliving The Body", "[region]") {
 	requireRejected(backend, "regionNestedEscapeStaticUnroll", regionNestedEscapeStaticUnroll);
 	requireRejected(backend, "regionLiveEscapeWithInternalBranch", regionLiveEscapeWithInternalBranch);
 	requireRejected(backend, "regionEscapeAcrossBranch", regionEscapeAcrossBranch);
+}
+
+// Native callees are named after tracing, from one process-wide cache, rather than per
+// scope while tracing: a region scope used to resolve (and, with normalization on,
+// number) every potentially-throwing invoke() target and every destructor on its own,
+// paying a dladdr symbol-table scan per region scope and giving one callee a different
+// normalized name inside a region than outside it (issue #491).
+namespace {
+
+int64_t regionNameCallee(int64_t x) {
+	return x + 1;
+}
+
+int64_t regionNameNoexceptCallee(int64_t x) noexcept {
+	return x + 2;
+}
+
+val<int64_t> regionNamedCalls(val<int64_t> x) {
+	val<int64_t> v = invoke(regionNameCallee, x);
+	v = invoke(regionNameNoexceptCallee, v);
+	region("outer", [&]() {
+		v = invoke(regionNameCallee, v);
+		region("inner", [&]() {
+			v = invoke(regionNameCallee, v);
+			v = invoke(regionNameNoexceptCallee, v);
+		});
+	});
+	return v;
+}
+
+/// Every native call recorded in @p trace, keyed by callee: the display and symbol names
+/// each of its call sites was given.
+std::map<void*, std::set<std::pair<std::string, std::string>>> nativeCallNames(tracing::ExecutionTrace& trace) {
+	std::map<void*, std::set<std::pair<std::string, std::string>>> names;
+	for (auto* block : trace.getBlocks()) {
+		for (auto* operation : block->operations) {
+			for (auto& input : operation->input) {
+				if (auto** call = std::get_if<tracing::FunctionCall*>(&input);
+				    call != nullptr && (*call)->kind == tracing::CalleeKind::External) {
+					names[(*call)->ptr].emplace((*call)->functionName, (*call)->mangledName);
+				}
+			}
+		}
+	}
+	return names;
+}
+
+std::unique_ptr<tracing::TraceModule> traceNamedCalls(const Options& options, common::Arena& arena) {
+	std::list<compiler::CompilableFunction> functions {
+	    compiler::CompilableFunction("execute", details::createFunctionWrapper(regionNamedCalls))};
+	return tracing::TraceContext::Trace(functions, options, arena);
+}
+
+} // namespace
+
+TEST_CASE("Region Native Callees Are Named Like Unregioned Ones", "[region]") {
+	auto normalize = GENERATE(false, true);
+	Options options;
+	options.setOption("engine.normalizeFunctionNames", normalize);
+	options.setOption("engine.resolveFunctionNames", true);
+	common::Arena arena;
+	auto module = traceNamedCalls(options, arena);
+	auto* trace = module->getFunction("execute");
+	REQUIRE(trace != nullptr);
+	INFO("normalize: " << normalize << "\ntrace:\n" << trace->toString());
+
+	auto names = nativeCallNames(*trace);
+	REQUIRE(names.size() == 2);
+	std::set<std::string> displayNames;
+	for (const auto& [ptr, callSiteNames] : names) {
+		// One callee, one name: every call site agrees, in or out of a region.
+		REQUIRE(callSiteNames.size() == 1);
+		const auto& [functionName, mangledName] = *callSiteNames.begin();
+		REQUIRE_FALSE(functionName.empty());
+		REQUIRE_FALSE(mangledName.empty());
+		displayNames.insert(functionName);
+	}
+	REQUIRE(displayNames.size() == 2);
+	if (normalize) {
+		REQUIRE(displayNames == std::set<std::string> {"runtimeFunc0", "runtimeFunc1"});
+	}
+}
+
+// Resolving a native callee's name costs a dladdr scan and changes nothing about the
+// generated code, so it happens only when the compiled code will be looked at: under
+// `debug`, `perf` or `perf.sample`, or when asked for explicitly. Otherwise the names stay
+// empty and the function table mints one. Normalized names are assigned while tracing and
+// are unaffected.
+namespace {
+
+// labs is exported from the C library, so dladdr can name it; the callees above are local
+// to this file and dladdr leaves them unnamed whether or not names are resolved.
+val<long> exportedCallee(val<long> x) {
+	val<long> v = invoke(::labs, x);
+	region("exported", [&]() { v = invoke(::labs, v); });
+	return v;
+}
+
+} // namespace
+
+TEST_CASE("Native Callee Names Are Resolved Only When Inspected", "[region]") {
+	struct Case {
+		const char* description;
+		std::vector<std::pair<std::string, bool>> settings;
+		bool resolved;
+	};
+	auto testCase = GENERATE(values<Case>({
+	    {"default", {}, false},
+	    {"debug", {{"debug", true}}, true},
+	    {"perf", {{"perf", true}}, true},
+	    {"perf.sample", {{"perf.sample", true}}, true},
+	    {"explicitly on", {{"engine.resolveFunctionNames", true}}, true},
+	    {"explicitly off under debug", {{"debug", true}, {"engine.resolveFunctionNames", false}}, false},
+	    {"normalized only", {{"engine.normalizeFunctionNames", true}}, false},
+	}));
+	Options options;
+	bool normalize = false;
+	for (const auto& [key, value] : testCase.settings) {
+		options.setOption(key, value);
+		normalize = normalize || (key == "engine.normalizeFunctionNames" && value);
+	}
+	common::Arena arena;
+	std::list<compiler::CompilableFunction> functions {
+	    compiler::CompilableFunction("execute", details::createFunctionWrapper(exportedCallee))};
+	auto module = tracing::TraceContext::Trace(functions, options, arena);
+	auto* trace = module->getFunction("execute");
+	REQUIRE(trace != nullptr);
+	INFO(testCase.description << "\ntrace:\n" << trace->toString());
+
+	auto names = nativeCallNames(*trace);
+	REQUIRE(names.size() == 1);
+	const auto& callSiteNames = names.begin()->second;
+	// Both call sites, in and out of the region, agree.
+	REQUIRE(callSiteNames.size() == 1);
+	const auto& [functionName, mangledName] = *callSiteNames.begin();
+	// A resolved callee is named by its symbol, which need not read `labs`: C libraries
+	// alias it (glibc names it `imaxabs`). An unresolved one is left unnamed.
+	REQUIRE(mangledName.empty() == !testCase.resolved);
+	REQUIRE(mangledName.rfind("0x", 0) != 0);
+	if (normalize) {
+		REQUIRE(functionName == "runtimeFunc0");
+	} else {
+		REQUIRE(functionName == mangledName);
+	}
 }
 
 #else
