@@ -13,7 +13,6 @@
 #include <cassert>
 #include <cstddef>
 #include <fmt/format.h>
-#include <sstream>
 
 namespace fmt {
 template <>
@@ -921,21 +920,12 @@ bool TraceContext::shouldResolveCalleeNames(const engine::Options& options) {
 }
 
 void TraceContext::resolveCalleeNames(ExecutionTrace& trace, const engine::Options& options) {
+	if (!shouldResolveCalleeNames(options)) {
+		return;
+	}
 	const bool demangleFunctionNames = options.getOptionOrDefault("engine.demangleFunctionNames", true);
-	// Callees are keyed by address, so a name is only a label. Without a lookup a callee is
-	// named by its address, exactly as when dladdr finds no symbol for it.
-	const bool resolveFunctionNames = shouldResolveCalleeNames(options);
 	auto resolve = [&](void* fnptr, std::string& functionName, std::string& mangledName) {
 		if (!mangledName.empty()) {
-			return;
-		}
-		if (!resolveFunctionNames) {
-			std::stringstream ss;
-			ss << fnptr;
-			mangledName = ss.str();
-			if (functionName.empty()) {
-				functionName = mangledName;
-			}
 			return;
 		}
 		const auto& resolved = resolveFunctionName(fnptr);

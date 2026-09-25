@@ -1294,8 +1294,9 @@ TEST_CASE("Region Native Callees Are Named Like Unregioned Ones", "[region]") {
 
 // Resolving a native callee's name costs a dladdr scan and changes nothing about the
 // generated code, so it happens only when the compiled code will be looked at: under
-// `debug`, `perf` or `perf.sample`, or when asked for explicitly. Otherwise a callee is
-// named by its address. Normalized names are assigned while tracing and are unaffected.
+// `debug`, `perf` or `perf.sample`, or when asked for explicitly. Otherwise the names stay
+// empty and the function table mints one. Normalized names are assigned while tracing and
+// are unaffected.
 namespace {
 
 // labs is exported from the C library, so dladdr can name it; the callees above are local
@@ -1343,10 +1344,10 @@ TEST_CASE("Native Callee Names Are Resolved Only When Inspected", "[region]") {
 	// Both call sites, in and out of the region, agree.
 	REQUIRE(callSiteNames.size() == 1);
 	const auto& [functionName, mangledName] = *callSiteNames.begin();
-	// A resolved callee is named by its symbol, an unresolved one by its address.
-	// The symbol need not read `labs`: C libraries alias it (glibc names it `imaxabs`).
-	REQUIRE_FALSE(mangledName.empty());
-	REQUIRE((mangledName.rfind("0x", 0) == 0) == !testCase.resolved);
+	// A resolved callee is named by its symbol, which need not read `labs`: C libraries
+	// alias it (glibc names it `imaxabs`). An unresolved one is left unnamed.
+	REQUIRE(mangledName.empty() == !testCase.resolved);
+	REQUIRE(mangledName.rfind("0x", 0) != 0);
 	if (normalize) {
 		REQUIRE(functionName == "runtimeFunc0");
 	} else {

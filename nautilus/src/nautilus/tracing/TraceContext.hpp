@@ -355,7 +355,8 @@ private:
 	/// in @p trace. Tracing records only their pointers: resolving a name costs a dladdr
 	/// symbol-table scan, which is paid here once per callee instead of once per traced call
 	/// site and scope, and is cached process-wide beyond that (see resolveFunctionName). When
-	/// !shouldResolveCalleeNames(), a callee is instead named by its address.
+	/// !shouldResolveCalleeNames() the names stay empty, and the function table names the
+	/// callee `fnN` in the IR and in generated code.
 	static void resolveCalleeNames(ExecutionTrace& trace, const engine::Options& options);
 
 	/// `engine.resolveFunctionNames`, which defaults to on only when the compiled code will
