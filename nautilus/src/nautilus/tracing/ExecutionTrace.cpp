@@ -1,5 +1,6 @@
 
 #include "nautilus/tracing/ExecutionTrace.hpp"
+#include "nautilus/tracing/FunctionNameCache.hpp"
 #include <algorithm>
 #include <fmt/format.h>
 #include <nautilus/config.hpp>
@@ -491,6 +492,14 @@ struct formatter<nautilus::tracing::BlockRef> : formatter<std::string_view> {
 
 template <>
 struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> {
+	// A native callee's name is resolved only once its function is fully traced
+	// (TraceContext::resolveCalleeNames); a trace logged while tracing is still
+	// in progress has to look it up itself.
+	static std::string_view displayName(const std::string& functionName, void* ptr) {
+		return functionName.empty() ? std::string_view(nautilus::tracing::resolveFunctionName(ptr).demangled)
+		                            : std::string_view(functionName);
+	}
+
 	static auto format(const nautilus::tracing::FunctionCall& call, format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		// An internal callee is named by the user -- a NautilusFunction is
@@ -500,7 +509,7 @@ struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> 
 		// misses: different on every machine, so it stays behind the
 		// address-logging flag, as the whole call did before.
 		if (call.kind == nautilus::tracing::CalleeKind::Internal || nautilus::log::options::getLogAddresses()) {
-			fmt::format_to(out, "{}(", call.functionName);
+			fmt::format_to(out, "{}(", displayName(call.functionName, call.ptr));
 		} else {
 			fmt::format_to(out, "func_*(");
 		}
@@ -520,7 +529,8 @@ struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> 
 				}
 				const auto& destructor = call.destructors[i - 1];
 				if (nautilus::log::options::getLogAddresses()) {
-					fmt::format_to(out, "{}({})", destructor.functionName, destructor.address);
+					fmt::format_to(out, "{}({})", displayName(destructor.functionName, destructor.ptr),
+					               destructor.address);
 				} else {
 					fmt::format_to(out, "dtor_*({})", destructor.address);
 				}
