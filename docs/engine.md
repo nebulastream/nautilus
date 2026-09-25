@@ -194,6 +194,7 @@ The following table lists all available runtime options.
 | `engine.backend` | `mlir` | Selects the compilation backend. Valid values: `mlir`, `bc`, `cpp`. |
 | `engine.normalizeFunctionNames` | `false` | Generates normalized function names (`runtimeFunc0`, `runtimeFunc1`, etc.) during tracing instead of using actual function names. Useful for deterministic output and testing. |
 | `engine.demangleFunctionNames` | `true` | Demangles C++ function names to human-readable format during tracing. When disabled, uses mangled names as-is. Ignored if `normalizeFunctionNames` is enabled. |
+| `engine.resolveFunctionNames` | `true` | Looks up the symbol name of every called runtime function with `dladdr` during tracing. `dladdr` scans the symbol table of the containing object and can cost about 1 ms per callee in large binaries. When disabled, callees are named by their address; the generated code is unaffected. |
 
 ### Dump Options
 
