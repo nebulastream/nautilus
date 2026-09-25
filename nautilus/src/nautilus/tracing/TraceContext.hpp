@@ -354,8 +354,13 @@ private:
 	/// Fills in the symbol and display names of every native callee and destructor recorded
 	/// in @p trace. Tracing records only their pointers: resolving a name costs a dladdr
 	/// symbol-table scan, which is paid here once per callee instead of once per traced call
-	/// site and scope, and is cached process-wide beyond that (see resolveFunctionName).
+	/// site and scope, and is cached process-wide beyond that (see resolveFunctionName). When
+	/// !shouldResolveCalleeNames(), a callee is instead named by its address.
 	static void resolveCalleeNames(ExecutionTrace& trace, const engine::Options& options);
+
+	/// `engine.resolveFunctionNames`, which defaults to on only when the compiled code will
+	/// be inspected: `debug`, `perf` or `perf.sample`.
+	static bool shouldResolveCalleeNames(const engine::Options& options);
 
 	/**
 	 * @brief Runs the symbolic-execution loop of one *trace scope* to completion.

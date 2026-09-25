@@ -911,11 +911,20 @@ std::string TraceContext::normalizedFunctionName(void* fnptr) {
 	return "runtimeFunc" + std::to_string(it->second);
 }
 
+bool TraceContext::shouldResolveCalleeNames(const engine::Options& options) {
+	// Names never affect the generated code's behaviour -- callees are identified by
+	// address -- so they are only worth their dladdr cost when someone will read them: a
+	// debugger or a profiler looking at the JIT-compiled code.
+	const bool inspected = options.getOptionOrDefault("debug", false) || options.getOptionOrDefault("perf", false) ||
+	                       options.getOptionOrDefault("perf.sample", false);
+	return options.getOptionOrDefault("engine.resolveFunctionNames", inspected);
+}
+
 void TraceContext::resolveCalleeNames(ExecutionTrace& trace, const engine::Options& options) {
 	const bool demangleFunctionNames = options.getOptionOrDefault("engine.demangleFunctionNames", true);
 	// Callees are keyed by address, so a name is only a label. Without a lookup a callee is
 	// named by its address, exactly as when dladdr finds no symbol for it.
-	const bool resolveFunctionNames = options.getOptionOrDefault("engine.resolveFunctionNames", true);
+	const bool resolveFunctionNames = shouldResolveCalleeNames(options);
 	auto resolve = [&](void* fnptr, std::string& functionName, std::string& mangledName) {
 		if (!mangledName.empty()) {
 			return;
