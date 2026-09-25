@@ -46,7 +46,15 @@ TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace&
 void TraceContext::resume() {
 	staticVars.clear();
 	aliveVars.reset();
-	activeDestructors.clear();
+	// A region body is traced into its enclosing function, so a throwing call inside it
+	// must also unwind the vals the enclosing scope still holds. The enclosing scope is
+	// suspended at the region call site while the body is traced, so its list is exactly
+	// the set of destructors live at the region entry.
+	if (parent_ != nullptr) {
+		activeDestructors = parent_->activeDestructors;
+	} else {
+		activeDestructors.clear();
+	}
 	paused_ = false;
 }
 
