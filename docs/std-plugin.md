@@ -223,6 +223,40 @@ standard library distinguishes them.
 
 ---
 
+## `algorithm.h` — Sorting and selection (`<algorithm>`)
+
+Header-only wrappers for the sorting and selection algorithms. Ranges are
+passed as `val<T*>` pointers, and each call runs the whole std:: algorithm as
+one runtime call through `invoke(...)`:
+
+- Sorting: `sort`, `stable_sort`, `partial_sort`, `partial_sort_copy`
+- Selection: `nth_element`, `min_element`, `max_element`
+- Queries: `is_sorted`, `is_sorted_until`
+
+A custom ordering is passed as the `Compare` template argument (default
+`std::less<>`). The comparator is instantiated inside the runtime function, so
+it must be a stateless, default-constructible type:
+
+```cpp
+#include <nautilus/std/algorithm.h>
+
+val<double> median(val<double*> values, val<size_t> size) {
+	auto mid = values + size / val<size_t>(2);
+	nautilus::nth_element(values, mid, values + size);
+	return *mid;
+}
+
+void sortDescending(val<int32_t*> values, val<size_t> size) {
+	nautilus::sort<std::greater<>>(values, values + size);
+}
+```
+
+For a `val<std::vector<T>>`, pass `vec.data()` and `vec.data() + vec.size()`.
+The runtime call is marked `noexcept` (and gets the `nounwind` attribute) when
+neither the comparator nor moving elements can throw.
+
+---
+
 ## `string.h` — `val<std::basic_string>`
 
 A class specialization `val<std::basic_string<CharT, Traits>>` that wraps a
@@ -326,7 +360,8 @@ from inside a traced function for debugging or simple output.
 - When `ENABLE_TESTS=ON`, the plugin's own test suite under `plugins/std/test/`
   is added. It contains:
   - `STDProxyTest.cpp` — exercises the C-stdlib wrappers
-  - `StringTest.cpp`, `VectorTest.cpp`, `OstreamTest.cpp`, `AtomicTest.cpp`
+  - `StringTest.cpp`, `VectorTest.cpp`, `OstreamTest.cpp`, `AtomicTest.cpp`,
+    `AlgorithmTest.cpp`
   - `BitIntrinsicExecutionTest.cpp` and `MemoryIntrinsicExecutionTest.cpp`
   - `LLVMIRBitIntrinsicTest.cpp` and `LLVMIRCMathIntrinsicTest.cpp`, which
     diff generated LLVM IR against the reference files in

@@ -9,6 +9,7 @@ add_executable(nautilus-std-tests
         BitIntrinsicExecutionTest.cpp
         MemoryIntrinsicExecutionTest.cpp
         AtomicTest.cpp
+        AlgorithmTest.cpp
 )
 
 nautilus_inline(nautilus-std-tests)
