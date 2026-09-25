@@ -1,6 +1,7 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/config.hpp"
 #include <catch2/catch_all.hpp>
 
@@ -66,9 +67,15 @@ TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats") {
 	REQUIRE(operations != nullptr);
 	REQUIRE(std::get<int64_t>(*operations) > 0);
 
-	// IR pass manager registers totals + at least the empty-block pass.
+	// The IR pass manager always records its total: the terminal passes run
+	// for every backend. The optimization group -- and with it the
+	// empty-block pass -- runs only for a backend that benefits from it.
 	REQUIRE(stats->contains("irPasses.totalMs"));
-	REQUIRE(stats->contains("irPasses.EmptyBlockElimination.ms"));
+	REQUIRE(stats->contains("irPasses.optimizationGroup"));
+	const bool optimizes =
+	    compiler::CompilationBackendRegistry::getInstance()->getBackend(backend)->benefitsFromIROptimizationPasses();
+	REQUIRE(std::get<int64_t>(*stats->find("irPasses.optimizationGroup")) == (optimizes ? 1 : 0));
+	REQUIRE(stats->contains("irPasses.EmptyBlockElimination.ms") == optimizes);
 
 	// Backend recorded its own total.
 	REQUIRE(stats->contains("backend.totalMs"));
@@ -83,6 +90,63 @@ TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats") {
 	REQUIRE(stats->contains("compilation.totalMs"));
 	REQUIRE(stats->contains("compilation.unitId"));
 }
+
+#if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
+TEST_CASE("CompilationStatistics: mlir skips the IR optimization group by default") {
+	// Single-tier mlir hands the IR straight to LLVM, whose -O3 pipeline
+	// subsumes the Nautilus-IR optimization group, so the pipeline skips it.
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(statsAddOne);
+	REQUIRE(fn(41) == 42);
+	auto stats = fn.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(std::get<int64_t>(*stats->find("irPasses.optimizationGroup")) == 0);
+	REQUIRE_FALSE(stats->contains("irPasses.EmptyBlockElimination.ms"));
+	REQUIRE_FALSE(stats->contains("irPasses.ConstantFoldingAndCopyPropagation.ms"));
+	// The terminal passes are not optimizations and still run.
+	REQUIRE(stats->contains("irPasses.exceptionRegionPreparation.ms"));
+}
+
+TEST_CASE("CompilationStatistics: ir.forceOptimizationPasses re-enables the group on mlir") {
+	// The override brings the group back for A/B runs and for tooling that
+	// wants the per-pass dumps.
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("ir.forceOptimizationPasses", true);
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(statsAddOne);
+	REQUIRE(fn(41) == 42);
+	auto stats = fn.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(std::get<int64_t>(*stats->find("irPasses.optimizationGroup")) == 1);
+	REQUIRE(stats->contains("irPasses.EmptyBlockElimination.ms"));
+}
+#endif
+
+#if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND) &&                                                         \
+    (defined(ENABLE_BC_BACKEND) || defined(ENABLE_ASMJIT_BACKEND))
+TEST_CASE("CompilationStatistics: two-tier compile keeps the IR optimization group for tier 0") {
+	// The tier-0 backend executes the IR as it is, so the graph both tiers
+	// share is optimized even though tier 1 (mlir) would not need it.
+	Options options;
+#ifdef ENABLE_ASMJIT_BACKEND
+	options.setOption("engine.tier0.backend", std::string("asmjit"));
+#else
+	options.setOption("engine.tier0.backend", std::string("bc"));
+#endif
+	options.setOption("engine.tier1.backend", std::string("mlir"));
+	options.setOption("engine.tiered.backgroundPromotion", true);
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(statsAddOne);
+	REQUIRE(fn(41) == 42);
+	auto stats = fn.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(std::get<int64_t>(*stats->find("irPasses.optimizationGroup")) == 1);
+	REQUIRE(stats->contains("irPasses.EmptyBlockElimination.ms"));
+}
+#endif
 
 TEST_CASE("CompilationStatistics: interpreted module has no stats") {
 	Options options;

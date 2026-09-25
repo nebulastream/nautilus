@@ -220,6 +220,23 @@ These options control the output of intermediate representations at various stag
 | `dump.graph.type` | `graphviz` | Sets the graph format. Valid values: `graphviz`, `mermaid`. |
 | `dump.graph.full` | `false` | When `true`, represents both data and control flow. When `false`, shows only the control flow graph. |
 
+### IR Pass Options
+
+Between IR generation and the backend, the pipeline runs a fixed-point group of Nautilus-IR optimization passes
+(constant folding, algebraic simplification, constant-branch folding, empty-block elimination, block merging,
+dead-code elimination, block-argument pruning) followed by the terminal passes every backend needs (no-throw
+inference, exception-region preparation). Whether the optimization group runs is decided per compile by the
+backends that will consume the IR: an interpreting or direct-lowering backend (`bc`, `tbc`, `asmjit`, `cpp`) executes
+the IR as it is and profits from every operation the group removes, so the group runs whenever one of them is
+involved (in a two-tier compile that is tier 0). A single-tier `mlir` compile skips it, because LLVM's `-O3`
+pipeline repeats each of these transformations on the lowered module and the group would only add compile time.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `ir.runPasses` | `true` | Runs the IR pass pipeline (optimization group plus terminal passes). |
+| `ir.forceOptimizationPasses` | `false` | Runs the optimization group even for backends whose own optimizer subsumes it (`mlir`). Use it to A/B the passes on `mlir` or to get the per-pass `after_*` dumps there. |
+| `ir.disable<Pass>` / `ir.enable<Pass>` | see [options.md](options.md) | Toggle individual passes of the group. They have no effect while the group is skipped. |
+
 ### MLIR Backend Options
 
 | Option | Default | Description |

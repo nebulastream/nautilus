@@ -94,9 +94,17 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function function
 	return compile(functionsToTrace, moduleOptions);
 }
 
+std::vector<std::string> TieredJITCompiler::promotedIRConsumers() const {
+	if (!config_.backgroundPromotion || config_.tier0.backend == engine::INTERPRETER_BACKEND) {
+		return {config_.tier1.backend};
+	}
+	return {config_.tier0.backend, config_.tier1.backend};
+}
+
 std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableFunction>& functions,
                                                            const engine::ModuleOptions& moduleOptions,
                                                            const std::string& backend, const std::string& tierLabel,
+                                                           std::span<const std::string> irConsumers,
                                                            std::shared_ptr<ir::IRGraph>& outIR) const {
 	// One shared statistics object covers the entire tier compile so the
 	// user's CompiledModule::getStatistics() reflects tracing + IR passes +
@@ -104,7 +112,7 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 	auto statistics = std::make_shared<CompilationStatistics>();
 	const auto compilationStart = std::chrono::steady_clock::now();
 
-	auto ir = pipeline_.compileToIR(functions, moduleOptions, statistics.get());
+	auto ir = pipeline_.compileToIR(functions, moduleOptions, statistics.get(), irConsumers);
 	auto executable = pipeline_.compileIR(ir, backend, moduleOptions, statistics.get());
 
 	statistics->recordTimingMs("compilation.totalMs", compilationStart);
@@ -131,19 +139,23 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunct
 		// Single-tier: compile directly with the high-performance backend.
 		// The interpreter tier-0 also lands here: without a module state
 		// there is nothing to run interpreted, so compile tier-1 up front.
-		return compileTier(functions, moduleOptions, config_.tier1.backend, "tier1", ir);
+		const std::string consumers[] = {config_.tier1.backend};
+		return compileTier(functions, moduleOptions, config_.tier1.backend, "tier1", consumers, ir);
 	}
-	// Two-tier: return the fast tier-0 executable (no module state to promote into).
-	return compileTier(functions, moduleOptions, config_.tier0.backend, "tier0", ir);
+	// Two-tier: return the fast tier-0 executable (no module state to promote
+	// into), so tier 0 is the only backend this IR ever reaches.
+	const std::string consumers[] = {config_.tier0.backend};
+	return compileTier(functions, moduleOptions, config_.tier0.backend, "tier0", consumers, ir);
 }
 
 void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
                                       const engine::ModuleOptions& moduleOptions,
                                       std::shared_ptr<engine::details::ModuleState> state) const {
 	std::shared_ptr<ir::IRGraph> ir;
+	const auto consumers = promotedIRConsumers();
 	if (!config_.backgroundPromotion) {
 		// Single-tier: compile directly with the high-performance backend, no promotion.
-		state->executable = compileTier(functions, moduleOptions, config_.tier1.backend, "tier1", ir);
+		state->executable = compileTier(functions, moduleOptions, config_.tier1.backend, "tier1", consumers, ir);
 		return;
 	}
 	if (config_.tier0.backend == engine::INTERPRETER_BACKEND) {
@@ -151,13 +163,13 @@ void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
 		// invokes the original callables directly, and only trace to IR for
 		// the background tier-1 promotion. When the promotion completes, the
 		// executable swap and version bump re-resolve all function handles.
-		auto tracedIR = pipeline_.compileToIR(functions, moduleOptions);
+		auto tracedIR = pipeline_.compileToIR(functions, moduleOptions, nullptr, consumers);
 		promoteAsync(state, std::move(tracedIR), moduleOptions);
 		return;
 	}
 	// Two-tier: fast tier-0 now, then promote to tier-1 in the background using
 	// this module's own IR.
-	state->executable = compileTier(functions, moduleOptions, config_.tier0.backend, "tier0", ir);
+	state->executable = compileTier(functions, moduleOptions, config_.tier0.backend, "tier0", consumers, ir);
 	promoteAsync(state, std::move(ir), moduleOptions);
 }
 

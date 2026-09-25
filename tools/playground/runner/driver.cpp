@@ -100,6 +100,10 @@ int main(int argc, char** argv) {
 	options.setOption("engine.tiered.backgroundPromotion", false);
 	options.setOption("dump.all", true);
 	options.setOption("ir.dumpAfterEachPass", true);
+	// The playground exists to show the IR passes at work, so run them for
+	// every backend -- including mlir, whose shipping default skips the
+	// optimization group because LLVM repeats it downstream.
+	options.setOption("ir.forceOptimizationPasses", true);
 	options.setOption("dump.graph", true);
 	options.setOption("dump.graph.type", std::string("mermaid"));
 	options.setOption("ir.maxPipelineIterations", args.maxPipelineIterations);

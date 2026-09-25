@@ -67,8 +67,20 @@ inline std::vector<Config> configs() {
 
 	// Appends one compiling backend's permutation menu: plain defaults plus the
 	// shared IR-pass sweep, plus any backend-specific `extra` permutations.
-	auto addCompiling = [&result](const std::string& backend, std::vector<Config> extra = {}) {
+	// `base` is layered under every sweep entry (not under "default"): a
+	// backend whose shipping default skips the IR optimization group needs the
+	// group forced on for a per-pass toggle to toggle anything.
+	auto addCompiling = [&result](const std::string& backend, std::vector<Config> extra = {}, OptionsTweak base = {}) {
 		result.push_back({backend, "default", {}});
+		auto withBase = [base](OptionsTweak tweak) -> OptionsTweak {
+			if (!base) {
+				return tweak;
+			}
+			return [base, tweak](engine::Options& o) {
+				base(o);
+				tweak(o);
+			};
+		};
 		// Individual default-ON optimization passes flipped OFF, each isolating a
 		// distinct lowering path. NOTE: we deliberately do NOT expose a blanket
 		// `ir.runPasses=false` -- that also disables constant folding, and the
@@ -77,9 +89,9 @@ inline std::vector<Config> configs() {
 		// per-pass toggles keep constant folding on, so the IR stays bounded while
 		// still exercising the un-optimized path.
 		result.push_back({backend, "no-dead-code-elim",
-		                  [](engine::Options& o) { o.setOption("ir.disableDeadCodeElimination", true); }});
+		                  withBase([](engine::Options& o) { o.setOption("ir.disableDeadCodeElimination", true); })});
 		result.push_back({backend, "no-const-branch-fold",
-		                  [](engine::Options& o) { o.setOption("ir.disableConstantBranchFolding", true); }});
+		                  withBase([](engine::Options& o) { o.setOption("ir.disableConstantBranchFolding", true); })});
 		// A currently default-OFF pass flipped ON. This is exactly the
 		// "extended differential-fuzzer soak before the default flips" gate the
 		// IR-pass milestone (#343 and siblings) requires: point the fuzzer here
@@ -87,20 +99,34 @@ inline std::vector<Config> configs() {
 		// is the one opt-in pass wired today (see CompilationPipeline.cpp); add
 		// a sibling entry for the next pass you promote.
 		result.push_back({backend, "strength-reduction",
-		                  [](engine::Options& o) { o.setOption("ir.enableStrengthReduction", true); }});
+		                  withBase([](engine::Options& o) { o.setOption("ir.enableStrengthReduction", true); })});
 		// A default-ON P0 pass flipped OFF: differentially tests the
 		// un-simplified lowering path against the simplified default.
-		result.push_back({backend, "no-algebraic-simpl",
-		                  [](engine::Options& o) { o.setOption("ir.disableAlgebraicSimplification", true); }});
+		result.push_back({backend, "no-algebraic-simpl", withBase([](engine::Options& o) {
+			                  o.setOption("ir.disableAlgebraicSimplification", true);
+		                  })});
 		for (auto& c : extra) {
 			result.push_back(std::move(c));
 		}
 	};
 
 #ifdef ENABLE_MLIR_BACKEND
-	// MLIR-specific: intrinsic lowering off exercises the non-intrinsic path.
+	// MLIR's shipping default skips the Nautilus-IR optimization group (LLVM
+	// -O3 subsumes it), so "default" is the unoptimized-IR peer here and the
+	// sweep entries force the group on to keep their toggles meaningful. The
+	// "ir-passes" peer is the forced group with nothing toggled: the optimized
+	// vs. unoptimized IR of the same program must agree through LLVM.
+	// "no-intrinsics" exercises the non-intrinsic lowering path.
+	const OptionsTweak forceIRPasses = [](engine::Options& o) {
+		o.setOption("ir.forceOptimizationPasses", true);
+	};
 	addCompiling("mlir",
-	             {{"mlir", "no-intrinsics", [](engine::Options& o) { o.setOption("mlir.enableIntrinsics", false); }}});
+	             {{"mlir", "ir-passes", forceIRPasses},
+	              {"mlir", "no-intrinsics",
+	               [](engine::Options& o) {
+		               o.setOption("mlir.enableIntrinsics", false);
+	               }}},
+	             forceIRPasses);
 #endif
 #ifdef ENABLE_C_BACKEND
 	addCompiling("cpp");

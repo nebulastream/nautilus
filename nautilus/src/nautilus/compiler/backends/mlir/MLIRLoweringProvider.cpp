@@ -560,8 +560,11 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 //==-- MAIN WORK - Generating MLIR --==//
 //==---------------------------------==//
 MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context, const engine::Options& options,
-                                           MLIRIntrinsicManager& intrinsicManager)
-    : intrinsicManager(intrinsicManager), context(&context), options(&options) {
+                                           MLIRIntrinsicManager& intrinsicManager, common::Arena& arena)
+    : intrinsicManager(intrinsicManager), arena_(&arena), context(&context),
+      blockMapping(ArenaMap<ir::BlockIdentifier, ::mlir::Block*>::allocator_type(arena)), options(&options),
+      debugAllocas_(ArenaMap<uint32_t, ::mlir::Value>::allocator_type(arena)),
+      definedValues(ArenaMap<const ir::Operation*, ::mlir::Value>::allocator_type(arena)) {
 	// Create builder object, which helps to generate MLIR. Create Module, which
 	// contains generated MLIR.
 	builder = std::make_unique<mlir::OpBuilder>(&context);
@@ -592,7 +595,7 @@ mlir::OwningOpRef<mlir::ModuleOp> MLIRLoweringProvider::generateModuleFromIR(std
 	}
 
 	for (const auto& functionOp : functions) {
-		ValueFrame frame;
+		ValueFrame frame = newFrame();
 		auto& funcref = functionDefinitions.at(functionOp->getName());
 		generateFunction(funcref, *functionOp, frame);
 	}
@@ -1395,7 +1398,7 @@ mlir::Block* MLIRLoweringProvider::generateBasicBlock(ir::BasicBlockInvocation& 
 		                  : getNameLoc("arg");
 		mlirBasicBlock->addArgument(getMLIRType(blockArg->getStamp()), argLoc);
 	}
-	ValueFrame blockFrame;
+	ValueFrame blockFrame = newFrame();
 	for (uint32_t i = 0; i < targetBlockArguments.size(); i++) {
 		bind(blockFrame, targetBlock->getArguments()[i], mlirBasicBlock->getArgument(i));
 	}
@@ -1454,7 +1457,7 @@ MLIRLoweringProvider::createFrameFromParentBlock(MLIRLoweringProvider::ValueFram
 	// NES_ASSERT(invocationArguments.size() == childBlockArguments.size(),
 	//            "the number of invocation parameters has to be the same as the
 	//            number of block arguments in the invoked block.");
-	ValueFrame childFrame;
+	ValueFrame childFrame = newFrame();
 	// Copy all frame values to the child frame that are arguments of the child
 	// block.
 	for (uint64_t i = 0; i < invocationArguments.size(); i++) {

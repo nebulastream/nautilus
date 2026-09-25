@@ -4,6 +4,7 @@
 #include "nautilus/options.hpp"
 #include <list>
 #include <memory>
+#include <span>
 #include <string>
 
 namespace nautilus::compiler {
@@ -49,11 +50,33 @@ public:
 	 * timings and entity counts are recorded into it. Logging of the
 	 * final report is the caller's responsibility.
 	 *
+	 * @p consumingBackends names every registered backend the returned graph
+	 * will be compiled with (both tiers of a two-tier compile, the single
+	 * tier otherwise). The IR optimization group runs only if at least one
+	 * of them reports CompilationBackend::benefitsFromIROptimizationPasses();
+	 * see runsIROptimizationGroup(). An empty list means the consumers are
+	 * unknown and the group runs, which keeps direct callers (tests, tools)
+	 * on the historical behaviour.
+	 *
 	 * @return Shared IR graph that can be compiled by any backend
 	 */
 	[[nodiscard]] std::shared_ptr<ir::IRGraph> compileToIR(std::list<CompilableFunction>& functions,
 	                                                       const engine::ModuleOptions& moduleOptions,
-	                                                       CompilationStatistics* statistics = nullptr) const;
+	                                                       CompilationStatistics* statistics = nullptr,
+	                                                       std::span<const std::string> consumingBackends = {}) const;
+
+	/**
+	 * @brief Whether compileToIR() runs the IR optimization group for a graph
+	 * that @p consumingBackends will compile.
+	 *
+	 * True when `ir.forceOptimizationPasses` is set, when the list is empty,
+	 * when it names a backend this build did not register (the compile fails
+	 * later with a clearer error; the pipeline stays conservative here), or
+	 * when any named backend benefits from the group. `ir.runPasses=false`
+	 * still switches the whole pipeline off regardless of this answer.
+	 */
+	[[nodiscard]] bool runsIROptimizationGroup(const engine::ModuleOptions& moduleOptions,
+	                                           std::span<const std::string> consumingBackends) const;
 
 	/**
 	 * @brief Compile a pre-built IR graph with a specific backend.

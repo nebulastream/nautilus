@@ -7,20 +7,22 @@ target triple = "x86_64-unknown-linux-gnu"
 define signext i32 @execute(i32 %0, i32 %1) local_unnamed_addr #0 {
   %3 = icmp eq i32 %0, 42
   %4 = icmp eq i32 %1, 8
-  %or.cond = select i1 %3, i1 true, i1 %4
-  %5 = select i1 %or.cond, i32 2, i32 4
-  %6 = add i32 %5, %1
-  ret i32 %6
+  %5 = add i32 %1, 2
+  %spec.select = select i1 %4, i32 8, i32 %5
+  %6 = select i1 %3, i32 %1, i32 %spec.select
+  %7 = add i32 %6, 2
+  ret i32 %7
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @_mlir_ciface_execute(i32 %0, i32 %1) local_unnamed_addr #0 {
   %3 = icmp eq i32 %0, 42
   %4 = icmp eq i32 %1, 8
-  %or.cond.i = select i1 %3, i1 true, i1 %4
-  %5 = select i1 %or.cond.i, i32 2, i32 4
-  %6 = add i32 %5, %1
-  ret i32 %6
+  %5 = add i32 %1, 2
+  %spec.select.i = select i1 %4, i32 8, i32 %5
+  %6 = select i1 %3, i32 %1, i32 %spec.select.i
+  %7 = add i32 %6, 2
+  ret i32 %7
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
@@ -32,12 +34,13 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %6 = load i32, ptr %5, align 4
   %7 = icmp eq i32 %3, 42
   %8 = icmp eq i32 %6, 8
-  %or.cond.i = select i1 %7, i1 true, i1 %8
-  %9 = select i1 %or.cond.i, i32 2, i32 4
-  %10 = add i32 %9, %6
-  %11 = getelementptr i8, ptr %0, i64 16
-  %12 = load ptr, ptr %11, align 8
-  store i32 %10, ptr %12, align 4
+  %9 = add i32 %6, 2
+  %spec.select.i = select i1 %8, i32 8, i32 %9
+  %10 = select i1 %7, i32 %6, i32 %spec.select.i
+  %11 = add i32 %10, 2
+  %12 = getelementptr i8, ptr %0, i64 16
+  %13 = load ptr, ptr %12, align 8
+  store i32 %11, ptr %13, align 4
   ret void
 }
 
@@ -50,12 +53,13 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %6 = load i32, ptr %5, align 4
   %7 = icmp eq i32 %3, 42
   %8 = icmp eq i32 %6, 8
-  %or.cond.i.i = select i1 %7, i1 true, i1 %8
-  %9 = select i1 %or.cond.i.i, i32 2, i32 4
-  %10 = add i32 %9, %6
-  %11 = getelementptr i8, ptr %0, i64 16
-  %12 = load ptr, ptr %11, align 8
-  store i32 %10, ptr %12, align 4
+  %9 = add i32 %6, 2
+  %spec.select.i.i = select i1 %8, i32 8, i32 %9
+  %10 = select i1 %7, i32 %6, i32 %spec.select.i.i
+  %11 = add i32 %10, 2
+  %12 = getelementptr i8, ptr %0, i64 16
+  %13 = load ptr, ptr %12, align 8
+  store i32 %11, ptr %13, align 4
   ret void
 }
 

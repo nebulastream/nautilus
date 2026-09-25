@@ -309,6 +309,67 @@ private:
 };
 
 /**
+ * @brief A standard-library allocator that draws from an Arena.
+ *
+ * Lets the standard containers (the lowering providers' identifier -> value
+ * maps, per-block frames, worklists) take their nodes and bucket arrays from
+ * a bump arena instead of the heap: a container that would otherwise issue
+ * one `operator new` per node now advances a pointer. Deallocation is a
+ * no-op -- the memory comes back when the Arena is reset or destroyed -- so
+ * this is for scratch state whose lifetime is bounded by the arena's, such
+ * as one backend compile, not for containers that churn through many
+ * insert/erase cycles on a long-lived arena.
+ *
+ * The allocator holds a non-owning pointer to its Arena, which must outlive
+ * every container using it. Two allocators compare equal when they draw
+ * from the same Arena, which is what lets containers built on the same
+ * arena swap and move their storage between each other.
+ */
+template <typename T>
+class ArenaAllocator {
+public:
+	using value_type = T;
+	using size_type = std::size_t;
+	using difference_type = std::ptrdiff_t;
+	using propagate_on_container_move_assignment = std::true_type;
+	using propagate_on_container_swap = std::true_type;
+	using is_always_equal = std::false_type;
+
+	explicit ArenaAllocator(Arena& arena) noexcept : arena_(&arena) {
+	}
+
+	template <typename U>
+	ArenaAllocator(const ArenaAllocator<U>& other) noexcept : arena_(other.arena()) {
+	}
+
+	[[nodiscard]] T* allocate(std::size_t n) {
+		return static_cast<T*>(arena_->allocate(n * sizeof(T), alignof(T)));
+	}
+
+	void deallocate(T*, std::size_t) noexcept {
+		// Bump allocation: individual frees are no-ops, the arena reclaims
+		// everything at once on reset.
+	}
+
+	[[nodiscard]] Arena* arena() const noexcept {
+		return arena_;
+	}
+
+	template <typename U>
+	bool operator==(const ArenaAllocator<U>& other) const noexcept {
+		return arena_ == other.arena();
+	}
+
+	template <typename U>
+	bool operator!=(const ArenaAllocator<U>& other) const noexcept {
+		return arena_ != other.arena();
+	}
+
+private:
+	Arena* arena_;
+};
+
+/**
  * @brief A pool of independent Arenas with recycled storage.
  *
  * Hands out @ref Handle objects that own an Arena for some scope (e.g. one

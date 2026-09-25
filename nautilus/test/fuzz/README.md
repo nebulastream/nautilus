@@ -430,9 +430,16 @@ fuzzer). Each compiling backend runs:
 | `strength-reduction`   | `ir.enableStrengthReduction=true` | a currently default-**off** pass flipped **on** |
 | `no-algebraic-simpl`   | `ir.disableAlgebraicSimplification=true` | a default-**on** P0 pass flipped **off** |
 
-MLIR additionally runs `no-intrinsics` (`mlir.enableIntrinsics=false`). The
-interpreter runs uncompiled (`engine.Compilation=false`), so the IR pipeline
-never runs for it and it contributes a single `default` peer.
+MLIR's shipping default skips the Nautilus-IR optimization group entirely (the
+LLVM `-O3` pipeline behind it subsumes every pass in the group, see
+`CompilationBackend::benefitsFromIROptimizationPasses`), so for MLIR the four
+sweep entries above additionally set `ir.forceOptimizationPasses=true` -- a
+per-pass toggle on a group that does not run would toggle nothing. MLIR also
+runs `ir-passes` (the forced group with nothing toggled, so optimized and
+unoptimized IR of the same program are differential peers through LLVM) and
+`no-intrinsics` (`mlir.enableIntrinsics=false`). The interpreter runs
+uncompiled (`engine.Compilation=false`), so the IR pipeline never runs for it
+and it contributes a single `default` peer.
 
 These are per-pass toggles that keep constant folding **on**, so the IR stays
 bounded. There is deliberately **no** blanket `ir.runPasses=false` peer:

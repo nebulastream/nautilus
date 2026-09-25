@@ -94,6 +94,25 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 				    });
 			    });
 		}
+
+#ifdef ENABLE_MLIR_BACKEND
+		// A single-tier mlir compile skips the Nautilus-IR optimization group by
+		// default (LLVM -O3 subsumes it). This variant forces the group back on,
+		// so the pair `single_compile_mlir_*` / `single_compile_mlir_irPasses_*`
+		// tracks exactly what the group costs on the way to LLVM.
+		Catch::Benchmark::Benchmark("single_compile_mlir_irPasses_" + name)
+		    .operator=([&registerFn](Catch::Benchmark::Chronometer meter) {
+			    meter.measure([&registerFn] {
+				    Options opts;
+				    opts.setOption("engine.backend", std::string("mlir"));
+				    opts.setOption("ir.forceOptimizationPasses", true);
+				    auto engine = NautilusEngine(opts);
+				    auto module = engine.createModule();
+				    registerFn(module);
+				    return module.compile();
+			    });
+		    });
+#endif
 	}
 }
 

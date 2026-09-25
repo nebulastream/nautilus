@@ -37,6 +37,32 @@ public:
 		return ExceptionPropagationMode::NativeUnwind;
 	}
 
+	/**
+	 * @brief Whether this backend gains anything from the Nautilus-IR
+	 * optimization group.
+	 *
+	 * The group is the fixed-point set CompilationPipeline::compileToIR runs
+	 * between IR generation and the terminal passes: constant folding,
+	 * algebraic simplification, constant-branch folding, empty-block
+	 * elimination, block merging, dead-code elimination, block-argument
+	 * pruning, plus the function-attribute inference that feeds them. The
+	 * terminal passes (no-throw inference, exception-region preparation, the
+	 * debug location map) are not part of it and always run.
+	 *
+	 * A backend that executes or lowers the IR as it is (the interpreters,
+	 * the direct-to-machine-code lowerings) returns true: every operation
+	 * the group removes is one it would otherwise dispatch or emit. A
+	 * backend that hands the IR to an optimizing compiler of its own returns
+	 * false: that compiler performs each of these transformations itself, so
+	 * running them on the Nautilus IR first spends compile time and changes
+	 * nothing about the code that comes out. The pipeline skips the group
+	 * when every backend that will consume a graph says false, unless
+	 * `ir.forceOptimizationPasses` is set.
+	 */
+	[[nodiscard]] virtual bool benefitsFromIROptimizationPasses() const {
+		return true;
+	}
+
 	virtual ~CompilationBackend();
 };
 

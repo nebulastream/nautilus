@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -120,7 +121,20 @@ private:
 	[[nodiscard]] std::unique_ptr<Executable> compileTier(std::list<CompilableFunction>& functions,
 	                                                      const engine::ModuleOptions& moduleOptions,
 	                                                      const std::string& backend, const std::string& tierLabel,
+	                                                      std::span<const std::string> irConsumers,
 	                                                      std::shared_ptr<ir::IRGraph>& outIR) const;
+
+	/**
+	 * @brief The registered backends that will compile the IR of one module
+	 * compile, as CompilationPipeline::compileToIR wants them.
+	 *
+	 * Both tiers when the module is promoted (the tier-0 executable and the
+	 * background tier-1 compile share one graph), the tier-1 backend alone
+	 * when compiling single-tier or when tier 0 is the interpreter (which
+	 * never sees IR). The `compile()` entry points that return a bare
+	 * executable never promote, so they name only the tier they compile.
+	 */
+	[[nodiscard]] std::vector<std::string> promotedIRConsumers() const;
 
 	/**
 	 * @brief Start background tier-1 promotion of @p ir targeting @p state.

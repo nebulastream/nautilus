@@ -79,9 +79,29 @@ std::string createCompilationUnitID() {
 	return timestamp + "_#" + uuid;
 }
 
+bool CompilationPipeline::runsIROptimizationGroup(const engine::ModuleOptions& moduleOptions,
+                                                  std::span<const std::string> consumingBackends) const {
+	if (moduleOptions.getOptionOrDefault("ir.forceOptimizationPasses", false)) {
+		return true;
+	}
+	if (consumingBackends.empty()) {
+		return true;
+	}
+	for (const auto& name : consumingBackends) {
+		// An unregistered name is not this function's error to report: the
+		// backend compile that follows throws with the actual message. Stay
+		// on the side that runs the passes until then.
+		if (!backends->hasBackend(name) || backends->getBackend(name)->benefitsFromIROptimizationPasses()) {
+			return true;
+		}
+	}
+	return false;
+}
+
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions,
                                                               const engine::ModuleOptions& moduleOptions,
-                                                              CompilationStatistics* statistics) const {
+                                                              CompilationStatistics* statistics,
+                                                              std::span<const std::string> consumingBackends) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(moduleOptions, compilationId);
 
@@ -139,59 +159,72 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 
 	if (moduleOptions.getOptionOrDefault("ir.runPasses", true)) {
 		ir::IRPassManager passManager(moduleOptions, &dumpHandler, statistics, &irPrintOptions);
+		// The optimization group -- attribute inference, the fixed-point
+		// cleanup passes and the opt-in LICM -- only runs when a backend that
+		// will consume this graph gets something out of it. The graph handed
+		// to an LLVM-backed backend alone (the single-tier `mlir` default)
+		// skips it: LLVM's own -O3 pipeline performs every one of these
+		// transformations on the lowered module, so running them here first
+		// only lengthens the compile. The terminal passes below the group
+		// are not optimizations and always run.
+		const bool optimize = runsIROptimizationGroup(moduleOptions, consumingBackends);
+		if (statistics != nullptr) {
+			// 1 when the group ran, 0 when it was skipped (StatValue has no bool).
+			statistics->set("irPasses.optimizationGroup", static_cast<int64_t>(optimize ? 1 : 0));
+		}
 		std::vector<std::unique_ptr<ir::IRPass>> group;
-		if (!moduleOptions.getOptionOrDefault("ir.disableConstantFolding", false)) {
+		if (optimize && !moduleOptions.getOptionOrDefault("ir.disableConstantFolding", false)) {
 			group.push_back(std::make_unique<ir::ConstantFoldingAndCopyPropagationPass>());
 		}
 		// Canonicalizes and folds local algebraic identities; see design
 		// §4.3-B. Runs right after constant folding so the constants it
 		// produces are canonicalized to the right operand immediately.
-		if (!moduleOptions.getOptionOrDefault("ir.disableAlgebraicSimplification", false)) {
+		if (optimize && !moduleOptions.getOptionOrDefault("ir.disableAlgebraicSimplification", false)) {
 			group.push_back(std::make_unique<ir::AlgebraicSimplificationPass>());
 		}
 		// Closes the loop constant folding/simplification opens: a compare
 		// that folded to a constant bool still drives a conditional branch
 		// until this pass turns it into an unconditional one and sweeps the
 		// dead arm; see design §4.3-C.
-		if (!moduleOptions.getOptionOrDefault("ir.disableConstantBranchFolding", false)) {
+		if (optimize && !moduleOptions.getOptionOrDefault("ir.disableConstantBranchFolding", false)) {
 			group.push_back(std::make_unique<ir::ConstantBranchFoldingPass>());
 		}
-		if (!moduleOptions.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
+		if (optimize && !moduleOptions.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
 			group.push_back(std::make_unique<ir::EmptyBlockEliminationPass>());
 		}
 		// Collapses the single-predecessor seams trace-generated IR is full
 		// of (and that branch folding just created more of) into straight-line
 		// blocks; see design §4.3-D. Runs after the empty-block pass so
 		// trivial hops are gone before whole blocks are spliced.
-		if (!moduleOptions.getOptionOrDefault("ir.disableBlockMerging", false)) {
+		if (optimize && !moduleOptions.getOptionOrDefault("ir.disableBlockMerging", false)) {
 			group.push_back(std::make_unique<ir::BlockMergingPass>());
 		}
 		// Block-local CSE over the long straight-line blocks block merging
 		// just produced; see design §4.3-F. Opt-in (default off) pending the
 		// benchmark sweep that gates promoting it to default-on
 		// (`ir.disableLocalCSE`); DCE below sweeps the duplicates it removes.
-		if (moduleOptions.getOptionOrDefault("ir.enableLocalCSE", false)) {
+		if (optimize && moduleOptions.getOptionOrDefault("ir.enableLocalCSE", false)) {
 			group.push_back(std::make_unique<ir::LocalCSEPass>());
 		}
 		// Opt-in (default off), unlike the two passes above: correct, but
 		// measured to regress the BC interpreter's dispatch-bound cost model
 		// (see StrengthReductionPass.hpp) -- may still be worth enabling for
 		// an ALU-bound backend.
-		if (moduleOptions.getOptionOrDefault("ir.enableStrengthReduction", false)) {
+		if (optimize && moduleOptions.getOptionOrDefault("ir.enableStrengthReduction", false)) {
 			group.push_back(std::make_unique<ir::StrengthReductionPass>());
 		}
 		// Sweeps constant-folding and strength-reduction residue (dead
 		// feeding constants, the neutralized multiply) every round; see
 		// design §4.3-A. Runs last in the group so it cleans up whatever the
 		// passes above it produced that round.
-		if (!moduleOptions.getOptionOrDefault("ir.disableDeadCodeElimination", false)) {
+		if (optimize && !moduleOptions.getOptionOrDefault("ir.disableDeadCodeElimination", false)) {
 			group.push_back(std::make_unique<ir::DeadCodeEliminationPass>());
 		}
 		// The only pass that changes block-argument arity: prunes unused and
 		// same-value pass-through arguments; see design §4.3-E. Runs last in
 		// the group because every CFG change above can strand arguments, and
 		// DCE's sweep is what turns "used only by dead code" into "unused".
-		if (!moduleOptions.getOptionOrDefault("ir.disableBlockArgumentPruning", false)) {
+		if (optimize && !moduleOptions.getOptionOrDefault("ir.disableBlockArgumentPruning", false)) {
 			group.push_back(std::make_unique<ir::BlockArgumentPruningPass>());
 		}
 		// Re-run the whole group until a full round changes nothing (e.g.
@@ -208,14 +241,16 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		// only: the later passes remove and move operations, never add them,
 		// so a derived attribute can become stale by being *more* pessimistic
 		// than the final body -- which costs optimisation, never correctness.
-		if (!moduleOptions.getOptionOrDefault("ir.disableAttributeInference", false)) {
+		if (optimize && !moduleOptions.getOptionOrDefault("ir.disableAttributeInference", false)) {
 			passManager.addPass(std::make_unique<ir::FunctionAttributeInferencePass>());
 		}
+		// A group left empty (optimization skipped, or every pass disabled)
+		// registers nothing: addFixedPointGroup ignores an empty vector.
 		passManager.addFixedPointGroup(std::move(group), maxIterations);
 		// Loop-invariant code motion runs once, after the cleanup group has
 		// canonicalized the CFG (single preheaders/latches), and stays opt-in
 		// (default off) as the highest-risk pass; see design §4.3-G / §4.4.
-		if (moduleOptions.getOptionOrDefault("ir.enableLICM", false)) {
+		if (optimize && moduleOptions.getOptionOrDefault("ir.enableLICM", false)) {
 			passManager.addPass(std::make_unique<ir::LoopInvariantCodeMotionPass>());
 		}
 		// Proves Nautilus-to-Nautilus calls noUnwind via whole-module
@@ -280,9 +315,13 @@ std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr
 
 #else
 
+bool CompilationPipeline::runsIROptimizationGroup(const engine::ModuleOptions&, std::span<const std::string>) const {
+	return true;
+}
+
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>&,
-                                                              const engine::ModuleOptions&,
-                                                              CompilationStatistics*) const {
+                                                              const engine::ModuleOptions&, CompilationStatistics*,
+                                                              std::span<const std::string>) const {
 	throw RuntimeException("Jit not initialised");
 }
 

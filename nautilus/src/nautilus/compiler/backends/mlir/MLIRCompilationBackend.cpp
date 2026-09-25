@@ -115,7 +115,12 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 		}
 	}
 
-	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context, options, intrinsicManager);
+	// The lowering's per-block frames and identifier maps bump this arena
+	// instead of the heap. The handle outlives the provider (declared first,
+	// destroyed last) and recycles the arena's chunks into the pool for the
+	// next compile once the provider is gone.
+	auto loweringArena = loweringArenaPool_.acquire();
+	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context, options, intrinsicManager, *loweringArena);
 	if (debugInfo.emitDebugInfo() && locationMap) {
 		loweringProvider->setDebugInfo(debugInfo, locationMap);
 	}

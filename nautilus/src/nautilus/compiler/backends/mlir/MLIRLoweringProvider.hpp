@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/mlir/ProxyFunctions.hpp"
@@ -30,14 +31,27 @@ public:
 	// A ValueFrame is hashmap that binds operation names to MLIR values.
 	// It is used to 'pass' values between mlir operations.
 	// Control Flow can cause new ValueFrames to be created, to correctly model value access rights (scopes).
-	using ValueFrame = Frame<ir::OperationIdentifier, ::mlir::Value>;
+	//
+	// Every frame, like the other per-compile maps below, takes its nodes and
+	// buckets from the lowering arena handed to the constructor rather than
+	// from the heap: one frame is created per basic block, and a lowering of
+	// a large function would otherwise issue thousands of small allocations
+	// that all die together when the lowering ends.
+	template <typename K, typename V>
+	using ArenaMap =
+	    std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, common::ArenaAllocator<std::pair<const K, V>>>;
+	using ValueFrame = Frame<ir::OperationIdentifier, ::mlir::Value,
+	                         common::ArenaAllocator<std::pair<const ir::OperationIdentifier, ::mlir::Value>>>;
 
 	/**
 	 * @brief Allows to lower Nautilus IR to MLIR.
 	 * @param MLIRContext: Used by MLIR to manage MLIR module creation.
+	 * @param arena: Backs every frame and map this lowering creates. Must
+	 *        outlive the provider; the backend draws it from its pool for
+	 *        the duration of one compile.
 	 */
 	explicit MLIRLoweringProvider(::mlir::MLIRContext& context, const engine::Options& options,
-	                              MLIRIntrinsicManager& intrinsicManager);
+	                              MLIRIntrinsicManager& intrinsicManager, common::Arena& arena);
 
 	~MLIRLoweringProvider();
 
@@ -77,6 +91,8 @@ private:
 	friend class ir::OperationDispatcher<MLIRLoweringProvider>;
 
 	MLIRIntrinsicManager& intrinsicManager;
+	/// Scratch arena for this lowering's frames and maps; see ValueFrame.
+	common::Arena* arena_;
 	// MLIR variables
 	::mlir::MLIRContext* context;
 	::mlir::ModuleOp theModule;
@@ -90,8 +106,7 @@ private:
 	::mlir::Value globalString;
 	::mlir::FlatSymbolRefAttr printfReference;
 	llvm::StringMap<::mlir::Value> printfStrings;
-	std::unordered_map<ir::BlockIdentifier, ::mlir::Block*>
-	    blockMapping; // Keeps track of already created basic blocks.
+	ArenaMap<ir::BlockIdentifier, ::mlir::Block*> blockMapping; // Keeps track of already created basic blocks.
 	const engine::Options* options;
 
 	// Debug-info state.  When debugInfo_.emitDebugInfo() is false, all debug
@@ -116,7 +131,7 @@ private:
 	// reading its stack slot at any PC inside the function — no
 	// dependency on register liveness.  The map is cleared in
 	// generateFunction before each function's body is lowered.
-	std::unordered_map<uint32_t, ::mlir::Value> debugAllocas_;
+	ArenaMap<uint32_t, ::mlir::Value> debugAllocas_;
 
 	/// Per-function alloca slot pointers, indexed by the AllocaOperation's
 	/// allocaIndex. Populated by generateFunction()'s prologue from
@@ -165,7 +180,12 @@ private:
 	/// IR passes such as block-argument pruning, which replaces an argument
 	/// with a dominating value from another block) is resolved through this
 	/// table instead -- see `resolveOperand`.
-	std::unordered_map<const ir::Operation*, ::mlir::Value> definedValues;
+	ArenaMap<const ir::Operation*, ::mlir::Value> definedValues;
+
+	/// A fresh, empty frame backed by the lowering arena.
+	[[nodiscard]] ValueFrame newFrame() const {
+		return ValueFrame(ValueFrame::map_type::allocator_type(*arena_));
+	}
 
 	/// Binds @p op's resulting MLIR @p value in @p frame (block-scoped, by
 	/// identifier) and records it in `definedValues` (function-scoped, by
