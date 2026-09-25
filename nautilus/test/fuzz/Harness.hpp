@@ -120,12 +120,10 @@ inline std::vector<Config> configs() {
 	const OptionsTweak forceIRPasses = [](engine::Options& o) {
 		o.setOption("ir.forceOptimizationPasses", true);
 	};
-	addCompiling("mlir",
-	             {{"mlir", "ir-passes", forceIRPasses},
-	              {"mlir", "no-intrinsics",
-	               [](engine::Options& o) {
-		               o.setOption("mlir.enableIntrinsics", false);
-	               }}},
+	const OptionsTweak noIntrinsics = [](engine::Options& o) {
+		o.setOption("mlir.enableIntrinsics", false);
+	};
+	addCompiling("mlir", {{"mlir", "ir-passes", forceIRPasses}, {"mlir", "no-intrinsics", noIntrinsics}},
 	             forceIRPasses);
 #endif
 #ifdef ENABLE_C_BACKEND
