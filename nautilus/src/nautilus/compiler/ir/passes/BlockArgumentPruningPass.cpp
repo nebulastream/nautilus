@@ -8,6 +8,7 @@
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include <unordered_set>
+#include <vector>
 
 namespace nautilus::compiler::ir {
 
@@ -68,6 +69,24 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 	// across every mutation it makes.
 	const Dominators dominators(fn);
 
+	// Reverse post-order first, so a value threaded through a chain of blocks
+	// is resolved at the head of the chain before the blocks downstream ask
+	// what their edges agree on -- each pass-through slot then folds straight
+	// to the dominating definition instead of to the previous block's argument,
+	// which would cost another round (and another move of every use) per hop.
+	// Blocks the entry cannot reach follow in block-list order: nothing
+	// dominates them, so only their unused slots can go, but those still can.
+	std::vector<BasicBlock*> order;
+	order.reserve(fn.getBasicBlocks().size());
+	for (const auto* block : dominators.reversePostOrder()) {
+		order.push_back(const_cast<BasicBlock*>(block));
+	}
+	for (auto* block : fn.getBasicBlocks()) {
+		if (!dominators.isReachable(block)) {
+			order.push_back(block);
+		}
+	}
+
 	size_t totalArguments = 0;
 	for (auto* block : fn.getBasicBlocks()) {
 		totalArguments += block->getArguments().size();
@@ -78,22 +97,26 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 	// Every productive round removes at least one argument slot.
 	const size_t iterationBound = totalArguments + 8u;
 	size_t iterations = 0;
+	std::vector<FunctionRewriter::BlockArgumentSlot> prunable;
 	while (changed && iterations++ < iterationBound) {
 		changed = false;
-		for (auto* block : fn.getBasicBlocks()) {
+		prunable.clear();
+		// Decide first, remove afterwards. Rewiring a pass-through slot's uses
+		// happens on the spot (it is what lets the next block down the chain
+		// see the final value), but the slots themselves come out in one batch
+		// per round: removing them one at a time re-derives every targeting
+		// invocation's use edges per slot, and for a value passed through the
+		// whole function that scan is as long as the function.
+		for (auto* block : order) {
 			if (block == fn.getEntryBlock()) {
 				continue; // entry arguments are the function ABI.
 			}
 			auto invocations = invocationsTargeting(block);
-			// Descending, so removing slot i leaves the pending lower
-			// indices valid (block and invocation argument lists shift in
-			// sync via removeBlockArgument).
-			for (size_t i = block->getArguments().size(); i-- > 0;) {
-				BasicBlockArgument* arg = block->getArguments()[i];
+			const auto& args = block->getArguments();
+			for (size_t i = 0; i < args.size(); ++i) {
+				BasicBlockArgument* arg = args[i];
 				if (rewriter.useCount(arg) == 0) {
-					rewriter.removeBlockArgument(block, i);
-					changed = true;
-					anyChanged = true;
+					prunable.push_back({block, i});
 					continue;
 				}
 				Operation* agreed = agreedPassThroughValue(arg, i, invocations);
@@ -107,10 +130,13 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 					continue;
 				}
 				rewriter.replaceAllUses(arg, agreed);
-				rewriter.removeBlockArgument(block, i);
-				changed = true;
-				anyChanged = true;
+				prunable.push_back({block, i});
 			}
+		}
+		if (!prunable.empty()) {
+			rewriter.removeBlockArguments(prunable);
+			changed = true;
+			anyChanged = true;
 		}
 	}
 	return anyChanged;

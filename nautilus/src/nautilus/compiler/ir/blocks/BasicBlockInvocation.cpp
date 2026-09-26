@@ -73,6 +73,19 @@ void BasicBlockInvocation::removeArgument(size_t index) {
 	inputs = std::span<Operation*>(inputs.data(), inputs.size() - 1);
 }
 
+void BasicBlockInvocation::removeArguments(std::span<const size_t> indices) {
+	std::size_t kept = 0;
+	std::size_t nextRemoved = 0;
+	for (std::size_t i = 0; i < inputs.size(); ++i) {
+		if (nextRemoved < indices.size() && indices[nextRemoved] == i) {
+			++nextRemoved;
+			continue;
+		}
+		inputs[kept++] = inputs[i];
+	}
+	inputs = std::span<Operation*>(inputs.data(), kept);
+}
+
 int BasicBlockInvocation::getOperationArgIndex(Operation* arg) {
 	for (std::size_t i = 0; i < inputs.size(); i++) {
 		if (inputs[i] == arg) {

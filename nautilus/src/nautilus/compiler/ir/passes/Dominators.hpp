@@ -32,7 +32,11 @@ public:
 	explicit Dominators(const FunctionOperation& fn);
 
 	/// True iff `a` dominates `b`. A block dominates itself. False if `b`
-	/// is unreachable from the entry block (regardless of `a`).
+	/// is unreachable from the entry block (regardless of `a`). O(1): the
+	/// answer is read off the dominator tree's DFS intervals, so a caller may
+	/// ask it once per argument, edge or operation without the chain of
+	/// immediate dominators (which is as long as a chain of sequential loops)
+	/// turning that into a quadratic walk.
 	[[nodiscard]] bool dominates(const BasicBlock* a, const BasicBlock* b) const;
 
 	/// True iff `block` is reachable from the function's entry block.
@@ -47,6 +51,10 @@ private:
 	/// idom_[i] is the RPO index of the immediate dominator of rpo_[i]; the
 	/// entry block (index 0) is its own immediate dominator.
 	std::vector<size_t> idom_;
+	/// Preorder DFS interval of rpo_[i] in the dominator tree: `a` dominates
+	/// `b` iff `b`'s interval lies inside `a`'s.
+	std::vector<size_t> treeIn_;
+	std::vector<size_t> treeOut_;
 };
 
 } // namespace nautilus::compiler::ir
