@@ -190,6 +190,29 @@ inline val<int32_t> rvaluePointerAdd(val<int32_t*> ptr) {
 	return *((ptr + 1) + 2);
 }
 
+inline val<int32_t> offsetPlusPointer(val<int32_t*> ptr) {
+	return *(2 + ptr);
+}
+
+inline val<int64_t> pointerDifference(val<int32_t*> begin, val<int32_t*> end) {
+	return end - begin;
+}
+
+inline val<int32_t> pointerPostIncrement(val<int32_t*> ptr) {
+	auto old = ptr++;
+	return *old * 10 + *ptr;
+}
+
+inline val<int32_t> pointerPostDecrement(val<int32_t*> ptr) {
+	auto old = ptr--;
+	--ptr;
+	return *old * 10 + *ptr;
+}
+
+inline val<int32_t> negativeIndex(val<int32_t*> ptr, val<int8_t> index) {
+	return ptr[index];
+}
+
 class BaseClass {};
 
 class CustomClass : public BaseClass {
