@@ -33,12 +33,29 @@ void doExtCall(const CallSite& site, void* target, uint64_t* fp, uint16_t dstReg
 			dcArgBool(vm, readReg<bool>(fp, r));
 			break;
 		case Type::i8:
-		case Type::ui8:
 			dcArgChar(vm, readReg<int8_t>(fp, r));
 			break;
 		case Type::i16:
-		case Type::ui16:
 			dcArgShort(vm, readReg<int16_t>(fp, r));
+			break;
+		// dyncall widens DCchar/DCshort arguments with sign extension, so a
+		// uint8_t 255 would reach the callee as -1. Where every argument takes
+		// a full register or 8-byte stack slot, passing the zero-extended value
+		// as an int is the same call. Apple arm64 packs stack arguments by
+		// size, so it keeps the narrow form there.
+		case Type::ui8:
+#if defined(__APPLE__) && defined(__aarch64__)
+			dcArgChar(vm, static_cast<DCchar>(readReg<uint8_t>(fp, r)));
+#else
+			dcArgInt(vm, static_cast<DCint>(readReg<uint8_t>(fp, r)));
+#endif
+			break;
+		case Type::ui16:
+#if defined(__APPLE__) && defined(__aarch64__)
+			dcArgShort(vm, static_cast<DCshort>(readReg<uint16_t>(fp, r)));
+#else
+			dcArgInt(vm, static_cast<DCint>(readReg<uint16_t>(fp, r)));
+#endif
 			break;
 		case Type::i32:
 		case Type::ui32:
