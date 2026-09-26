@@ -135,7 +135,14 @@ Error RALocalAllocator::switchToAssignment(PhysToWorkMap* dstPhysToWorkMap, cons
 
   dst.initLayout(_pass->_physRegCount, _pass->workRegs());
   dst.initMaps(dstPhysToWorkMap, _tmpWorkToPhysMap);
-  dst.assignWorkIdsFromPhysIds();
+
+  // [nautilus] `_tmpWorkToPhysMap` is kept all `kPhysNone` between calls, so only the entries of assigned registers
+  // have to be set here and reset again on every exit path, instead of resetting all `workCount` entries per edge.
+  dst.assignWorkIdsFromPhysIdsSparse();
+  struct SparseReset {
+    RAAssignment& assignment;
+    inline ~SparseReset() noexcept { assignment.unassignWorkIdsSparse(); }
+  } sparseReset{dst};
 
   // TODO: Remove this - finally enable this functionality.
   if (tryMode)
