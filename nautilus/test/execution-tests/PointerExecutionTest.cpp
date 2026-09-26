@@ -304,6 +304,26 @@ void pointerTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(&values[5]) == 9); // values[8] = 9
 	}
 
+	SECTION("constPointerAddStatic-gh_#502") {
+		auto f = engine.registerFunction(constPointerAddStatic);
+		REQUIRE(f(values) == 2 + 3 + 4);
+	}
+
+	SECTION("constPointerAddInt-gh_#502") {
+		auto f = engine.registerFunction(constPointerAddInt);
+		REQUIRE(f(values) == 3);
+	}
+
+	SECTION("constPointerSubInt-gh_#502") {
+		auto f = engine.registerFunction(constPointerSubInt);
+		REQUIRE(f(&values[3]) == 2);
+	}
+
+	SECTION("rvaluePointerAdd-gh_#502") {
+		auto f = engine.registerFunction(rvaluePointerAdd);
+		REQUIRE(f(values) == 4);
+	}
+
 	SECTION("storeMaxViaTernary-gh_#95") {
 		auto f = engine.registerFunction(storeMaxViaTernary);
 		int32_t a = 100;

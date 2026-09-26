@@ -472,18 +472,18 @@ val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 }
 
 template <is_ptr ValueType, is_integral IndexType>
-val<ValueType> inline operator+(val<ValueType>& left, IndexType offset) {
+val<ValueType> inline operator+(const val<ValueType>& left, IndexType offset) {
 	return left + val<size_t>(offset);
 }
 
 template <is_ptr ValueType, is_integral IndexType>
-val<ValueType> inline operator+(val<ValueType>& left, static_val<IndexType> offset) {
+val<ValueType> inline operator+(const val<ValueType>& left, static_val<IndexType> offset) {
 	return left + static_cast<IndexType>(offset);
 }
 
 template <is_ptr ValueType, typename IndexType>
     requires is_integral<IndexType> || is_fundamental_val<IndexType>
-val<ValueType> inline operator-(val<ValueType>& left, IndexType&& offset) {
+val<ValueType> inline operator-(const val<ValueType>& left, IndexType&& offset) {
 	return left + (0 - offset);
 }
 

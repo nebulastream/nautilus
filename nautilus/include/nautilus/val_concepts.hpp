@@ -42,6 +42,8 @@ concept is_fundamental_val = requires {
 	requires !std::is_enum_v<typename std::remove_reference_t<T>::basic_type> &&
 	             std::is_fundamental_v<typename std::remove_reference_t<T>::basic_type>; // Ensure 'basic_type' is
 	                                                                                     // integral
+	// val<T*> exposes its pointee as basic_type; it must not be treated as a fundamental value.
+	requires !requires { typename std::remove_reference_t<T>::pointer_type; };
 };
 
 template <typename T>
