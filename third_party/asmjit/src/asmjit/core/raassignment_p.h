@@ -327,9 +327,51 @@ public:
     }
   }
 
+  //! [nautilus] Sets `WorkToPhysMap` entries of all currently assigned registers from `PhysToWorkMap`.
+  //!
+  //! Unlike `assignWorkIdsFromPhysIds()` this doesn't reset the whole `WorkToPhysMap`, it requires that all its entries
+  //! are `kPhysNone` already. Cost is O(physTotal) instead of O(workCount).
+  inline void assignWorkIdsFromPhysIdsSparse() noexcept {
+    for (RegGroup group : RegGroupVirtValues{}) {
+      uint32_t physBaseIndex = _layout.physIndex[group];
+      Support::BitWordIterator<RegMask> it(_physToWorkMap->assigned[group]);
+
+      while (it.hasNext()) {
+        uint32_t physId = it.next();
+        uint32_t workId = _physToWorkMap->workIds[physBaseIndex + physId];
+
+        ASMJIT_ASSERT(workId != kWorkNone);
+        _workToPhysMap->physIds[workId] = uint8_t(physId);
+      }
+    }
+  }
+
+  //! [nautilus] Resets `WorkToPhysMap` entries of all currently assigned registers to `kPhysNone`.
+  //!
+  //! Both maps are always kept in sync, so this leaves the whole `WorkToPhysMap` with `kPhysNone` entries only. Cost
+  //! is O(physTotal) instead of O(workCount).
+  inline void unassignWorkIdsSparse() noexcept {
+    for (RegGroup group : RegGroupVirtValues{}) {
+      uint32_t physBaseIndex = _layout.physIndex[group];
+      Support::BitWordIterator<RegMask> it(_physToWorkMap->assigned[group]);
+
+      while (it.hasNext()) {
+        uint32_t physId = it.next();
+        uint32_t workId = _physToWorkMap->workIds[physBaseIndex + physId];
+
+        ASMJIT_ASSERT(workId != kWorkNone);
+        _workToPhysMap->physIds[workId] = kPhysNone;
+      }
+    }
+  }
+
+  // [nautilus] The `copyFrom()` overloads below only touch the `WorkToPhysMap` entries of assigned registers (at most
+  // `physTotal`) instead of resetting or copying all `workCount` entries. They run at every block entry and edge, so
+  // the full reset made the local allocator O(#blocks x #workRegs) (see nebulastream/nautilus#508).
   inline void copyFrom(const PhysToWorkMap* physToWorkMap) noexcept {
+    unassignWorkIdsSparse();
     memcpy(_physToWorkMap, physToWorkMap, PhysToWorkMap::sizeOf(_layout.physTotal));
-    assignWorkIdsFromPhysIds();
+    assignWorkIdsFromPhysIdsSparse();
   }
 
   inline void copyFrom(const PhysToWorkMap* physToWorkMap, const WorkToPhysMap* workToPhysMap) noexcept {
@@ -338,7 +380,7 @@ public:
   }
 
   inline void copyFrom(const RAAssignment& other) noexcept {
-    copyFrom(other.physToWorkMap(), other.workToPhysMap());
+    copyFrom(other.physToWorkMap());
   }
 
   // Not really useful outside of debugging.
