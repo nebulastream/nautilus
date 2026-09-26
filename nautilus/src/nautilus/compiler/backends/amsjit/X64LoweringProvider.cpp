@@ -285,6 +285,10 @@ std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstVal
 		const Type dstType = cast->getStamp();
 		if (!isFloatType(srcType) && !isFloatType(dstType)) {
 			if (const auto inner = foldableConstValue(cast->getInput())) {
+				// A cast to bool is `value != 0`, not a truncation to the low byte.
+				if (dstType == Type::b) {
+					return *inner != 0 ? 1 : 0;
+				}
 				return canonicalizeToStamp(*inner, dstType);
 			}
 		}
@@ -1555,6 +1559,50 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 
 	const bool srcIsFloat = isFloatType(srcType);
 	const bool dstIsFloat = isFloatType(dstType);
+
+	if (dstType == Type::b && srcType != Type::b) {
+		// A cast to bool is `value != 0` (C++ semantics), not a truncation to
+		// the low byte: 256 and 0.5 are true. Only the source width is tested.
+		auto gDst = toGp(result);
+		if (srcIsFloat) {
+			auto xSrc = toXmm(src);
+			auto xZero = srcType == Type::f32 ? cc.newXmmSs() : cc.newXmmSd();
+			auto unordered = cc.newInt64();
+			cc.xorps(xZero, xZero);
+			if (srcType == Type::f32) {
+				cc.ucomiss(xSrc, xZero);
+			} else {
+				cc.ucomisd(xSrc, xZero);
+			}
+			// ZF is also set for NaN, which is true in C++; PF flags it.
+			cc.setne(gDst.r8());
+			cc.setp(unordered.r8());
+			cc.or_(gDst.r8(), unordered.r8());
+		} else {
+			auto gSrc = toGp(src);
+			switch (srcType) {
+			case Type::i8:
+			case Type::ui8:
+				cc.test(gSrc.r8(), gSrc.r8());
+				break;
+			case Type::i16:
+			case Type::ui16:
+				cc.test(gSrc.r16(), gSrc.r16());
+				break;
+			case Type::i32:
+			case Type::ui32:
+				cc.test(gSrc.r32(), gSrc.r32());
+				break;
+			default:
+				cc.test(gSrc.r64(), gSrc.r64());
+				break;
+			}
+			cc.setne(gDst.r8());
+		}
+		cc.movzx(gDst.r32(), gDst.r8());
+		bindResult(op->getIdentifier(), result, frame);
+		return;
+	}
 
 	if (!srcIsFloat && !dstIsFloat) {
 		// Integer → integer: first extend from source width to get a clean
