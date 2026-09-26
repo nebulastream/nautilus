@@ -137,6 +137,25 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f(Color::GREEN) == 0);
 	}
 
+	SECTION("handleEnumNotEqual") {
+		auto f = engine.registerFunction(handleEnumNotEqual);
+		REQUIRE(f(Color::BLUE) == 0);
+		REQUIRE(f(Color::GREEN) == 1);
+	}
+
+	SECTION("handleEnumLogLevelNotEqual") {
+		auto f = engine.registerFunction(handleEnumLogLevelNotEqual);
+		REQUIRE(!f(LogLevel::LOG_INFO));
+		REQUIRE(!f(LogLevel::LOG_DEBUG));
+		REQUIRE(f(LogLevel::LOG_NONE));
+	}
+
+	SECTION("compareConstEnums") {
+		auto f = engine.registerFunction(compareConstEnums);
+		REQUIRE(f(Color::BLUE, Color::BLUE));
+		REQUIRE(f(Color::BLUE, Color::GREEN));
+	}
+
 	SECTION("incrementPost") {
 		auto f = engine.registerFunction(incrementPost);
 		REQUIRE(f(1) == 3);
