@@ -1,9 +1,9 @@
 EXECUTE:
 B0($1:ptr,$2:i32)
-	CONST	$7	1	:ui64
-	CAST	$8	$2	:ui64
-	MUL	$9	$8	$7	:ui64
-	ADD	$10	$1	$9	:ptr
-	LOAD	$13	$10	:i8
-	RETURN	$0	$13	:i8
+	CONST	$6	1	:ui64
+	CAST	$7	$2	:ui64
+	MUL	$8	$7	$6	:ui64
+	ADD	$9	$1	$8	:ptr
+	LOAD	$12	$9	:i8
+	RETURN	$0	$12	:i8
 

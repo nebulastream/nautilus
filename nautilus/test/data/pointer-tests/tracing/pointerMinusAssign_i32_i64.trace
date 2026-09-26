@@ -1,18 +1,17 @@
 EXECUTE:
 B0($1:ptr,$2:i64)
-	ASSIGN	$3	$2	:i64
-	ASSIGN	$4	$1	:ptr
-	CONST	$5	0	:i32
-	CAST	$6	$5	:i64
-	SUB	$7	$6	$3	:i64
-	ASSIGN	$8	$7	:i64
-	CONST	$9	4	:ui64
-	CAST	$10	$8	:ui64
-	MUL	$11	$10	$9	:ui64
-	ADD	$12	$4	$11	:ptr
-	ASSIGN	$1	$12	:ptr
-	ASSIGN	$13	$1	:ptr
-	ASSIGN	$14	$13	:ptr
-	LOAD	$15	$14	:i32
-	RETURN	$0	$15	:i32
+	ASSIGN	$3	$1	:ptr
+	CONST	$4	0	:i32
+	CAST	$5	$4	:i64
+	SUB	$6	$5	$2	:i64
+	ASSIGN	$7	$6	:i64
+	CONST	$8	4	:ui64
+	CAST	$9	$7	:ui64
+	MUL	$10	$9	$8	:ui64
+	ADD	$11	$3	$10	:ptr
+	ASSIGN	$1	$11	:ptr
+	ASSIGN	$12	$1	:ptr
+	ASSIGN	$13	$12	:ptr
+	LOAD	$14	$13	:i32
+	RETURN	$0	$14	:i32
 
