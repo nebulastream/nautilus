@@ -102,6 +102,22 @@ private:
 		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodesByName_;
 		std::unordered_map<ir::BlockIdentifier, ::asmjit::Label> blockLabels;
 		std::unordered_set<ir::BlockIdentifier> processedBlocks;
+		/// A block-argument source: either a bound register or a deferred
+		/// constant's canonical 64-bit pattern.
+		struct BlockArgSource {
+			std::optional<AsmReg> reg;
+			int64_t imm = 0;
+		};
+		/// Scratch buffers of processBlockInvocation, reused across edges so a
+		/// function with many block arguments per edge does not allocate per
+		/// edge (issue #508).
+		std::vector<BlockArgSource> blockArgSources_;
+		std::vector<AsmReg> blockArgDsts_;
+		std::vector<std::optional<AsmReg>> blockArgTemps_;
+		/// Per virtual register index: the epoch of the last
+		/// processBlockInvocation call that used it as a destination register.
+		std::vector<uint32_t> dstMarks_;
+		uint32_t dstMarkEpoch_ = 0;
 		/// Static SSA usage counts for the current function (see ir::countUsages).
 		/// Only populated when branch fusion is enabled; used to prove that a
 		/// compare's sole consumer is the IfOperation that follows it.
