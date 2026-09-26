@@ -72,7 +72,7 @@ public:
 	}
 #endif
 
-	val<bool> operator==(val<T>& other) const {
+	val<bool> operator==(const val<T>& other) const {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, state, other.state);
@@ -87,7 +87,7 @@ public:
 		return *this == res;
 	}
 
-	val<bool> operator!=(val<T>& other) const {
+	val<bool> operator!=(const val<T>& other) const {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, state, other.state);
@@ -98,7 +98,8 @@ public:
 	}
 
 	val<bool> operator!=(const T& other) const {
-		return *this == val<T>(other);
+		auto res = val<T>(other);
+		return *this != res;
 	}
 
 	operator val<underlying_type_t>() const {

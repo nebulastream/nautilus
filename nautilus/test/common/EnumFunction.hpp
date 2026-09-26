@@ -20,6 +20,20 @@ val<bool> handleEnum(val<Color> enumVal) {
 	return enumVal == Color::BLUE;
 }
 
+val<bool> handleEnumNotEqual(val<Color> enumVal) {
+	return enumVal != Color::BLUE;
+}
+
+val<bool> handleEnumLogLevelNotEqual(val<LogLevel> enumVal) {
+	return enumVal != LogLevel::LOG_DEBUG && enumVal != LogLevel::LOG_INFO;
+}
+
+val<bool> compareConstEnums(val<Color> a, val<Color> b) {
+	const val<Color> ca = a;
+	const val<Color> cb = b;
+	return (ca == cb) != (ca != cb);
+}
+
 val<bool> handleEnumLogLevel(val<LogLevel> enumVal) {
 	return enumVal == LogLevel::LOG_DEBUG || enumVal == LogLevel::LOG_INFO;
 }
