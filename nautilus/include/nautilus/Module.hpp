@@ -14,8 +14,8 @@
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
-#include <thread>
 #include <unordered_map>
+#include <vector>
 
 #ifdef ENABLE_TRACING
 #include "nautilus/CompilableFunction.hpp"
@@ -54,9 +54,8 @@ struct ModuleState {
  *
  * Thread-safety: operator() is safe to call concurrently with setExecutable(), and a
  * single handle may be shared by many threads. The hot path (cached version matches)
- * does an atomic version load plus a copy of the published implementation under a
- * short spin lock. Re-resolution takes a shared lock, setExecutable takes an
- * exclusive lock.
+ * is lock-free: two atomic loads. Re-resolution takes a shared lock, setExecutable
+ * takes an exclusive lock.
  *
  * @tparam Signature Raw function signature, e.g. int32_t(int32_t, int32_t)
  */
@@ -68,44 +67,22 @@ class ModuleFunction<R(Args...)> {
 	using ValReturnType = std::conditional_t<std::is_void_v<R>, void, val<R>>;
 	using ValFuncType = std::function<ValReturnType(val<Args>...)>;
 	using ImplType = std::function<R(Args...)>;
-	using ImplPtr = std::shared_ptr<const ImplType>;
 
-	/// The resolved implementation is published as an immutable, reference-counted
-	/// functor. Callers copy the pointer before calling through it, so a concurrent
-	/// re-resolve on the same handle only swaps the pointer and never destroys a
-	/// functor (or the executable it captures) while another thread is still running
-	/// inside it (see issue #506). std::atomic<std::shared_ptr> is not available in
-	/// every supported standard library and the free std::atomic_load/store overloads
-	/// are deprecated, so the pointer is guarded by a spin lock whose critical section
-	/// is a single shared_ptr copy or swap.
+	/// Every resolved implementation is immutable once published, and superseded
+	/// implementations are retired rather than destroyed: they stay alive, together
+	/// with the executable they capture, until the cache itself is destroyed. A
+	/// thread that shares this handle and is still running inside an older
+	/// implementation when another thread re-resolves after a swap therefore never
+	/// has that functor or its JIT'd code freed under it (see issue #506). This keeps
+	/// the hot path free of locks and reference counting: a version check plus one
+	/// acquire load of the current implementation. The cost is that an executable
+	/// this handle has resolved against lives as long as the handle does, even after
+	/// the module has moved on to a newer one.
 	struct Cache {
-		ImplPtr impl;
-		std::atomic_flag implLock;
+		std::atomic<const ImplType*> current {nullptr};
 		std::atomic<uint64_t> version {~0ULL}; // force first resolve
 		std::mutex mutex;
-
-		void lockImpl() {
-			while (implLock.test_and_set(std::memory_order_acquire)) {
-				while (implLock.test(std::memory_order_relaxed)) {
-					std::this_thread::yield();
-				}
-			}
-		}
-
-		ImplPtr loadImpl() {
-			lockImpl();
-			ImplPtr result = impl;
-			implLock.clear(std::memory_order_release);
-			return result;
-		}
-
-		void storeImpl(ImplPtr newImpl) {
-			lockImpl();
-			impl.swap(newImpl);
-			implLock.clear(std::memory_order_release);
-			// newImpl now holds the previous functor and is released here, outside the
-			// lock. In-flight callers keep it alive through their own copies.
-		}
+		std::vector<std::unique_ptr<const ImplType>> impls; // guarded by mutex
 	};
 
 	std::shared_ptr<details::ModuleState> state_;
@@ -119,7 +96,7 @@ class ModuleFunction<R(Args...)> {
 			return;
 		}
 		std::shared_lock<std::shared_mutex> lock(state_->mutex);
-		ImplPtr impl;
+		std::unique_ptr<const ImplType> impl;
 		if (state_->executable) {
 			// Take our own reference to the executable so it outlives a concurrent
 			// swap: the impl published below captures it, keeping the executable (and its
@@ -140,19 +117,19 @@ class ModuleFunction<R(Args...)> {
 				// See NAUTILUS_NO_SANITIZE_FUNCTION in Executable.hpp: fptr is a JIT
 				// entry point with no UBSan type-hash prologue, so the indirect call
 				// through it must be exempted from -fsanitize=function.
-				impl = std::make_shared<const ImplType>(
+				impl = std::make_unique<const ImplType>(
 				    [executable, fptr](Args... args)
 				        NAUTILUS_NO_SANITIZE_FUNCTION -> R { return fptr(std::forward<Args>(args)...); });
 			} else {
 				auto invocable = std::make_shared<compiler::Executable::Invocable<R, Args...>>(
 				    executable->getInvocableMember<R, Args...>(name_));
-				impl = std::make_shared<const ImplType>(
+				impl = std::make_unique<const ImplType>(
 				    [executable, invocable](Args... args) -> R { return (*invocable)(std::forward<Args>(args)...); });
 			}
 		} else {
 			try {
 				auto typedFunc = std::any_cast<ValFuncType>(state_->interpretedFunctions.at(name_));
-				impl = std::make_shared<const ImplType>([typedFunc = std::move(typedFunc)](Args... args) -> R {
+				impl = std::make_unique<const ImplType>([typedFunc = std::move(typedFunc)](Args... args) -> R {
 					if constexpr (std::is_void_v<R>) {
 						typedFunc(make_value(args)...);
 					} else {
@@ -164,7 +141,8 @@ class ModuleFunction<R(Args...)> {
 				throw std::runtime_error("ModuleFunction type mismatch for '" + name_ + "'");
 			}
 		}
-		cache_->storeImpl(std::move(impl));
+		cache_->impls.push_back(std::move(impl));
+		cache_->current.store(cache_->impls.back().get(), std::memory_order_release);
 		cache_->version.store(state_->version.load(std::memory_order_relaxed), std::memory_order_release);
 	}
 
@@ -193,9 +171,7 @@ public:
 		if (cache_->version.load(std::memory_order_acquire) != state_->version.load(std::memory_order_acquire)) {
 			resolve();
 		}
-		// Hold our own reference for the duration of the call: another thread may
-		// re-resolve this handle and publish a new impl while we are still inside it.
-		ImplPtr impl = cache_->loadImpl();
+		const ImplType* impl = cache_->current.load(std::memory_order_acquire);
 		return (*impl)(std::forward<Args>(args)...);
 	}
 };
