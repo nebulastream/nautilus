@@ -166,6 +166,53 @@ inline val<int32_t> pointerMultiStep(val<int32_t*> ptr) {
 	return *p3;
 }
 
+// gh-502: arithmetic on const / rvalue pointers must scale the offset by the element size and yield a pointer.
+inline val<int32_t> constPointerAddStatic(val<int32_t*> ptr) {
+	const val<int32_t*> base = ptr + 1;
+	val<int32_t> sum = 0;
+	for (static_val<uint64_t> i = 0; i < uint64_t {3}; i++) {
+		sum = sum + *(base + i);
+	}
+	return sum;
+}
+
+inline val<int32_t> constPointerAddInt(val<int32_t*> ptr) {
+	const val<int32_t*> base = ptr;
+	return *(base + uint64_t {2});
+}
+
+inline val<int32_t> constPointerSubInt(val<int32_t*> ptr) {
+	const val<int32_t*> base = ptr;
+	return *(base - uint64_t {2});
+}
+
+inline val<int32_t> rvaluePointerAdd(val<int32_t*> ptr) {
+	return *((ptr + 1) + 2);
+}
+
+inline val<int32_t> offsetPlusPointer(val<int32_t*> ptr) {
+	return *(2 + ptr);
+}
+
+inline val<int64_t> pointerDifference(val<int32_t*> begin, val<int32_t*> end) {
+	return end - begin;
+}
+
+inline val<int32_t> pointerPostIncrement(val<int32_t*> ptr) {
+	auto old = ptr++;
+	return *old * 10 + *ptr;
+}
+
+inline val<int32_t> pointerPostDecrement(val<int32_t*> ptr) {
+	auto old = ptr--;
+	--ptr;
+	return *old * 10 + *ptr;
+}
+
+inline val<int32_t> negativeIndex(val<int32_t*> ptr, val<int8_t> index) {
+	return ptr[index];
+}
+
 class BaseClass {};
 
 class CustomClass : public BaseClass {

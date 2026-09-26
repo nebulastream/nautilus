@@ -304,6 +304,53 @@ void pointerTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(&values[5]) == 9); // values[8] = 9
 	}
 
+	SECTION("constPointerAddStatic-gh_#502") {
+		auto f = engine.registerFunction(constPointerAddStatic);
+		REQUIRE(f(values) == 2 + 3 + 4);
+	}
+
+	SECTION("constPointerAddInt-gh_#502") {
+		auto f = engine.registerFunction(constPointerAddInt);
+		REQUIRE(f(values) == 3);
+	}
+
+	SECTION("constPointerSubInt-gh_#502") {
+		auto f = engine.registerFunction(constPointerSubInt);
+		REQUIRE(f(&values[3]) == 2);
+	}
+
+	SECTION("rvaluePointerAdd-gh_#502") {
+		auto f = engine.registerFunction(rvaluePointerAdd);
+		REQUIRE(f(values) == 4);
+	}
+
+	SECTION("offsetPlusPointer") {
+		auto f = engine.registerFunction(offsetPlusPointer);
+		REQUIRE(f(values) == 3);
+	}
+
+	SECTION("pointerDifference") {
+		auto f = engine.registerFunction(pointerDifference);
+		REQUIRE(f(values, &values[7]) == 7);
+		REQUIRE(f(&values[7], values) == -7);
+	}
+
+	SECTION("pointerPostIncrement") {
+		auto f = engine.registerFunction(pointerPostIncrement);
+		REQUIRE(f(values) == 12);
+	}
+
+	SECTION("pointerPostDecrement") {
+		auto f = engine.registerFunction(pointerPostDecrement);
+		REQUIRE(f(&values[4]) == 53);
+	}
+
+	SECTION("negativeIndex") {
+		auto f = engine.registerFunction(negativeIndex);
+		REQUIRE(f(&values[4], (int8_t) -2) == 3);
+		REQUIRE(f(&values[4], (int8_t) 3) == 8);
+	}
+
 	SECTION("storeMaxViaTernary-gh_#95") {
 		auto f = engine.registerFunction(storeMaxViaTernary);
 		int32_t a = 100;

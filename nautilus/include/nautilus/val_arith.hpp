@@ -411,35 +411,35 @@ DEFINE_ARITHMETIC_OPERATOR(^, bXOr, integral)
 
 // Compound assignment operators for arithmetic types
 template <typename LHS, typename RHS>
-    requires(is_arithmetic<LHS>)
+    requires(is_arithmetic<LHS> && requires(val<LHS>& l, RHS r) { l = l + r; })
 auto& operator+=(val<LHS>& left, RHS right) {
 	left = left + right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
-    requires(is_arithmetic<LHS>)
+    requires(is_arithmetic<LHS> && requires(val<LHS>& l, RHS r) { l = l - r; })
 auto& operator-=(val<LHS>& left, RHS right) {
 	left = left - right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
-    requires(is_arithmetic<LHS>)
+    requires(is_arithmetic<LHS> && requires(val<LHS>& l, RHS r) { l = l * r; })
 auto& operator*=(val<LHS>& left, RHS right) {
 	left = left * right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
-    requires(is_arithmetic<LHS>)
+    requires(is_arithmetic<LHS> && requires(val<LHS>& l, RHS r) { l = l / r; })
 auto& operator/=(val<LHS>& left, RHS right) {
 	left = left / right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
-    requires(is_integral<LHS>)
+    requires(is_integral<LHS> && requires(val<LHS>& l, RHS r) { l = l % r; })
 auto& operator%=(val<LHS>& left, RHS right) {
 	left = left % right;
 	return left;

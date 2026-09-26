@@ -20,6 +20,21 @@ struct X {
 	}
 };
 
+template <typename LHS, typename RHS>
+concept canMultiply = requires(LHS l, RHS r) { l * r; };
+
+template <typename LHS, typename RHS>
+concept canAdd = requires(LHS l, RHS r) { l + r; };
+
+template <typename LHS, typename RHS>
+concept canSubtract = requires(LHS l, RHS r) { l - r; };
+
+template <typename LHS, typename RHS>
+concept canCompare = requires(LHS l, RHS r) { l == r; };
+
+template <typename LHS, typename RHS>
+concept canIndex = requires(LHS l, RHS r) { l[r]; };
+
 TEST_CASE("Ptr Val Test") {
 	int values[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
 	SECTION("==") {
@@ -73,6 +88,98 @@ TEST_CASE("Ptr Val Test") {
 		REQUIRE(v2 == 2);
 		val<int> v3 = f1[2];
 		REQUIRE(v3 == 3);
+	}
+
+	SECTION("const and rvalue pointer arithmetic (gh-502)") {
+		const val<int*> base = val<int*>(values);
+		static_val<uint64_t> two = 2;
+		STATIC_REQUIRE(std::is_same_v<decltype(base + two), val<int*>>);
+		STATIC_REQUIRE(std::is_same_v<decltype(base + uint64_t {2}), val<int*>>);
+		STATIC_REQUIRE(std::is_same_v<decltype(base - uint64_t {2}), val<int*>>);
+		STATIC_REQUIRE(std::is_same_v<decltype((base + 1) + 1), val<int*>>);
+		REQUIRE(base + two == val<int*>(&values[2]));
+		REQUIRE(base + uint64_t {2} == val<int*>(&values[2]));
+		REQUIRE((base + 1) + 1 == val<int*>(&values[2]));
+		REQUIRE(val<int*>(&values[3]) - uint64_t {2} == val<int*>(&values[1]));
+	}
+
+	SECTION("pointer arithmetic follows the built-in pointer rules") {
+		val<int*> p = val<int*>(&values[4]);
+		const val<int*> cp = p;
+		static_val<uint64_t> two = 2;
+		STATIC_REQUIRE(std::is_same_v<decltype(2 + p), val<int*>>);
+		STATIC_REQUIRE(std::is_same_v<decltype(p - cp), val<std::ptrdiff_t>>);
+		STATIC_REQUIRE(std::is_same_v<decltype(p++), val<int*>>);
+		STATIC_REQUIRE(std::is_same_v<decltype(+p), val<int*>>);
+		REQUIRE(2 + p == val<int*>(&values[6]));
+		REQUIRE(two + cp == val<int*>(&values[6]));
+		REQUIRE(cp - two == val<int*>(&values[2]));
+		REQUIRE(val<int*>(&values[6]) - cp == 2);
+		REQUIRE(cp - val<int*>(&values[6]) == -2);
+		REQUIRE(val<const int*>(&values[6]) - cp == 2);
+		val<int> atTwo = cp[two];
+		val<int> atZero = *cp;
+		val<int> atMinusOne = cp[int8_t {-1}];
+		REQUIRE(atTwo == 7);
+		REQUIRE(atZero == 5);
+		REQUIRE(atMinusOne == 4);
+
+		auto q = p;
+		q += two;
+		REQUIRE(q == val<int*>(&values[6]));
+		q -= two;
+		REQUIRE(q == p);
+		REQUIRE(q++ == p);
+		REQUIRE(q == val<int*>(&values[5]));
+		REQUIRE(q-- == val<int*>(&values[5]));
+		REQUIRE(q == p);
+		REQUIRE(--q == val<int*>(&values[3]));
+	}
+
+	SECTION("operations built-in pointers reject are rejected (gh-502)") {
+		STATIC_REQUIRE(!is_fundamental_val<val<int*>>);
+		STATIC_REQUIRE(!is_integral_val<val<int*>>);
+		STATIC_REQUIRE(!canMultiply<val<int*>, int>);
+		STATIC_REQUIRE(!canAdd<val<int*>, val<int*>>);
+		STATIC_REQUIRE(!canAdd<val<int*>, double>);
+		STATIC_REQUIRE(!canAdd<val<int*>, val<double>>);
+		STATIC_REQUIRE(!canAdd<val<void*>, int>);
+		STATIC_REQUIRE(!canAdd<val<double>, val<int*>>);
+		STATIC_REQUIRE(!canSubtract<val<int*>, val<double*>>);
+		STATIC_REQUIRE(!canSubtract<val<int>, val<int*>>);
+		STATIC_REQUIRE(!canIndex<val<int*>, val<int*>>);
+		STATIC_REQUIRE(!canIndex<val<int*>, double>);
+	}
+
+	SECTION("pointers to compatible types compare via their composite pointer type") {
+		auto p = val<int*>(&values[1]);
+		auto cp = val<const int*>(&values[1]);
+		auto vp = val<void*>(&values[2]);
+		REQUIRE(p == cp);
+		REQUIRE(cp == p);
+		REQUIRE(p != vp);
+		REQUIRE(cp < val<const int*>(&values[2]));
+		REQUIRE(p <= cp);
+		REQUIRE(val<const int*>(&values[3]) > p);
+		STATIC_REQUIRE(!canCompare<val<int*>, val<double*>>);
+		STATIC_REQUIRE(!canCompare<val<int*>, val<int>>);
+	}
+
+	SECTION("conversions are implicit only where built-in pointer conversions are") {
+		STATIC_REQUIRE(std::is_convertible_v<val<int*>, val<void*>>);
+		STATIC_REQUIRE(std::is_convertible_v<val<int*>, val<const int*>>);
+		STATIC_REQUIRE(!std::is_convertible_v<val<const int*>, val<int*>>);
+		STATIC_REQUIRE(!std::is_convertible_v<val<void*>, val<int*>>);
+		STATIC_REQUIRE(!std::is_convertible_v<val<int*>, val<double*>>);
+		STATIC_REQUIRE(!std::is_convertible_v<val<int*>, val<uint64_t>>);
+		STATIC_REQUIRE(!std::is_convertible_v<val<void*>, val<uint64_t>>);
+		// ... but can still be requested explicitly.
+		STATIC_REQUIRE(std::is_constructible_v<val<int*>, val<void*>>);
+		STATIC_REQUIRE(std::is_constructible_v<val<double*>, val<int*>>);
+		STATIC_REQUIRE(std::is_constructible_v<val<uint64_t>, val<int*>>);
+		auto p = val<int*>(values);
+		REQUIRE(static_cast<val<int*>>(static_cast<val<void*>>(p)) == p);
+		REQUIRE(static_cast<val<uintptr_t>>(p) == reinterpret_cast<uintptr_t>(values));
 	}
 
 	SECTION("Uninit") {

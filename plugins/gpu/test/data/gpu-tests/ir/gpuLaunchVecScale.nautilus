@@ -18,19 +18,17 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 vecScale($1:ptr, $2:ptr, $3:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ui32):
 	$6 = call func_*#4() :ui32
-	$7 = $6 cast_to i32 :i32
-	$11 = 4 :ui64
-	$12 = $7 cast_to ui64 :ui64
-	$13 = $12 * $11 :ui64
-	$14 = $1 + $13 :ptr
-	$18 = load($14) :ui32
-	$19 = $18 * $3 :ui32
-	$20 = $6 cast_to i32 :i32
-	$24 = 4 :ui64
-	$25 = $20 cast_to ui64 :ui64
-	$26 = $25 * $24 :ui64
-	$27 = $2 + $26 :ptr
-	store($19, $27) :void
+	$10 = 4 :ui64
+	$11 = $6 cast_to ui64 :ui64
+	$12 = $11 * $10 :ui64
+	$13 = $1 + $12 :ptr
+	$17 = load($13) :ui32
+	$18 = $17 * $3 :ui32
+	$22 = 4 :ui64
+	$23 = $6 cast_to ui64 :ui64
+	$24 = $23 * $22 :ui64
+	$25 = $2 + $24 :ptr
+	store($18, $25) :void
 	return :void
 }
 } //nautilus

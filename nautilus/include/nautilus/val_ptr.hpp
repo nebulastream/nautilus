@@ -150,13 +150,40 @@ private:
 	friend val<ptrType>;
 };
 
+template <typename T>
+struct is_static_val_type : std::false_type {};
+
+template <typename T>
+struct is_static_val_type<static_val<T>> : std::true_type {};
+
+template <typename T>
+concept is_static_val = is_static_val_type<std::remove_cvref_t<T>>::value;
+
+template <typename T>
+struct is_integral_ref_val_type : std::false_type {};
+
+template <typename T>
+struct is_integral_ref_val_type<val<T&>> : std::bool_constant<std::is_integral_v<std::remove_cv_t<T>>> {};
+
+template <typename T>
+concept is_integral_ref_val = is_integral_ref_val_type<std::remove_cvref_t<T>>::value;
+
+/// Types a pointer can be offset by: like the built-in operators, only integral values.
+template <typename T>
+concept ptr_offset =
+    is_integral<T> || is_integral_val<std::remove_cvref_t<T>> || is_static_val<T> || is_integral_ref_val<T>;
+
+namespace details {
+template <is_ptr ValueType, is_integral_val IndexType>
+val<ValueType> ptrAdd(val<ValueType> left, IndexType offset);
+} // namespace details
+
 template <is_ptr ValuePtrType>
 class base_ptr_val : public val_base {
 public:
 	using ValType = std::remove_pointer_t<ValuePtrType>;
 	using raw_no_qualifiers = std::remove_cv_t<ValType>;
 	using raw_type = ValuePtrType;
-	using basic_type = std::remove_pointer_t<ValuePtrType>;
 	using pointer_type = ValuePtrType;
 
 #ifdef ENABLE_TRACING
@@ -187,9 +214,11 @@ public:
 
 	/// Conversion from pointer to arithmetic type (ptr→int, ptr→float).
 	/// Treats the pointer value as a uintptr_t and casts to the target type.
+	/// Explicit, like the reinterpret_cast it models: an implicit conversion would let pointers silently
+	/// take part in integer arithmetic and comparisons.
 	template <typename OtherType>
 	    requires(is_arithmetic<OtherType> && !std::is_same_v<OtherType, bool>)
-	operator val<OtherType>() const {
+	explicit operator val<OtherType>() const {
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
 			auto resultRef = tracing::traceUnaryOp(tracing::CAST, tracing::TypeResolver<OtherType>::to_type(), state);
@@ -240,8 +269,8 @@ protected:
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
 	friend val<bool> inline operator!=(val<ValueType> left, val<ValueType> right);
-	template <is_ptr ValueType, is_fundamental_val IndexType>
-	friend val<ValueType> inline operator+(val<ValueType> left, IndexType offset);
+	template <is_ptr ValueType, is_integral_val IndexType>
+	friend val<ValueType> inline details::ptrAdd(val<ValueType> left, IndexType offset);
 
 	friend details::RawValueResolver<ValuePtrType>;
 	friend val<ValType>;
@@ -309,7 +338,7 @@ public:
 		return *this;
 	}
 
-	val<ValType&> operator*()
+	val<ValType&> operator*() const
 	    requires is_arithmetic<ValType> || is_ptr<ValType>
 	{
 #ifdef ENABLE_TRACING
@@ -319,12 +348,11 @@ public:
 #endif
 	}
 
-	template <class T>
-	val<ValType&> operator[](T&& io)
+	template <ptr_offset IndexType>
+	val<ValType&> operator[](IndexType&& index) const
 	    requires is_arithmetic<ValType> || is_ptr<ValType>
 	{
-		auto indexOffset = static_cast<val<int32_t>>(io);
-		auto valuePtr = (*this) + indexOffset;
+		auto valuePtr = (*this) + std::forward<IndexType>(index);
 #ifdef ENABLE_TRACING
 		return val<ValType&>(valuePtr, this->state);
 #else
@@ -334,7 +362,7 @@ public:
 
 	template <typename OtherType>
 	    requires std::is_pointer_v<OtherType>
-	operator val<OtherType>() const {
+	explicit(!std::is_convertible_v<ValuePtrType, OtherType>) operator val<OtherType>() const {
 		// ptr cast
 #ifdef ENABLE_TRACING
 		return val<OtherType>((OtherType) this->value, this->state);
@@ -345,7 +373,7 @@ public:
 
 	template <typename OtherType>
 	    requires std::is_pointer_v<OtherType>
-	operator val<const OtherType>() const {
+	explicit(!std::is_convertible_v<ValuePtrType, OtherType>) operator val<const OtherType>() const {
 		// ptr cast
 #ifdef ENABLE_TRACING
 		return val<OtherType>((OtherType) this->value, this->state);
@@ -357,7 +385,7 @@ public:
 	/// Conversion from pointer to arithmetic type (ptr→int, ptr→float).
 	template <typename OtherType>
 	    requires(is_arithmetic<OtherType> && !std::is_same_v<OtherType, bool>)
-	operator val<OtherType>() const {
+	explicit operator val<OtherType>() const {
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
 			auto resultRef =
@@ -375,22 +403,41 @@ public:
 	// non-null and miscompiles at -O3. Use explicit `== nullptr` / `!= nullptr`, which
 	// stay symbolic `val<bool>` data values feeding a single condition branch.
 
-	template <typename IndexType>
-	    requires is_integral<IndexType> || is_fundamental_val<IndexType>
-	val<ValuePtrType>& operator+=(IndexType offset) {
-		*this = *this + offset;
+	template <ptr_offset IndexType>
+	val<ValuePtrType>& operator+=(IndexType&& offset) {
+		*this = *this + std::forward<IndexType>(offset);
 		return *this;
 	}
 
-	template <typename IndexType>
-	    requires is_integral<IndexType> || is_fundamental_val<IndexType>
-	val<ValuePtrType>& operator-=(IndexType offset) {
-		*this = *this - offset;
+	template <ptr_offset IndexType>
+	val<ValuePtrType>& operator-=(IndexType&& offset) {
+		*this = *this - std::forward<IndexType>(offset);
 		return *this;
 	}
 
 	val<ValuePtrType>& operator++() {
 		*this += static_cast<int32_t>(1);
+		return *this;
+	}
+
+	val<ValuePtrType>& operator--() {
+		*this -= static_cast<int32_t>(1);
+		return *this;
+	}
+
+	val<ValuePtrType> operator++(int) {
+		val<ValuePtrType> old = *this;
+		++*this;
+		return old;
+	}
+
+	val<ValuePtrType> operator--(int) {
+		val<ValuePtrType> old = *this;
+		--*this;
+		return old;
+	}
+
+	val<ValuePtrType> operator+() const {
 		return *this;
 	}
 };
@@ -419,9 +466,11 @@ public:
 		return *this;
 	}
 
+	/// Pointer casts are implicit only where the raw pointer conversion is (T* -> const T*, T* -> void*,
+	/// Derived* -> Base*); every other cast has to be spelled out, e.g. static_cast<val<U*>>(ptr).
 	template <typename OtherType>
 	    requires std::is_pointer_v<OtherType>
-	operator val<OtherType>() const {
+	explicit(!std::is_convertible_v<ValuePtrType, OtherType>) operator val<OtherType>() const {
 		// ptr cast
 #ifdef ENABLE_TRACING
 		return val<OtherType>((OtherType) this->value, this->state);
@@ -433,7 +482,7 @@ public:
 	/// Conversion from pointer to arithmetic type (ptr→int, ptr→float).
 	template <typename OtherType>
 	    requires(is_arithmetic<OtherType> && !std::is_same_v<OtherType, bool>)
-	operator val<OtherType>() const {
+	explicit operator val<OtherType>() const {
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
 			auto resultRef =
@@ -450,10 +499,16 @@ public:
 	// where the pointer is reassigned -- leaving an unchecked load that LLVM assumes
 	// non-null and miscompiles at -O3. Use explicit `== nullptr` / `!= nullptr`, which
 	// stay symbolic `val<bool>` data values feeding a single condition branch.
+
+	val<ValuePtrType> operator+() const {
+		return *this;
+	}
 };
 
-template <is_ptr ValueType, is_fundamental_val IndexType>
-val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
+namespace details {
+/// Core of all pointer arithmetic: advances `left` by `offset` elements.
+template <is_ptr ValueType, is_integral_val IndexType>
+val<ValueType> inline ptrAdd(val<ValueType> left, IndexType offset) {
 	auto offsetValue = make_value(offset);
 	auto size = ((size_t) (sizeof(typename std::remove_pointer_t<ValueType>)));
 	auto offsetBytes = offsetValue * size;
@@ -471,20 +526,60 @@ val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	return val<ValueType>(newPtr);
 }
 
-template <is_ptr ValueType, is_integral IndexType>
-val<ValueType> inline operator+(val<ValueType>& left, IndexType offset) {
-	return left + val<size_t>(offset);
+/// Integral offset as a traced value; mirrors the conversions the built-in pointer operators apply.
+template <typename IndexType>
+auto inline ptrOffsetValue(IndexType&& offset) {
+	using Index = std::remove_cvref_t<IndexType>;
+	if constexpr (is_static_val<Index>) {
+		return val<size_t>(static_cast<typename Index::raw_type>(offset));
+	} else if constexpr (is_integral_ref_val<Index>) {
+		return val<typename Index::baseType>(offset);
+	} else {
+		return val<size_t>(offset);
+	}
+}
+} // namespace details
+
+// Pointer arithmetic follows the built-in rules: ptr + n, n + ptr, ptr - n and ptr - ptr, with n integral
+// (including bool, integral vals and static_vals); arithmetic on void pointers is ill-formed.
+template <is_ptr ValueType, ptr_offset IndexType>
+    requires(!is_void_ptr<ValueType>)
+val<ValueType> inline operator+(const val<ValueType>& left, IndexType&& offset) {
+	if constexpr (is_integral_val<std::remove_cvref_t<IndexType>>) {
+		return details::ptrAdd(left, offset);
+	} else {
+		return details::ptrAdd(left, details::ptrOffsetValue(std::forward<IndexType>(offset)));
+	}
 }
 
-template <is_ptr ValueType, is_integral IndexType>
-val<ValueType> inline operator+(val<ValueType>& left, static_val<IndexType> offset) {
-	return left + static_cast<IndexType>(offset);
+template <is_ptr ValueType, ptr_offset IndexType>
+    requires(!is_void_ptr<ValueType>)
+val<ValueType> inline operator+(IndexType&& offset, const val<ValueType>& right) {
+	return right + std::forward<IndexType>(offset);
 }
 
-template <is_ptr ValueType, typename IndexType>
-    requires is_integral<IndexType> || is_fundamental_val<IndexType>
-val<ValueType> inline operator-(val<ValueType>& left, IndexType&& offset) {
-	return left + (0 - offset);
+template <is_ptr ValueType, ptr_offset IndexType>
+    requires(!is_void_ptr<ValueType>)
+val<ValueType> inline operator-(const val<ValueType>& left, IndexType&& offset) {
+	using Index = std::remove_cvref_t<IndexType>;
+	if constexpr (is_integral_val<Index>) {
+		return details::ptrAdd(left, 0 - offset);
+	} else if constexpr (is_static_val<Index>) {
+		return details::ptrAdd(left, details::ptrOffsetValue(0 - static_cast<typename Index::raw_type>(offset)));
+	} else if constexpr (is_integral_ref_val<Index>) {
+		return details::ptrAdd(left, 0 - val<typename Index::baseType>(offset));
+	} else {
+		return details::ptrAdd(left, details::ptrOffsetValue(0 - offset));
+	}
+}
+
+/// Pointer difference in elements; both operands must point to the same type (ignoring cv-qualifiers).
+template <is_ptr LeftType, is_ptr RightType>
+    requires(!is_void_ptr<LeftType> && std::is_same_v<std::remove_cv_t<std::remove_pointer_t<LeftType>>,
+                                                      std::remove_cv_t<std::remove_pointer_t<RightType>>>)
+val<std::ptrdiff_t> inline operator-(const val<LeftType>& left, const val<RightType>& right) {
+	auto byteDiff = static_cast<val<std::ptrdiff_t>>(left) - static_cast<val<std::ptrdiff_t>>(right);
+	return byteDiff / static_cast<std::ptrdiff_t>(sizeof(std::remove_pointer_t<LeftType>));
 }
 
 template <typename ValueType>
@@ -587,6 +682,34 @@ auto inline operator!=(std::nullptr_t, val<ValueType> right) {
 	auto nullVal = val<ValueType>(NULL);
 	return nullVal != right;
 }
+
+namespace details {
+/// Composite pointer type of two distinct pointer types that the built-in operators may compare
+/// (e.g. T* and const T*, T* and void*, Derived* and Base*).
+template <typename LeftType, typename RightType>
+using composite_ptr_t = decltype(true ? std::declval<LeftType>() : std::declval<RightType>());
+
+template <typename LeftType, typename RightType>
+concept comparable_ptrs = is_ptr<LeftType> && is_ptr<RightType> && !std::is_same_v<LeftType, RightType> &&
+                          requires { typename composite_ptr_t<LeftType, RightType>; };
+} // namespace details
+
+#define DEFINE_MIXED_PTR_COMPARISON(OP)                                                                                \
+	template <typename LeftType, typename RightType>                                                                   \
+	    requires details::comparable_ptrs<LeftType, RightType>                                                         \
+	val<bool> inline operator OP(const val<LeftType>& left, const val<RightType>& right) {                             \
+		using Composite = details::composite_ptr_t<LeftType, RightType>;                                               \
+		return static_cast<val<Composite>>(left) OP static_cast<val<Composite>>(right);                                \
+	}
+
+DEFINE_MIXED_PTR_COMPARISON(==)
+DEFINE_MIXED_PTR_COMPARISON(!=)
+DEFINE_MIXED_PTR_COMPARISON(<)
+DEFINE_MIXED_PTR_COMPARISON(<=)
+DEFINE_MIXED_PTR_COMPARISON(>)
+DEFINE_MIXED_PTR_COMPARISON(>=)
+
+#undef DEFINE_MIXED_PTR_COMPARISON
 
 template <>
 class val<bool&> : public val_base {

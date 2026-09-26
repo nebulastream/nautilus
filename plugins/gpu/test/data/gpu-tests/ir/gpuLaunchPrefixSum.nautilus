@@ -25,36 +25,34 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 	$9 = call func_*#6() :ui32
 	$10 = $8 + $9 :ui32
 	$11 = $10 < $3 :bool
-	if $11 ? Block_1($10, $2, $1) : Block_2() :void
+	if $11 ? Block_1($2, $10, $1) : Block_2() :void
 
-Block_1($10:ui32, $5:ptr, $4:ptr):
+Block_1($5:ptr, $10:ui32, $4:ptr):
 	$13 = 0 :ui32
 	$14 = 0 :ui32
-	br Block_5($13, $10, $5, $14, $4) :void
+	br Block_5($13, $5, $10, $14, $4) :void
 
-Block_5($13:ui32, $10:ui32, $5:ptr, $14:ui32, $4:ptr):
+Block_5($13:ui32, $5:ptr, $10:ui32, $14:ui32, $4:ptr):
 	$15 = $14 <= $10 :bool
-	if $15 ? Block_3($10, $5, $14, $4, $13) : Block_4($13, $10, $5) :void
+	if $15 ? Block_3($5, $10, $4, $14, $13) : Block_4($13, $5, $10) :void
 
-Block_3($10:ui32, $5:ptr, $14:ui32, $4:ptr, $13:ui32):
-	$17 = $14 cast_to i32 :i32
-	$21 = 4 :ui64
-	$22 = $17 cast_to ui64 :ui64
-	$23 = $22 * $21 :ui64
-	$24 = $4 + $23 :ptr
-	$27 = load($24) :ui32
-	$28 = $13 + $27 :ui32
-	$29 = 1 :ui32
-	$30 = $14 + $29 :ui32
-	br Block_5($28, $10, $5, $30, $4) :void
+Block_3($5:ptr, $10:ui32, $4:ptr, $14:ui32, $13:ui32):
+	$20 = 4 :ui64
+	$21 = $14 cast_to ui64 :ui64
+	$22 = $21 * $20 :ui64
+	$23 = $4 + $22 :ptr
+	$26 = load($23) :ui32
+	$27 = $13 + $26 :ui32
+	$28 = 1 :ui32
+	$29 = $14 + $28 :ui32
+	br Block_5($27, $5, $10, $29, $4) :void
 
-Block_4($13:ui32, $10:ui32, $5:ptr):
-	$38 = $10 cast_to i32 :i32
-	$42 = 4 :ui64
-	$43 = $38 cast_to ui64 :ui64
-	$44 = $43 * $42 :ui64
-	$45 = $5 + $44 :ptr
-	store($13, $45) :void
+Block_4($13:ui32, $5:ptr, $10:ui32):
+	$40 = 4 :ui64
+	$41 = $10 cast_to ui64 :ui64
+	$42 = $41 * $40 :ui64
+	$43 = $5 + $42 :ptr
+	store($13, $43) :void
 	br Block_6() :void
 
 Block_6():

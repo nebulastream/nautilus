@@ -24,30 +24,28 @@ B0($1:ptr,$2:ptr,$3:ui32)
 	ASSIGN	$4	$1	:ptr
 	ASSIGN	$5	$2	:ptr
 	CALL_WITH_EXCEPTION_HANDLING	$6	func_*()	:ui32
-	CAST	$7	$6	:i32
-	ASSIGN	$8	$4	:ptr
-	ASSIGN	$9	$7	:i32
-	ASSIGN	$10	$9	:i32
-	CONST	$11	4	:ui64
-	CAST	$12	$10	:ui64
-	MUL	$13	$12	$11	:ui64
-	ADD	$14	$8	$13	:ptr
+	ASSIGN	$7	$4	:ptr
+	ASSIGN	$8	$6	:ui32
+	ASSIGN	$9	$8	:ui32
+	CONST	$10	4	:ui64
+	CAST	$11	$9	:ui64
+	MUL	$12	$11	$10	:ui64
+	ADD	$13	$7	$12	:ptr
+	ASSIGN	$14	$13	:ptr
 	ASSIGN	$15	$14	:ptr
-	ASSIGN	$16	$15	:ptr
-	ASSIGN	$17	$3	:ui32
-	LOAD	$18	$16	:ui32
-	MUL	$19	$18	$17	:ui32
-	CAST	$20	$6	:i32
-	ASSIGN	$21	$5	:ptr
-	ASSIGN	$22	$20	:i32
-	ASSIGN	$23	$22	:i32
-	CONST	$24	4	:ui64
-	CAST	$25	$23	:ui64
-	MUL	$26	$25	$24	:ui64
-	ADD	$27	$21	$26	:ptr
-	ASSIGN	$28	$27	:ptr
-	ASSIGN	$29	$28	:ptr
-	ASSIGN	$30	$19	:ui32
-	STORE	$31	$29	$30	:void
+	ASSIGN	$16	$3	:ui32
+	LOAD	$17	$15	:ui32
+	MUL	$18	$17	$16	:ui32
+	ASSIGN	$19	$5	:ptr
+	ASSIGN	$20	$6	:ui32
+	ASSIGN	$21	$20	:ui32
+	CONST	$22	4	:ui64
+	CAST	$23	$21	:ui64
+	MUL	$24	$23	$22	:ui64
+	ADD	$25	$19	$24	:ptr
+	ASSIGN	$26	$25	:ptr
+	ASSIGN	$27	$26	:ptr
+	ASSIGN	$28	$18	:ui32
+	STORE	$29	$27	$28	:void
 	RETURN	$0	:void
 
