@@ -20,6 +20,12 @@ struct X {
 	}
 };
 
+template <typename LHS, typename RHS>
+concept canMultiply = requires(LHS l, RHS r) { l * r; };
+
+template <typename LHS, typename RHS>
+concept canAdd = requires(LHS l, RHS r) { l + r; };
+
 TEST_CASE("Ptr Val Test") {
 	int values[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
 	SECTION("==") {
@@ -73,6 +79,27 @@ TEST_CASE("Ptr Val Test") {
 		REQUIRE(v2 == 2);
 		val<int> v3 = f1[2];
 		REQUIRE(v3 == 3);
+	}
+
+	SECTION("const and rvalue pointer arithmetic (gh-502)") {
+		const val<int*> base = val<int*>(values);
+		static_val<uint64_t> two = 2;
+		STATIC_REQUIRE(std::is_same_v<decltype(base + two), val<int*>>);
+		STATIC_REQUIRE(std::is_same_v<decltype(base + uint64_t {2}), val<int*>>);
+		STATIC_REQUIRE(std::is_same_v<decltype(base - uint64_t {2}), val<int*>>);
+		STATIC_REQUIRE(std::is_same_v<decltype((base + 1) + 1), val<int*>>);
+		REQUIRE(base + two == val<int*>(&values[2]));
+		REQUIRE(base + uint64_t {2} == val<int*>(&values[2]));
+		REQUIRE((base + 1) + 1 == val<int*>(&values[2]));
+		REQUIRE(val<int*>(&values[3]) - uint64_t {2} == val<int*>(&values[1]));
+	}
+
+	SECTION("pointer vals are not fundamental vals (gh-502)") {
+		STATIC_REQUIRE(!is_fundamental_val<val<int*>>);
+		STATIC_REQUIRE(!is_fundamental_val<const val<int*>&>);
+		STATIC_REQUIRE(!is_fundamental_val<val<void*>>);
+		STATIC_REQUIRE(!canMultiply<val<int*>, int>);
+		STATIC_REQUIRE(!canAdd<val<int*>, val<int*>>);
 	}
 
 	SECTION("Uninit") {

@@ -166,6 +166,30 @@ inline val<int32_t> pointerMultiStep(val<int32_t*> ptr) {
 	return *p3;
 }
 
+// gh-502: arithmetic on const / rvalue pointers must scale the offset by the element size and yield a pointer.
+inline val<int32_t> constPointerAddStatic(val<int32_t*> ptr) {
+	const val<int32_t*> base = ptr + 1;
+	val<int32_t> sum = 0;
+	for (static_val<uint64_t> i = 0; i < uint64_t {3}; i++) {
+		sum = sum + *(base + i);
+	}
+	return sum;
+}
+
+inline val<int32_t> constPointerAddInt(val<int32_t*> ptr) {
+	const val<int32_t*> base = ptr;
+	return *(base + uint64_t {2});
+}
+
+inline val<int32_t> constPointerSubInt(val<int32_t*> ptr) {
+	const val<int32_t*> base = ptr;
+	return *(base - uint64_t {2});
+}
+
+inline val<int32_t> rvaluePointerAdd(val<int32_t*> ptr) {
+	return *((ptr + 1) + 2);
+}
+
 class BaseClass {};
 
 class CustomClass : public BaseClass {
