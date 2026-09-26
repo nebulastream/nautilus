@@ -14,6 +14,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 
 #ifdef ENABLE_TRACING
@@ -51,9 +52,11 @@ struct ModuleState {
  * via setExecutable(), all outstanding ModuleFunction handles automatically pick up
  * the new implementation on their next call — no re-fetching required.
  *
- * Thread-safety: operator() is safe to call concurrently with setExecutable().
- * The hot path (cached version matches) is lock-free — just an atomic load.
- * Re-resolution takes a shared lock, setExecutable takes an exclusive lock.
+ * Thread-safety: operator() is safe to call concurrently with setExecutable(), and a
+ * single handle may be shared by many threads. The hot path (cached version matches)
+ * does an atomic version load plus a copy of the published implementation under a
+ * short spin lock. Re-resolution takes a shared lock, setExecutable takes an
+ * exclusive lock.
  *
  * @tparam Signature Raw function signature, e.g. int32_t(int32_t, int32_t)
  */
@@ -65,11 +68,44 @@ class ModuleFunction<R(Args...)> {
 	using ValReturnType = std::conditional_t<std::is_void_v<R>, void, val<R>>;
 	using ValFuncType = std::function<ValReturnType(val<Args>...)>;
 	using ImplType = std::function<R(Args...)>;
+	using ImplPtr = std::shared_ptr<const ImplType>;
 
+	/// The resolved implementation is published as an immutable, reference-counted
+	/// functor. Callers copy the pointer before calling through it, so a concurrent
+	/// re-resolve on the same handle only swaps the pointer and never destroys a
+	/// functor (or the executable it captures) while another thread is still running
+	/// inside it (see issue #506). std::atomic<std::shared_ptr> is not available in
+	/// every supported standard library and the free std::atomic_load/store overloads
+	/// are deprecated, so the pointer is guarded by a spin lock whose critical section
+	/// is a single shared_ptr copy or swap.
 	struct Cache {
-		ImplType impl;
+		ImplPtr impl;
+		std::atomic_flag implLock;
 		std::atomic<uint64_t> version {~0ULL}; // force first resolve
 		std::mutex mutex;
+
+		void lockImpl() {
+			while (implLock.test_and_set(std::memory_order_acquire)) {
+				while (implLock.test(std::memory_order_relaxed)) {
+					std::this_thread::yield();
+				}
+			}
+		}
+
+		ImplPtr loadImpl() {
+			lockImpl();
+			ImplPtr result = impl;
+			implLock.clear(std::memory_order_release);
+			return result;
+		}
+
+		void storeImpl(ImplPtr newImpl) {
+			lockImpl();
+			impl.swap(newImpl);
+			implLock.clear(std::memory_order_release);
+			// newImpl now holds the previous functor and is released here, outside the
+			// lock. In-flight callers keep it alive through their own copies.
+		}
 	};
 
 	std::shared_ptr<details::ModuleState> state_;
@@ -83,9 +119,10 @@ class ModuleFunction<R(Args...)> {
 			return;
 		}
 		std::shared_lock<std::shared_mutex> lock(state_->mutex);
+		ImplPtr impl;
 		if (state_->executable) {
 			// Take our own reference to the executable so it outlives a concurrent
-			// swap: cache_->impl below captures it, keeping the executable (and its
+			// swap: the impl published below captures it, keeping the executable (and its
 			// JIT'd code) alive for as long as this cached impl is reachable, even
 			// after ModuleState::executable itself has moved on to a newer tier.
 			// The version check in operator() is unlocked and happens *before* the
@@ -103,31 +140,31 @@ class ModuleFunction<R(Args...)> {
 				// See NAUTILUS_NO_SANITIZE_FUNCTION in Executable.hpp: fptr is a JIT
 				// entry point with no UBSan type-hash prologue, so the indirect call
 				// through it must be exempted from -fsanitize=function.
-				cache_->impl = [executable, fptr](Args... args) NAUTILUS_NO_SANITIZE_FUNCTION -> R {
-					return fptr(std::forward<Args>(args)...);
-				};
+				impl = std::make_shared<const ImplType>(
+				    [executable, fptr](Args... args)
+				        NAUTILUS_NO_SANITIZE_FUNCTION -> R { return fptr(std::forward<Args>(args)...); });
 			} else {
 				auto invocable = std::make_shared<compiler::Executable::Invocable<R, Args...>>(
 				    executable->getInvocableMember<R, Args...>(name_));
-				cache_->impl = [executable, invocable](Args... args) -> R {
-					return (*invocable)(std::forward<Args>(args)...);
-				};
+				impl = std::make_shared<const ImplType>(
+				    [executable, invocable](Args... args) -> R { return (*invocable)(std::forward<Args>(args)...); });
 			}
 		} else {
 			try {
 				auto typedFunc = std::any_cast<ValFuncType>(state_->interpretedFunctions.at(name_));
-				cache_->impl = [typedFunc = std::move(typedFunc)](Args... args) -> R {
+				impl = std::make_shared<const ImplType>([typedFunc = std::move(typedFunc)](Args... args) -> R {
 					if constexpr (std::is_void_v<R>) {
 						typedFunc(make_value(args)...);
 					} else {
 						auto result = typedFunc(make_value(args)...);
 						return nautilus::details::RawValueResolver<R>::getRawValue(result);
 					}
-				};
+				});
 			} catch (const std::bad_any_cast&) {
 				throw std::runtime_error("ModuleFunction type mismatch for '" + name_ + "'");
 			}
 		}
+		cache_->storeImpl(std::move(impl));
 		cache_->version.store(state_->version.load(std::memory_order_relaxed), std::memory_order_release);
 	}
 
@@ -136,7 +173,7 @@ public:
 	    : state_(std::move(state)), name_(std::move(name)), cache_(std::make_shared<Cache>()) {
 	}
 
-	/// Each copy gets its own cache so concurrent callers never race on std::function internals.
+	/// Each copy gets its own cache, so copies resolve independently of one another.
 	ModuleFunction(const ModuleFunction& other)
 	    : state_(other.state_), name_(other.name_), cache_(std::make_shared<Cache>()) {
 	}
@@ -156,7 +193,10 @@ public:
 		if (cache_->version.load(std::memory_order_acquire) != state_->version.load(std::memory_order_acquire)) {
 			resolve();
 		}
-		return cache_->impl(std::forward<Args>(args)...);
+		// Hold our own reference for the duration of the call: another thread may
+		// re-resolve this handle and publish a new impl while we are still inside it.
+		ImplPtr impl = cache_->loadImpl();
+		return (*impl)(std::forward<Args>(args)...);
 	}
 };
 

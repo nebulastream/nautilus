@@ -472,6 +472,77 @@ TEST_CASE("Module Executable Freed While Callers In Flight Test") {
 	REQUIRE(errors.load() == 0);
 }
 
+// Regression test for issue #506: the #449 fix only protects callers while the cached
+// impl that captured the executable stays alive. Threads that share *one* handle share
+// its cache, and the first of them to re-resolve after a swap used to overwrite the
+// cached std::function in place: a data race with the other threads calling through it,
+// and, because that functor held the last reference to the old executable, a free of the
+// JIT'd code they were still executing.
+//
+// Readers here all call the same handle (no copies) and park inside compiledA's code. After
+// the swap, one more caller goes through that same handle, re-resolves it against exeB, and
+// parks too. Only then are all callers released and allowed to return into compiledA's code.
+TEST_CASE("Module Shared Handle Re-resolve While Callers In Flight Test") {
+	auto backend = getThreadSafeBackend();
+	if (backend.empty()) {
+		SKIP("No thread-safe compilation backend available");
+	}
+
+	moduleFreedTestLiveCallers.store(0, std::memory_order_relaxed);
+	moduleFreedTestRelease.store(false, std::memory_order_relaxed);
+
+	engine::Options options;
+	options.setOption("engine.backend", backend);
+	auto engine = engine::NautilusEngine(options);
+
+	auto compileKernelModule = [&] {
+		auto module = engine.createModule();
+		module.registerFunction<val<int32_t>(val<int32_t>)>("kernel", moduleFreedTestKernel);
+		return module.compile();
+	};
+
+	auto compiledA = compileKernelModule();
+	auto compiledB = compileKernelModule();
+	auto exeB = compiledB.releaseExecutable();
+
+	const auto fn = compiledA.getFunction<int32_t(int32_t)>("kernel");
+
+	constexpr int NUM_READER_THREADS = 4;
+	std::atomic<int> errors {0};
+
+	auto callShared = [&errors, &fn](int32_t x) {
+		if (fn(x) != x) {
+			errors.fetch_add(1, std::memory_order_relaxed);
+		}
+	};
+
+	std::vector<std::thread> callers;
+	callers.reserve(NUM_READER_THREADS + 1);
+	for (int t = 0; t < NUM_READER_THREADS; ++t) {
+		callers.emplace_back(callShared, t);
+	}
+	while (moduleFreedTestLiveCallers.load(std::memory_order_acquire) < NUM_READER_THREADS) {
+		std::this_thread::yield();
+	}
+
+	// compiledA's module state now points at exeB, so the shared handle's cached impl is
+	// the only thing still owning compiledA's executable.
+	compiledA.setExecutable(std::move(exeB));
+
+	// Re-resolve the shared handle while the readers are still parked in compiledA's code.
+	callers.emplace_back(callShared, NUM_READER_THREADS);
+	while (moduleFreedTestLiveCallers.load(std::memory_order_acquire) < NUM_READER_THREADS + 1) {
+		std::this_thread::yield();
+	}
+
+	moduleFreedTestRelease.store(true, std::memory_order_release);
+	for (auto& c : callers) {
+		c.join();
+	}
+
+	REQUIRE(errors.load() == 0);
+}
+
 TEST_CASE("Module Concurrent Readers Test") {
 	auto backend = getThreadSafeBackend();
 	if (backend.empty()) {
