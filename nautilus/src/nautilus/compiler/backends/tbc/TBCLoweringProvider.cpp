@@ -738,7 +738,7 @@ private:
 		const auto result = getResultRegister(opt, frame);
 		frame.setValue(opt->getIdentifier(), result);
 
-		const auto srcType = opt->getInput()->getStamp();
+		auto srcType = opt->getInput()->getStamp();
 		const auto dstType = opt->getStamp();
 		// Identity casts (two C++ types mapping to the same nautilus Type,
 		// e.g. size_t and uint64_t on macOS) and ui64 <-> ptr are register
@@ -746,6 +746,21 @@ private:
 		if (srcType == dstType || (srcType == Type::ui64 && dstType == Type::ptr)) {
 			emit(block, Op::MOV, result, input);
 			return;
+		}
+		// A cast to bool is `input != 0`. The zero slot's raw bits are also
+		// 0.0 for f32/f64, and pointers compare as i64 (as in visitCompare).
+		if (dstType == Type::b) {
+			const int cmpIdx = numTypeIndex(srcType == Type::ptr ? Type::i64 : srcType);
+			if (cmpIdx < 0) {
+				throw NotImplementedException("tbc: unsupported cast");
+			}
+			const auto notEqual = static_cast<Op>(opIndex(Op::EQ_i8) + static_cast<int>(ir::CompareOperation::NE) * 10);
+			emit(block, typedOp(notEqual, cmpIdx, "cast"), result, input, constSlot(0));
+			return;
+		}
+		// Bool slots are normalized to 0/1, so a cast from bool converts like ui8.
+		if (srcType == Type::b) {
+			srcType = Type::ui8;
 		}
 		const int srcIdx = numTypeIndex(srcType == Type::ptr ? Type::ui64 : srcType);
 		const int dstIdx = numTypeIndex(dstType == Type::ptr ? Type::ui64 : dstType);
