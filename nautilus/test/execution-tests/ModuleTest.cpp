@@ -543,6 +543,58 @@ TEST_CASE("Module Shared Handle Re-resolve While Callers In Flight Test") {
 	REQUIRE(errors.load() == 0);
 }
 
+// A handle keeps every executable it has resolved against alive (see #506), but only
+// once per distinct executable: swapping the same executables in and out repeatedly must
+// not grow its cache. Each retained implementation holds a shared_ptr to its executable,
+// so use_count() observes exactly how many implementations still reference it.
+TEST_CASE("Module Function Retention Bounded Across Repeated Swaps Test") {
+	auto backend = getAnyBackend();
+	if (backend.empty()) {
+		SKIP("No compilation backend available");
+	}
+
+	engine::Options interpOptions;
+	interpOptions.setOption("engine.Compilation", false);
+	auto interpEngine = engine::NautilusEngine(interpOptions);
+	auto module = interpEngine.createModule();
+	module.registerFunction("add_one", addOne);
+	auto compiled = module.compile();
+
+	engine::Options compileOptions;
+	compileOptions.setOption("engine.backend", backend);
+	auto compileEngine = engine::NautilusEngine(compileOptions);
+	auto compileAddOne = [&] {
+		auto donorModule = compileEngine.createModule();
+		donorModule.registerFunction("add_one", addOne);
+		return donorModule.compile().releaseExecutable();
+	};
+	auto exeA = compileAddOne();
+	auto exeB = compileAddOne();
+	REQUIRE(exeA.use_count() == 1);
+	REQUIRE(exeB.use_count() == 1);
+
+	constexpr int SWAP_ITERATIONS = 100;
+	{
+		auto fn = compiled.getFunction<int32_t(int32_t)>("add_one");
+		for (int i = 0; i < SWAP_ITERATIONS; ++i) {
+			compiled.setExecutable(exeA);
+			REQUIRE(fn(i) == i + 1);
+			compiled.setExecutable(exeB);
+			REQUIRE(fn(i) == i + 1);
+			compiled.releaseExecutable();
+			REQUIRE(fn(i) == i + 1);
+		}
+
+		// One retained implementation per executable, however many swaps the handle saw.
+		REQUIRE(exeA.use_count() == 2);
+		REQUIRE(exeB.use_count() == 2);
+	}
+
+	// Destroying the handle releases everything it retained.
+	REQUIRE(exeA.use_count() == 1);
+	REQUIRE(exeB.use_count() == 1);
+}
+
 TEST_CASE("Module Concurrent Readers Test") {
 	auto backend = getThreadSafeBackend();
 	if (backend.empty()) {
