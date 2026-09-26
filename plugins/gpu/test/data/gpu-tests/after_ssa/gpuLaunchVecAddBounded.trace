@@ -22,27 +22,24 @@ B0($1:ptr,$2:ptr,$3:ptr,$4:ui32)
 	CALL_WITH_EXCEPTION_HANDLING	$11	func_*()	:ui32
 	ADD	$12	$10	$11	:ui32
 	LT	$13	$12	$4	:bool
-	CMP	$14	$13	B1($12,$1,$2,$3)	B2()	:void
-B1($12:ui32,$5:ptr,$6:ptr,$7:ptr)
-	CAST	$15	$12	:i32
-	CONST	$19	4	:ui64
-	CAST	$20	$15	:ui64
-	MUL	$21	$20	$19	:ui64
-	ADD	$22	$5	$21	:ptr
-	CAST	$25	$12	:i32
-	CONST	$29	4	:ui64
-	CAST	$30	$25	:ui64
-	MUL	$31	$30	$29	:ui64
-	ADD	$32	$6	$31	:ptr
-	LOAD	$35	$22	:ui32
-	LOAD	$36	$32	:ui32
-	ADD	$37	$35	$36	:ui32
-	CAST	$38	$12	:i32
-	CONST	$42	4	:ui64
-	CAST	$43	$38	:ui64
-	MUL	$44	$43	$42	:ui64
-	ADD	$45	$7	$44	:ptr
-	STORE	$49	$45	$37	:void
+	CMP	$14	$13	B1($1,$12,$2,$3)	B2()	:void
+B1($5:ptr,$12:ui32,$6:ptr,$7:ptr)
+	CONST	$18	4	:ui64
+	CAST	$19	$12	:ui64
+	MUL	$20	$19	$18	:ui64
+	ADD	$21	$5	$20	:ptr
+	CONST	$27	4	:ui64
+	CAST	$28	$12	:ui64
+	MUL	$29	$28	$27	:ui64
+	ADD	$30	$6	$29	:ptr
+	LOAD	$33	$21	:ui32
+	LOAD	$34	$30	:ui32
+	ADD	$35	$33	$34	:ui32
+	CONST	$39	4	:ui64
+	CAST	$40	$12	:ui64
+	MUL	$41	$40	$39	:ui64
+	ADD	$42	$7	$41	:ptr
+	STORE	$46	$42	$35	:void
 	JMP	$0	B3()	:void
 B2()
 	JMP	$0	B3()	:void
