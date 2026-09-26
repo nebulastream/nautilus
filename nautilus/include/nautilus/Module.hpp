@@ -15,6 +15,7 @@
 #include <shared_mutex>
 #include <stdexcept>
 #include <unordered_map>
+#include <vector>
 
 #ifdef ENABLE_TRACING
 #include "nautilus/CompilableFunction.hpp"
@@ -51,9 +52,17 @@ struct ModuleState {
  * via setExecutable(), all outstanding ModuleFunction handles automatically pick up
  * the new implementation on their next call — no re-fetching required.
  *
- * Thread-safety: operator() is safe to call concurrently with setExecutable().
- * The hot path (cached version matches) is lock-free — just an atomic load.
- * Re-resolution takes a shared lock, setExecutable takes an exclusive lock.
+ * Thread-safety: operator() is safe to call concurrently with setExecutable(), and a
+ * single handle may be shared by many threads. The hot path (cached version matches)
+ * is lock-free: two atomic loads. Re-resolution takes a shared lock, setExecutable
+ * takes an exclusive lock.
+ *
+ * Lifetime: a handle keeps every executable it has resolved against alive until the
+ * handle (and, for a copy, that copy) is destroyed, not just while a call is running.
+ * Swapping in a new executable therefore does not free the old one's JIT'd code
+ * while any handle that has called into it still exists. Retention is bounded by
+ * the number of distinct executables the handle has seen: swapping the same
+ * executables back and forth adds nothing.
  *
  * @tparam Signature Raw function signature, e.g. int32_t(int32_t, int32_t)
  */
@@ -66,10 +75,34 @@ class ModuleFunction<R(Args...)> {
 	using ValFuncType = std::function<ValReturnType(val<Args>...)>;
 	using ImplType = std::function<R(Args...)>;
 
+	/// One resolved implementation, keyed by the executable it dispatches into
+	/// (null for interpreted mode). The functor captures a shared_ptr to that
+	/// executable, so the key's address cannot be reused by another executable
+	/// while the entry exists.
+	struct Entry {
+		const compiler::Executable* executable;
+		std::unique_ptr<const ImplType> impl;
+	};
+
+	/// Every resolved implementation is immutable once published, and superseded
+	/// implementations are retired rather than destroyed: they stay alive, together
+	/// with the executable they capture, until the cache itself is destroyed. A
+	/// thread that shares this handle and is still running inside an older
+	/// implementation when another thread re-resolves after a swap therefore never
+	/// has that functor or its JIT'd code freed under it (see issue #506). This keeps
+	/// the hot path free of locks and reference counting: a version check plus one
+	/// acquire load of the current implementation.
+	///
+	/// Re-resolving against an executable this cache has already seen reuses its
+	/// entry, so the cache holds at most one entry per distinct executable (plus one
+	/// for interpreted mode), however often the module swaps back and forth. The
+	/// cost is that every executable this handle has resolved against lives as long
+	/// as the handle does, even after the module has moved on to a newer one.
 	struct Cache {
-		ImplType impl;
+		std::atomic<const ImplType*> current {nullptr};
 		std::atomic<uint64_t> version {~0ULL}; // force first resolve
 		std::mutex mutex;
+		std::vector<Entry> entries; // guarded by mutex
 	};
 
 	std::shared_ptr<details::ModuleState> state_;
@@ -83,9 +116,31 @@ class ModuleFunction<R(Args...)> {
 			return;
 		}
 		std::shared_lock<std::shared_mutex> lock(state_->mutex);
+		const compiler::Executable* key = state_->executable.get();
+		const ImplType* reused = nullptr;
+		for (const auto& entry : cache_->entries) {
+			if (entry.executable == key) {
+				reused = entry.impl.get();
+				break;
+			}
+		}
+		if (reused != nullptr) {
+			cache_->current.store(reused, std::memory_order_release);
+		} else {
+			cache_->entries.push_back({key, makeImpl()});
+			cache_->current.store(cache_->entries.back().impl.get(), std::memory_order_release);
+		}
+		cache_->version.store(state_->version.load(std::memory_order_relaxed), std::memory_order_release);
+	}
+
+	/// Builds the implementation for the module's current executable (or its
+	/// interpreted function). Caller holds cache_->mutex and a shared lock on
+	/// state_->mutex.
+	std::unique_ptr<const ImplType> makeImpl() const {
+		std::unique_ptr<const ImplType> impl;
 		if (state_->executable) {
 			// Take our own reference to the executable so it outlives a concurrent
-			// swap: cache_->impl below captures it, keeping the executable (and its
+			// swap: the impl published below captures it, keeping the executable (and its
 			// JIT'd code) alive for as long as this cached impl is reachable, even
 			// after ModuleState::executable itself has moved on to a newer tier.
 			// The version check in operator() is unlocked and happens *before* the
@@ -103,32 +158,31 @@ class ModuleFunction<R(Args...)> {
 				// See NAUTILUS_NO_SANITIZE_FUNCTION in Executable.hpp: fptr is a JIT
 				// entry point with no UBSan type-hash prologue, so the indirect call
 				// through it must be exempted from -fsanitize=function.
-				cache_->impl = [executable, fptr](Args... args) NAUTILUS_NO_SANITIZE_FUNCTION -> R {
-					return fptr(std::forward<Args>(args)...);
-				};
+				impl = std::make_unique<const ImplType>(
+				    [executable, fptr](Args... args)
+				        NAUTILUS_NO_SANITIZE_FUNCTION -> R { return fptr(std::forward<Args>(args)...); });
 			} else {
 				auto invocable = std::make_shared<compiler::Executable::Invocable<R, Args...>>(
 				    executable->getInvocableMember<R, Args...>(name_));
-				cache_->impl = [executable, invocable](Args... args) -> R {
-					return (*invocable)(std::forward<Args>(args)...);
-				};
+				impl = std::make_unique<const ImplType>(
+				    [executable, invocable](Args... args) -> R { return (*invocable)(std::forward<Args>(args)...); });
 			}
 		} else {
 			try {
 				auto typedFunc = std::any_cast<ValFuncType>(state_->interpretedFunctions.at(name_));
-				cache_->impl = [typedFunc = std::move(typedFunc)](Args... args) -> R {
+				impl = std::make_unique<const ImplType>([typedFunc = std::move(typedFunc)](Args... args) -> R {
 					if constexpr (std::is_void_v<R>) {
 						typedFunc(make_value(args)...);
 					} else {
 						auto result = typedFunc(make_value(args)...);
 						return nautilus::details::RawValueResolver<R>::getRawValue(result);
 					}
-				};
+				});
 			} catch (const std::bad_any_cast&) {
 				throw std::runtime_error("ModuleFunction type mismatch for '" + name_ + "'");
 			}
 		}
-		cache_->version.store(state_->version.load(std::memory_order_relaxed), std::memory_order_release);
+		return impl;
 	}
 
 public:
@@ -136,7 +190,7 @@ public:
 	    : state_(std::move(state)), name_(std::move(name)), cache_(std::make_shared<Cache>()) {
 	}
 
-	/// Each copy gets its own cache so concurrent callers never race on std::function internals.
+	/// Each copy gets its own cache, so copies resolve independently of one another.
 	ModuleFunction(const ModuleFunction& other)
 	    : state_(other.state_), name_(other.name_), cache_(std::make_shared<Cache>()) {
 	}
@@ -156,7 +210,8 @@ public:
 		if (cache_->version.load(std::memory_order_acquire) != state_->version.load(std::memory_order_acquire)) {
 			resolve();
 		}
-		return cache_->impl(std::forward<Args>(args)...);
+		const ImplType* impl = cache_->current.load(std::memory_order_acquire);
+		return (*impl)(std::forward<Args>(args)...);
 	}
 };
 
@@ -223,6 +278,11 @@ public:
 	 *
 	 * Thread-safe: can be called while ModuleFunction handles are invoked from other threads.
 	 *
+	 * The previous executable is not necessarily freed by this call: every
+	 * ModuleFunction handle that has resolved against it keeps it alive until that
+	 * handle is destroyed (see the ModuleFunction lifetime notes). Destroy or
+	 * replace such handles to reclaim its memory.
+	 *
 	 * @param executable The new executable (or nullptr for interpreted mode). Accepts a
 	 * unique_ptr (implicitly converted, e.g. from a fresh compile) or a shared_ptr
 	 * (e.g. one previously obtained from releaseExecutable()).
@@ -257,10 +317,10 @@ public:
 	 * @brief Release this module's reference to the underlying executable.
 	 * Reverts this module to interpreted mode and returns the executable.
 	 *
-	 * Returns a shared_ptr rather than a unique_ptr: a ModuleFunction handle that
+	 * Returns a shared_ptr rather than a unique_ptr: every ModuleFunction handle that
 	 * resolved against this executable while it was active holds its own reference
-	 * (see ModuleFunction::resolve()) and may still be using it, so this call cannot
-	 * promise exclusive ownership of the result.
+	 * until the handle is destroyed (see the ModuleFunction lifetime notes), so this
+	 * call cannot promise exclusive ownership of the result.
 	 */
 	std::shared_ptr<compiler::Executable> releaseExecutable() {
 		std::unique_lock<std::shared_mutex> lock(state_->mutex);

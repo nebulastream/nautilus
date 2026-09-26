@@ -472,6 +472,129 @@ TEST_CASE("Module Executable Freed While Callers In Flight Test") {
 	REQUIRE(errors.load() == 0);
 }
 
+// Regression test for issue #506: the #449 fix only protects callers while the cached
+// impl that captured the executable stays alive. Threads that share *one* handle share
+// its cache, and the first of them to re-resolve after a swap used to overwrite the
+// cached std::function in place: a data race with the other threads calling through it,
+// and, because that functor held the last reference to the old executable, a free of the
+// JIT'd code they were still executing.
+//
+// Readers here all call the same handle (no copies) and park inside compiledA's code. After
+// the swap, one more caller goes through that same handle, re-resolves it against exeB, and
+// parks too. Only then are all callers released and allowed to return into compiledA's code.
+TEST_CASE("Module Shared Handle Re-resolve While Callers In Flight Test") {
+	auto backend = getThreadSafeBackend();
+	if (backend.empty()) {
+		SKIP("No thread-safe compilation backend available");
+	}
+
+	moduleFreedTestLiveCallers.store(0, std::memory_order_relaxed);
+	moduleFreedTestRelease.store(false, std::memory_order_relaxed);
+
+	engine::Options options;
+	options.setOption("engine.backend", backend);
+	auto engine = engine::NautilusEngine(options);
+
+	auto compileKernelModule = [&] {
+		auto module = engine.createModule();
+		module.registerFunction<val<int32_t>(val<int32_t>)>("kernel", moduleFreedTestKernel);
+		return module.compile();
+	};
+
+	auto compiledA = compileKernelModule();
+	auto compiledB = compileKernelModule();
+	auto exeB = compiledB.releaseExecutable();
+
+	const auto fn = compiledA.getFunction<int32_t(int32_t)>("kernel");
+
+	constexpr int NUM_READER_THREADS = 4;
+	std::atomic<int> errors {0};
+
+	auto callShared = [&errors, &fn](int32_t x) {
+		if (fn(x) != x) {
+			errors.fetch_add(1, std::memory_order_relaxed);
+		}
+	};
+
+	std::vector<std::thread> callers;
+	callers.reserve(NUM_READER_THREADS + 1);
+	for (int t = 0; t < NUM_READER_THREADS; ++t) {
+		callers.emplace_back(callShared, t);
+	}
+	while (moduleFreedTestLiveCallers.load(std::memory_order_acquire) < NUM_READER_THREADS) {
+		std::this_thread::yield();
+	}
+
+	// compiledA's module state now points at exeB, so the shared handle's cached impl is
+	// the only thing still owning compiledA's executable.
+	compiledA.setExecutable(std::move(exeB));
+
+	// Re-resolve the shared handle while the readers are still parked in compiledA's code.
+	callers.emplace_back(callShared, NUM_READER_THREADS);
+	while (moduleFreedTestLiveCallers.load(std::memory_order_acquire) < NUM_READER_THREADS + 1) {
+		std::this_thread::yield();
+	}
+
+	moduleFreedTestRelease.store(true, std::memory_order_release);
+	for (auto& c : callers) {
+		c.join();
+	}
+
+	REQUIRE(errors.load() == 0);
+}
+
+// A handle keeps every executable it has resolved against alive (see #506), but only
+// once per distinct executable: swapping the same executables in and out repeatedly must
+// not grow its cache. Each retained implementation holds a shared_ptr to its executable,
+// so use_count() observes exactly how many implementations still reference it.
+TEST_CASE("Module Function Retention Bounded Across Repeated Swaps Test") {
+	auto backend = getAnyBackend();
+	if (backend.empty()) {
+		SKIP("No compilation backend available");
+	}
+
+	engine::Options interpOptions;
+	interpOptions.setOption("engine.Compilation", false);
+	auto interpEngine = engine::NautilusEngine(interpOptions);
+	auto module = interpEngine.createModule();
+	module.registerFunction("add_one", addOne);
+	auto compiled = module.compile();
+
+	engine::Options compileOptions;
+	compileOptions.setOption("engine.backend", backend);
+	auto compileEngine = engine::NautilusEngine(compileOptions);
+	auto compileAddOne = [&] {
+		auto donorModule = compileEngine.createModule();
+		donorModule.registerFunction("add_one", addOne);
+		return donorModule.compile().releaseExecutable();
+	};
+	auto exeA = compileAddOne();
+	auto exeB = compileAddOne();
+	REQUIRE(exeA.use_count() == 1);
+	REQUIRE(exeB.use_count() == 1);
+
+	constexpr int SWAP_ITERATIONS = 100;
+	{
+		auto fn = compiled.getFunction<int32_t(int32_t)>("add_one");
+		for (int i = 0; i < SWAP_ITERATIONS; ++i) {
+			compiled.setExecutable(exeA);
+			REQUIRE(fn(i) == i + 1);
+			compiled.setExecutable(exeB);
+			REQUIRE(fn(i) == i + 1);
+			compiled.releaseExecutable();
+			REQUIRE(fn(i) == i + 1);
+		}
+
+		// One retained implementation per executable, however many swaps the handle saw.
+		REQUIRE(exeA.use_count() == 2);
+		REQUIRE(exeB.use_count() == 2);
+	}
+
+	// Destroying the handle releases everything it retained.
+	REQUIRE(exeA.use_count() == 1);
+	REQUIRE(exeB.use_count() == 1);
+}
+
 TEST_CASE("Module Concurrent Readers Test") {
 	auto backend = getThreadSafeBackend();
 	if (backend.empty()) {
