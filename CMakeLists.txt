@@ -26,6 +26,7 @@ endif ()
 cmake_dependent_option(ENABLE_FFI_CLOSURES "Use libffi static-trampoline closures for the interpreting backends (bc, tbc) instead of dyncall callbacks (iOS-safe: no runtime-generated executable memory)" OFF "ENABLE_BC_BACKEND OR ENABLE_TBC_BACKEND" OFF)
 cmake_dependent_option(ENABLE_TBC_JIT "Enable the copy-and-patch JIT execution mode of the tbc backend (tbc.mode=jit)" ON "ENABLE_TBC_BACKEND" OFF)
 cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" ON "ENABLE_TRACING" OFF)
+cmake_dependent_option(ENABLE_TAIL_MERGE_GUARD "Compile code that links nautilus with Clang tail merging disabled, so sibling calls with permuted val& arguments keep distinct call sites and are not merged by tracing (issue #487)" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_SHORT_CIRCUIT_BOOL "Trace val<bool> && / || with C++ short-circuit semantics (drops the operator overloads so the built-in operators route through val<bool>::operator bool())" OFF "ENABLE_TRACING" OFF)
 
 

@@ -156,6 +156,50 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	return true;
 }
 
+bool ExecutionTrace::divergesFromRecorded(const Snapshot& snapshot, Op op,
+                                          std::span<const TypedValueRef> inputs) const {
+	auto it = globalTagMap.find(snapshot);
+	if (it == globalTagMap.end()) {
+		return false;
+	}
+	auto& identifier = it->second;
+	if (identifier.blockIndex >= blocks.size() ||
+	    identifier.operationIndex >= blocks[identifier.blockIndex]->operations.size()) {
+		return false;
+	}
+	auto* recorded = blocks[identifier.blockIndex]->operations[identifier.operationIndex];
+	if (recorded->op != op) {
+		return false;
+	}
+	size_t index = 0;
+	auto matches = [&](const TypedValueRef& value) {
+		return index < inputs.size() && inputs[index++].ref == value.ref;
+	};
+	for (auto& input : recorded->input) {
+		if (auto* value = std::get_if<TypedValueRef>(&input)) {
+			if (!matches(*value)) {
+				return true;
+			}
+		} else if (auto* call = std::get_if<FunctionCall*>(&input)) {
+			for (auto& argument : (*call)->arguments) {
+				if (!matches(argument)) {
+					return true;
+				}
+			}
+		} else if (auto* indirectCall = std::get_if<IndirectFunctionCall*>(&input)) {
+			if (!matches((*indirectCall)->fnPtr)) {
+				return true;
+			}
+			for (auto& argument : (*indirectCall)->arguments) {
+				if (!matches(argument)) {
+					return true;
+				}
+			}
+		}
+	}
+	return index != inputs.size();
+}
+
 void ExecutionTrace::addJumpOperation(Snapshot& snapshot, uint32_t targetBlock) {
 	if (blocks.empty()) {
 		createBlock();

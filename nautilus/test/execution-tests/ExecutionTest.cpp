@@ -454,6 +454,38 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(buffer, 7u) == 0);
 	}
 
+	// Regression (issue #487): see issue487_swappedRoleSubtract in ControlFlowFunctions.hpp.
+	SECTION("issue487_swappedRoleSubtract") {
+		auto f = engine.registerFunction(issue487_swappedRoleSubtract);
+		REQUIRE(f(10, 3, false) == 7);
+		REQUIRE(f(10, 3, true) == -7);
+	}
+	SECTION("issue487_swappedRoleNestedLoop") {
+		int64_t left[4] = {3, 1, 2, 3};
+		int64_t right[4] = {3, 7, 8, 1};
+		auto f = engine.registerFunction(issue487_swappedRoleNestedLoop);
+		REQUIRE(f(left, right, false) == 1245);
+		REQUIRE(f(left, right, true) == 205);
+	}
+	SECTION("issue487_swappedCallSites") {
+		int64_t left[4] = {3, 1, 2, 3};
+		int64_t right[4] = {3, 7, 8, 1};
+		auto f = engine.registerFunction(issue487_swappedCallSites);
+		REQUIRE(f(left, right, false) == 1245);
+		REQUIRE(f(left, right, true) == 205);
+	}
+#ifdef ENABLE_TAIL_MERGE_GUARD
+	// Only correct while the host keeps the two call sites apart; see ENABLE_TAIL_MERGE_GUARD.
+	SECTION("issue487_sharedArgumentFirst") {
+		int64_t context[1] = {7};
+		int64_t left[2] = {1, 1};
+		int64_t right[2] = {1, 2};
+		auto f = engine.registerFunction(issue487_sharedArgumentFirst);
+		REQUIRE(f(context, left, right, false) == 7012);
+		REQUIRE(f(context, left, right, true) == 7021);
+	}
+#endif
+
 	SECTION("chainedIf100") {
 		auto f = engine.registerFunction(chainedIf100);
 		REQUIRE(f(42) == 42);

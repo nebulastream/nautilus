@@ -10,9 +10,11 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <fmt/format.h>
+#include <span>
 
 namespace fmt {
 template <>
@@ -55,6 +57,7 @@ void TraceContext::resume() {
 	} else {
 		activeDestructors.clear();
 	}
+	divergence_ = 0;
 	paused_ = false;
 }
 
@@ -110,6 +113,7 @@ bool TraceContext::isFollowing() {
 TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	auto consumedTag = currentOperation.tag;
+	divergence_ = consumedTag.getDivergence();
 	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
 	// traceConstant/traceCopy's globalTagMap-collision branch (see their
@@ -123,17 +127,28 @@ TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
 	// soon as it stepped over such a pair, corrupting every subsequent follow()
 	// in the block (this was the root cause of #384). Skip any run of
 	// same-tagged reconciliation operations here to keep the cursor aligned.
+	// The recording returned the ref the reconciliation ASSIGN writes, not the primary
+	// operation's own result, so return the same ref here: a replayed path otherwise keeps
+	// using the pre-reconciliation ref, which later assignments on this path never update.
+	auto* resultRef = &currentOperation.resultRef;
 	while (true) {
 		auto& block = state->executionTrace.getCurrentBlock();
 		if (state->executionTrace.currentOperationIndex >= block.operations.size()) {
 			break;
 		}
-		if (!(block.operations[state->executionTrace.currentOperationIndex]->tag == consumedTag)) {
+		auto* reconciliation = block.operations[state->executionTrace.currentOperationIndex];
+		if (!(reconciliation->tag == consumedTag)) {
 			break;
+		}
+		if (reconciliation->op == ASSIGN && !reconciliation->input.empty()) {
+			if (auto* source = std::get_if<TypedValueRef>(&reconciliation->input[0]);
+			    source != nullptr && source->ref == resultRef->ref) {
+				resultRef = &reconciliation->resultRef;
+			}
 		}
 		state->executionTrace.nextOperation();
 	}
-	return currentOperation.resultRef;
+	return *resultRef;
 }
 
 TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
@@ -159,14 +174,14 @@ TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& con
 }
 
 template <typename OnCreation>
-TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
+TypedValueRef& TraceContext::traceOperation(Op op, std::span<const TypedValueRef> inputs, OnCreation&& onCreation) {
 	if (paused_) {
 		return dummyRef_;
 	}
 	if (isFollowing()) {
 		return follow(op);
 	} else {
-		auto tag = recordSnapshot();
+		auto tag = separateDivergedPath(recordSnapshot(), op, inputs);
 		if (state->executionTrace.checkTag(tag)) {
 			return onCreation(tag);
 		} else {
@@ -180,7 +195,7 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 TypedValueRef& TraceContext::traceAlloca(size_t size, size_t align) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
-	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, std::span<const TypedValueRef> {}, [&, size, align](Snapshot& tag) -> TypedValueRef& {
 		auto index = state->executionTrace.addAllocaSpec(size, align);
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
 	});
@@ -236,7 +251,7 @@ TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
 	// the same name as the same call traced outside one.
 	auto functionName = session_->normalizedFunctionName(fptn);
 	auto op = Op::CALL;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, arguments, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = std::move(functionName),
 		                                                                        .mangledName = {},
@@ -256,7 +271,7 @@ TypedValueRef& TraceContext::traceCallWithExceptionHandling(void* fptn, Type res
 	}
 	auto functionName = session_->normalizedFunctionName(fptn);
 	auto op = Op::CALL_WITH_EXCEPTION_HANDLING;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, arguments, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = std::move(functionName),
 		                                                                        .mangledName = {},
@@ -276,7 +291,7 @@ TypedValueRef& TraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Ty
 		return dummyRef_;
 	}
 	auto op = Op::INDIRECT_CALL;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, withFnPtr(fnPtrRef, arguments), [&](Snapshot& tag) -> TypedValueRef& {
 		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
 		    IndirectFunctionCall {.fnPtr = fnPtrRef,
 		                          .captureFunc = captureFunc,
@@ -295,7 +310,7 @@ TraceContext::traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrR
 		return dummyRef_;
 	}
 	auto op = Op::INDIRECT_CALL_WITH_EXCEPTION_HANDLING;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, withFnPtr(fnPtrRef, arguments), [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments = state->executionTrace.getArena().create<IndirectFunctionCall>(
 		    IndirectFunctionCall {.fnPtr = fnPtrRef,
 		                          .captureFunc = captureFunc,
@@ -350,7 +365,7 @@ TypedValueRef& TraceContext::traceNautilusCall(const NautilusFunctionDefinition*
 	bool newlyRegistered = false;
 	const auto& functionName = registerNautilusFunction(definition, fwrapper, newlyRegistered);
 	auto op = Op::CALL;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, arguments, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,
@@ -373,7 +388,7 @@ TypedValueRef& TraceContext::traceNautilusCallWithExceptionHandling(
 	bool newlyRegistered = false;
 	const auto& functionName = registerNautilusFunction(definition, fwrapper, newlyRegistered);
 	auto op = Op::CALL_WITH_EXCEPTION_HANDLING;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, arguments, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,
@@ -396,7 +411,7 @@ TypedValueRef& TraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefi
 	const auto& functionName = registerNautilusFunction(definition, std::move(fwrapper), newlyRegistered);
 	auto op = Op::FUNC_ADDR;
 	auto resultType = Type::ptr;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, std::span<const TypedValueRef> {}, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,
@@ -434,13 +449,24 @@ void TraceContext::traceAssignment(const TypedValueRef& target, const TypedValue
 	// everything traced afterwards (issue #382). This mirrors how traceCopy
 	// already reconciles instead of merging when a repeated call site's
 	// *source* legitimately differs (issue #95/#384).
-	if (auto it = trace.globalTagMap.find(tag); it != trace.globalTagMap.end()) {
-		auto& existing = it->second;
-		auto* existingOp = trace.getBlocks()[existing.blockIndex]->operations[existing.operationIndex];
-		if (existingOp->op != ASSIGN || existingOp->resultRef.ref != target.ref) {
-			trace.addAssignmentOperation(tag, target, source, resultType);
-			return;
+	auto assignsOtherTarget = [&](const Snapshot& snapshot) {
+		auto it = trace.globalTagMap.find(snapshot);
+		if (it == trace.globalTagMap.end()) {
+			return false;
 		}
+		auto* existingOp = trace.getBlocks()[it->second.blockIndex]->operations[it->second.operationIndex];
+		return existingOp->op != ASSIGN || existingOp->resultRef.ref != target.ref;
+	};
+	if (assignsOtherTarget(tag)) {
+		trace.addAssignmentOperation(tag, target, source, resultType);
+		return;
+	}
+	// Same target, but a different source: the paths bind different values here, so this
+	// is not a control-flow merge either (issue #487).
+	tag = separateDivergedPath(tag, ASSIGN, std::span(&source, 1));
+	if (assignsOtherTarget(tag)) {
+		trace.addAssignmentOperation(tag, target, source, resultType);
+		return;
 	}
 	if (!trace.checkTag(tag)) {
 		paused_ = true;
@@ -471,7 +497,7 @@ TypedValueRef& TraceContext::traceBinaryOp(Op op, Type resultType, const TypedVa
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, std::array {left, right}, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
 	});
 }
@@ -480,7 +506,7 @@ TypedValueRef& TraceContext::traceUnaryOp(Op op, Type resultType, const TypedVal
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, std::span(&input, 1), [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
 	});
 }
@@ -490,7 +516,7 @@ TypedValueRef& TraceContext::traceTernaryOp(Op op, Type resultType, const TypedV
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, std::array {first, second, third}, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {first, second, third});
 	});
 }
@@ -510,7 +536,7 @@ bool TraceContext::traceBool(const TypedValueRef& value, const double probabilit
 		shouldTerminate = recordResult.shouldTerminate;
 	} else {
 		// record
-		auto tag = recordSnapshot();
+		auto tag = separateDivergedPath(recordSnapshot(), CMP, std::span(&value, 1));
 		if (state->executionTrace.checkTag(tag)) {
 			state->executionTrace.addCmpOperation(tag, value, probability);
 			auto recordResult = state->symbolicExecutionContext.record(tag);
@@ -531,6 +557,7 @@ bool TraceContext::traceBool(const TypedValueRef& value, const double probabilit
 
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	assert(currentOperation.op == CMP);
+	divergence_ = currentOperation.tag.getDivergence();
 
 	uint32_t nextBlock;
 	if (result) {
@@ -595,6 +622,7 @@ void TraceContext::initRegionScope(TraceContext& parent, uint32_t entry, uint32_
 	paused_ = false;
 	staticVars.clear();
 	aliveVars.reset();
+	divergence_ = 0;
 	auto& region = regionState();
 	region.exitBlock = exit;
 	region.attributes = attributes;
@@ -915,6 +943,25 @@ std::string TraceContext::formatStaticVars() const {
 	return result;
 }
 
+Snapshot TraceContext::separateDivergedPath(Snapshot snapshot, Op op, std::span<const TypedValueRef> inputs) {
+	while (state->executionTrace.divergesFromRecorded(snapshot, op, inputs)) {
+		// Derived from the colliding snapshot, so replaying the same path always lands in the
+		// same namespace; `| 1` keeps it distinct from the initial namespace 0.
+		divergence_ = (std::hash<Snapshot>()(snapshot) ^ (divergence_ * 0x9e3779b97f4a7c15)) | 1;
+		snapshot = snapshot.withDivergence(divergence_);
+	}
+	return snapshot;
+}
+
+std::vector<TypedValueRef> TraceContext::withFnPtr(const TypedValueRef& fnPtr,
+                                                   const std::vector<TypedValueRef>& arguments) {
+	std::vector<TypedValueRef> inputs;
+	inputs.reserve(arguments.size() + 1);
+	inputs.push_back(fnPtr);
+	inputs.insert(inputs.end(), arguments.begin(), arguments.end());
+	return inputs;
+}
+
 std::string TraceContext::normalizedFunctionName(void* fnptr) {
 	if (!state->normalizeFunctionNames) {
 		return {};
@@ -988,7 +1035,7 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 }
 
 Snapshot TraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash(), divergence_};
 }
 
 } // namespace nautilus::tracing
