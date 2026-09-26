@@ -1581,6 +1581,15 @@ void MLIRLoweringProvider::visitCast(ir::CastOperation* castOperation, MLIRLower
 		                                           mlirInput, mlirZero);
 		bind(frame, castOperation, mlirCmp);
 		return;
+	} else if (isFloat(inputStamp) && outputStamp == Type::b) {
+		// Unordered not-equal: NaN converts to true, as in C++.
+		auto floatType = getMLIRType(inputStamp);
+		auto mlirZero = mlir::arith::ConstantOp::create(*builder, getNameLoc("location"), floatType,
+		                                                builder->getFloatAttr(floatType, 0.0));
+		auto mlirCmp = mlir::arith::CmpFOp::create(*builder, getNameLoc("location"), mlir::arith::CmpFPredicate::UNE,
+		                                           mlirInput, mlirZero);
+		bind(frame, castOperation, mlirCmp);
+		return;
 	}
 
 	throw NotImplementedException(

@@ -1009,6 +1009,32 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 	const bool srcIsFloat = isFloatType(srcType);
 	const bool dstIsFloat = isFloatType(dstType);
 
+	if (dstType == Type::b && srcType != Type::b) {
+		// A cast to bool is `value != 0` (C++ semantics), not a truncation to
+		// the low byte: 256 and 0.5 are true. Registers hold the canonical
+		// extension of their stamp, so testing W suffices up to 32 bits. For
+		// floats, NE also holds for NaN (fcmp clears Z when unordered).
+		auto gDst = toGp(result);
+		if (srcIsFloat) {
+			cc.fcmp(toVec(src), Imm(0));
+		} else {
+			auto gSrc = toGp(src);
+			switch (srcType) {
+			case Type::i64:
+			case Type::ui64:
+			case Type::ptr:
+				cc.cmp(gSrc.x(), Imm(0));
+				break;
+			default:
+				cc.cmp(gSrc.w(), Imm(0));
+				break;
+			}
+		}
+		cc.cset(gDst.w(), Imm(static_cast<uint32_t>(arm::CondCode::kNE)));
+		bindResult(op->getIdentifier(), result, frame);
+		return;
+	}
+
 	if (!srcIsFloat && !dstIsFloat) {
 		// Integer → integer: first extend from source width, then narrow to destination width.
 		auto gSrc = toGp(src);

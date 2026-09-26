@@ -4,6 +4,7 @@
 #include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <limits>
 namespace nautilus::engine {
 
 template <typename BaseType>
@@ -210,6 +211,35 @@ void floatToUnsignedCastTest(engine::NautilusEngine& engine) {
 	                          16500484545456129080.0, 18446744073709549568.0 /*largest f64 < 2^64*/});
 }
 
+// Casts to bool are `x != 0`. The bc backend has no lowering for them yet, so it
+// is skipped; every other backend must match the native conversion.
+template <typename In>
+void checkCastToBool(engine::NautilusEngine& engine, std::string name, std::initializer_list<In> inputs) {
+	DYNAMIC_SECTION(name) {
+		auto f = engine.registerFunction(staticCastExpression<In, bool>);
+		for (In in : inputs) {
+			INFO("input " << +in);
+			REQUIRE(f(in) == static_cast<bool>(in));
+		}
+	}
+}
+
+void castToBoolTest(engine::NautilusEngine& engine) {
+	if (engine.getNameOfBackend() == "bc") {
+		return;
+	}
+	checkCastToBool<int8_t>(engine, "i8_to_bool", {0, 1, -1, INT8_MIN, INT8_MAX});
+	checkCastToBool<int16_t>(engine, "i16_to_bool", {0, 1, -1, INT16_MIN, INT16_MAX});
+	checkCastToBool<int32_t>(engine, "i32_to_bool", {0, 1, -1, 256, INT32_MIN, INT32_MAX});
+	checkCastToBool<int64_t>(engine, "i64_to_bool", {0, 1, -1, int64_t {1} << 40, INT64_MIN, INT64_MAX});
+	checkCastToBool<uint8_t>(engine, "ui8_to_bool", {0, 1, 2, UINT8_MAX});
+	checkCastToBool<uint16_t>(engine, "ui16_to_bool", {0, 1, 256, UINT16_MAX});
+	checkCastToBool<uint32_t>(engine, "ui32_to_bool", {0, 1, 65536, UINT32_MAX});
+	checkCastToBool<uint64_t>(engine, "ui64_to_bool", {0, 1, uint64_t {1} << 40, UINT64_MAX});
+	checkCastToBool<float>(engine, "f32_to_bool", {0.0f, -0.0f, 0.5f, -1.0f, std::numeric_limits<float>::quiet_NaN()});
+	checkCastToBool<double>(engine, "f64_to_bool", {0.0, -0.0, 0.5, -1.0, std::numeric_limits<double>::quiet_NaN()});
+}
+
 TEST_CASE("Cast Interpreter Test") {
 	auto engine = nautilus::testing::makeEngine("interpreter");
 	castTest(engine);
@@ -221,6 +251,10 @@ TEST_CASE("Cast Interpreter Test") {
 #ifdef ENABLE_TRACING
 TEST_CASE("Cast Compiler Test") {
 	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { castTest(engine); }, false);
+}
+
+TEST_CASE("Cast To Bool Compiler Test") {
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { castToBoolTest(engine); }, true);
 }
 
 TEST_CASE("Pointer Cast Compiler Test") {
