@@ -1259,6 +1259,111 @@ TEST_CASE("a region with a conditional throw cleans the enclosing struct on both
 	}
 }
 
+// ---------------------------------------------------------------------------
+// A region body can also release or re-key a destructor the enclosing scope
+// registered: a move-assignment between two vals declared outside the region
+// destroys the target's old value and hands the source's cleanup over to the
+// target. Calls after the region must see that, or a throw there destroys the
+// moved value twice (once through each slot).
+// ---------------------------------------------------------------------------
+val<int32_t> regionMoveAssignThenThrowInside() {
+	val<ExceptionResult> a;
+	invoke(writeResult, &a, val<int32_t> {1});
+	val<ExceptionResult> b;
+	invoke(writeResult, &b, val<int32_t> {2});
+	region("moveAndThrow", [&] {
+		a = std::move(b);
+		invoke(throwWhileWriting, &a, val<int32_t> {42});
+	});
+	return a.get(&ExceptionResult::value);
+}
+
+val<int32_t> regionMoveAssignThenThrowAfter() {
+	val<ExceptionResult> a;
+	invoke(writeResult, &a, val<int32_t> {1});
+	val<ExceptionResult> b;
+	invoke(writeResult, &b, val<int32_t> {2});
+	region("move", [&] { a = std::move(b); });
+	invoke(throwWhileWriting, &a, val<int32_t> {42});
+	return a.get(&ExceptionResult::value);
+}
+
+val<int32_t> nestedRegionMoveAssignThenThrowAfter() {
+	val<ExceptionResult> a;
+	invoke(writeResult, &a, val<int32_t> {1});
+	val<ExceptionResult> b;
+	invoke(writeResult, &b, val<int32_t> {2});
+	region("outer", [&] { region("inner", [&] { a = std::move(b); }); });
+	invoke(throwWhileWriting, &a, val<int32_t> {42});
+	return a.get(&ExceptionResult::value);
+}
+
+val<int32_t> regionMoveAssignWithoutThrow() {
+	val<ExceptionResult> a;
+	invoke(writeResult, &a, val<int32_t> {1});
+	val<ExceptionResult> b;
+	invoke(writeResult, &b, val<int32_t> {2});
+	region("move", [&] { a = std::move(b); });
+	return a.get(&ExceptionResult::value);
+}
+
+TEST_CASE("a move-assignment inside a region is unwound by a throw inside the region") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(regionMoveAssignThenThrowInside);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			// a's old value is destroyed by the assignment, the moved value by the unwind.
+			REQUIRE(destructorCalls == 2);
+			REQUIRE(destructorValues[0] == 1);
+			REQUIRE(destructorValues[1] == 2);
+		}
+	}
+}
+
+TEST_CASE("a move-assignment inside a region is seen by a throw after the region") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(regionMoveAssignThenThrowAfter);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			REQUIRE(destructorCalls == 2);
+			REQUIRE(destructorValues[0] == 1);
+			REQUIRE(destructorValues[1] == 2);
+		}
+	}
+}
+
+TEST_CASE("a move-assignment inside nested regions is seen by a throw after them") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(nestedRegionMoveAssignThenThrowAfter);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			REQUIRE(destructorCalls == 2);
+			REQUIRE(destructorValues[0] == 1);
+			REQUIRE(destructorValues[1] == 2);
+		}
+	}
+}
+
+TEST_CASE("a move-assignment inside a region destroys each value once on the normal path") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(regionMoveAssignWithoutThrow);
+			destructorCalls = 0;
+			REQUIRE(function() == 2);
+			REQUIRE(destructorCalls == 2);
+			REQUIRE(destructorValues[0] == 1);
+			REQUIRE(destructorValues[1] == 2);
+		}
+	}
+}
+
 #endif // ENABLE_TRACING
 
 }} // namespace nautilus
