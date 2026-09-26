@@ -1194,6 +1194,127 @@ struct RAConsecutiveReg {
   RAWorkReg* parentReg;
 };
 
+// [nautilus] Occupancy bitmap of all physical registers of one group, used by `binPack()`.
+//
+// The original implementation kept a sorted `LiveRegSpans` list per physical register and, for every attempt to pack
+// a work register, merged the whole list with the work register's spans via `nonOverlappingUnionOf()` into a freshly
+// reserved temporary list that was then swapped in. Each attempt was O(#spans already packed into that register) and
+// nearly every success reallocated. Because short-lived work registers mostly land in the lowest free register, a few
+// lists grow to O(#workRegs) and bin packing became ~O(#workRegs^2), dominating compile time of large functions
+// (see nebulastream/nautilus#508).
+//
+// Live spans are half-open `[a, b)` position ranges. Two span lists overlap iff some bit position is covered by both,
+// so one bit per position and physical register yields exactly the same accept/reject decisions, at a cost of
+// O(span width / 64) per attempt.
+class RABinPackOccupancy {
+public:
+  ZoneAllocator* _allocator = nullptr;
+  uint64_t* _bits = nullptr;
+  size_t _allocatedSize = 0;
+  uint32_t _wordsPerReg = 0;
+  uint32_t _endPosition = 0;
+
+  ASMJIT_INLINE_NODEBUG RABinPackOccupancy() noexcept = default;
+  ASMJIT_NONCOPYABLE(RABinPackOccupancy)
+
+  inline ~RABinPackOccupancy() noexcept {
+    if (_bits)
+      _allocator->release(_bits, _allocatedSize);
+  }
+
+  Error init(ZoneAllocator* allocator, uint32_t physCount, const RAWorkRegs& workRegs) noexcept {
+    // Positions are assigned by `buildLiveness()`, every span ends at or before the end of the last block. Open spans
+    // (`kInf`) are not expected here, but clamp them to the end of the bitmap to be safe.
+    uint32_t endPosition = 0;
+    for (const RAWorkReg* workReg : workRegs) {
+      const LiveRegSpans& spans = workReg->liveSpans();
+      if (spans.empty())
+        continue;
+
+      const LiveRegSpan& last = spans[spans.size() - 1u];
+      endPosition = Support::max(endPosition, last.b != RALiveInterval::kInf ? last.b : last.a + 1u);
+    }
+
+    _allocator = allocator;
+    _endPosition = endPosition;
+    _wordsPerReg = (endPosition + 63u) / 64u;
+
+    size_t size = size_t(_wordsPerReg) * physCount * sizeof(uint64_t);
+    if (!size)
+      return kErrorOk;
+
+    _bits = static_cast<uint64_t*>(allocator->alloc(size, _allocatedSize));
+    if (ASMJIT_UNLIKELY(!_bits))
+      return DebugUtils::errored(kErrorOutOfMemory);
+
+    memset(_bits, 0, size);
+    return kErrorOk;
+  }
+
+  //! Packs `spans` into `physId` if none of its positions is occupied yet, returns whether it was packed.
+  bool tryPack(uint32_t physId, const LiveRegSpans& spans) noexcept {
+    uint64_t* bits = _bits + size_t(physId) * _wordsPerReg;
+    uint32_t count = spans.size();
+
+    for (uint32_t i = 0; i < count; i++)
+      if (anySet(bits, spans[i].a, spanEnd(spans[i])))
+        return false;
+
+    for (uint32_t i = 0; i < count; i++)
+      setRange(bits, spans[i].a, spanEnd(spans[i]));
+
+    return true;
+  }
+
+private:
+  ASMJIT_INLINE_NODEBUG uint32_t spanEnd(const LiveRegSpan& span) const noexcept {
+    return span.b != RALiveInterval::kInf ? span.b : _endPosition;
+  }
+
+  static ASMJIT_FORCE_INLINE uint64_t firstWordMask(uint32_t a) noexcept { return ~uint64_t(0) << (a & 63u); }
+  static ASMJIT_FORCE_INLINE uint64_t lastWordMask(uint32_t e) noexcept { return ~uint64_t(0) >> (63u - ((e - 1u) & 63u)); }
+
+  // Tests bits `[a, e)`.
+  static ASMJIT_FORCE_INLINE bool anySet(const uint64_t* bits, uint32_t a, uint32_t e) noexcept {
+    if (a >= e)
+      return false;
+
+    uint32_t wa = a / 64u;
+    uint32_t we = (e - 1u) / 64u;
+
+    if (wa == we)
+      return (bits[wa] & firstWordMask(a) & lastWordMask(e)) != 0;
+
+    if (bits[wa] & firstWordMask(a))
+      return true;
+
+    for (uint32_t w = wa + 1u; w < we; w++)
+      if (bits[w])
+        return true;
+
+    return (bits[we] & lastWordMask(e)) != 0;
+  }
+
+  // Sets bits `[a, e)`.
+  static ASMJIT_FORCE_INLINE void setRange(uint64_t* bits, uint32_t a, uint32_t e) noexcept {
+    if (a >= e)
+      return;
+
+    uint32_t wa = a / 64u;
+    uint32_t we = (e - 1u) / 64u;
+
+    if (wa == we) {
+      bits[wa] |= firstWordMask(a) & lastWordMask(e);
+      return;
+    }
+
+    bits[wa] |= firstWordMask(a);
+    for (uint32_t w = wa + 1u; w < we; w++)
+      bits[w] = ~uint64_t(0);
+    bits[we] |= lastWordMask(e);
+  }
+};
+
 ASMJIT_FAVOR_SPEED Error BaseRAPass::binPack(RegGroup group) noexcept {
   if (workRegCount(group) == 0)
     return kErrorOk;
@@ -1214,7 +1335,29 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::binPack(RegGroup group) noexcept {
 
   RAWorkRegs workRegs;
   ZoneVector<RAConsecutiveReg> consecutiveRegs;
-  LiveRegSpans tmpSpans;
+
+  RABinPackOccupancy occupancy;
+  ASMJIT_PROPAGATE(occupancy.init(allocator(), physCount, this->workRegs(group)));
+
+  // Packs `workReg` into `physId` if it doesn't overlap with anything already packed there. `_globalLiveSpans` is not
+  // read after bin packing except for the debug dump below, so it's only maintained when that dump is enabled.
+  auto tryPack = [&](uint32_t physId, RAWorkReg* workReg, bool& packed) noexcept -> Error {
+    packed = occupancy.tryPack(physId, workReg->liveSpans());
+
+#ifndef ASMJIT_NO_LOGGING
+    if (packed && logger) {
+      LiveRegSpans tmpSpans;
+      LiveRegSpans& live = _globalLiveSpans[group][physId];
+      Error err = tmpSpans.nonOverlappingUnionOf(allocator(), live, workReg->liveSpans(), LiveRegData(workReg->virtId()));
+      ASMJIT_ASSERT(err != 0xFFFFFFFFu);
+      ASMJIT_PROPAGATE(err);
+      live.swap(tmpSpans);
+      tmpSpans.release(allocator());
+    }
+#endif
+
+    return kErrorOk;
+  };
 
   ASMJIT_PROPAGATE(workRegs.concat(allocator(), this->workRegs(group)));
   workRegs.sort([](const RAWorkReg* a, const RAWorkReg* b) noexcept {
@@ -1241,18 +1384,14 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::binPack(RegGroup group) noexcept {
       if (workReg->hasHintRegId()) {
         uint32_t physId = workReg->hintRegId();
         if (Support::bitTest(availableRegs, physId)) {
-          LiveRegSpans& live = _globalLiveSpans[group][physId];
-          Error err = tmpSpans.nonOverlappingUnionOf(allocator(), live, workReg->liveSpans(), LiveRegData(workReg->virtId()));
+          bool packed;
+          ASMJIT_PROPAGATE(tryPack(physId, workReg, packed));
 
-          if (err == kErrorOk) {
-            live.swap(tmpSpans);
+          if (packed) {
             workReg->setHomeRegId(physId);
             workReg->markAllocated();
             continue;
           }
-
-          if (err != 0xFFFFFFFFu)
-            return err;
         }
       }
 
@@ -1327,18 +1466,14 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::binPack(RegGroup group) noexcept {
       while (physRegs) {
         uint32_t physId = Support::bitSizeOf<RegMask>() - 1 - Support::clz(physRegs);
 
-        LiveRegSpans& live = _globalLiveSpans[group][physId];
-        Error err = tmpSpans.nonOverlappingUnionOf(allocator(), live, workReg->liveSpans(), LiveRegData(workReg->virtId()));
+        bool packed;
+        ASMJIT_PROPAGATE(tryPack(physId, workReg, packed));
 
-        if (err == kErrorOk) {
+        if (packed) {
           workReg->setHomeRegId(physId);
           workReg->markAllocated();
-          live.swap(tmpSpans);
           break;
         }
-
-        if (ASMJIT_UNLIKELY(err != 0xFFFFFFFFu))
-          return err;
 
         physRegs ^= Support::bitMask(physId);
       }
@@ -1381,18 +1516,14 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::binPack(RegGroup group) noexcept {
           }
         }
 
-        LiveRegSpans& live = _globalLiveSpans[group][physId];
-        Error err = tmpSpans.nonOverlappingUnionOf(allocator(), live, workReg->liveSpans(), LiveRegData(workReg->virtId()));
+        bool packed;
+        ASMJIT_PROPAGATE(tryPack(physId, workReg, packed));
 
-        if (err == kErrorOk) {
+        if (packed) {
           workReg->setHomeRegId(physId);
           workReg->markAllocated();
-          live.swap(tmpSpans);
           break;
         }
-
-        if (ASMJIT_UNLIKELY(err != 0xFFFFFFFFu))
-          return err;
 
         physRegs &= ~Support::bitMask(physId);
         remainingPhysRegs &= ~Support::bitMask(physId);
