@@ -48,7 +48,15 @@ TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace&
 void TraceContext::resume() {
 	staticVars.clear();
 	aliveVars.reset();
-	activeDestructors.clear();
+	// A region body is traced into its enclosing function, so a throwing call inside it
+	// must also unwind the vals the enclosing scope still holds. The enclosing scope is
+	// suspended at the region call site while the body is traced, so its list is exactly
+	// the set of destructors live at the region entry.
+	if (parent_ != nullptr) {
+		activeDestructors = parent_->activeDestructors;
+	} else {
+		activeDestructors.clear();
+	}
 	divergence_ = 0;
 	paused_ = false;
 }
@@ -742,6 +750,14 @@ void TraceContext::traceRegion(std::function<void()>& regionFunction, const Regi
 	}
 	setActiveTracer(this);
 	trace.setCurrentRegion(enclosingRegion);
+
+	// The body may have released or re-keyed destructors this scope registered (a
+	// move-assignment between two vals declared outside the region does both), and it
+	// did so on the copy it was seeded with in resume(). Take that copy back so the calls
+	// recorded after the region unwind what is actually live. Everything the body itself
+	// registered is gone again by now: a val<T> created inside it cannot outlive it (see
+	// traceScopeExit()), so only this scope's own, updated entries remain.
+	activeDestructors = std::move(child.activeDestructors);
 
 	if (trace.getBlock(exit).predecessors.empty()) {
 		// No pass of the body ever ran to completion, so nothing reaches the block the
