@@ -1,4 +1,8 @@
 #include <charconv>
+#include <locale>
+#include <sstream>
+#include <string>
+#include <version>
 #include <perfcpp/exception.hpp>
 #include <perfcpp/metric/expression/tokenizer.hpp>
 
@@ -120,9 +124,20 @@ perf::metric::expression::Tokenizer::read_constant(const std::size_t begin) cons
   auto value = double{};
   const auto* const first = this->_input.data() + begin;
   const auto* const last = this->_input.data() + position;
+#if defined(__cpp_lib_to_chars)
   if (const auto [ptr, error] = std::from_chars(first, last, value); error != std::errc{} || ptr != last) {
     throw CannotParseMetricExpressionError{ this->_input, "Cannot parse number" };
   }
+#else
+  /// nautilus: standard libraries without floating-point std::from_chars (libc++ < 20) parse through a stream imbued
+  /// with the classic locale, which is equally locale-independent.
+  auto stream = std::istringstream{ std::string{ first, last } };
+  stream.imbue(std::locale::classic());
+  stream >> value;
+  if (stream.fail() || stream.peek() != std::char_traits<char>::eof()) {
+    throw CannotParseMetricExpressionError{ this->_input, "Cannot parse number" };
+  }
+#endif
   return std::make_pair(value, position);
 }
 
