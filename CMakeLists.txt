@@ -206,10 +206,19 @@ if (ENABLE_ASMJIT_BACKEND OR ENABLE_TBC_JIT)
     set(ASMJIT_BUILD_RELEASE ON)
     set(ASMJIT_NO_FOREIGN ON)
     set(ASMJIT_NO_DEPRECATED ON)
+    # asmjit is linked privately into the static nautilus library, so installed
+    # consumers still need the archive at link time. Export it through the
+    # nautilus export set (like dyncall_s) instead of asmjit's own asmjit-config
+    # set, which nautilus-config does not load and which would otherwise leave
+    # nautilus::nautilus referencing a missing asmjit::asmjit target.
+    set(ASMJIT_NO_INSTALL ON)
     add_subdirectory(${THIRD_PARTY_DIR}/asmjit)
     disable_target_warnings(asmjit)
-    get_target_property(_asmjit_includes asmjit INTERFACE_INCLUDE_DIRECTORIES)
-    set_target_properties(asmjit PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_asmjit_includes}")
+    # Build-tree only: asmjit headers are not installed, and copying its
+    # $<INSTALL_INTERFACE:include> here would export a relative include path.
+    set_target_properties(asmjit PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${THIRD_PARTY_DIR}/asmjit/src>")
+    list(APPEND EXPORT_TARGETS asmjit)
 endif ()
 
 # perf-cpp backs the profiling plugin's in-process counters and sampling.
