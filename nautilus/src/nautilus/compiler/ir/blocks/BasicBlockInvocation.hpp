@@ -59,6 +59,12 @@ public:
 	/// rather than individually.
 	void removeArgument(size_t index);
 
+	/// Removes every argument whose index is in @p indices (ascending, no
+	/// duplicates) in one compaction pass, shifting the survivors down in
+	/// order. Out-of-range indices are ignored. Equivalent to calling
+	/// @ref removeArgument once per index in descending order.
+	void removeArguments(std::span<const size_t> indices);
+
 	std::span<Operation* const> getArguments() const;
 
 	/**

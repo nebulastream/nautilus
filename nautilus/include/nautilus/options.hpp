@@ -34,6 +34,13 @@ public:
 		options[name] = value;
 	}
 
+	/// True iff a value for @p name has been set, whatever its type. Lets a
+	/// consumer tell "left at the default" from "explicitly set to the
+	/// default value" when the default itself is derived from context.
+	[[nodiscard]] bool hasOption(const std::string& name) const {
+		return options.contains(name);
+	}
+
 	template <typename T>
 	T getOptionOrDefault(const std::string& name, T defaultValue) const {
 		if (options.contains(name)) {

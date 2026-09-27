@@ -108,6 +108,7 @@ if (ENABLE_ADDRESS_SANITIZER)
     add_link_options(-fsanitize=address)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
 elseif (ENABLE_THREAD_SANITIZER)
+    add_link_options(-fsanitize=thread)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
 elseif (ENABLE_UB_SANITIZER)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize-recover=all")
@@ -148,6 +149,9 @@ endif ()
 set(EXPORT_TARGETS)
 if (ENABLE_TESTS OR ENABLE_BENCHMARKS)
     set(CATCH_ENABLE_REPRODUCIBLE_BUILD OFF CACHE INTERNAL "Disable reproducible build for Catch2")
+    # Several concurrency tests REQUIRE/CHECK from worker threads, which races on
+    # Catch2's run context unless its assertions are made thread-safe.
+    set(CATCH_CONFIG_EXPERIMENTAL_THREAD_SAFE_ASSERTIONS ON CACHE INTERNAL "Thread-safe Catch2 assertions")
     add_subdirectory(${THIRD_PARTY_DIR}/Catch2)
     disable_target_warnings(Catch2)
     list(APPEND EXPORT_TARGETS Catch2)
@@ -206,10 +210,19 @@ if (ENABLE_ASMJIT_BACKEND OR ENABLE_TBC_JIT)
     set(ASMJIT_BUILD_RELEASE ON)
     set(ASMJIT_NO_FOREIGN ON)
     set(ASMJIT_NO_DEPRECATED ON)
+    # asmjit is linked privately into the static nautilus library, so installed
+    # consumers still need the archive at link time. Export it through the
+    # nautilus export set (like dyncall_s) instead of asmjit's own asmjit-config
+    # set, which nautilus-config does not load and which would otherwise leave
+    # nautilus::nautilus referencing a missing asmjit::asmjit target.
+    set(ASMJIT_NO_INSTALL ON)
     add_subdirectory(${THIRD_PARTY_DIR}/asmjit)
     disable_target_warnings(asmjit)
-    get_target_property(_asmjit_includes asmjit INTERFACE_INCLUDE_DIRECTORIES)
-    set_target_properties(asmjit PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_asmjit_includes}")
+    # Build-tree only: asmjit headers are not installed, and copying its
+    # $<INSTALL_INTERFACE:include> here would export a relative include path.
+    set_target_properties(asmjit PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${THIRD_PARTY_DIR}/asmjit/src>")
+    list(APPEND EXPORT_TARGETS asmjit)
 endif ()
 
 # perf-cpp backs the profiling plugin's in-process counters and sampling.

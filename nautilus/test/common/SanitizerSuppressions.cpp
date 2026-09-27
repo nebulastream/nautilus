@@ -45,3 +45,23 @@ extern "C" const char* __lsan_default_suppressions() {
 	       "leak:llvm::allocate_buffer\n";
 }
 #endif
+
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define HAS_THREAD_SANITIZER 1
+#endif
+#elif defined(__SANITIZE_THREAD__)
+#define HAS_THREAD_SANITIZER 1
+#endif
+
+#ifdef HAS_THREAD_SANITIZER
+// The bundled MLIR/LLVM is prebuilt without TSan instrumentation, so the
+// synchronization inside its thread pool (std::future state inlined into LLVM)
+// and its lock-free uniquing is invisible to TSan and every hand-off to an
+// llvm-worker thread is reported as a race. Nautilus itself uses no futures.
+extern "C" const char* __tsan_default_suppressions() {
+	return "race:std::__future_base::_State_baseV2::_M_do_set\n"
+	       "race:mlir::StorageUniquer\n"
+	       "race:mlir::LLVM::detail::getAttrNameToKindMapping\n";
+}
+#endif

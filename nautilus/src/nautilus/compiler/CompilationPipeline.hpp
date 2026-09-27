@@ -1,7 +1,9 @@
 #pragma once
 
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/options.hpp"
+#include <initializer_list>
 #include <list>
 #include <memory>
 #include <string>
@@ -49,11 +51,28 @@ public:
 	 * timings and entity counts are recorded into it. Logging of the
 	 * final report is the caller's responsibility.
 	 *
+	 * @param optimization How much of the IR optimization pipeline to run.
+	 *        The caller derives it from the backends that will compile the
+	 *        graph (see @ref irOptimizationLevel); an explicit
+	 *        `ir.runOptimizationPasses` module option overrides it (true:
+	 *        Full, false: None). The exception-handling analyses every
+	 *        backend lowers from run at every level (unless `ir.runPasses`
+	 *        is off altogether).
 	 * @return Shared IR graph that can be compiled by any backend
 	 */
-	[[nodiscard]] std::shared_ptr<ir::IRGraph> compileToIR(std::list<CompilableFunction>& functions,
-	                                                       const engine::ModuleOptions& moduleOptions,
-	                                                       CompilationStatistics* statistics = nullptr) const;
+	[[nodiscard]] std::shared_ptr<ir::IRGraph>
+	compileToIR(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
+	            CompilationStatistics* statistics = nullptr,
+	            IROptimizationLevel optimization = IROptimizationLevel::Full) const;
+
+	/**
+	 * @brief The IR optimization level a graph compiled by every backend in
+	 * @p backendNames needs: the highest any of them asks for
+	 * (`CompilationBackend::irOptimizationLevel`). Names that resolve to no
+	 * backend (the interpreter tier, an unknown name) do not count; with no
+	 * backend at all the answer is Full.
+	 */
+	[[nodiscard]] IROptimizationLevel irOptimizationLevel(std::initializer_list<std::string> backendNames) const;
 
 	/**
 	 * @brief Compile a pre-built IR graph with a specific backend.

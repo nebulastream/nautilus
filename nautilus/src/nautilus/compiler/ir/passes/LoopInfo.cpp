@@ -4,39 +4,64 @@
 #include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include "nautilus/compiler/ir/passes/Dominators.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
+#include <cstdint>
 
 namespace nautilus::compiler::ir {
 
-const std::unordered_set<BasicBlock*>& Reachability::from(BasicBlock* start) {
-	auto it = cache_.find(start);
-	if (it != cache_.end()) {
-		return it->second;
-	}
-	std::unordered_set<BasicBlock*> visited;
-	std::vector<BasicBlock*> frontier = start->getSuccessors();
-	while (!frontier.empty()) {
-		auto* b = frontier.back();
-		frontier.pop_back();
-		if (b == nullptr || !visited.insert(b).second) {
+bool containsLoop(const FunctionOperation& fn) {
+	enum class Color : uint8_t { White, Grey, Black };
+	std::unordered_map<const BasicBlock*, Color> color;
+	color.reserve(fn.getBasicBlocks().size());
+	struct Frame {
+		BasicBlock* block;
+		std::vector<BasicBlock*> successors;
+		size_t next = 0;
+	};
+	std::vector<Frame> stack;
+	// Every block is a root in turn, so a cycle among blocks the entry cannot
+	// reach is found too -- the caller is asking about the function's text,
+	// not about what a later unreachable-block sweep will leave of it.
+	for (auto* root : fn.getBasicBlocks()) {
+		if (root == nullptr || color[root] != Color::White) {
 			continue;
 		}
-		for (auto* s : b->getSuccessors()) {
-			frontier.push_back(s);
+		color[root] = Color::Grey;
+		stack.push_back({root, root->getSuccessors(), 0});
+		while (!stack.empty()) {
+			Frame& frame = stack.back();
+			if (frame.next < frame.successors.size()) {
+				auto* succ = frame.successors[frame.next++];
+				if (succ == nullptr) {
+					continue;
+				}
+				auto& c = color[succ];
+				if (c == Color::Grey) {
+					return true; // an edge back onto the walk's own stack
+				}
+				if (c == Color::White) {
+					c = Color::Grey;
+					stack.push_back({succ, succ->getSuccessors(), 0});
+				}
+				continue;
+			}
+			color[frame.block] = Color::Black;
+			stack.pop_back();
 		}
 	}
-	return cache_.emplace(start, std::move(visited)).first->second;
+	return false;
 }
 
 namespace {
 
 /// Finds the natural-loop back edge / preheader edge into @p header, if header
 /// has exactly the shape the passes handle: exactly two predecessor edges, one
-/// of which is a back edge (header is reachable from it) and one a forward edge
-/// (the preheader). Returns false (leaving the out-params untouched) for
+/// of which is a back edge (header dominates its source) and one a forward
+/// edge (the preheader). Returns false (leaving the out-params untouched) for
 /// anything else -- multiple latches, multiple preheaders, irreducible control
 /// flow, etc. are all conservatively skipped.
-bool findSimpleLoopEdges(BasicBlock* header, Reachability& reach, BasicBlock*& latch, BasicBlockInvocation*& latchInv,
+bool findSimpleLoopEdges(BasicBlock* header, const Dominators& dom, BasicBlock*& latch, BasicBlockInvocation*& latchInv,
                          BasicBlock*& preheader, BasicBlockInvocation*& preheaderInv) {
 	const auto& preds = header->getPredecessors();
 	if (preds.size() != 2) {
@@ -48,7 +73,7 @@ bool findSimpleLoopEdges(BasicBlock* header, Reachability& reach, BasicBlock*& l
 		if (p == nullptr) {
 			return false;
 		}
-		const bool isBack = reach.from(header).contains(p);
+		const bool isBack = dom.dominates(header, p);
 		if (isBack) {
 			if (back != nullptr) {
 				return false;
@@ -93,16 +118,28 @@ bool findSimpleLoopEdges(BasicBlock* header, Reachability& reach, BasicBlock*& l
 }
 
 /// Computes the natural-loop body for the (header, latch) pair: header itself
-/// plus every block reachable from header that can also reach latch.
-std::unordered_set<BasicBlock*> computeLoopBody(BasicBlock* header, BasicBlock* latch, Reachability& reach) {
+/// plus every reachable block from which latch can be reached without passing
+/// through header -- the standard backward walk over predecessor edges from
+/// the latch, stopping at the header. O(body + its incoming edges).
+std::unordered_set<BasicBlock*> computeLoopBody(BasicBlock* header, BasicBlock* latch, const Dominators& dom) {
 	std::unordered_set<BasicBlock*> body;
 	body.insert(header);
-	for (auto* b : reach.from(header)) {
-		if (b == latch || reach.from(b).contains(latch)) {
-			body.insert(b);
+	std::vector<BasicBlock*> frontier;
+	if (body.insert(latch).second) {
+		frontier.push_back(latch);
+	}
+	while (!frontier.empty()) {
+		auto* b = frontier.back();
+		frontier.pop_back();
+		for (auto* p : b->getPredecessors()) {
+			if (p == nullptr || !dom.isReachable(p)) {
+				continue;
+			}
+			if (body.insert(p).second) {
+				frontier.push_back(p);
+			}
 		}
 	}
-	body.insert(latch);
 	return body;
 }
 
@@ -110,18 +147,19 @@ std::unordered_set<BasicBlock*> computeLoopBody(BasicBlock* header, BasicBlock* 
 
 std::vector<NaturalLoop> findNaturalLoops(FunctionOperation& fn) {
 	std::vector<NaturalLoop> loops;
-	Reachability reach;
+	const Dominators dom(fn);
 	for (auto* header : fn.getBasicBlocks()) {
 		BasicBlock* latch = nullptr;
 		BasicBlockInvocation* latchInv = nullptr;
 		BasicBlock* preheader = nullptr;
 		BasicBlockInvocation* preheaderInv = nullptr;
-		if (!findSimpleLoopEdges(header, reach, latch, latchInv, preheader, preheaderInv)) {
+		if (!findSimpleLoopEdges(header, dom, latch, latchInv, preheader, preheaderInv)) {
 			continue;
 		}
-		auto body = computeLoopBody(header, latch, reach);
-		// A preheader that is itself part of the loop body means the "forward"
-		// edge is not really outside the loop -- skip such irreducible shapes.
+		auto body = computeLoopBody(header, latch, dom);
+		// The header dominates the latch, so every path from the preheader to
+		// the latch runs through the header and the preheader cannot be in the
+		// body; kept as a guard against a CFG whose predecessor lists are stale.
 		if (body.contains(preheader)) {
 			continue;
 		}

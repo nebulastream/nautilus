@@ -10,8 +10,13 @@ counters and sampling. See [docs/profiling.md](../../docs/profiling.md).
 | Commit | `9e41423afdb9180a2cfbac15e4c2c591063c10d3` (2026-08-23) |
 | License | Apache-2.0 (`LICENSE`) |
 
-The sources are **unpatched**: a new upstream release is a clean replacement
-rather than a merge. Where the library needed extending -- resolving
+The sources are **unpatched** except for one local change, which a new upstream
+release must carry over (otherwise it is a clean replacement rather than a merge):
+
+- `src/metric/expression/tokenizer.cpp`: `read_number` parses a `double` with
+  `std::from_chars`, which libc++ only implements for floating-point types from
+  version 20 on. Without `__cpp_lib_to_chars`, it falls back to a stream imbued
+  with the classic locale. Found building the profiling plugin with clang/libc++ 19. Where the library needed extending -- resolving
 instruction pointers inside JIT-compiled code, which its `util::SymbolResolver`
 cannot know about -- the extension lives in the plugin instead.
 

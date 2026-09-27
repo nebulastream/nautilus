@@ -136,8 +136,11 @@ private:
 
 		// A loop might not terminate. Proving otherwise needs trip-count
 		// reasoning this pass deliberately does not attempt, so any loop
-		// costs willReturn -- and with it, movability.
-		if (!findNaturalLoops(definition).empty()) {
+		// costs willReturn -- and with it, movability. Any cycle counts, not
+		// only the shapes the loop recognizer accepts: an irreducible loop can
+		// spin just as well, and a plain cycle check is linear where the
+		// recognizer is not free.
+		if (containsLoop(definition)) {
 			facts.willReturn = false;
 		}
 
