@@ -258,9 +258,10 @@ BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& b
 		blockArguments.emplace_back(blockArgument);
 	}
 	auto* irBasicBlockPtr = arena.create<BasicBlock>(arena, block.blockId, std::move(blockArguments));
-	// Straight from the trace: at this point a block still holds exactly the code of one
-	// region, so the block's region is that region. The block-cleanup passes widen it
-	// again when they merge blocks from different regions together.
+	// The trace block already names the innermost region containing all of its code
+	// (the tracer merged the region seams away, widening the blocks it merged into),
+	// and mapRegion preserves the nesting, so the IR block can take it over as is. The
+	// block-cleanup passes widen it further when they merge blocks of different regions.
 	irBasicBlockPtr->setRegionIndex(mapRegion(block.regionIndex));
 	currentBasicBlocks.emplace_back(irBasicBlockPtr);
 

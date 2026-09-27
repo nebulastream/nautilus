@@ -94,6 +94,6 @@ int main(int, char*[]) {
 	          << "  * region ids are unique across the module; the index each block and\n"
 	          << "    operation stores is only meaningful within its own function\n"
 	          << "  * the regions leave no trace in the generated code: their entry and exit\n"
-	          << "    blocks are seams the IR passes collapse, and no backend reads any of this\n";
+	          << "    blocks are seams the tracer splices out, and no backend reads any of this\n";
 	return 0;
 }

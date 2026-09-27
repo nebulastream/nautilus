@@ -261,7 +261,9 @@ uint32_t ExecutionTrace::createBlock() {
 	// A block belongs to whichever region was open when it was created: the region's own
 	// blocks, the blocks of the branches and loops inside it, and the merge blocks the
 	// tracer synthesises along the way. The one exception is a region's entry block,
-	// which is created by the enclosing scope and re-stamped by addRegion below.
+	// which is created by the enclosing scope and re-stamped by addRegion below. Once the
+	// function is traced, collapseRegionSeams widens the blocks it merges code of more
+	// than one region into.
 	block->regionIndex = currentRegion;
 	blocks.push_back(block);
 	return block->blockId;
@@ -352,11 +354,11 @@ ValueRef ExecutionTrace::getNextValueRef() {
 	return ++lastValueRef;
 }
 
-RegionIndex ExecutionTrace::addRegion(const RegionAttributes& attributes, uint32_t entryBlock, uint32_t exitBlock) {
+RegionIndex ExecutionTrace::addRegion(const RegionAttributes& attributes, uint32_t entryBlock) {
 	auto regionIndex = static_cast<RegionIndex>(regions.size());
 	// The region open at the moment this one is entered is its parent, which is what
 	// makes a nested region's chain of enclosing regions recoverable from the table.
-	regions.push_back(RegionSpec {attributes, currentRegion, entryBlock, exitBlock});
+	regions.push_back(RegionSpec {attributes, currentRegion});
 	// The entry block was created by the enclosing scope, but it is the first block of
 	// the body -- it belongs to the new region. The exit block keeps the enclosing
 	// region: that is where the enclosing scope continues.
@@ -366,6 +368,134 @@ RegionIndex ExecutionTrace::addRegion(const RegionAttributes& attributes, uint32
 
 const std::vector<RegionSpec>& ExecutionTrace::getRegions() const {
 	return regions;
+}
+
+RegionIndex ExecutionTrace::commonRegionAncestor(RegionIndex first, RegionIndex second) const {
+	// Walking `first`'s chain and testing each link against `second`'s costs at most
+	// depth^2 comparisons on a nesting that is a handful of levels deep in practice.
+	for (auto outer = first; outer != NO_REGION && outer < regions.size(); outer = regions[outer].parent) {
+		for (auto inner = second; inner != NO_REGION && inner < regions.size(); inner = regions[inner].parent) {
+			if (inner == outer) {
+				return outer;
+			}
+		}
+	}
+	return NO_REGION;
+}
+
+namespace {
+
+/// Renames the target of every block reference @p operation carries, if any; only a
+/// terminator (JMP, CMP) carries one.
+template <typename Rename>
+void renameBlockTargets(TraceOperation& operation, Rename&& rename) {
+	for (auto& input : operation.input) {
+		if (auto* blockRef = std::get_if<BlockRef*>(&input)) {
+			rename((*blockRef)->block);
+		}
+	}
+}
+
+} // namespace
+
+void ExecutionTrace::collapseRegionSeams() {
+	if (regions.empty()) {
+		return;
+	}
+	const auto blockCount = static_cast<uint32_t>(blocks.size());
+	bool anyMerged = false;
+	// One pass in index order is enough: along a chain of seams (a region opened first
+	// thing in another region's body) every link is absorbed by whichever block its
+	// predecessor has become, whether that one was itself absorbed before or is only
+	// absorbed later.
+	for (uint32_t index = 1; index < blockCount; index++) {
+		auto* block = blocks[index];
+		if (block->predecessors.size() != 1) {
+			continue;
+		}
+		const auto predecessorIndex = block->predecessors.front();
+		if (predecessorIndex == index || predecessorIndex >= blockCount) {
+			continue;
+		}
+		// The predecessor is live: absorbing a block renames it in its successors'
+		// predecessor lists, so no block names an absorbed one.
+		auto* predecessor = blocks[predecessorIndex];
+		if (predecessor == nullptr || predecessor->operations.empty()) {
+			continue;
+		}
+		auto* jump = predecessor->operations.back();
+		if (jump->op != Op::JMP || jump->input.empty()) {
+			continue;
+		}
+		auto* target = std::get_if<BlockRef*>(&jump->input[0]);
+		// The jump carries no arguments yet -- SSA construction is what adds them -- so
+		// the block's operations can follow the predecessor's as they are.
+		if (target == nullptr || (*target)->block != index || !(*target)->arguments.empty()) {
+			continue;
+		}
+
+		predecessor->operations.pop_back();
+		const auto offset = static_cast<uint32_t>(predecessor->operations.size());
+		predecessor->operations.insert(predecessor->operations.end(), block->operations.begin(),
+		                               block->operations.end());
+		for (auto& returnRef : returnRefs) {
+			if (returnRef.blockIndex == index) {
+				returnRef.blockIndex = predecessorIndex;
+				returnRef.operationIndex += offset;
+			}
+		}
+		if (!block->operations.empty()) {
+			renameBlockTargets(*block->operations.back(), [&](uint32_t successor) {
+				auto& successorPredecessors = getBlock(successor).predecessors;
+				std::replace(successorPredecessors.begin(), successorPredecessors.end(), index, predecessorIndex);
+			});
+		}
+		// The block now holds code of two regions -- the enclosing scope's and the
+		// body's -- so it names the innermost region containing both. The operations
+		// keep naming their own (docs/region.md).
+		predecessor->regionIndex = commonRegionAncestor(predecessor->regionIndex, block->regionIndex);
+		block->operations.clear();
+		block->predecessors.clear();
+		blocks[index] = nullptr;
+		anyMerged = true;
+	}
+	if (!anyMerged) {
+		return;
+	}
+
+	// Renumber the survivors densely, and everything that names a block with them.
+	std::vector<uint32_t> renumbering(blockCount, 0);
+	uint32_t next = 0;
+	for (uint32_t index = 0; index < blockCount; index++) {
+		if (blocks[index] != nullptr) {
+			renumbering[index] = next++;
+		}
+	}
+	const auto rename = [&renumbering](uint32_t& blockIndex) {
+		blockIndex = renumbering[blockIndex];
+	};
+	for (auto* block : blocks) {
+		if (block == nullptr) {
+			continue;
+		}
+		rename(block->blockId);
+		for (auto& predecessor : block->predecessors) {
+			rename(predecessor);
+		}
+		if (!block->operations.empty()) {
+			renameBlockTargets(*block->operations.back(), rename);
+		}
+	}
+	for (auto& returnRef : returnRefs) {
+		rename(returnRef.blockIndex);
+	}
+	blocks.erase(std::remove(blocks.begin(), blocks.end(), nullptr), blocks.end());
+	// The absorbed blocks stay in the arena, like the operations SSA construction drops.
+	// The tag map named operations by block and position; both are stale now, and no
+	// scope replays this trace any more.
+	globalTagMap.clear();
+	currentBlockIndex = 0;
+	currentOperationIndex = 0;
 }
 
 RegionIndex ExecutionTrace::setCurrentRegion(RegionIndex regionIndex) {
@@ -438,8 +568,8 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
 	return out;
 }
 
-auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block, format_context& ctx)
-    -> format_context::iterator {
+auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block,
+                                                 format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	fmt::format_to(out, "(");
 	for (size_t i = 0; i < block.arguments.size(); i++) {
@@ -466,8 +596,8 @@ auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block&
 
 template <>
 struct formatter<nautilus::tracing::TypedValueRef> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::TypedValueRef& typeValRef, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::tracing::TypedValueRef& typeValRef,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "${}", typeValRef.ref);
 		return out;

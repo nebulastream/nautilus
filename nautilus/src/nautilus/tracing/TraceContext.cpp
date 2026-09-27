@@ -706,7 +706,7 @@ void TraceContext::traceRegion(std::function<void()>& regionFunction, const Regi
 
 	// The region's attributes are metadata on the enclosing trace, not an operation in it:
 	// recorded once, here, against the blocks that bound the body about to be traced.
-	auto regionIndex = trace.addRegion(attributes, entry, exit);
+	auto regionIndex = trace.addRegion(attributes, entry);
 
 	// Everything recorded until the body is done belongs to this region -- by the child
 	// scope, and by any region nested inside it, since every scope records into this one
@@ -776,6 +776,8 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 
 	// Clean up: reset state pointer. activeTracer is cleared by ActiveTracerGuard.
 	tc->state.reset();
+	// The trace is complete, so the blocks that only bounded region bodies can go.
+	executionTrace->collapseRegionSeams();
 	resolveCalleeNames(*executionTrace, options);
 
 	log::trace("Final trace: {}", *executionTrace);
@@ -853,6 +855,8 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 		runScope(wrapperFunc);
 
 		state.reset();
+		// The trace is complete, so the blocks that only bounded region bodies can go.
+		executionTrace.collapseRegionSeams();
 		resolveCalleeNames(executionTrace, options);
 		log::trace("Final trace: {}", executionTrace);
 	}

@@ -23,9 +23,9 @@ struct AllocaSpec {
 /// into this function: what the call site said about itself, and which region encloses it.
 ///
 /// Operations reference these by index through Operation::getRegionIndex(). The region's
-/// boundary blocks are deliberately not part of this: by the time the block-cleanup passes
-/// are done, the entry and exit block a region added are merged away, while the operations
-/// that came out of the body keep pointing here.
+/// boundary blocks are deliberately not part of this: the tracer merges the entry and exit
+/// block a region added away before the trace reaches the IR, while the operations that
+/// came out of the body keep pointing here.
 struct RegionSpec {
 	RegionAttributes attributes;
 	/// The region this one sits inside, or NO_REGION for a region opened directly in the
@@ -95,7 +95,8 @@ public:
 	/// ancestor in the nesting, NO_REGION if they share none.
 	///
 	/// This is what a block's region has to widen to when code from two regions ends up
-	/// in one block -- which is what the block-cleanup passes do to a region's seams.
+	/// in one block -- which is what the block-cleanup passes do whenever they merge
+	/// blocks of different regions.
 	[[nodiscard]] RegionIndex commonRegionAncestor(RegionIndex first, RegionIndex second) const;
 
 	[[nodiscard]] bool hasAttribute(const std::string& key) const;
