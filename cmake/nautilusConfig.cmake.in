@@ -2,5 +2,23 @@
 
 include(CMakeFindDependencyMacro)
 
+# Imported targets in nautilus-targets.cmake reference these packages in their
+# link interfaces, so they must be loaded before the targets file.
+find_dependency(Threads)
 
-include("${CMAKE_CURRENT_LIST_DIR}/nautilusTargets.cmake")
+set(_nautilus_use_external_fmt @USE_EXTERNAL_FMT@)
+if (_nautilus_use_external_fmt)
+    find_dependency(fmt CONFIG)
+endif ()
+
+set(_nautilus_use_external_spdlog @NAUTILUS_EXPORT_EXTERNAL_SPDLOG@)
+if (_nautilus_use_external_spdlog)
+    find_dependency(spdlog CONFIG)
+endif ()
+
+unset(_nautilus_use_external_fmt)
+unset(_nautilus_use_external_spdlog)
+
+include("${CMAKE_CURRENT_LIST_DIR}/nautilus-targets.cmake")
+
+check_required_components(nautilus)

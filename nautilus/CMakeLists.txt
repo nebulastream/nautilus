@@ -79,8 +79,33 @@ install(
 
 install(
         EXPORT ${PROJECT_NAME}-config
+        FILE ${PROJECT_NAME}-targets.cmake
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
         NAMESPACE "${PROJECT_NAME}::"
+)
+
+# The package config loads the external packages the exported targets link
+# against (e.g. Threads::Threads, used by spdlog) before including the targets.
+include(CMakePackageConfigHelpers)
+if (ENABLE_LOGGING AND USE_EXTERNAL_SPDLOG)
+    set(NAUTILUS_EXPORT_EXTERNAL_SPDLOG ON)
+else ()
+    set(NAUTILUS_EXPORT_EXTERNAL_SPDLOG OFF)
+endif ()
+configure_package_config_file(
+        ${PROJECT_SOURCE_DIR}/cmake/nautilusConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake
+        INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
+)
+write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMinorVersion
+)
+install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
 )
 
 install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/include/${PROJECT_NAME}/
