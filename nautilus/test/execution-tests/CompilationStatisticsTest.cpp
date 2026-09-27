@@ -91,11 +91,11 @@ namespace {
 /// Whether the module's statistics show the full IR optimization pipeline
 /// ran: the pass manager records a timing per pass it ran, and constant
 /// folding is only ever registered as part of the full pipeline.
-bool ranIROptimizationPasses(const compiler::CompilationStatistics& stats) {
+[[maybe_unused]] bool ranIROptimizationPasses(const compiler::CompilationStatistics& stats) {
 	return stats.contains("irPasses.ConstantFoldingAndCopyPropagation.ms");
 }
 
-bool ranBlockArgumentPruning(const compiler::CompilationStatistics& stats) {
+[[maybe_unused]] bool ranBlockArgumentPruning(const compiler::CompilationStatistics& stats) {
 	return stats.contains("irPasses.BlockArgumentPruning.ms");
 }
 
