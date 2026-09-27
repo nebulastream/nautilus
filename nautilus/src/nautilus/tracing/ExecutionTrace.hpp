@@ -20,21 +20,20 @@ using Arena = common::Arena;
 class ExecutionTrace;
 
 /// One region (docs/region.md) recorded into a trace: what the region() call site said
-/// about itself, and the two blocks that bound the body it traced.
+/// about itself, and which region encloses it.
 ///
 /// Metadata only. A region has no operation of its own and its blocks are ordinary
 /// blocks, so nothing downstream has to know about this table -- it exists so a trace can
 /// be read back against the source it came from, and so a malformed region can be
-/// reported against its call site.
+/// reported against its call site. The blocks that bounded the body while it was being
+/// traced are deliberately not part of this: the tracer splices them out as soon as the
+/// function is traced (ExecutionTrace::collapseRegionSeams), and the operations that came
+/// out of the body keep pointing here.
 struct RegionSpec {
 	RegionAttributes attributes;
 	/// The region this one was opened inside, or NO_REGION for a region opened directly
 	/// in the function body.
 	RegionIndex parent = NO_REGION;
-	/// Block the region body starts in.
-	uint32_t entryBlock;
-	/// Block the enclosing scope continues in after the body.
-	uint32_t exitBlock;
 };
 
 /// Bundles a traced function's execution trace with its metadata.
@@ -344,13 +343,40 @@ public:
 	 * region open at the time becomes the new region's parent.
 	 * @return The new region's index in the region table.
 	 */
-	RegionIndex addRegion(const RegionAttributes& attributes, uint32_t entryBlock, uint32_t exitBlock);
+	RegionIndex addRegion(const RegionAttributes& attributes, uint32_t entryBlock);
 
 	/**
 	 * @brief Returns every region recorded into this trace, in the order they were
 	 * entered. Empty for a trace produced by a tracer that inlines region bodies.
 	 */
 	const std::vector<RegionSpec>& getRegions() const;
+
+	/**
+	 * @brief The innermost region containing both @p first and @p second: their nearest
+	 * common ancestor in the nesting, or NO_REGION if they share none (either being
+	 * NO_REGION included).
+	 */
+	RegionIndex commonRegionAncestor(RegionIndex first, RegionIndex second) const;
+
+	/**
+	 * @brief Splices the seam blocks region() leaves behind out of a fully traced
+	 * function, so a region costs nothing in the trace whichever IR passes run later.
+	 *
+	 * Engaging a region records a jump from the enclosing block into a fresh entry block
+	 * the body is traced in, and a jump from the end of the body into a fresh exit block
+	 * the enclosing scope continues in (see TraceContext::traceRegion). Both are blocks
+	 * whose single predecessor ends in an unconditional jump to them, and nothing else the
+	 * tracer records has that shape: a control-flow merge always has two predecessors, and
+	 * a branch arm is reached by a CMP. Each such block is merged into its predecessor --
+	 * the jump goes, the block's operations follow the predecessor's -- and the merged
+	 * block's region widens to the innermost region containing both, while every
+	 * operation keeps naming its own region. The surviving blocks are then renumbered
+	 * densely. Linear in the size of the trace, and a no-op for a trace without regions.
+	 *
+	 * Only valid once tracing is complete: it invalidates the tag map and every recorded
+	 * block index, so it must not run while a scope could still replay the trace.
+	 */
+	void collapseRegionSeams();
 
 	/**
 	 * @brief Sets the region every operation recorded from now on belongs to, and
@@ -391,8 +417,8 @@ public:
 	/// emit one real alloca per entry in the function prologue.
 	std::vector<AllocaSpec> allocaSpecs;
 
-	/// Region table; see RegionSpec. Indexed by TraceOperation::regionIndex and by a
-	/// region entry block's Block::regionIndex.
+	/// Region table; see RegionSpec. Indexed by TraceOperation::regionIndex and by
+	/// Block::regionIndex.
 	std::vector<RegionSpec> regions;
 
 	/// The region operations recorded right now belong to; see setCurrentRegion.

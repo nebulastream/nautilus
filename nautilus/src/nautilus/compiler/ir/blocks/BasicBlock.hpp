@@ -76,11 +76,12 @@ public:
 	/// or NO_REGION for a block of the function body itself. Indexes the region table of
 	/// the FunctionOperation this block belongs to.
 	///
-	/// A block starts out as the region its code was traced in, and widens to the nearest
-	/// common ancestor whenever a pass moves operations from another region into it --
-	/// which is what merging a region's entry block into its predecessor does. So the
-	/// block answers "which region is all of this in?", while each operation keeps
-	/// answering "which region is *this* from?" exactly.
+	/// A block starts out as what the trace block it came from names -- already the
+	/// innermost region containing all of its code, since the tracer merges a region's
+	/// seam blocks into their neighbours -- and widens to the nearest common ancestor
+	/// whenever a pass moves operations from another region into it. So the block answers
+	/// "which region is all of this in?", while each operation keeps answering "which
+	/// region is *this* from?" exactly.
 	[[nodiscard]] RegionIndex getRegionIndex() const noexcept {
 		return regionIndex;
 	}

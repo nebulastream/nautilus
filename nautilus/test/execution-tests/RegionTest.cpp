@@ -24,6 +24,7 @@
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
+#include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
@@ -708,20 +709,24 @@ val<int64_t> countedUnregioned(val<int64_t> a, val<int64_t> b, val<int64_t> c) {
 	return sum;
 }
 
-/// Traces @p func and returns its IR after the two block-level
-/// cleanup passes the default pipeline runs.
-std::shared_ptr<compiler::ir::IRGraph> traceToCleanedIr(const std::function<void()>& func) {
+/// Traces @p func and returns its IR straight out of the trace-to-IR conversion, with no
+/// IR pass run on it.
+std::shared_ptr<compiler::ir::IRGraph> traceToRawIr(const std::function<void()>& func) {
 	auto rootFunction = compiler::CompilableFunction("execute", func);
 	std::list<compiler::CompilableFunction> functionsToTrace;
 	functionsToTrace.push_back(rootFunction);
 	common::Arena arena;
 	auto traceModule = tracing::TraceContext::Trace(functionsToTrace, engine::Options(), arena);
 	auto ssa = tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(traceModule)));
-	auto ir = tracing::TraceToIRConversionPhase().apply(std::move(ssa));
+	return tracing::TraceToIRConversionPhase().apply(std::move(ssa));
+}
+
+/// Traces @p func and returns its IR after the two block-level
+/// cleanup passes the default pipeline runs.
+std::shared_ptr<compiler::ir::IRGraph> traceToCleanedIr(const std::function<void()>& func) {
+	auto ir = traceToRawIr(func);
 	engine::Options passOpts;
 	compiler::ir::IRPassManager passManager(passOpts);
-	// The seams a region introduces -- its entry and exit block -- are exactly what
-	// these two passes exist to collapse, so equivalence is asserted after them.
 	passManager.addPass(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
 	passManager.addPass(std::make_unique<compiler::ir::BlockMergingPass>());
 	passManager.run(*ir);
@@ -769,8 +774,9 @@ TEST_CASE("Region Bounds Branch Exploration To The Region", "[region]") {
 
 // A regioned function must not cost anything in the generated code: same control-flow
 // graph, and no more operations than the unregioned equivalent. The entry and exit block
-// a region adds are single-predecessor seams, which is exactly what the two block-cleanup
-// passes in traceToCleanedIr collapse -- so they leave no trace in the CFG.
+// a region adds are single-predecessor seams the tracer splices out of the finished trace,
+// so they leave no trace in the CFG -- with the block-cleanup passes run here, and, as the
+// next test pins, without them.
 //
 // The two are not textually identical, and asserting that they were would be asserting
 // something false. Exploring each region independently means the code after a region's
@@ -788,6 +794,44 @@ TEST_CASE("Region IR Matches Unregioned IR", "[region]") {
 	REQUIRE(regionedStats.numFunctions == unregionedStats.numFunctions);
 	REQUIRE(regionedStats.numBlocks == unregionedStats.numBlocks);
 	REQUIRE(regionedStats.numOperations <= unregionedStats.numOperations);
+}
+
+// The seams are gone before any IR pass runs, so a region is free in the IR whichever
+// passes are enabled -- a module that disables the block-cleanup passes, or runs none at
+// all, pays nothing per region engagement either (issue #497: with the passes off, every
+// engagement used to leave two blocks and two jumps behind, once per duplicated path).
+TEST_CASE("Region Seams Are Collapsed Without IR Passes", "[region]") {
+	auto regioned = traceToRawIr(details::createFunctionWrapper(countedRegioned));
+	auto unregioned = traceToRawIr(details::createFunctionWrapper(countedUnregioned));
+	auto regionedStats = compiler::ir::computeStatistics(*regioned);
+	auto unregionedStats = compiler::ir::computeStatistics(*unregioned);
+	INFO("regioned:\n" << regioned->toString() << "\nunregioned:\n" << unregioned->toString());
+	// The conversion leaves the predecessor lists to the pass manager, which rebuilds
+	// them before the first pass; the verifier's CFG checks need them.
+	compiler::ir::rebuildPredecessorLists(*regioned);
+	const auto verification = compiler::ir::IRVerifier::verify(*regioned);
+	INFO(verification.toString());
+	REQUIRE(verification.ok());
+	REQUIRE(regionedStats.numBlocks == unregionedStats.numBlocks);
+	REQUIRE(regionedStats.numOperations <= unregionedStats.numOperations);
+
+	// The raw IR already is what the cleanup passes would have produced: they find
+	// nothing left to collapse.
+	auto cleaned = traceToCleanedIr(details::createFunctionWrapper(countedRegioned));
+	auto cleanedStats = compiler::ir::computeStatistics(*cleaned);
+	REQUIRE(cleanedStats.numBlocks == regionedStats.numBlocks);
+	REQUIRE(cleanedStats.numOperations == regionedStats.numOperations);
+
+	// A straight-line body -- a region nested in a region -- collapses into the single
+	// block the same code traces to without regions: no seam block, no jump.
+	auto straight = traceToRawIr(details::createFunctionWrapper(regionNested));
+	INFO("straight-line:\n" << straight->toString());
+	compiler::ir::rebuildPredecessorLists(*straight);
+	const auto straightVerification = compiler::ir::IRVerifier::verify(*straight);
+	INFO(straightVerification.toString());
+	REQUIRE(straightVerification.ok());
+	REQUIRE(compiler::ir::computeStatistics(*straight).numBlocks == 1);
+	REQUIRE(straight->getFunctionOperations().front()->getRegionSpecs().size() == 2);
 }
 
 // --- Region attributes: what a region() call site says about itself. ---
@@ -908,14 +952,27 @@ TEST_CASE("Region Attributes Are Recorded In The Trace", "[region]") {
 	REQUIRE(regions[2].attributes.name == nullptr);
 	REQUIRE(regions[2].attributes.location.line == unnamedRegionLine);
 
-	// A block names the region it belongs to: the entry block is the first block of the
-	// body, while the exit block is where the *enclosing* scope resumes -- for the inner
-	// region that is the outer region, for the outer ones the function body.
+	// Every operation names the region it was traced in, and a block names the innermost
+	// region containing all of its operations: the tracer splices the blocks that only
+	// bounded a region body out of the finished trace (docs/region.md), so a block may
+	// hold code of several regions. Here nothing branches, so one block holds all three
+	// regions' code and, being the function's own entry, belongs to no region at all.
+	std::vector<bool> regionHasOperations(regions.size(), false);
+	for (const auto* block : trace->getBlocks()) {
+		for (const auto* operation : block->operations) {
+			if (operation->regionIndex == tracing::NO_REGION) {
+				continue;
+			}
+			regionHasOperations[operation->regionIndex] = true;
+			REQUIRE(trace->commonRegionAncestor(operation->regionIndex, block->regionIndex) == block->regionIndex);
+		}
+	}
 	for (uint32_t i = 0; i < regions.size(); i++) {
-		REQUIRE(trace->getBlock(regions[i].entryBlock).regionIndex == i);
-		REQUIRE(trace->getBlock(regions[i].exitBlock).regionIndex == regions[i].parent);
+		INFO("region #" << i);
+		REQUIRE(regionHasOperations[i]);
 	}
 	REQUIRE(regions[1].parent == 0);
+	REQUIRE(trace->getBlocks().size() == 1);
 	REQUIRE(trace->getBlock(0).regionIndex == tracing::NO_REGION);
 
 	// And they are visible in the trace dump, named once in the legend at the end (the

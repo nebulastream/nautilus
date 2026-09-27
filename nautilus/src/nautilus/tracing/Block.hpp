@@ -82,13 +82,15 @@ public:
 	std::vector<uint32_t> predecessors;
 
 	/**
-	 * @brief Index into ExecutionTrace::regions of the region this block belongs to, or
-	 * NO_REGION for a block of the function body itself.
+	 * @brief Index into ExecutionTrace::regions of the innermost region containing every
+	 * operation in this block, or NO_REGION for a block of the function body itself.
 	 *
 	 * Every block created while a region was being traced carries it -- the body's own
-	 * blocks and the blocks of any branch or loop inside it -- so a block always names
-	 * the innermost region containing its code. Which block *opens* a region is a
-	 * separate question, answered by RegionSpec::entryBlock.
+	 * blocks and the blocks of any branch or loop inside it. Once the function is traced,
+	 * the blocks that only bounded a region body are merged into their neighbours
+	 * (ExecutionTrace::collapseRegionSeams), and a block that then holds code of more
+	 * than one region names the region enclosing all of it, while each operation keeps
+	 * naming its own (TraceOperation::regionIndex).
 	 */
 	RegionIndex regionIndex = NO_REGION;
 };
