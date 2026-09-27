@@ -6,6 +6,7 @@
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/ir/Usages.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -285,6 +286,10 @@ std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstVal
 		const Type dstType = cast->getStamp();
 		if (!isFloatType(srcType) && !isFloatType(dstType)) {
 			if (const auto inner = foldableConstValue(cast->getInput())) {
+				// A cast to bool is `value != 0`, not a truncation to the low byte.
+				if (dstType == Type::b) {
+					return *inner != 0 ? 1 : 0;
+				}
 				return canonicalizeToStamp(*inner, dstType);
 			}
 		}
@@ -540,14 +545,14 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 	// source identifier can coincide with a destination parameter identifier
 	// (issue #321), and allocating the destination first would shadow a
 	// deferred-constant source behind the fresh (uninitialised) register.
-	struct SourceValue {
-		std::optional<AsmReg> reg; // bound register, or
-		int64_t imm = 0;           // deferred-constant pattern
-	};
-	std::vector<SourceValue> sources;
-	sources.reserve(srcArgs.size());
+	//
+	// This runs once per CFG edge with one entry per block argument, so the
+	// scratch buffers below are members that keep their capacity across calls
+	// instead of being allocated per edge (issue #508).
+	auto& sources = blockArgSources_;
+	sources.clear();
 	for (size_t i = 0; i < srcArgs.size(); i++) {
-		SourceValue source;
+		BlockArgSource source;
 		// Constant sources are recovered from the operation itself (see
 		// gpOperand for why a frame binding must not shadow a constant).
 		const auto value = enableConstFolding_ ? foldableConstValue(srcArgs[i]) : std::optional<int64_t> {};
@@ -562,11 +567,14 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 	// Ensure every destination block-argument has a virtual register.
 	// If the identifier was already assigned (e.g. it matches a predecessor's
 	// SSA value), reuse that register; otherwise allocate a fresh one now.
+	auto& dsts = blockArgDsts_;
+	dsts.clear();
 	for (size_t i = 0; i < dstArgs.size(); i++) {
 		const auto& dstId = dstArgs[i]->getIdentifier();
 		if (!frame.contains(dstId)) {
 			frame.setValue(dstId, allocReg(dstArgs[i]->getStamp()));
 		}
+		dsts.push_back(frame.getValue(dstId));
 	}
 
 	// Parallel-copy semantics: a destination write must not clobber a source
@@ -574,25 +582,38 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 	// one of the destination registers needs to detour through a temp; a
 	// self-move (src == dst) needs no code at all, and everything else can
 	// be written directly (immediates and temps can never alias a source).
-	const auto vregId = [](const AsmReg& r) {
-		return std::visit([](const auto& reg) { return reg.id(); }, r);
+	//
+	// Destination registers are marked in a table indexed by virtual register
+	// index. Each call uses a fresh epoch value as its mark, so the table
+	// never has to be cleared between calls.
+	const auto vregIndex = [](const AsmReg& r) {
+		const uint32_t id = std::visit([](const auto& reg) { return reg.id(); }, r);
+		assert(::asmjit::Operand::isVirtId(id) && "block arguments live in virtual registers");
+		return ::asmjit::Operand::virtIdToIndex(id);
 	};
-	std::unordered_set<uint32_t> dstIds;
-	for (size_t i = 0; i < dstArgs.size(); i++) {
-		dstIds.insert(vregId(frame.getValue(dstArgs[i]->getIdentifier())));
+	if (dstMarks_.size() < cc.virtRegs().size()) {
+		dstMarks_.resize(cc.virtRegs().size(), 0);
+	}
+	if (++dstMarkEpoch_ == 0) {
+		std::fill(dstMarks_.begin(), dstMarks_.end(), 0);
+		dstMarkEpoch_ = 1;
+	}
+	for (const auto& dst : dsts) {
+		dstMarks_[vregIndex(dst)] = dstMarkEpoch_;
 	}
 
 	// Phase 1: detour hazardous register sources through fresh temps.
-	std::vector<std::optional<AsmReg>> temps(srcArgs.size());
+	auto& temps = blockArgTemps_;
+	temps.assign(srcArgs.size(), std::nullopt);
 	for (size_t i = 0; i < srcArgs.size(); i++) {
 		if (!sources[i].reg.has_value()) {
 			continue; // immediate -- written directly in phase 2
 		}
-		const auto srcId = vregId(*sources[i].reg);
-		if (srcId == vregId(frame.getValue(dstArgs[i]->getIdentifier()))) {
+		const auto srcIndex = vregIndex(*sources[i].reg);
+		if (srcIndex == vregIndex(dsts[i])) {
 			continue; // self-move -- no code needed
 		}
-		if (dstIds.count(srcId) != 0) {
+		if (dstMarks_[srcIndex] == dstMarkEpoch_) {
 			auto temp = allocReg(dstArgs[i]->getStamp());
 			emitMove(temp, *sources[i].reg);
 			temps[i] = temp;
@@ -601,11 +622,11 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 
 	// Phase 2: write the destinations.
 	for (size_t i = 0; i < srcArgs.size(); i++) {
-		auto dst = frame.getValue(dstArgs[i]->getIdentifier());
+		const auto& dst = dsts[i];
 		if (temps[i].has_value()) {
 			emitMove(dst, *temps[i]);
 		} else if (sources[i].reg.has_value()) {
-			if (vregId(*sources[i].reg) != vregId(dst)) {
+			if (vregIndex(*sources[i].reg) != vregIndex(dst)) {
 				emitMove(dst, *sources[i].reg);
 			}
 		} else {
@@ -1555,6 +1576,50 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 
 	const bool srcIsFloat = isFloatType(srcType);
 	const bool dstIsFloat = isFloatType(dstType);
+
+	if (dstType == Type::b && srcType != Type::b) {
+		// A cast to bool is `value != 0` (C++ semantics), not a truncation to
+		// the low byte: 256 and 0.5 are true. Only the source width is tested.
+		auto gDst = toGp(result);
+		if (srcIsFloat) {
+			auto xSrc = toXmm(src);
+			auto xZero = srcType == Type::f32 ? cc.newXmmSs() : cc.newXmmSd();
+			auto unordered = cc.newInt64();
+			cc.xorps(xZero, xZero);
+			if (srcType == Type::f32) {
+				cc.ucomiss(xSrc, xZero);
+			} else {
+				cc.ucomisd(xSrc, xZero);
+			}
+			// ZF is also set for NaN, which is true in C++; PF flags it.
+			cc.setne(gDst.r8());
+			cc.setp(unordered.r8());
+			cc.or_(gDst.r8(), unordered.r8());
+		} else {
+			auto gSrc = toGp(src);
+			switch (srcType) {
+			case Type::i8:
+			case Type::ui8:
+				cc.test(gSrc.r8(), gSrc.r8());
+				break;
+			case Type::i16:
+			case Type::ui16:
+				cc.test(gSrc.r16(), gSrc.r16());
+				break;
+			case Type::i32:
+			case Type::ui32:
+				cc.test(gSrc.r32(), gSrc.r32());
+				break;
+			default:
+				cc.test(gSrc.r64(), gSrc.r64());
+				break;
+			}
+			cc.setne(gDst.r8());
+		}
+		cc.movzx(gDst.r32(), gDst.r8());
+		bindResult(op->getIdentifier(), result, frame);
+		return;
+	}
 
 	if (!srcIsFloat && !dstIsFloat) {
 		// Integer → integer: first extend from source width to get a clean

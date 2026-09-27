@@ -14,6 +14,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         BoolExecutionTest.cpp
         CalleeConformanceTest.cpp
         CastExecutionTest.cpp
+        NarrowCallArgumentTest.cpp
         CompilationStatisticsTest.cpp
         ConcurrentCompilationTest.cpp
         ConcurrentExecutionTest.cpp
