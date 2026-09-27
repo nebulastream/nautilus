@@ -2,6 +2,7 @@
 #include "nautilus/common/ExceptionPropagation.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/options.hpp"
+#include <cstdint>
 #include <map>
 #include <memory>
 
@@ -11,6 +12,31 @@ class CompilationStatistics;
 namespace ir {
 class IRGraph;
 }
+
+/**
+ * @brief How much of the IR optimization pipeline runs on a graph before a
+ * backend compiles it.
+ *
+ * The IR passes exist for the backends that execute the IR as it is -- the
+ * interpreters and the assembler backend -- where every operation and block
+ * argument removed is a dispatch or a register saved at run time. A backend
+ * with an optimizing pipeline of its own (MLIR, through LLVM) performs the
+ * same folding, simplification and dead-code removal itself, and running
+ * those passes first only costs compile time. Block arguments are the
+ * exception: LLVM turns them into phis and pays for every one the trace
+ * left behind (measured on the #492 repro, MLIR compilation of a graph with
+ * unpruned arguments was 7-18% slower end to end than with them pruned, while
+ * the other passes made no difference to it), so a self-optimizing backend
+ * still wants them pruned.
+ */
+enum class IROptimizationLevel : uint8_t {
+	/// Nothing beyond the analyses every backend needs (`ir.runOptimizationPasses=false`).
+	None,
+	/// Block-argument pruning only.
+	ArgumentPruning,
+	/// Every optimization pass.
+	Full,
+};
 
 /**
  * @brief The compilation backend, compiles a ir graph to an executable.
@@ -35,6 +61,18 @@ public:
 
 	[[nodiscard]] virtual ExceptionPropagationMode getExceptionPropagationMode() const {
 		return ExceptionPropagationMode::NativeUnwind;
+	}
+
+	/**
+	 * @brief How much of the IR optimization pipeline this backend wants run
+	 * on a graph before it compiles it. See `IROptimizationLevel`.
+	 *
+	 * The pipeline runs the highest level any backend that will compile the
+	 * graph asks for; the exception-handling analyses every backend lowers
+	 * landing pads from run at every level.
+	 */
+	[[nodiscard]] virtual IROptimizationLevel irOptimizationLevel() const {
+		return IROptimizationLevel::Full;
 	}
 
 	virtual ~CompilationBackend();
