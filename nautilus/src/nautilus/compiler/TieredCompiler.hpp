@@ -116,10 +116,15 @@ private:
 	 * the IR via @p outIR so callers can hand it to background promotion.
 	 *
 	 * @p tierLabel is recorded into the compilation statistics ("tier0"/"tier1").
+	 * @p optimization is how much of the IR optimization pipeline runs before
+	 * the graph is compiled; the caller decides it from every backend that
+	 * will compile this graph, the promotion target included, since the graph
+	 * is traced once and shared between the tiers.
 	 */
 	[[nodiscard]] std::unique_ptr<Executable> compileTier(std::list<CompilableFunction>& functions,
 	                                                      const engine::ModuleOptions& moduleOptions,
 	                                                      const std::string& backend, const std::string& tierLabel,
+	                                                      IROptimizationLevel optimization,
 	                                                      std::shared_ptr<ir::IRGraph>& outIR) const;
 
 	/**

@@ -7,6 +7,7 @@
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
+#include <algorithm>
 #include <chrono>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
@@ -79,9 +80,110 @@ std::string createCompilationUnitID() {
 	return timestamp + "_#" + uuid;
 }
 
+namespace {
+
+/// The cleanup that makes trace-generated IR small: registers the fixed-point
+/// group and the analyses feeding it. At `ArgumentPruning` only the pruning
+/// pass is registered (see `IROptimizationLevel` for why that one still pays
+/// for a self-optimizing backend); at `None` nothing is.
+void addOptimizationPasses(ir::IRPassManager& passManager, const engine::ModuleOptions& moduleOptions,
+                           IROptimizationLevel level) {
+	if (level == IROptimizationLevel::None) {
+		return;
+	}
+	if (level == IROptimizationLevel::ArgumentPruning) {
+		if (!moduleOptions.getOptionOrDefault("ir.disableBlockArgumentPruning", false)) {
+			passManager.addPass(std::make_unique<ir::BlockArgumentPruningPass>());
+		}
+		return;
+	}
+	std::vector<std::unique_ptr<ir::IRPass>> group;
+	if (!moduleOptions.getOptionOrDefault("ir.disableConstantFolding", false)) {
+		group.push_back(std::make_unique<ir::ConstantFoldingAndCopyPropagationPass>());
+	}
+	// Canonicalizes and folds local algebraic identities; see design
+	// §4.3-B. Runs right after constant folding so the constants it
+	// produces are canonicalized to the right operand immediately.
+	if (!moduleOptions.getOptionOrDefault("ir.disableAlgebraicSimplification", false)) {
+		group.push_back(std::make_unique<ir::AlgebraicSimplificationPass>());
+	}
+	// Closes the loop constant folding/simplification opens: a compare
+	// that folded to a constant bool still drives a conditional branch
+	// until this pass turns it into an unconditional one and sweeps the
+	// dead arm; see design §4.3-C.
+	if (!moduleOptions.getOptionOrDefault("ir.disableConstantBranchFolding", false)) {
+		group.push_back(std::make_unique<ir::ConstantBranchFoldingPass>());
+	}
+	if (!moduleOptions.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
+		group.push_back(std::make_unique<ir::EmptyBlockEliminationPass>());
+	}
+	// Collapses the single-predecessor seams trace-generated IR is full
+	// of (and that branch folding just created more of) into straight-line
+	// blocks; see design §4.3-D. Runs after the empty-block pass so
+	// trivial hops are gone before whole blocks are spliced.
+	if (!moduleOptions.getOptionOrDefault("ir.disableBlockMerging", false)) {
+		group.push_back(std::make_unique<ir::BlockMergingPass>());
+	}
+	// Block-local CSE over the long straight-line blocks block merging
+	// just produced; see design §4.3-F. Opt-in (default off) pending the
+	// benchmark sweep that gates promoting it to default-on
+	// (`ir.disableLocalCSE`); DCE below sweeps the duplicates it removes.
+	if (moduleOptions.getOptionOrDefault("ir.enableLocalCSE", false)) {
+		group.push_back(std::make_unique<ir::LocalCSEPass>());
+	}
+	// Opt-in (default off), unlike the two passes above: correct, but
+	// measured to regress the BC interpreter's dispatch-bound cost model
+	// (see StrengthReductionPass.hpp) -- may still be worth enabling for
+	// an ALU-bound backend.
+	if (moduleOptions.getOptionOrDefault("ir.enableStrengthReduction", false)) {
+		group.push_back(std::make_unique<ir::StrengthReductionPass>());
+	}
+	// Sweeps constant-folding and strength-reduction residue (dead
+	// feeding constants, the neutralized multiply) every round; see
+	// design §4.3-A. Runs last in the group so it cleans up whatever the
+	// passes above it produced that round.
+	if (!moduleOptions.getOptionOrDefault("ir.disableDeadCodeElimination", false)) {
+		group.push_back(std::make_unique<ir::DeadCodeEliminationPass>());
+	}
+	// The only pass that changes block-argument arity: prunes unused and
+	// same-value pass-through arguments; see design §4.3-E. Runs last in
+	// the group because every CFG change above can strand arguments, and
+	// DCE's sweep is what turns "used only by dead code" into "unused".
+	if (!moduleOptions.getOptionOrDefault("ir.disableBlockArgumentPruning", false)) {
+		group.push_back(std::make_unique<ir::BlockArgumentPruningPass>());
+	}
+	// Re-run the whole group until a full round changes nothing (e.g.
+	// empty-block elimination exposing a new copy-propagation
+	// opportunity for constant folding), capped at `ir.maxPipelineIterations`.
+	const auto maxIterations = static_cast<size_t>(moduleOptions.getOptionOrDefault("ir.maxPipelineIterations", 4));
+
+	// Derive what each in-module function does to memory before the passes
+	// that could act on it. Every traced call to a Nautilus function
+	// declares the pessimistic default, so without this no call is ever
+	// eligible for CSE, hoisting or elimination.
+	//
+	// It runs first, on pre-cleanup IR, and that is safe in one direction
+	// only: the later passes remove and move operations, never add them,
+	// so a derived attribute can become stale by being *more* pessimistic
+	// than the final body -- which costs optimisation, never correctness.
+	if (!moduleOptions.getOptionOrDefault("ir.disableAttributeInference", false)) {
+		passManager.addPass(std::make_unique<ir::FunctionAttributeInferencePass>());
+	}
+	passManager.addFixedPointGroup(std::move(group), maxIterations);
+	// Loop-invariant code motion runs once, after the cleanup group has
+	// canonicalized the CFG (single preheaders/latches), and stays opt-in
+	// (default off) as the highest-risk pass; see design §4.3-G / §4.4.
+	if (moduleOptions.getOptionOrDefault("ir.enableLICM", false)) {
+		passManager.addPass(std::make_unique<ir::LoopInvariantCodeMotionPass>());
+	}
+}
+
+} // namespace
+
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions,
                                                               const engine::ModuleOptions& moduleOptions,
-                                                              CompilationStatistics* statistics) const {
+                                                              CompilationStatistics* statistics,
+                                                              IROptimizationLevel optimization) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(moduleOptions, compilationId);
 
@@ -139,85 +241,17 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 
 	if (moduleOptions.getOptionOrDefault("ir.runPasses", true)) {
 		ir::IRPassManager passManager(moduleOptions, &dumpHandler, statistics, &irPrintOptions);
-		std::vector<std::unique_ptr<ir::IRPass>> group;
-		if (!moduleOptions.getOptionOrDefault("ir.disableConstantFolding", false)) {
-			group.push_back(std::make_unique<ir::ConstantFoldingAndCopyPropagationPass>());
+		// The optimization passes are for the backends that execute the IR as
+		// it is; a backend that optimizes on its own (MLIR, through LLVM) gets
+		// the same cleanups from its pipeline, so by default the graph gets
+		// only what the backends compiling it ask for. The option pins it
+		// either way.
+		if (moduleOptions.hasOption("ir.runOptimizationPasses")) {
+			optimization = moduleOptions.getOptionOrDefault("ir.runOptimizationPasses", true)
+			                   ? IROptimizationLevel::Full
+			                   : IROptimizationLevel::None;
 		}
-		// Canonicalizes and folds local algebraic identities; see design
-		// §4.3-B. Runs right after constant folding so the constants it
-		// produces are canonicalized to the right operand immediately.
-		if (!moduleOptions.getOptionOrDefault("ir.disableAlgebraicSimplification", false)) {
-			group.push_back(std::make_unique<ir::AlgebraicSimplificationPass>());
-		}
-		// Closes the loop constant folding/simplification opens: a compare
-		// that folded to a constant bool still drives a conditional branch
-		// until this pass turns it into an unconditional one and sweeps the
-		// dead arm; see design §4.3-C.
-		if (!moduleOptions.getOptionOrDefault("ir.disableConstantBranchFolding", false)) {
-			group.push_back(std::make_unique<ir::ConstantBranchFoldingPass>());
-		}
-		if (!moduleOptions.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
-			group.push_back(std::make_unique<ir::EmptyBlockEliminationPass>());
-		}
-		// Collapses the single-predecessor seams trace-generated IR is full
-		// of (and that branch folding just created more of) into straight-line
-		// blocks; see design §4.3-D. Runs after the empty-block pass so
-		// trivial hops are gone before whole blocks are spliced.
-		if (!moduleOptions.getOptionOrDefault("ir.disableBlockMerging", false)) {
-			group.push_back(std::make_unique<ir::BlockMergingPass>());
-		}
-		// Block-local CSE over the long straight-line blocks block merging
-		// just produced; see design §4.3-F. Opt-in (default off) pending the
-		// benchmark sweep that gates promoting it to default-on
-		// (`ir.disableLocalCSE`); DCE below sweeps the duplicates it removes.
-		if (moduleOptions.getOptionOrDefault("ir.enableLocalCSE", false)) {
-			group.push_back(std::make_unique<ir::LocalCSEPass>());
-		}
-		// Opt-in (default off), unlike the two passes above: correct, but
-		// measured to regress the BC interpreter's dispatch-bound cost model
-		// (see StrengthReductionPass.hpp) -- may still be worth enabling for
-		// an ALU-bound backend.
-		if (moduleOptions.getOptionOrDefault("ir.enableStrengthReduction", false)) {
-			group.push_back(std::make_unique<ir::StrengthReductionPass>());
-		}
-		// Sweeps constant-folding and strength-reduction residue (dead
-		// feeding constants, the neutralized multiply) every round; see
-		// design §4.3-A. Runs last in the group so it cleans up whatever the
-		// passes above it produced that round.
-		if (!moduleOptions.getOptionOrDefault("ir.disableDeadCodeElimination", false)) {
-			group.push_back(std::make_unique<ir::DeadCodeEliminationPass>());
-		}
-		// The only pass that changes block-argument arity: prunes unused and
-		// same-value pass-through arguments; see design §4.3-E. Runs last in
-		// the group because every CFG change above can strand arguments, and
-		// DCE's sweep is what turns "used only by dead code" into "unused".
-		if (!moduleOptions.getOptionOrDefault("ir.disableBlockArgumentPruning", false)) {
-			group.push_back(std::make_unique<ir::BlockArgumentPruningPass>());
-		}
-		// Re-run the whole group until a full round changes nothing (e.g.
-		// empty-block elimination exposing a new copy-propagation
-		// opportunity for constant folding), capped at `ir.maxPipelineIterations`.
-		const auto maxIterations = static_cast<size_t>(moduleOptions.getOptionOrDefault("ir.maxPipelineIterations", 4));
-
-		// Derive what each in-module function does to memory before the passes
-		// that could act on it. Every traced call to a Nautilus function
-		// declares the pessimistic default, so without this no call is ever
-		// eligible for CSE, hoisting or elimination.
-		//
-		// It runs first, on pre-cleanup IR, and that is safe in one direction
-		// only: the later passes remove and move operations, never add them,
-		// so a derived attribute can become stale by being *more* pessimistic
-		// than the final body -- which costs optimisation, never correctness.
-		if (!moduleOptions.getOptionOrDefault("ir.disableAttributeInference", false)) {
-			passManager.addPass(std::make_unique<ir::FunctionAttributeInferencePass>());
-		}
-		passManager.addFixedPointGroup(std::move(group), maxIterations);
-		// Loop-invariant code motion runs once, after the cleanup group has
-		// canonicalized the CFG (single preheaders/latches), and stays opt-in
-		// (default off) as the highest-risk pass; see design §4.3-G / §4.4.
-		if (moduleOptions.getOptionOrDefault("ir.enableLICM", false)) {
-			passManager.addPass(std::make_unique<ir::LoopInvariantCodeMotionPass>());
-		}
+		addOptimizationPasses(passManager, moduleOptions, optimization);
 		// Proves Nautilus-to-Nautilus calls noUnwind via whole-module
 		// call-graph analysis, downgrading calls the trace-time heuristic
 		// pessimistically marked exception-handling; see
@@ -226,7 +260,8 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		// construction entirely.
 		passManager.addPass(std::make_unique<ir::NoThrowInferencePass>());
 		// Exception-region preparation: collects cleanup metadata for backends.
-		// Terminal pass — runs once after all optimisation.
+		// Terminal pass -- runs once after all optimisation. Every backend
+		// lowers its landing pads from this side table, so it is not optional.
 		passManager.addPass(std::make_unique<ir::ExceptionRegionPreparationPass>());
 		// Records where every operation lands in a rendering of the final IR,
 		// and publishes it on the graph for the backend. Strictly last: a map
@@ -281,8 +316,8 @@ std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr
 #else
 
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>&,
-                                                              const engine::ModuleOptions&,
-                                                              CompilationStatistics*) const {
+                                                              const engine::ModuleOptions&, CompilationStatistics*,
+                                                              IROptimizationLevel) const {
 	throw RuntimeException("Jit not initialised");
 }
 
@@ -292,4 +327,18 @@ std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr
 }
 
 #endif
+
+IROptimizationLevel CompilationPipeline::irOptimizationLevel(std::initializer_list<std::string> backendNames) const {
+	bool any = false;
+	auto level = IROptimizationLevel::None;
+	for (const auto& name : backendNames) {
+		if (!backends->hasBackend(name)) {
+			continue;
+		}
+		any = true;
+		level = std::max(level, backends->getBackend(name)->irOptimizationLevel());
+	}
+	return any ? level : IROptimizationLevel::Full;
+}
+
 } // namespace nautilus::compiler

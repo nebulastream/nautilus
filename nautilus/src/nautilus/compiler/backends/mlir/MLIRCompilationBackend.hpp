@@ -17,6 +17,14 @@ public:
 	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode() const override {
 		return ExceptionPropagationMode::NativeUnwind;
 	}
+
+	/// LLVM's pipeline folds constants, simplifies the CFG and eliminates
+	/// dead code itself, so those IR passes would only repeat that work
+	/// before the lowering -- but it is slower on a graph whose block
+	/// arguments were never pruned (see `IROptimizationLevel`).
+	[[nodiscard]] IROptimizationLevel irOptimizationLevel() const override {
+		return IROptimizationLevel::ArgumentPruning;
+	}
 };
 
 } // namespace nautilus::compiler::mlir
