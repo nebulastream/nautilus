@@ -238,8 +238,12 @@ jobs:
           echo "$out" | grep -q ') ; region #0$'
           echo "$out" | grep -q '; region #0 = "scan" at .*DemoRegions.cpp:'
           echo "$out" | grep -q '; region #1 = "classify" at .*DemoRegions.cpp:'
-          # the IR refers to regions by id and defines them in the legend closing the module
-          echo "$out" | grep -q '): ; region #2$'
+          # the IR refers to regions by id -- a block in its header, and an operation
+          # where it came from deeper in the nesting than its block: the tracer splices
+          # a region's seam blocks away, so "accumulate" lives inside a "classify" block
+          # -- and defines them in the legend closing the module
+          echo "$out" | grep -q '): ; region #1$'
+          echo "$out" | grep -q ' :i64  ; region #2$'
           echo "$out" | grep -q '; region #2 = "accumulate" at .*DemoRegions.cpp:.*, nested in #1'
 
       - name: run demo_backends
