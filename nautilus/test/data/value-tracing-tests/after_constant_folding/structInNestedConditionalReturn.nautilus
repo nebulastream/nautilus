@@ -8,15 +8,15 @@ Block_0($1:i32):
 Block_1($1:i32):
 	$5 = alloca[0] :ptr
 	store($1, $5) :void
-	$13 = call readFieldA($5) :i32
-	br Block_3($13) :void
+	$8 = call readFieldA($5) :i32
+	br Block_3($8) :void
 
-Block_3($13:i32):
-	return ($13) :i32
+Block_3($8:i32):
+	return ($8) :i32
 
 Block_2():
-	$15 = 0 :i32
-	br Block_3($15) :void
+	$10 = 0 :i32
+	br Block_3($10) :void
 }
 readFieldA($1:ptr) :i32 {
 Block_0($1:ptr):

@@ -12,11 +12,11 @@ Block_3($2:i32, $3:i32, $1:i32):
 Block_1($1:i32, $3:i32, $2:i32):
 	$6 = alloca[0] :ptr
 	store($3, $6) :void
-	$14 = call readFieldA($6) :i32
-	$15 = $2 + $14 :i32
-	$16 = 1 :i32
-	$17 = $3 + $16 :i32
-	br Block_3($15, $17, $1) :void
+	$9 = call readFieldA($6) :i32
+	$10 = $2 + $9 :i32
+	$11 = 1 :i32
+	$12 = $3 + $11 :i32
+	br Block_3($10, $12, $1) :void
 
 Block_2($2:i32):
 	return ($2) :i32

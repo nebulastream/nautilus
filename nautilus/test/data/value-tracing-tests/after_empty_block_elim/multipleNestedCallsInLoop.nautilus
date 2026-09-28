@@ -2,35 +2,35 @@ nautilus {
 execute($1:i32) :i32 {
 Block_0($1:i32):
 	$2 = alloca[0] :ptr
-	$4 = 0 :i32
-	store($4, $2) :void
-	$8 = 4 :ui64
-	$9 = $2 + $8 :ptr
-	$10 = 100 :i32
-	store($10, $9) :void
-	$14 = 0 :i32
-	br Block_3($2, $14, $1) :void
+	$3 = 0 :i32
+	store($3, $2) :void
+	$5 = 100 :i32
+	$6 = 4 :ui64
+	$7 = $2 + $6 :ptr
+	store($5, $7) :void
+	$9 = 0 :i32
+	br Block_3($2, $9, $1) :void
 
-Block_3($2:ptr, $14:i32, $1:i32):
-	$15 = $14 < $1 :bool
-	if $15 ? Block_1($2, $1, $14) : Block_2($2) :void
+Block_3($2:ptr, $9:i32, $1:i32):
+	$10 = $9 < $1 :bool
+	if $10 ? Block_1($2, $1, $9) : Block_2($2) :void
 
-Block_1($2:ptr, $1:i32, $14:i32):
-	$19 = call sumFields($2) :i32
-	call incrementFieldA($2,$19) :void
-	$21 = 1 :i32
-	$22 = $14 + $21 :i32
-	br Block_3($2, $22, $1) :void
+Block_1($2:ptr, $1:i32, $9:i32):
+	$14 = call sumFields($2) :i32
+	call incrementFieldA($2,$14) :void
+	$16 = 1 :i32
+	$17 = $9 + $16 :i32
+	br Block_3($2, $17, $1) :void
 
 Block_2($2:ptr):
-	$25 = call readFieldA($2) :i32
-	return ($25) :i32
+	$20 = call readFieldA($2) :i32
+	return ($20) :i32
 }
 incrementFieldA($1:ptr, $2:i32) :void {
 Block_0($1:ptr, $2:i32):
-	$5 = load($1) :i32
-	$6 = $5 + $2 :i32
-	store($6, $1) :void
+	$4 = load($1) :i32
+	$5 = $4 + $2 :i32
+	store($5, $1) :void
 	return :void
 }
 readFieldA($1:ptr) :i32 {

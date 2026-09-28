@@ -13,6 +13,15 @@ namespace nautilus::tracing {
 struct SourceLocationResolver::Impl {
 #ifdef ENABLE_STACKTRACE
 	backward::TraceResolver resolver;
+
+	backward::ResolvedTrace resolve(TagAddress pc) {
+		// The backtrace_symbols backend (used when neither libdw nor libbfd is available) resolves an index into
+		// the addresses loaded last, so the address has to be loaded first; the DWARF backends ignore this.
+		void* address = reinterpret_cast<void*>(pc);
+		resolver.load_addresses(&address, 1);
+		backward::Trace rawTrace(address, 0);
+		return resolver.resolve(backward::ResolvedTrace(rawTrace));
+	}
 #endif
 };
 
@@ -48,8 +57,7 @@ const SourceFrame& SourceLocationResolver::resolve(TagAddress pc) {
 
 	SourceFrame frame;
 #ifdef ENABLE_STACKTRACE
-	backward::Trace rawTrace(reinterpret_cast<void*>(pc), 0);
-	backward::ResolvedTrace resolved = impl_->resolver.resolve(backward::ResolvedTrace(rawTrace));
+	backward::ResolvedTrace resolved = impl_->resolve(pc);
 
 	// Prefer the deepest inlined source location over the object-level one:
 	// for inlined calls backward exposes the chain through `inliners`, with
@@ -67,6 +75,34 @@ const SourceFrame& SourceLocationResolver::resolve(TagAddress pc) {
 	(void) pc;
 #endif
 	auto [it, _] = cache_.emplace(pc, std::move(frame));
+	return it->second;
+}
+
+const std::vector<SourceFrame>& SourceLocationResolver::resolveInlined(TagAddress pc) {
+	if (auto it = inlinedCache_.find(pc); it != inlinedCache_.end()) {
+		return it->second;
+	}
+
+	std::vector<SourceFrame> frames;
+#ifdef ENABLE_STACKTRACE
+	backward::ResolvedTrace resolved = impl_->resolve(pc);
+	auto toFrame = [](const backward::ResolvedTrace::SourceLoc& loc) {
+		return SourceFrame {.file = loc.filename, .function = loc.function, .line = loc.line, .column = loc.col};
+	};
+	if (!resolved.source.filename.empty() || !resolved.source.function.empty()) {
+		frames.push_back(toFrame(resolved.source));
+		// backward lists the frames `source` is inlined into from the innermost one outwards.
+		for (const auto& inliner : resolved.inliners) {
+			frames.push_back(toFrame(inliner));
+		}
+	} else if (!resolved.object_function.empty()) {
+		frames.push_back(SourceFrame {.file = resolved.object_filename, .function = resolved.object_function});
+	}
+#endif
+	if (frames.empty()) {
+		frames.emplace_back();
+	}
+	auto [it, _] = inlinedCache_.emplace(pc, std::move(frames));
 	return it->second;
 }
 

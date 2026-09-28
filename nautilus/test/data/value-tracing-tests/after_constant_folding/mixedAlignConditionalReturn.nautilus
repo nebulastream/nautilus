@@ -9,28 +9,28 @@ Block_1($1:i64):
 	$5 = alloca[0] :ptr
 	$6 = 1 :i8
 	store($6, $5) :void
-	$12 = 2 :i32
-	$14 = 4 :ui64
-	$15 = $5 + $14 :ptr
-	store($12, $15) :void
-	$21 = 8 :ui64
-	$22 = $5 + $21 :ptr
-	store($1, $22) :void
-	$27 = load($5) :i8
-	$28 = 4 :ui64
-	$29 = $5 + $28 :ptr
-	$30 = load($29) :i32
-	$31 = 8 :ui64
-	$32 = $5 + $31 :ptr
-	$33 = load($32) :i64
-	$34 = $27 cast_to i64 :i64
-	$35 = $30 cast_to i64 :i64
-	$36 = $34 + $35 :i64
-	$37 = $36 + $33 :i64
-	br Block_3($37) :void
+	$8 = 2 :i32
+	$9 = 4 :ui64
+	$10 = $5 + $9 :ptr
+	store($8, $10) :void
+	$12 = 8 :ui64
+	$13 = $5 + $12 :ptr
+	store($1, $13) :void
+	$16 = load($5) :i8
+	$17 = 4 :ui64
+	$18 = $5 + $17 :ptr
+	$19 = load($18) :i32
+	$20 = 8 :ui64
+	$21 = $5 + $20 :ptr
+	$22 = load($21) :i64
+	$23 = $16 cast_to i64 :i64
+	$24 = $19 cast_to i64 :i64
+	$25 = $23 + $24 :i64
+	$26 = $25 + $22 :i64
+	br Block_3($26) :void
 
-Block_3($37:i64):
-	return ($37) :i64
+Block_3($26:i64):
+	return ($26) :i64
 
 Block_2($1:i64):
 	br Block_3($1) :void

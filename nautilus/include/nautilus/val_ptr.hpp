@@ -71,12 +71,8 @@ public:
 		return val<baseType>(*rawPtr);
 	}
 
-	template <class T>
-	    requires std::is_convertible_v<T, baseType>
-	void operator=(val<T> other) {
-		val<baseType> value {other};
-
-		// store value
+	/// Stores @p value. Taken by reference: storing reads the value, it never needs a copy of it.
+	void operator=(const val<baseType>& value) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			tracing::traceBinaryOp(tracing::STORE, Type::v, ptr.state, value.state);
@@ -91,33 +87,57 @@ public:
 
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
-	void operator=(T other) {
-		val<baseType> value {val<T> {other}};
-		*this = value;
+	void operator=(val<T> other) {
+		*this = val<baseType> {other};
 	}
 
+	template <class T>
+	    requires std::is_convertible_v<T, baseType>
+	void operator=(T other) {
+		if constexpr (tracing::same_nautilus_type<T, baseType>::value) {
+			*this = val<baseType> {other};
+		} else {
+			*this = val<baseType> {val<T> {other}};
+		}
+	}
+
+	// The val<T> operands below are taken by const reference, so an operand that is already a val is not copied,
+	// and converted to baseType only when its type differs. A val<U&> operand is still taken by value: loading it
+	// needs a non-const val<U&>.
 #define BINARY_AND_ASSIGN_OPERATOR(OP)                                                                                 \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
 	void operator OP## = (T other) noexcept {                                                                          \
-		val<baseType> value {other};                                                                                   \
-		*this OP## = value;                                                                                            \
+		*this OP## = val<baseType> {other};                                                                            \
 	}                                                                                                                  \
 	template <class T>                                                                                                 \
-	    requires std::is_convertible_v<T, baseType>                                                                    \
+	    requires(std::is_convertible_v<T, baseType> && !std::is_reference_v<T>)                                        \
+	void operator OP## = (const val<T>& other) noexcept {                                                              \
+		if constexpr (std::is_same_v<T, baseType>) {                                                                   \
+			*this = *this OP other;                                                                                    \
+		} else {                                                                                                       \
+			*this = *this OP val<baseType> {other};                                                                    \
+		}                                                                                                              \
+	}                                                                                                                  \
+	template <class T>                                                                                                 \
+	    requires(std::is_convertible_v<T, baseType> && std::is_reference_v<T>)                                         \
 	void operator OP## = (val<T> other) noexcept {                                                                     \
-		val<baseType> value {other};                                                                                   \
-		*this = *this OP value;                                                                                        \
+		*this = *this OP val<baseType> {other};                                                                        \
 	}                                                                                                                  \
                                                                                                                        \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
 	auto operator OP(T other) {                                                                                        \
-		val<baseType> value {other};                                                                                   \
-		return *this OP value;                                                                                         \
+		return *this OP val<baseType> {other};                                                                         \
 	}                                                                                                                  \
 	template <class T>                                                                                                 \
-	    requires std::is_convertible_v<T, baseType>                                                                    \
+	    requires(std::is_convertible_v<T, baseType> && !std::is_reference_v<T>)                                        \
+	auto operator OP(const val<T>& other) {                                                                            \
+		val<baseType> ourVal {*this};                                                                                  \
+		return ourVal OP other;                                                                                        \
+	}                                                                                                                  \
+	template <class T>                                                                                                 \
+	    requires(std::is_convertible_v<T, baseType> && std::is_reference_v<T>)                                         \
 	auto operator OP(val<T> other) {                                                                                   \
 		val<baseType> ourVal {*this};                                                                                  \
 		return ourVal OP other;                                                                                        \
@@ -136,12 +156,17 @@ public:
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
 	bool operator OP(T other) {                                                                                        \
-		val<baseType> value {other};                                                                                   \
-		return *this OP value;                                                                                         \
+		return *this OP val<baseType> {other};                                                                         \
 	}                                                                                                                  \
                                                                                                                        \
 	template <class T>                                                                                                 \
-	    requires std::is_convertible_v<T, baseType>                                                                    \
+	    requires(std::is_convertible_v<T, baseType> && !std::is_reference_v<T>)                                        \
+	bool operator OP(const val<T>& other) {                                                                            \
+		val<baseType> ourVal {*this};                                                                                  \
+		return ourVal OP other;                                                                                        \
+	}                                                                                                                  \
+	template <class T>                                                                                                 \
+	    requires(std::is_convertible_v<T, baseType> && std::is_reference_v<T>)                                         \
 	bool operator OP(val<T> other) {                                                                                   \
 		val<baseType> ourVal {*this};                                                                                  \
 		return ourVal OP other;                                                                                        \
@@ -258,28 +283,28 @@ public:
 protected:
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend val<bool> inline operator==(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator==(const val<ValueType>& left, const val<ValueType>& right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend val<bool> inline operator==(val<ValueType> left, std::nullptr_t);
+	friend val<bool> inline operator==(const val<ValueType>& left, std::nullptr_t);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend val<bool> inline operator==(std::nullptr_t, val<ValueType> right);
+	friend val<bool> inline operator==(std::nullptr_t, const val<ValueType>& right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend val<bool> inline operator<=(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator<=(const val<ValueType>& left, const val<ValueType>& right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend val<bool> inline operator<(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator<(const val<ValueType>& left, const val<ValueType>& right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend val<bool> inline operator>(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator>(const val<ValueType>& left, const val<ValueType>& right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend val<bool> inline operator>=(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator>=(const val<ValueType>& left, const val<ValueType>& right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend val<bool> inline operator!=(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator!=(const val<ValueType>& left, const val<ValueType>& right);
 	template <is_ptr ValueType, is_integral_val IndexType>
 	friend val<ValueType> inline details::ptrAdd(const val<ValueType>& left, const IndexType& offset);
 	template <is_ptr ValueType>
@@ -321,16 +346,14 @@ public:
 
 	template <typename F, typename T = ValType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, val<F> value) {
-		val<F&> valueRef = get(pm);
-		valueRef = value;
+	void set(F T::* pm, const val<F>& value) {
+		storeField(pm, value);
 	}
 
 	template <typename F, typename T = ValType>
 	    requires std::is_class_v<T>
 	void set(F T::* pm, F value) {
-		val<F&> valueRef = get(pm);
-		valueRef = value;
+		storeField(pm, val<F> {value});
 	}
 
 #ifdef ENABLE_TRACING
@@ -453,6 +476,26 @@ public:
 
 	val<ValuePtrType> operator+() const {
 		return *this;
+	}
+
+private:
+	/// Stores @p value into a field. Unlike the reference get() returns, the one made here dies before anything can
+	/// assign to this pointer, so a field at offset 0 is addressed through this pointer's own value, not a copy.
+	template <typename F, typename T>
+	void storeField(F T::* pm, const val<F>& value) {
+		if (field_offset(pm) != 0) {
+			val<F&> field = get(pm);
+			field = value;
+			return;
+		}
+		val<F*> fieldPtr = static_cast<val<F*>>(*this);
+#ifdef ENABLE_TRACING
+		tracing::TypedValueRef fieldState = fieldPtr.state;
+		val<F&> field(std::move(fieldPtr), fieldState);
+#else
+		val<F&> field(std::move(fieldPtr));
+#endif
+		field = value;
 	}
 };
 
@@ -634,7 +677,7 @@ val<std::ptrdiff_t> inline operator-(const val<LeftType>& left, const val<RightT
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-val<bool> inline operator==(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator==(const val<ValueType>& left, const val<ValueType>& right) {
 
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
@@ -647,21 +690,21 @@ val<bool> inline operator==(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-val<bool> inline operator==(val<ValueType> left, std::nullptr_t) {
+val<bool> inline operator==(const val<ValueType>& left, std::nullptr_t) {
 	auto nullVal = val<ValueType>(NULL);
 	return left == nullVal;
 }
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-val<bool> inline operator==(std::nullptr_t, val<ValueType> right) {
+val<bool> inline operator==(std::nullptr_t, const val<ValueType>& right) {
 	auto nullVal = val<ValueType>(NULL);
 	return nullVal == right;
 }
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-val<bool> inline operator<=(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator<=(const val<ValueType>& left, const val<ValueType>& right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::LTE, Type::b, left.state, right.state);
@@ -673,7 +716,7 @@ val<bool> inline operator<=(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-val<bool> inline operator<(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator<(const val<ValueType>& left, const val<ValueType>& right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::LT, Type::b, left.state, right.state);
@@ -685,7 +728,7 @@ val<bool> inline operator<(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-val<bool> inline operator>(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator>(const val<ValueType>& left, const val<ValueType>& right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::GT, Type::b, left.state, right.state);
@@ -697,7 +740,7 @@ val<bool> inline operator>(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-val<bool> inline operator>=(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator>=(const val<ValueType>& left, const val<ValueType>& right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::GTE, Type::b, left.state, right.state);
@@ -709,7 +752,7 @@ val<bool> inline operator>=(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-val<bool> inline operator!=(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator!=(const val<ValueType>& left, const val<ValueType>& right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, left.state, right.state);
@@ -721,14 +764,14 @@ val<bool> inline operator!=(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-auto inline operator!=(val<ValueType> left, std::nullptr_t) {
+auto inline operator!=(const val<ValueType>& left, std::nullptr_t) {
 	auto nullVal = val<ValueType>(NULL);
 	return left != nullVal;
 }
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-auto inline operator!=(std::nullptr_t, val<ValueType> right) {
+auto inline operator!=(std::nullptr_t, const val<ValueType>& right) {
 	auto nullVal = val<ValueType>(NULL);
 	return nullVal != right;
 }
@@ -804,16 +847,17 @@ public:
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
 	void operator=(T other) {
-		val<baseType> value {other};
-		*this = value;
+		*this = val<baseType> {other};
 	}
 
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
 	void operator=(val<T> other) {
-		val<baseType> value {other};
+		*this = val<baseType> {other};
+	}
 
-		// store value
+	/// Stores @p value. Taken by reference: storing reads the value, it never needs a copy of it.
+	void operator=(const val<baseType>& value) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			tracing::traceBinaryOp(tracing::STORE, Type::v, ptr.state, value.state);

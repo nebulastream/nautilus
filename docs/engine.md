@@ -205,6 +205,7 @@ These options control the output of intermediate representations at various stag
 |--------|---------|-------------|
 | `dump.all` | `false` | Dumps intermediate representations at all compilation steps. |
 | `dump.after_tracing` | `false` | Dumps traces directly after trace generation. |
+| `dump.copySites` | `false` | Dumps `copy_sites.txt`, the copies traced per C++ call site (see [options.md](options.md)). Not part of `dump.all`. |
 | `dump.after_ssa` | `false` | Dumps traces after SSA generation. |
 | `dump.after_ir_creation` | `false` | Dumps the Nautilus IR after generation. |
 | `dump.after_mlir_generation` | `false` | Dumps the generated MLIR (MLIR backend only). |

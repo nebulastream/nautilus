@@ -8,17 +8,17 @@ Block_0($1:i32):
 Block_1($1:i32):
 	$5 = alloca[0] :ptr
 	store($1, $5) :void
-	$13 = load($5) :i32
-	br Block_3($13) :void
+	$8 = load($5) :i32
+	br Block_3($8) :void
 
-Block_3($13:i32):
-	return ($13) :i32
+Block_3($8:i32):
+	return ($8) :i32
 
 Block_2():
-	$15 = alloca[1] :ptr
-	$17 = 42 :i32
-	store($17, $15) :void
-	$22 = load($15) :i32
-	br Block_3($22) :void
+	$10 = alloca[1] :ptr
+	$11 = 42 :i32
+	store($11, $10) :void
+	$14 = load($10) :i32
+	br Block_3($14) :void
 }
 } //nautilus

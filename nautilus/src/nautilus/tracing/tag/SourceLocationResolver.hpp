@@ -33,6 +33,10 @@ public:
 
 	const SourceFrame& resolve(TagAddress pc);
 
+	/// Every source frame @p pc lies in, innermost first: the frame resolve() returns, followed by the frames it was
+	/// inlined into, up to the function the return address belongs to. Internal frames are not dropped.
+	const std::vector<SourceFrame>& resolveInlined(TagAddress pc);
+
 	/// Order is outer-to-inner: element 0 is the caller furthest from the
 	/// traced operation, the last element is the innermost user frame.
 	std::vector<SourceFrame> resolveStack(const Tag* leaf);
@@ -45,6 +49,7 @@ private:
 	struct Impl;
 	std::unique_ptr<Impl> impl_;
 	std::unordered_map<TagAddress, SourceFrame> cache_;
+	std::unordered_map<TagAddress, std::vector<SourceFrame>> inlinedCache_;
 	std::vector<std::string> internalPrefixes_;
 };
 

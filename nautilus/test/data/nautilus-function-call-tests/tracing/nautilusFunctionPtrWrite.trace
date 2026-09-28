@@ -7,9 +7,7 @@ B0($1:ptr,$2:f64)
 
 WRITEDOUBLE:
 B0($1:ptr,$2:f64)
-	ASSIGN	$3	$2	:f64
-	ASSIGN	$4	$1	:ptr
-	ASSIGN	$5	$3	:f64
-	STORE	$6	$4	$5	:void
+	ASSIGN	$3	$1	:ptr
+	STORE	$4	$3	$2	:void
 	RETURN	$0	:void
 

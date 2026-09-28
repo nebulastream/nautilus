@@ -1,8 +1,8 @@
 DEREFADD:
 B0($1:ptr,$2:i32)
-	LOAD	$5	$1	:i32
-	ADD	$6	$5	$2	:i32
-	RETURN	$0	$6	:i32
+	LOAD	$4	$1	:i32
+	ADD	$5	$4	$2	:i32
+	RETURN	$0	$5	:i32
 
 EXECUTE:
 B0($1:ptr,$2:i32)

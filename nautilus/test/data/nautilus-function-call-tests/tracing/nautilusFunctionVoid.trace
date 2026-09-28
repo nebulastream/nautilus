@@ -12,7 +12,6 @@ B0($1:ptr)
 	LOAD	$4	$2	:i32
 	ADD	$5	$4	$3	:i32
 	ASSIGN	$6	$1	:ptr
-	ASSIGN	$7	$5	:i32
-	STORE	$8	$6	$7	:void
+	STORE	$7	$6	$5	:void
 	RETURN	$0	:void
 

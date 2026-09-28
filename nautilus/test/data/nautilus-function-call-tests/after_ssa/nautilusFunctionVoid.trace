@@ -9,6 +9,6 @@ B0($1:ptr)
 	CONST	$3	10	:i32
 	LOAD	$4	$1	:i32
 	ADD	$5	$4	$3	:i32
-	STORE	$8	$1	$5	:void
+	STORE	$7	$1	$5	:void
 	RETURN	$0	:void
 
