@@ -39,7 +39,7 @@ B1($12:ui32,$5:ptr,$6:ptr,$7:ptr)
 	CAST	$27	$12	:ui64
 	MUL	$28	$27	$26	:ui64
 	ADD	$29	$7	$28	:ptr
-	STORE	$31	$29	$25	:void
+	STORE	$30	$29	$25	:void
 	JMP	$0	B3()	:void
 B2()
 	JMP	$0	B3()	:void

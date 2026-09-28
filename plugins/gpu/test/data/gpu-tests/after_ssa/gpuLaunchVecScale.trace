@@ -18,12 +18,12 @@ B0($1:ptr,$2:ptr,$3:ui32)
 	CAST	$8	$6	:ui64
 	MUL	$9	$8	$7	:ui64
 	ADD	$10	$1	$9	:ptr
-	LOAD	$12	$10	:ui32
-	MUL	$13	$12	$3	:ui32
-	CONST	$14	4	:ui64
-	CAST	$15	$6	:ui64
-	MUL	$16	$15	$14	:ui64
-	ADD	$17	$2	$16	:ptr
-	STORE	$19	$17	$13	:void
+	LOAD	$11	$10	:ui32
+	MUL	$12	$11	$3	:ui32
+	CONST	$13	4	:ui64
+	CAST	$14	$6	:ui64
+	MUL	$15	$14	$13	:ui64
+	ADD	$16	$2	$15	:ptr
+	STORE	$17	$16	$12	:void
 	RETURN	$0	:void
 
