@@ -4,29 +4,29 @@
 
 __global__ void vecScale(uint8_t* var_$1 ,uint8_t* var_$2 ,uint32_t var_$3 ){
 uint32_t var_$6;
-uint64_t var_$10;
-uint64_t var_$11;
-uint64_t var_$12;
-uint8_t* var_$13;
-uint32_t var_$17;
-uint32_t var_$18;
-uint64_t var_$22;
-uint64_t var_$23;
-uint64_t var_$24;
-uint8_t* var_$25;
+uint64_t var_$7;
+uint64_t var_$8;
+uint64_t var_$9;
+uint8_t* var_$10;
+uint32_t var_$12;
+uint32_t var_$13;
+uint64_t var_$14;
+uint64_t var_$15;
+uint64_t var_$16;
+uint8_t* var_$17;
 Block_0:
 var_$6 = threadIdx.x;
-var_$10 = (uint64_t)4;
-var_$11 = (uint64_t)var_$6;
-var_$12 = var_$11*var_$10;
-var_$13 = var_$1+var_$12;
-var_$17 = *((uint32_t*)(var_$13));
-var_$18 = var_$17*var_$3;
-var_$22 = (uint64_t)4;
-var_$23 = (uint64_t)var_$6;
-var_$24 = var_$23*var_$22;
-var_$25 = var_$2+var_$24;
-*((uint32_t*)(var_$25)) = var_$18;
+var_$7 = (uint64_t)4;
+var_$8 = (uint64_t)var_$6;
+var_$9 = var_$8*var_$7;
+var_$10 = var_$1+var_$9;
+var_$12 = *((uint32_t*)(var_$10));
+var_$13 = var_$12*var_$3;
+var_$14 = (uint64_t)4;
+var_$15 = (uint64_t)var_$6;
+var_$16 = var_$15*var_$14;
+var_$17 = var_$2+var_$16;
+*((uint32_t*)(var_$17)) = var_$13;
 return;
 
 }

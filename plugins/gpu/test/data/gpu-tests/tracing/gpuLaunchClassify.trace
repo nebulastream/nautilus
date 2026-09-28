@@ -10,104 +10,69 @@ B0($1:ptr,$2:ptr,$3:ui32)
 	LT	$11	$10	$3	:bool
 	CMP	$12	$11	B1()	B2()	:void
 B1()
-	ASSIGN	$13	$4	:ptr
-	ASSIGN	$14	$10	:ui32
-	ASSIGN	$15	$14	:ui32
-	CONST	$16	4	:ui64
-	CAST	$17	$15	:ui64
-	MUL	$18	$17	$16	:ui64
-	ADD	$19	$13	$18	:ptr
-	ASSIGN	$20	$19	:ptr
-	ASSIGN	$21	$20	:ptr
-	CONST	$22	200	:ui32
-	LOAD	$23	$21	:ui32
-	GT	$24	$23	$22	:bool
-	CMP	$25	$24	B3()	B4()	:void
+	CONST	$13	4	:ui64
+	CAST	$14	$10	:ui64
+	MUL	$15	$14	$13	:ui64
+	ADD	$16	$4	$15	:ptr
+	CONST	$17	200	:ui32
+	LOAD	$18	$16	:ui32
+	GT	$19	$18	$17	:bool
+	CMP	$20	$19	B3()	B4()	:void
 B2()
 	RETURN	$0	:void
 B3()
-	CONST	$26	3	:ui32
-	ASSIGN	$27	$5	:ptr
-	ASSIGN	$28	$10	:ui32
-	ASSIGN	$29	$28	:ui32
-	CONST	$30	4	:ui64
-	CAST	$31	$29	:ui64
-	MUL	$32	$31	$30	:ui64
-	ADD	$33	$27	$32	:ptr
-	ASSIGN	$34	$33	:ptr
-	ASSIGN	$35	$34	:ptr
-	ASSIGN	$36	$26	:ui32
-	STORE	$37	$35	$36	:void
+	CONST	$21	3	:ui32
+	CONST	$22	4	:ui64
+	CAST	$23	$10	:ui64
+	MUL	$24	$23	$22	:ui64
+	ADD	$25	$5	$24	:ptr
+	ASSIGN	$26	$21	:ui32
+	STORE	$27	$25	$26	:void
 	RETURN	$0	:void
 B4()
-	ASSIGN	$44	$4	:ptr
-	ASSIGN	$45	$10	:ui32
-	ASSIGN	$46	$45	:ui32
-	CONST	$47	4	:ui64
-	CAST	$48	$46	:ui64
-	MUL	$49	$48	$47	:ui64
-	ADD	$50	$44	$49	:ptr
-	ASSIGN	$51	$50	:ptr
-	ASSIGN	$52	$51	:ptr
-	CONST	$53	100	:ui32
-	LOAD	$54	$52	:ui32
-	GT	$55	$54	$53	:bool
-	CMP	$56	$55	B5()	B6()	:void
+	CONST	$34	4	:ui64
+	CAST	$35	$10	:ui64
+	MUL	$36	$35	$34	:ui64
+	ADD	$37	$4	$36	:ptr
+	CONST	$38	100	:ui32
+	LOAD	$39	$37	:ui32
+	GT	$40	$39	$38	:bool
+	CMP	$41	$40	B5()	B6()	:void
 B5()
-	CONST	$57	2	:ui32
-	ASSIGN	$58	$5	:ptr
-	ASSIGN	$59	$10	:ui32
-	ASSIGN	$60	$59	:ui32
-	CONST	$61	4	:ui64
-	CAST	$62	$60	:ui64
-	MUL	$63	$62	$61	:ui64
-	ADD	$64	$58	$63	:ptr
-	ASSIGN	$65	$64	:ptr
-	ASSIGN	$66	$65	:ptr
-	ASSIGN	$67	$57	:ui32
-	STORE	$68	$66	$67	:void
+	CONST	$42	2	:ui32
+	CONST	$43	4	:ui64
+	CAST	$44	$10	:ui64
+	MUL	$45	$44	$43	:ui64
+	ADD	$46	$5	$45	:ptr
+	ASSIGN	$47	$42	:ui32
+	STORE	$48	$46	$47	:void
 	RETURN	$0	:void
 B6()
-	ASSIGN	$72	$4	:ptr
-	ASSIGN	$73	$10	:ui32
-	ASSIGN	$74	$73	:ui32
-	CONST	$75	4	:ui64
-	CAST	$76	$74	:ui64
-	MUL	$77	$76	$75	:ui64
-	ADD	$78	$72	$77	:ptr
-	ASSIGN	$79	$78	:ptr
-	ASSIGN	$80	$79	:ptr
-	CONST	$81	0	:ui32
-	LOAD	$82	$80	:ui32
-	GT	$83	$82	$81	:bool
-	CMP	$84	$83	B7()	B8()	:void
+	CONST	$52	4	:ui64
+	CAST	$53	$10	:ui64
+	MUL	$54	$53	$52	:ui64
+	ADD	$55	$4	$54	:ptr
+	CONST	$56	0	:ui32
+	LOAD	$57	$55	:ui32
+	GT	$58	$57	$56	:bool
+	CMP	$59	$58	B7()	B8()	:void
 B7()
-	CONST	$85	1	:ui32
-	ASSIGN	$86	$5	:ptr
-	ASSIGN	$87	$10	:ui32
-	ASSIGN	$88	$87	:ui32
-	CONST	$89	4	:ui64
-	CAST	$90	$88	:ui64
-	MUL	$91	$90	$89	:ui64
-	ADD	$92	$86	$91	:ptr
-	ASSIGN	$93	$92	:ptr
-	ASSIGN	$94	$93	:ptr
-	ASSIGN	$95	$85	:ui32
-	STORE	$96	$94	$95	:void
+	CONST	$60	1	:ui32
+	CONST	$61	4	:ui64
+	CAST	$62	$10	:ui64
+	MUL	$63	$62	$61	:ui64
+	ADD	$64	$5	$63	:ptr
+	ASSIGN	$65	$60	:ui32
+	STORE	$66	$64	$65	:void
 	RETURN	$0	:void
 B8()
-	CONST	$100	0	:ui32
-	ASSIGN	$101	$5	:ptr
-	ASSIGN	$102	$10	:ui32
-	ASSIGN	$103	$102	:ui32
-	CONST	$104	4	:ui64
-	CAST	$105	$103	:ui64
-	MUL	$106	$105	$104	:ui64
-	ADD	$107	$101	$106	:ptr
-	ASSIGN	$108	$107	:ptr
-	ASSIGN	$109	$108	:ptr
-	ASSIGN	$110	$100	:ui32
-	STORE	$111	$109	$110	:void
+	CONST	$70	0	:ui32
+	CONST	$71	4	:ui64
+	CAST	$72	$10	:ui64
+	MUL	$73	$72	$71	:ui64
+	ADD	$74	$5	$73	:ptr
+	ASSIGN	$75	$70	:ui32
+	STORE	$76	$74	$75	:void
 	RETURN	$0	:void
 
 EXECUTE:

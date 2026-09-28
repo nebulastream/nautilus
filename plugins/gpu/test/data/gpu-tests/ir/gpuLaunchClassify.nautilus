@@ -12,75 +12,75 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 	$9 = call func_*#2() :ui32
 	$10 = $8 + $9 :ui32
 	$11 = $10 < $3 :bool
-	if $11 ? Block_1($2, $10, $1) : Block_2() :void
+	if $11 ? Block_1($10, $2, $1) : Block_2() :void
 
-Block_1($5:ptr, $10:ui32, $4:ptr):
-	$16 = 4 :ui64
-	$17 = $10 cast_to ui64 :ui64
-	$18 = $17 * $16 :ui64
-	$19 = $4 + $18 :ptr
-	$22 = 200 :ui32
-	$23 = load($19) :ui32
-	$24 = $23 > $22 :bool
-	if $24 ? Block_3($5, $10) : Block_4($5, $10, $4) :void
+Block_1($10:ui32, $5:ptr, $4:ptr):
+	$13 = 4 :ui64
+	$14 = $10 cast_to ui64 :ui64
+	$15 = $14 * $13 :ui64
+	$16 = $4 + $15 :ptr
+	$17 = 200 :ui32
+	$18 = load($16) :ui32
+	$19 = $18 > $17 :bool
+	if $19 ? Block_3($10, $5) : Block_4($10, $5, $4) :void
 
-Block_3($5:ptr, $10:ui32):
-	$26 = 3 :ui32
-	$30 = 4 :ui64
-	$31 = $10 cast_to ui64 :ui64
-	$32 = $31 * $30 :ui64
-	$33 = $5 + $32 :ptr
-	store($26, $33) :void
+Block_3($10:ui32, $5:ptr):
+	$21 = 3 :ui32
+	$22 = 4 :ui64
+	$23 = $10 cast_to ui64 :ui64
+	$24 = $23 * $22 :ui64
+	$25 = $5 + $24 :ptr
+	store($21, $25) :void
 	br Block_9() :void
 
 Block_9():
 	return :void
 
-Block_4($5:ptr, $10:ui32, $4:ptr):
-	$47 = 4 :ui64
-	$48 = $10 cast_to ui64 :ui64
-	$49 = $48 * $47 :ui64
-	$50 = $4 + $49 :ptr
-	$53 = 100 :ui32
-	$54 = load($50) :ui32
-	$55 = $54 > $53 :bool
-	if $55 ? Block_5($5, $10) : Block_6($5, $10, $4) :void
+Block_4($10:ui32, $5:ptr, $4:ptr):
+	$34 = 4 :ui64
+	$35 = $10 cast_to ui64 :ui64
+	$36 = $35 * $34 :ui64
+	$37 = $4 + $36 :ptr
+	$38 = 100 :ui32
+	$39 = load($37) :ui32
+	$40 = $39 > $38 :bool
+	if $40 ? Block_5($10, $5) : Block_6($10, $5, $4) :void
 
-Block_5($5:ptr, $10:ui32):
-	$57 = 2 :ui32
+Block_5($10:ui32, $5:ptr):
+	$42 = 2 :ui32
+	$43 = 4 :ui64
+	$44 = $10 cast_to ui64 :ui64
+	$45 = $44 * $43 :ui64
+	$46 = $5 + $45 :ptr
+	store($42, $46) :void
+	br Block_9() :void
+
+Block_6($10:ui32, $5:ptr, $4:ptr):
+	$52 = 4 :ui64
+	$53 = $10 cast_to ui64 :ui64
+	$54 = $53 * $52 :ui64
+	$55 = $4 + $54 :ptr
+	$56 = 0 :ui32
+	$57 = load($55) :ui32
+	$58 = $57 > $56 :bool
+	if $58 ? Block_7($10, $5) : Block_8($10, $5) :void
+
+Block_7($10:ui32, $5:ptr):
+	$60 = 1 :ui32
 	$61 = 4 :ui64
 	$62 = $10 cast_to ui64 :ui64
 	$63 = $62 * $61 :ui64
 	$64 = $5 + $63 :ptr
-	store($57, $64) :void
+	store($60, $64) :void
 	br Block_9() :void
 
-Block_6($5:ptr, $10:ui32, $4:ptr):
-	$75 = 4 :ui64
-	$76 = $10 cast_to ui64 :ui64
-	$77 = $76 * $75 :ui64
-	$78 = $4 + $77 :ptr
-	$81 = 0 :ui32
-	$82 = load($78) :ui32
-	$83 = $82 > $81 :bool
-	if $83 ? Block_7($5, $10) : Block_8($5, $10) :void
-
-Block_7($5:ptr, $10:ui32):
-	$85 = 1 :ui32
-	$89 = 4 :ui64
-	$90 = $10 cast_to ui64 :ui64
-	$91 = $90 * $89 :ui64
-	$92 = $5 + $91 :ptr
-	store($85, $92) :void
-	br Block_9() :void
-
-Block_8($5:ptr, $10:ui32):
-	$100 = 0 :ui32
-	$104 = 4 :ui64
-	$105 = $10 cast_to ui64 :ui64
-	$106 = $105 * $104 :ui64
-	$107 = $5 + $106 :ptr
-	store($100, $107) :void
+Block_8($10:ui32, $5:ptr):
+	$70 = 0 :ui32
+	$71 = 4 :ui64
+	$72 = $10 cast_to ui64 :ui64
+	$73 = $72 * $71 :ui64
+	$74 = $5 + $73 :ptr
+	store($70, $74) :void
 	br Block_9() :void
 
 Block_2():

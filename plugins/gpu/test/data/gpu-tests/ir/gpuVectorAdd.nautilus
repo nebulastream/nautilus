@@ -4,22 +4,22 @@ declare external #1 func_*() :void
 execute($1:ptr, $2:ptr, $3:ptr) :void {
 Block_0($1:ptr, $2:ptr, $3:ptr):
 	$4 = call func_*#0() :ui32
-	$8 = 4 :ui64
-	$9 = $4 cast_to ui64 :ui64
-	$10 = $9 * $8 :ui64
-	$11 = $1 + $10 :ptr
-	$17 = 4 :ui64
-	$18 = $4 cast_to ui64 :ui64
-	$19 = $18 * $17 :ui64
-	$20 = $2 + $19 :ptr
-	$23 = load($11) :ui32
-	$24 = load($20) :ui32
-	$25 = $23 + $24 :ui32
-	$29 = 4 :ui64
-	$30 = $4 cast_to ui64 :ui64
-	$31 = $30 * $29 :ui64
-	$32 = $3 + $31 :ptr
-	store($25, $32) :void
+	$5 = 4 :ui64
+	$6 = $4 cast_to ui64 :ui64
+	$7 = $6 * $5 :ui64
+	$8 = $1 + $7 :ptr
+	$9 = 4 :ui64
+	$10 = $4 cast_to ui64 :ui64
+	$11 = $10 * $9 :ui64
+	$12 = $2 + $11 :ptr
+	$13 = load($8) :ui32
+	$14 = load($12) :ui32
+	$15 = $13 + $14 :ui32
+	$16 = 4 :ui64
+	$17 = $4 cast_to ui64 :ui64
+	$18 = $17 * $16 :ui64
+	$19 = $3 + $18 :ptr
+	store($15, $19) :void
 	call func_*#1() :void
 	return :void
 }
