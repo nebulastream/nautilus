@@ -51,7 +51,7 @@ An offset C++ already knows -- a raw integer, a `bool` or a `static_val` -- is s
 `ptr + 2` on an `int32_t*` traces a single `CONST 8` and the pointer `ADD`, `ptr + 0` traces only a copy of `ptr`, and
 `ptr.get(&S::field)` traces the field offset as one constant. A traced offset (`val<T>`) is converted to `size_t` and
 multiplied by the element size, except on byte pointers (`int8_t*`, `char*`, ...), where it is added as it is.
-Neither operand is copied, and `ptr[i]` / `*(ptr + i)` load through the computed address directly:
+Neither operand is copied, and `ptr[i]` loads through the computed address directly:
 
 ```
 array[index]   (int32_t* array, val<int32_t> index)
@@ -62,8 +62,8 @@ array[index]   (int32_t* array, val<int32_t> index)
     LOAD   $7  $6   :i32
 ```
 
-Dereferencing a named pointer (`*ptr`) copies it once: the `val<T&>` it returns must keep pointing to the old address if
-`ptr` is reassigned while the reference is alive. The folding can be turned off with `engine.foldStaticConstants`
+Dereferencing a pointer (`*ptr`, `*(ptr + i)`) copies it once: the `val<T&>` it returns must keep pointing to the old
+address if `ptr` is reassigned while the reference is alive. The folding can be turned off with `engine.foldStaticConstants`
 (see [options.md](options.md)).
 
 ## Dereferencing

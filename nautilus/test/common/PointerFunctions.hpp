@@ -396,6 +396,14 @@ inline val<int32_t> assignToZeroOffset(val<int32_t*> ptr) {
 	return *ptr * 10 + *result;
 }
 
+// A moved-from pointer can be assigned again without changing the pointer it was moved to (the pattern of
+// val<std::vector>::release()).
+inline val<int32_t> moveThenReassign(val<int32_t*> ptr) {
+	auto moved = std::move(ptr);
+	ptr = moved + 1;
+	return *moved * 10 + *ptr;
+}
+
 inline void addToAllInLoop(val<int32_t*> ptr, val<int32_t> length, val<int32_t> value) {
 	for (val<int32_t> i = 0; i < length; i = i + 1) {
 		ptr[i] += value;

@@ -538,6 +538,7 @@ TEST_CASE("Pointer Trace Test") {
 	    {"storeThroughStaleReference", details::createFunctionWrapper(storeThroughStaleReference)},
 	    {"assignToZeroOffset", details::createFunctionWrapper(assignToZeroOffset)},
 	    {"addToAllInLoop", details::createFunctionWrapper(addToAllInLoop)},
+	    {"moveThenReassign", details::createFunctionWrapper(moveThenReassign)},
 	};
 	runTraceTests("pointer-tests", tests);
 }
