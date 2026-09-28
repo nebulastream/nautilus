@@ -41,15 +41,21 @@ public:
 	}
 	val(ValueType ref, tracing::TypedValueRef TypedValueRef) : state(TypedValueRef), ptr(&ref) {
 	}
-	// Callers hand over a temporary pointer wherever they can, so it is moved rather than copied. An lvalue pointer
-	// is still copied once: the caller may reassign it while this reference is alive, and sharing its reference
-	// would make this one follow that assignment.
-	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(std::move(ptr)) {
+	// A pointer the caller may still assign to is copied: sharing its reference would make this one follow that
+	// assignment. A pointer passed as an rvalue is adopted instead, reference and all. Nautilus only does that with
+	// a pointer it computed for this reference and drops right away (see operator[] and get()), since a moved-from
+	// val may be assigned to again.
+	val(const val<ptrType>& ptr, tracing::TypedValueRef ref) : state(ref), ptr(ptr) {
+	}
+	val(val<ptrType>&& ptr, tracing::TypedValueRef ref)
+	    : state(ref), ptr(details::RawValueResolver<ptrType>::getRawValue(ptr), ptr.state) {
 	}
 #else
 	val(ValueType ref) : ptr(&ref) {
 	}
-	val(val<ptrType> ptr) : ptr(std::move(ptr)) {
+	val(const val<ptrType>& ptr) : ptr(ptr) {
+	}
+	val(val<ptrType>&& ptr) : ptr(details::RawValueResolver<ptrType>::getRawValue(ptr)) {
 	}
 #endif
 	operator val<baseType>() {
@@ -331,16 +337,8 @@ public:
 	val(const val<ValuePtrType>& otherValue)
 	    : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
-
-	/// Move constructor: the moved-from temporary gives up its reference, so nothing is traced.
-	val(val<ValuePtrType>&& otherValue) noexcept
-	    : base_ptr_val<ValuePtrType>(otherValue.value, std::move(otherValue.state)) {
-	}
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
-	}
-
-	val(val<ValuePtrType>&& otherValue) noexcept : base_ptr_val<ValuePtrType>(otherValue.value) {
 	}
 #endif
 
@@ -354,25 +352,13 @@ public:
 		return *this;
 	}
 
-	val<ValType&> operator*() const&
+	val<ValType&> operator*() const
 	    requires is_arithmetic<ValType> || is_ptr<ValType>
 	{
 #ifdef ENABLE_TRACING
 		return val<ValType&>(*this, this->state);
 #else
 		return val<ValType&>(*this);
-#endif
-	}
-
-	/// Dereferencing a temporary pointer (`*(ptr + 2)`) hands its reference to the result instead of copying it.
-	val<ValType&> operator*() &&
-	    requires is_arithmetic<ValType> || is_ptr<ValType>
-	{
-#ifdef ENABLE_TRACING
-		tracing::TypedValueRef ptrState = this->state;
-		return val<ValType&>(std::move(*this), ptrState);
-#else
-		return val<ValType&>(std::move(*this));
 #endif
 	}
 
@@ -479,16 +465,8 @@ public:
 	val(const val<ValuePtrType>& otherValue)
 	    : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
-
-	/// Move constructor: the moved-from temporary gives up its reference, so nothing is traced.
-	val(val<ValuePtrType>&& otherValue) noexcept
-	    : base_ptr_val<ValuePtrType>(otherValue.value, std::move(otherValue.state)) {
-	}
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
-	}
-
-	val(val<ValuePtrType>&& otherValue) noexcept : base_ptr_val<ValuePtrType>(otherValue.value) {
 	}
 #endif
 
@@ -808,12 +786,18 @@ public:
 	}
 	val(bool& ref, tracing::TypedValueRef TypedValueRef) : state(TypedValueRef), ptr(&ref) {
 	}
-	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(std::move(ptr)) {
+	// See val<T&>: an rvalue pointer is adopted, an lvalue one copied.
+	val(const val<ptrType>& ptr, tracing::TypedValueRef ref) : state(ref), ptr(ptr) {
+	}
+	val(val<ptrType>&& ptr, tracing::TypedValueRef ref)
+	    : state(ref), ptr(details::RawValueResolver<ptrType>::getRawValue(ptr), ptr.state) {
 	}
 #else
 	val(bool ref) : ptr(&ref) {
 	}
-	val(val<ptrType> ptr) : ptr(std::move(ptr)) {
+	val(const val<ptrType>& ptr) : ptr(ptr) {
+	}
+	val(val<ptrType>&& ptr) : ptr(details::RawValueResolver<ptrType>::getRawValue(ptr)) {
 	}
 #endif
 

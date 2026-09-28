@@ -412,6 +412,11 @@ void pointerTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(&values[2]) == 34);
 	}
 
+	SECTION("moveThenReassign") {
+		auto f = engine.registerFunction(moveThenReassign);
+		REQUIRE(f(&values[2]) == 34);
+	}
+
 	SECTION("addToAllInLoop") {
 		int32_t data[] = {1, 2, 3, 4};
 		auto f = engine.registerFunction(addToAllInLoop);
