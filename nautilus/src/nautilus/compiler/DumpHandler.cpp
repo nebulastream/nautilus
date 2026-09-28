@@ -32,6 +32,7 @@ bool DumpHandler::shallCreateFolder() const {
 	generallyDump = generallyDump or shouldDump("after_tbc_generation");
 	generallyDump = generallyDump or shouldDump("after_asmjit_generation");
 	generallyDump = generallyDump or shouldDump("after_asmjit_assembly");
+	generallyDump = generallyDump or options.getOptionOrDefault("dump.copySites", false);
 	return generallyDump and dumpToFile();
 }
 

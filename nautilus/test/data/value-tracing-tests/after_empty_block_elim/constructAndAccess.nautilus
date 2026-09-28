@@ -2,9 +2,9 @@ nautilus {
 execute() :i32 {
 Block_0():
 	$1 = alloca[0] :ptr
-	$3 = 42 :i32
-	store($3, $1) :void
-	$8 = load($1) :i32
-	return ($8) :i32
+	$2 = 42 :i32
+	store($2, $1) :void
+	$5 = load($1) :i32
+	return ($5) :i32
 }
 } //nautilus

@@ -5,10 +5,10 @@ execute() :i32 {
 Block_0():
 	$1 = alloca[0] :ptr
 	call func_*#0($1) :void
-	$4 = 42 :i32
-	store($4, $1) :void
-	$9 = load($1) :i32
+	$3 = 42 :i32
+	store($3, $1) :void
+	$6 = load($1) :i32
 	call func_*#1($1) :void
-	return ($9) :i32
+	return ($6) :i32
 }
 } //nautilus

@@ -2,17 +2,17 @@ nautilus {
 execute() :i32 {
 Block_0():
 	$1 = alloca[0] :ptr
-	$3 = 42 :i32
-	store($3, $1) :void
-	$7 = 4 :ui64
-	$8 = $1 + $7 :ptr
-	$9 = 10 :i32
-	store($9, $8) :void
-	$14 = 4 :ui64
-	$15 = $1 + $14 :ptr
-	$16 = load($1) :i32
-	$17 = load($15) :i32
-	$18 = $16 + $17 :i32
-	return ($18) :i32
+	$2 = 42 :i32
+	store($2, $1) :void
+	$4 = 10 :i32
+	$5 = 4 :ui64
+	$6 = $1 + $5 :ptr
+	store($4, $6) :void
+	$9 = 4 :ui64
+	$10 = $1 + $9 :ptr
+	$11 = load($1) :i32
+	$12 = load($10) :i32
+	$13 = $11 + $12 :i32
+	return ($13) :i32
 }
 } //nautilus

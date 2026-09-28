@@ -8,19 +8,19 @@ Block_0($1:i32):
 Block_1($1:i32):
 	$5 = alloca[0] :ptr
 	store($1, $5) :void
+	$7 = 10 :i32
+	$8 = 4 :ui64
+	$9 = $5 + $8 :ptr
+	store($7, $9) :void
 	$12 = 4 :ui64
 	$13 = $5 + $12 :ptr
-	$14 = 10 :i32
-	store($14, $13) :void
-	$19 = 4 :ui64
-	$20 = $5 + $19 :ptr
-	$21 = load($5) :i32
-	$22 = load($20) :i32
-	$23 = $21 + $22 :i32
-	br Block_3($23) :void
+	$14 = load($5) :i32
+	$15 = load($13) :i32
+	$16 = $14 + $15 :i32
+	br Block_3($16) :void
 
-Block_3($23:i32):
-	return ($23) :i32
+Block_3($16:i32):
+	return ($16) :i32
 
 Block_2($1:i32):
 	br Block_3($1) :void

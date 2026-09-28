@@ -6,11 +6,11 @@ B0($1:ptr)
 	CMP	$6	$5	B1($1)	B2($1)	:void
 B1($1:ptr)
 	CONST	$8	1	:i32
-	STORE	$11	$1	$8	:void
+	STORE	$9	$1	$8	:void
 	JMP	$0	B3()	:void
 B2($1:ptr)
-	CONST	$14	42	:i32
-	STORE	$17	$1	$14	:void
+	CONST	$12	42	:i32
+	STORE	$13	$1	$12	:void
 	JMP	$0	B3()	:void
 B3()
 	RETURN	$0	:void

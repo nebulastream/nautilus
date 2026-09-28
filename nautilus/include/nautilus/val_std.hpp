@@ -387,7 +387,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, val<F> value) {
+	void set(F T::* pm, const val<F>& value) {
 		return value_ptr.set(pm, value);
 	}
 

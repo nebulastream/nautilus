@@ -4,9 +4,9 @@ Block_0($1:ptr, $2:i32):
 	$4 = 4 :ui64
 	$5 = $1 + $4 :ptr
 	store($2, $1) :void
-	$9 = 1 :i32
-	$10 = $2 + $9 :i32
-	store($10, $5) :void
+	$7 = 1 :i32
+	$8 = $2 + $7 :i32
+	store($8, $5) :void
 	return :void
 }
 } //nautilus

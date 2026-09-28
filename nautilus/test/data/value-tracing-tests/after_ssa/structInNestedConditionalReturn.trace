@@ -5,14 +5,14 @@ B0($1:i32)
 	CMP	$4	$3	B1($1)	B2()	:void
 B1($1:i32)
 	ALLOCA	$5	:ptr
-	STORE	$11	$5	$1	:void
-	CALL_WITH_EXCEPTION_HANDLING	$13	readFieldA($5)	:i32
-	JMP	$0	B3($13)	:void
+	STORE	$6	$5	$1	:void
+	CALL_WITH_EXCEPTION_HANDLING	$8	readFieldA($5)	:i32
+	JMP	$0	B3($8)	:void
 B2()
-	CONST	$15	0	:i32
-	JMP	$0	B3($15)	:void
-B3($13:i32)
-	RETURN	$0	$13	:i32
+	CONST	$10	0	:i32
+	JMP	$0	B3($10)	:void
+B3($8:i32)
+	RETURN	$0	$8	:i32
 
 READFIELDA:
 B0($1:ptr)

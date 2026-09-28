@@ -3,20 +3,20 @@ declare external #0 func_*(ptr, ptr, ui64) :ptr [nounwind]
 execute() :i32 {
 Block_0():
 	$1 = alloca[0] :ptr
-	$3 = 42 :i32
-	store($3, $1) :void
-	$7 = 4 :ui64
-	$8 = $1 + $7 :ptr
-	$9 = 10 :i32
-	store($9, $8) :void
-	$13 = alloca[1] :ptr
-	$14 = 8 :ui64
-	$15 = call func_*#0($13,$1,$14) :ptr
-	$17 = 4 :ui64
-	$18 = $13 + $17 :ptr
-	$19 = load($13) :i32
-	$20 = load($18) :i32
-	$21 = $19 + $20 :i32
-	return ($21) :i32
+	$2 = 42 :i32
+	store($2, $1) :void
+	$4 = 10 :i32
+	$5 = 4 :ui64
+	$6 = $1 + $5 :ptr
+	store($4, $6) :void
+	$8 = alloca[1] :ptr
+	$9 = 8 :ui64
+	$10 = call func_*#0($8,$1,$9) :ptr
+	$12 = 4 :ui64
+	$13 = $8 + $12 :ptr
+	$14 = load($8) :i32
+	$15 = load($13) :i32
+	$16 = $14 + $15 :i32
+	return ($16) :i32
 }
 } //nautilus

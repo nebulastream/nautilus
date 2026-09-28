@@ -6,11 +6,10 @@ B0($1:ptr)
 	ASSIGN	$1	$4	:ptr
 	ASSIGN	$5	$2	:ptr
 	CONST	$6	10	:i32
-	ASSIGN	$7	$6	:i32
-	LOAD	$8	$5	:i32
-	MUL	$9	$8	$7	:i32
-	ASSIGN	$10	$1	:ptr
-	LOAD	$11	$10	:i32
-	ADD	$12	$9	$11	:i32
-	RETURN	$0	$12	:i32
+	LOAD	$7	$5	:i32
+	MUL	$8	$7	$6	:i32
+	ASSIGN	$9	$1	:ptr
+	LOAD	$10	$9	:i32
+	ADD	$11	$8	$10	:i32
+	RETURN	$0	$11	:i32
 

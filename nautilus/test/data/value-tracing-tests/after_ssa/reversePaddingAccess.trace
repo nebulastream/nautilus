@@ -1,23 +1,23 @@
 EXECUTE:
 B0($1:i64,$2:i8,$3:i16)
 	ALLOCA	$4	:ptr
-	STORE	$10	$4	$1	:void
-	CONST	$13	8	:ui64
-	ADD	$14	$4	$13	:ptr
-	STORE	$17	$14	$2	:void
-	CONST	$20	10	:ui64
-	ADD	$21	$4	$20	:ptr
-	STORE	$24	$21	$3	:void
-	LOAD	$26	$4	:i64
-	CONST	$27	8	:ui64
-	ADD	$28	$4	$27	:ptr
-	LOAD	$29	$28	:i8
-	CONST	$30	10	:ui64
-	ADD	$31	$4	$30	:ptr
-	LOAD	$32	$31	:i16
-	CAST	$33	$29	:i64
-	ADD	$34	$26	$33	:i64
-	CAST	$35	$32	:i64
-	ADD	$36	$34	$35	:i64
-	RETURN	$0	$36	:i64
+	STORE	$5	$4	$1	:void
+	CONST	$6	8	:ui64
+	ADD	$7	$4	$6	:ptr
+	STORE	$8	$7	$2	:void
+	CONST	$9	10	:ui64
+	ADD	$10	$4	$9	:ptr
+	STORE	$11	$10	$3	:void
+	LOAD	$13	$4	:i64
+	CONST	$14	8	:ui64
+	ADD	$15	$4	$14	:ptr
+	LOAD	$16	$15	:i8
+	CONST	$17	10	:ui64
+	ADD	$18	$4	$17	:ptr
+	LOAD	$19	$18	:i16
+	CAST	$20	$16	:i64
+	ADD	$21	$13	$20	:i64
+	CAST	$22	$19	:i64
+	ADD	$23	$21	$22	:i64
+	RETURN	$0	$23	:i64
 
