@@ -6,8 +6,8 @@ Block_0($1:ptr, $2:ptr):
 	$7 = $4 > $6 :bool
 	if $7 ? Block_3($1, $4) : Block_3($1, $6) :void
 
-Block_3($10:ptr, $11:i32):
-	store($11, $10) :void
+Block_3($10:ptr, $9:i32):
+	store($9, $10) :void
 	return :void
 }
 } //nautilus

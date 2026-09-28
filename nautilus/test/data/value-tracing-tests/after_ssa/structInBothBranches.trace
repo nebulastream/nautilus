@@ -5,15 +5,15 @@ B0($1:i32)
 	CMP	$4	$3	B1($1)	B2()	:void
 B1($1:i32)
 	ALLOCA	$5	:ptr
-	STORE	$11	$5	$1	:void
-	LOAD	$13	$5	:i32
-	JMP	$0	B3($13)	:void
+	STORE	$6	$5	$1	:void
+	LOAD	$8	$5	:i32
+	JMP	$0	B3($8)	:void
 B2()
-	ALLOCA	$15	:ptr
-	CONST	$17	42	:i32
-	STORE	$20	$15	$17	:void
-	LOAD	$22	$15	:i32
-	JMP	$0	B3($22)	:void
-B3($13:i32)
-	RETURN	$0	$13	:i32
+	ALLOCA	$10	:ptr
+	CONST	$11	42	:i32
+	STORE	$12	$10	$11	:void
+	LOAD	$14	$10	:i32
+	JMP	$0	B3($14)	:void
+B3($8:i32)
+	RETURN	$0	$8	:i32
 

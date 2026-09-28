@@ -2,26 +2,26 @@ nautilus {
 execute($1:i32) :i32 {
 Block_0($1:i32):
 	$2 = alloca[0] :ptr
-	$4 = 0 :i32
-	store($4, $2) :void
-	$8 = 0 :i32
-	br Block_3($2, $8, $1) :void
+	$3 = 0 :i32
+	store($3, $2) :void
+	$5 = 0 :i32
+	br Block_3($2, $5, $1) :void
 
-Block_3($2:ptr, $8:i32, $1:i32):
-	$9 = $8 < $1 :bool
-	if $9 ? Block_1($2, $1, $8) : Block_2($2) :void
+Block_3($2:ptr, $5:i32, $1:i32):
+	$6 = $5 < $1 :bool
+	if $6 ? Block_1($2, $1, $5) : Block_2($2) :void
 
-Block_1($2:ptr, $1:i32, $8:i32):
-	$12 = 1 :i32
-	$14 = load($2) :i32
-	$15 = $14 + $12 :i32
-	store($15, $2) :void
-	$21 = 1 :i32
-	$22 = $8 + $21 :i32
-	br Block_3($2, $22, $1) :void
+Block_1($2:ptr, $1:i32, $5:i32):
+	$9 = 1 :i32
+	$10 = load($2) :i32
+	$11 = $10 + $9 :i32
+	store($11, $2) :void
+	$13 = 1 :i32
+	$14 = $5 + $13 :i32
+	br Block_3($2, $14, $1) :void
 
 Block_2($2:ptr):
-	$25 = load($2) :i32
-	return ($25) :i32
+	$17 = load($2) :i32
+	return ($17) :i32
 }
 } //nautilus

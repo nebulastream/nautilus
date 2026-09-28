@@ -2,12 +2,12 @@ EXECUTE:
 B0()
 	ALLOCA	$1	:ptr
 	CALL	$2	func_*($1)	:void
-	CONST	$4	99	:i32
-	STORE	$7	$1	$4	:void
-	ALLOCA	$8	:ptr
-	CALL	$9	func_*($8,$1)	:void
-	LOAD	$11	$8	:i32
-	CALL	$12	func_*($8)	:void
-	CALL	$13	func_*($1)	:void
-	RETURN	$0	$11	:i32
+	CONST	$3	99	:i32
+	STORE	$4	$1	$3	:void
+	ALLOCA	$5	:ptr
+	CALL	$6	func_*($5,$1)	:void
+	LOAD	$8	$5	:i32
+	CALL	$9	func_*($5)	:void
+	CALL	$10	func_*($1)	:void
+	RETURN	$0	$8	:i32
 

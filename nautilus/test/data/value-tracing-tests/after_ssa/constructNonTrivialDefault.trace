@@ -2,8 +2,8 @@ EXECUTE:
 B0()
 	ALLOCA	$1	:ptr
 	CALL	$2	func_*($1)	:void
-	CONST	$4	7	:i32
-	STORE	$7	$1	$4	:void
-	LOAD	$9	$1	:i32
-	RETURN	$0	$9	:i32
+	CONST	$3	7	:i32
+	STORE	$4	$1	$3	:void
+	LOAD	$6	$1	:i32
+	RETURN	$0	$6	:i32
 

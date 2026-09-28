@@ -3,27 +3,27 @@ declare external #0 func_*(ptr, ptr, ui64) :ptr [nounwind]
 execute($1:i32) :i32 {
 Block_0($1:i32):
 	$2 = alloca[0] :ptr
-	$4 = 10 :i32
-	store($4, $2) :void
-	$8 = 0 :i32
-	$9 = 0 :i32
-	br Block_3($8, $9, $1, $2) :void
+	$3 = 10 :i32
+	store($3, $2) :void
+	$5 = 0 :i32
+	$6 = 0 :i32
+	br Block_3($5, $6, $1, $2) :void
 
-Block_3($8:i32, $9:i32, $1:i32, $2:ptr):
-	$10 = $9 < $1 :bool
-	if $10 ? Block_1($1, $2, $8, $9) : Block_2($8) :void
+Block_3($5:i32, $6:i32, $1:i32, $2:ptr):
+	$7 = $6 < $1 :bool
+	if $7 ? Block_1($1, $2, $5, $6) : Block_2($5) :void
 
-Block_1($1:i32, $2:ptr, $8:i32, $9:i32):
-	$12 = alloca[1] :ptr
-	$13 = 8 :ui64
-	$14 = call func_*#0($12,$2,$13) :ptr
-	$16 = load($12) :i32
-	$17 = $8 + $16 :i32
-	$18 = 1 :i32
-	$19 = $9 + $18 :i32
-	br Block_3($17, $19, $1, $2) :void
+Block_1($1:i32, $2:ptr, $5:i32, $6:i32):
+	$9 = alloca[1] :ptr
+	$10 = 8 :ui64
+	$11 = call func_*#0($9,$2,$10) :ptr
+	$13 = load($9) :i32
+	$14 = $5 + $13 :i32
+	$15 = 1 :i32
+	$16 = $6 + $15 :i32
+	br Block_3($14, $16, $1, $2) :void
 
-Block_2($8:i32):
-	return ($8) :i32
+Block_2($5:i32):
+	return ($5) :i32
 }
 } //nautilus

@@ -23,11 +23,13 @@
 #include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/tracing/CopyAttribution.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
+#include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <algorithm>
 #include <catch2/catch_all.hpp>
 #include <cstdio>
@@ -553,6 +555,41 @@ std::string traceWithOptions(std::function<void()> func, const engine::Options& 
 	return tracing::TraceContext::Trace(functionsToTrace, options, arena)->toString();
 }
 } // namespace
+
+namespace {
+val<int32_t> copyTwice(val<int32_t> x) {
+	val<int32_t> a = x;
+	val<int32_t> b = a;
+	b = b + 1;
+	return a + b;
+}
+} // namespace
+
+// dump.copySites records the tag of every copy, and formatCopySites groups them by call site.
+TEST_CASE("Copy sites are attributed") {
+	auto traceCopySites = [](const engine::Options& options) {
+		std::list<compiler::CompilableFunction> functionsToTrace;
+		functionsToTrace.emplace_back("execute", details::createFunctionWrapper(copyTwice));
+		common::Arena arena;
+		auto module = tracing::TraceContext::Trace(functionsToTrace, options, arena);
+		tracing::SourceLocationResolver resolver;
+		return std::make_pair(module->getFunction("execute")->copySites.size(),
+		                      tracing::formatCopySites(*module, resolver));
+	};
+
+	auto [unrecorded, emptyReport] = traceCopySites(engine::Options());
+	CHECK(unrecorded == 0);
+	CHECK(emptyReport.starts_with("0 copies traced"));
+
+	engine::Options options;
+	options.setOption("dump.copySites", true);
+	auto [recorded, report] = traceCopySites(options);
+	// `a = x` and `b = a`; `b = b + 1` is an assignment, not a copy.
+	CHECK(recorded == 2);
+	CHECK(report.starts_with("2 copies traced"));
+	CHECK(report.find("by call chain") != std::string::npos);
+	CHECK(report.find("by the first frame outside nautilus") != std::string::npos);
+}
 
 // engine.foldStaticConstants=false traces offsets and literals the way they were traced before they were folded.
 TEST_CASE("Static constant folding can be disabled") {

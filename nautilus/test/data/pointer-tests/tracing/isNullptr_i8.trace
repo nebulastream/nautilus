@@ -1,9 +1,6 @@
 EXECUTE:
 B0($1:ptr)
-	ASSIGN	$2	$1	:ptr
-	CONST	$3	*	:ptr
-	ASSIGN	$4	$2	:ptr
-	ASSIGN	$5	$3	:ptr
-	EQ	$6	$4	$5	:bool
-	RETURN	$0	$6	:bool
+	CONST	$2	*	:ptr
+	EQ	$3	$1	$2	:bool
+	RETURN	$0	$3	:bool
 

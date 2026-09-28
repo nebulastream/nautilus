@@ -411,6 +411,14 @@ public:
 	ValueRef lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 
+	/// The tag of every copy (TraceContext::traceCopy) recorded into this trace, in recording order. Only filled
+	/// when `dump.copySites` is set, and only valid while the function is traced: a tag's root node belongs to the
+	/// TagRecorder. materializeCopySites() turns them into copySites once the trace is complete.
+	std::vector<const Tag*> copyTags;
+	/// The call stack of every recorded copy, innermost return address first; see CopyAttribution.hpp.
+	std::vector<std::vector<TagAddress>> copySites;
+	void materializeCopySites();
+
 	/// Per-function alloca table.  Each Op::ALLOCA trace operation carries an
 	/// AllocaIndex pointing at an entry here.  Copied wholesale to the
 	/// resulting FunctionOperation by TraceToIRConversionPhase so backends can

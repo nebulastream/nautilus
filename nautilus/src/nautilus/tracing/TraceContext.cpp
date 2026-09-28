@@ -28,7 +28,8 @@ static thread_local TraceContext traceContext;
 
 TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
     : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts),
-      normalizeFunctionNames(opts.getOptionOrDefault("engine.normalizeFunctionNames", false)) {
+      normalizeFunctionNames(opts.getOptionOrDefault("engine.normalizeFunctionNames", false)),
+      recordCopySites(opts.getOptionOrDefault("dump.copySites", false)) {
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
 	// The val<T> layer asks for this on every pointer offset, so it is kept in a thread-local, not looked up here.
 	setFoldStaticConstants(opts.getOptionOrDefault("engine.foldStaticConstants", true));
@@ -189,15 +190,19 @@ TypedValueRef& TraceContext::traceAlloca(size_t size, size_t align) {
 }
 
 TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
+	// Copies are about half of all traced operations in real workloads, so this path does one tag lookup and
+	// no logging.
 	if (paused_) {
 		return dummyRef_;
 	}
-	log::debug("Trace Copy");
 	if (isFollowing()) {
 		return follow(ASSIGN);
 	}
 	auto tag = recordSnapshot();
 	auto& trace = state->executionTrace;
+	if (state->recordCopySites) {
+		trace.copyTags.push_back(tag.getTag());
+	}
 	auto globalTabIter = trace.globalTagMap.find(tag);
 	if (globalTabIter != trace.globalTagMap.end()) {
 		// This copy's call site was already reached by a different execution
@@ -219,11 +224,8 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 		trace.addAssignmentOperation(tag, originalOp->resultRef, {resultRef, ref.type}, ref.type);
 		return originalOp->resultRef;
 	}
-	if (!trace.checkTag(tag)) {
-		// Defer any remaining repeated tag to the control-flow-merge machinery.
-		paused_ = true;
-		return dummyRef_;
-	}
+	// A tag that is not in globalTagMap is not a control-flow merge either (checkTag() would look it up again and
+	// find nothing), so the copy is recorded directly.
 	auto resultRef = trace.getNextValueRef();
 	return trace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
 }
@@ -775,6 +777,7 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	tc->entryBlock_ = 0;
 	tc->parent_ = nullptr;
 	tc->runScope(traceFunction);
+	executionTrace->materializeCopySites();
 
 	// Clean up: reset state pointer. activeTracer is cleared by ActiveTracerGuard.
 	tc->state.reset();
@@ -855,6 +858,7 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 		entryBlock_ = 0;
 		parent_ = nullptr;
 		runScope(wrapperFunc);
+		executionTrace.materializeCopySites();
 
 		state.reset();
 		// The trace is complete, so the blocks that only bounded region bodies can go.

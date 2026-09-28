@@ -6,30 +6,23 @@ B0($1:i32)
 B1()
 	ALLOCA	$6	:ptr
 	CONST	$7	10	:i64
-	ASSIGN	$8	$7	:i64
-	CONST	$9	8	:ui64
-	ADD	$10	$6	$9	:ptr
-	ASSIGN	$11	$8	:i64
-	ASSIGN	$12	$11	:i64
-	STORE	$13	$10	$12	:void
-	ALLOCA	$14	:ptr
-	CONST	$15	20	:i64
-	ASSIGN	$16	$15	:i64
-	ASSIGN	$17	$14	:ptr
-	ASSIGN	$18	$16	:i64
-	ASSIGN	$19	$18	:i64
-	STORE	$20	$17	$19	:void
-	CONST	$21	8	:ui64
-	ADD	$22	$6	$21	:ptr
-	LOAD	$23	$22	:i64
-	ADD	$24	$2	$23	:i64
-	ASSIGN	$25	$14	:ptr
-	LOAD	$26	$25	:i64
-	ADD	$27	$24	$26	:i64
-	ASSIGN	$2	$27	:i64
-	CONST	$28	1	:i32
-	ADD	$29	$3	$28	:i32
-	ASSIGN	$3	$29	:i32
+	CONST	$8	8	:ui64
+	ADD	$9	$6	$8	:ptr
+	STORE	$10	$9	$7	:void
+	ALLOCA	$11	:ptr
+	CONST	$12	20	:i64
+	STORE	$13	$11	$12	:void
+	CONST	$14	8	:ui64
+	ADD	$15	$6	$14	:ptr
+	LOAD	$16	$15	:i64
+	ADD	$17	$2	$16	:i64
+	ASSIGN	$18	$11	:ptr
+	LOAD	$19	$18	:i64
+	ADD	$20	$17	$19	:i64
+	ASSIGN	$2	$20	:i64
+	CONST	$21	1	:i32
+	ADD	$22	$3	$21	:i32
+	ASSIGN	$3	$22	:i32
 	JMP	$0	B3()	:void
 B2()
 	RETURN	$0	$2	:i64

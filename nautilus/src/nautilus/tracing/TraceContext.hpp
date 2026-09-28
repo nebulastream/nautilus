@@ -222,6 +222,8 @@ struct TraceState {
 	const engine::Options& options;
 	/// `engine.normalizeFunctionNames`, read once: it is consulted on every traced call.
 	bool normalizeFunctionNames;
+	/// `dump.copySites`: remember where each recorded copy was made (ExecutionTrace::copySites).
+	bool recordCopySites;
 	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
 	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
 

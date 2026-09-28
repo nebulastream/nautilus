@@ -518,6 +518,19 @@ const std::vector<TypedValueRef>& ExecutionTrace::getArguments() {
 	return blocks[0]->arguments;
 }
 
+void ExecutionTrace::materializeCopySites() {
+	copySites.reserve(copySites.size() + copyTags.size());
+	for (const Tag* tag : copyTags) {
+		auto& stack = copySites.emplace_back();
+		for (const Tag* node = tag; node != nullptr && node->getParent() != nullptr; node = node->getParent()) {
+			stack.push_back(node->getContent());
+		}
+		// The recorder appends frames innermost first, so a tag's leaf is its outermost frame.
+		std::reverse(stack.begin(), stack.end());
+	}
+	copyTags.clear();
+}
+
 void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier) {
 	globalTagMap[snapshot] = identifier;
 }

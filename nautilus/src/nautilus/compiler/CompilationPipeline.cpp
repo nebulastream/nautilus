@@ -36,6 +36,7 @@
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
 #include "nautilus/compiler/ir/passes/StrengthReductionPass.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
+#include "nautilus/tracing/CopyAttribution.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -215,6 +216,11 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 	}
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
+	// Not part of dump.all: resolving every copy's call stack through the debug information is slow.
+	if (moduleOptions.getOptionOrDefault("dump.copySites", false)) {
+		tracing::SourceLocationResolver copySiteResolver;
+		dumpHandler.forceDump("copy_sites", "txt", tracing::formatCopySites(*traceModule, copySiteResolver));
+	}
 
 	const auto ssaStart = std::chrono::steady_clock::now();
 	auto ssaCreationPhase = tracing::SSACreationPhase();

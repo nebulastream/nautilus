@@ -6,6 +6,7 @@ if (ENABLE_TRACING)
     add_subdirectory(exceptions)
     add_source_files(nautilus
             Block.cpp
+            CopyAttribution.cpp
             ExecutionTrace.cpp
             TracingUtil.cpp
             TraceContext.cpp
