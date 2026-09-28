@@ -26,8 +26,12 @@ namespace nautilus::compiler::mlir {
 //   4. Return pointer to alloca
 // ============================================================================
 
-class MLIRVectorIntrinsicPlugin : public MLIRIntrinsicPlugin {
+class MLIRVectorIntrinsicPlugin final : public MLIRIntrinsicPlugin {
 public:
+	std::optional<std::string> cacheFingerprint() const override {
+		return cacheFingerprintForAddress(reinterpret_cast<const void*>(&RegisterMLIRVectorIntrinsicPlugin));
+	}
+
 	void registerIntrinsics(MLIRIntrinsicManager& manager) override;
 	~MLIRVectorIntrinsicPlugin() override = default;
 };

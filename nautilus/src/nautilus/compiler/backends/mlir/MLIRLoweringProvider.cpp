@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
+#include "nautilus/compiler/backends/mlir/ExceptionPersonality.hpp"
 #include "nautilus/compiler/backends/mlir/LLVMBackendHooks.hpp"
 #include "nautilus/compiler/backends/mlir/debug/RegionScopeInfo.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
@@ -8,6 +9,7 @@
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
+#include "nautilus/compiler/ir/operations/RuntimeBindingOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/tracing/Types.hpp"
@@ -517,6 +519,10 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 		}
 	}
 
+	if (theModule.lookupSymbol<mlir::func::FuncOp>(functionName)) {
+		return mlir::SymbolRefAttr::get(context, functionName);
+	}
+
 	// Use func dialect for external functions to enable better optimization
 	// Handle void vs non-void return types
 	llvm::SmallVector<mlir::Type> resultTypes;
@@ -571,6 +577,8 @@ MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context, const eng
 	builder->getContext()->loadDialect<mlir::LLVM::LLVMDialect>();
 	builder->getContext()->loadDialect<mlir::func::FuncDialect>();
 	this->theModule = mlir::ModuleOp::create(getNameLoc("module"));
+	theModule->setAttr("nautilus.runtime_binding.schema",
+	                   builder->getStringAttr(options.getRuntimeBindings().schema()));
 	// Store InsertPoint for inserting globals such as Strings or TupleBuffers.
 	globalInsertPoint = new mlir::RewriterBase::InsertPoint(theModule.getBody(), theModule.begin());
 }
@@ -854,6 +862,44 @@ void MLIRLoweringProvider::visitConstPtr(ir::ConstPtrOperation* constPtr, ValueF
 	bind(frame, constPtr, elementAddress);
 }
 
+void MLIRLoweringProvider::visitRuntimeBinding(ir::RuntimeBindingOperation* operation, ValueFrame& frame) {
+	const auto& binding = operation->getBinding();
+	const auto& entries = options->getRuntimeBindings().entries();
+	const auto registered = entries.find(binding.identity);
+	if (registered == entries.end() || !registered->second || registered->second->type != binding.type ||
+	    registered->second->symbol != binding.symbol || registered->second->address == nullptr) {
+		throw RuntimeException("MLIR runtime binding is not registered: " + binding.identity);
+	}
+
+	auto global = theModule.lookupSymbol<mlir::LLVM::GlobalOp>(binding.symbol);
+	if (!global) {
+		if (theModule.lookupSymbol(binding.symbol)) {
+			throw RuntimeException("MLIR runtime binding symbol conflicts with a function: " + binding.symbol);
+		}
+		mlir::OpBuilder::InsertionGuard guard(*builder);
+		builder->restoreInsertionPoint(*globalInsertPoint);
+		global = mlir::LLVM::GlobalOp::create(*builder, theModule.getLoc(), builder->getI8Type(), false,
+		                                      mlir::LLVM::Linkage::External, binding.symbol, mlir::Attribute {}, 1);
+		global->setAttr("nautilus.runtime_binding.identity", builder->getStringAttr(binding.identity));
+		global->setAttr("nautilus.runtime_binding.type", builder->getStringAttr(binding.type));
+		jitRuntimeBindingSymbols.push_back(binding.symbol);
+		jitRuntimeBindingTargetAddresses.push_back(registered->second->address);
+	} else if (global->getAttrOfType<mlir::StringAttr>("nautilus.runtime_binding.identity") !=
+	               builder->getStringAttr(binding.identity) ||
+	           global->getAttrOfType<mlir::StringAttr>("nautilus.runtime_binding.type") !=
+	               builder->getStringAttr(binding.type)) {
+		throw RuntimeException("MLIR runtime binding symbol has conflicting identities: " + binding.symbol);
+	}
+
+	auto location = getNameLoc("runtimeBinding");
+	auto pointerType = mlir::LLVM::LLVMPointerType::get(context);
+	auto address = mlir::LLVM::AddressOfOp::create(*builder, location, global);
+	auto opaqueAddress = mlir::LLVM::InlineAsmOp::create(
+	    *builder, location, pointerType, mlir::ValueRange {address}, "", "=r,0", false, false,
+	    mlir::LLVM::tailcallkind::TailCallKind::None, mlir::LLVM::AsmDialectAttr {}, mlir::ArrayAttr {});
+	bind(frame, operation, opaqueAddress.getRes());
+}
+
 void MLIRLoweringProvider::visitConstFloat(ir::ConstFloatOperation* constFloatOp, ValueFrame& frame) {
 	if (isFloat(constFloatOp->getStamp())) {
 		auto floatType = (constFloatOp->getStamp() == Type::f32) ? builder->getF32Type() : builder->getF64Type();
@@ -1106,6 +1152,8 @@ void MLIRLoweringProvider::visitCall(ir::CallOperation* callOp, ValueFrame& fram
 		parentFunction->setDiscardableAttr("personality",
 		                                   mlir::FlatSymbolRefAttr::get(context, "__gxx_personality_v0"));
 		if (!theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>("__gxx_personality_v0")) {
+			jitProxyFunctionSymbols.emplace_back("__gxx_personality_v0");
+			jitProxyFunctionTargetAddresses.push_back(getExceptionPersonalityAddress());
 			mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
 			builder->restoreInsertionPoint(*globalInsertPoint);
 			auto personalityType = mlir::LLVM::LLVMFunctionType::get(builder->getI32Type(), {}, true);
@@ -1192,6 +1240,8 @@ void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirect
 		parentFunction->setDiscardableAttr("personality",
 		                                   mlir::FlatSymbolRefAttr::get(context, "__gxx_personality_v0"));
 		if (!theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>("__gxx_personality_v0")) {
+			jitProxyFunctionSymbols.emplace_back("__gxx_personality_v0");
+			jitProxyFunctionTargetAddresses.push_back(getExceptionPersonalityAddress());
 			mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
 			builder->restoreInsertionPoint(*globalInsertPoint);
 			auto personalityType = mlir::LLVM::LLVMFunctionType::get(builder->getI32Type(), {}, true);
@@ -1226,22 +1276,19 @@ void MLIRLoweringProvider::visitFunctionAddressOf(ir::FunctionAddressOfOperation
 	const auto& target = ir->getFunctionTarget(funcAddrOp->getCalleeId());
 	auto ptrType = mlir::LLVM::LLVMPointerType::get(builder->getContext());
 
-	// Taking the address of a native function: its address is known now, so
-	// materialise it as a pointer constant. This path did not exist before the
-	// function table -- the symbol lookup below returned a null FuncOp and
-	// getFunctionType() dereferenced it -- so address-of-external crashed
-	// rather than degrading.
+	std::string functionName = target.getName().forEmission();
 	if (target.getLinkage() != ir::Linkage::Internal) {
-		auto constInt = mlir::arith::ConstantOp::create(
-		    *builder, getNameLoc("funcAddr"), builder->getI64Type(),
-		    builder->getIntegerAttr(builder->getI64Type(), reinterpret_cast<int64_t>(target.getAddress())));
-		auto addressValue =
-		    mlir::LLVM::IntToPtrOp::create(*builder, getNameLoc("funcAddr"), ptrType, mlir::ValueRange(constInt));
-		bind(frame, funcAddrOp, addressValue);
-		return;
+		const auto stamps = target.getParamTypes();
+		std::vector<mlir::Type> types;
+		types.reserve(stamps.size());
+		for (auto stamp : stamps) {
+			types.push_back(getMLIRType(stamp));
+		}
+		functionName = insertExternalFunction(functionName, target.getAddress(), getMLIRType(target.getResultType()),
+		                                      types, stamps, target.getAttributes())
+		                   .getValue()
+		                   .str();
 	}
-
-	const auto& functionName = target.getName().forEmission();
 
 	// The nested function is compiled as a func::FuncOp in this module.
 	// To get its address as an !llvm.ptr, we create a helper function that
@@ -1657,6 +1704,14 @@ std::vector<std::string> MLIRLoweringProvider::getJitProxyFunctionSymbols() {
 
 std::vector<void*> MLIRLoweringProvider::getJitProxyTargetAddresses() {
 	return std::move(jitProxyFunctionTargetAddresses);
+}
+
+std::vector<std::string> MLIRLoweringProvider::getJitRuntimeBindingSymbols() {
+	return std::move(jitRuntimeBindingSymbols);
+}
+
+std::vector<void*> MLIRLoweringProvider::getJitRuntimeBindingTargetAddresses() {
+	return std::move(jitRuntimeBindingTargetAddresses);
 }
 
 } // namespace nautilus::compiler::mlir

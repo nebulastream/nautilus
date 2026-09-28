@@ -17,6 +17,7 @@
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
+#include "nautilus/compiler/ir/operations/RuntimeBindingOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
@@ -347,6 +348,14 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 	}
 	case Op::CONST: {
 		processConst(frame, currentIrBlock, operation);
+		return;
+	}
+	case Op::RUNTIME_BINDING: {
+		const auto& binding = *std::get<const runtime_binding::Entry*>(operation.input[0]);
+		auto resultIdentifier = createValueIdentifier(operation.resultRef);
+		auto* bindingOperation = currentIrBlock->addTaggedOperation<RuntimeBindingOperation>(provenanceOf(operation),
+		                                                                                     resultIdentifier, binding);
+		frame.setValue(resultIdentifier, bindingOperation);
 		return;
 	}
 	case Op::RETURN: {

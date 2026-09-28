@@ -478,6 +478,16 @@ void CPPLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* 
 	processConst<ir::ConstPtrOperation>(op, blockIndex, frame);
 }
 
+void CPPLoweringProvider::LoweringContext::visitRuntimeBinding(ir::RuntimeBindingOperation* op, short blockIndex,
+                                                               RegisterFrame& frame) {
+	auto var = getVariable(op->getIdentifier());
+	if (!frame.contains(op->getIdentifier())) {
+		blockArguments << getType(op->getStamp()) << " " << var << ";\n";
+		frame.setValue(op->getIdentifier(), var);
+	}
+	blocks[blockIndex] << var << " = (" << getType(op->getStamp()) << ")" << op->getBinding().address << ";\n";
+}
+
 void CPPLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* returnOpt, short blockIndex,
                                                        RegisterFrame& frame) {
 	if (returnOpt->hasReturnValue()) {

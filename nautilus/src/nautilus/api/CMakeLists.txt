@@ -1,1 +1,1 @@
-add_source_files(nautilus val_memcpy.cpp)
+add_source_files(nautilus val_memcpy.cpp RuntimeBinding.cpp)

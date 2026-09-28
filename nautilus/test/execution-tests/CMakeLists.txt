@@ -28,6 +28,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         TieredCompilationTest.cpp
         PointerExecutionTest.cpp
         RegionTest.cpp
+        RuntimeBindingTest.cpp
         SelectExecutionTest.cpp
 )
 
@@ -50,7 +51,11 @@ if (ENABLE_MLIR_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
             ABIExtensionAttributeTest.cpp
             DebugInfoExecutionTest.cpp
-            PerfJitDumpExecutionTest.cpp)
+            PerfJitDumpExecutionTest.cpp
+            backends/mlir/CompilationCacheTest.cpp
+            backends/mlir/IntrinsicCacheFingerprintTest.cpp
+            backends/mlir/RuntimeBindingValidationTest.cpp
+            backends/mlir/RuntimeBindingBenchmark.cpp)
 endif ()
 
 # NOT listed: BitIntrinsicExecutionTest.cpp. It is written against a bit
@@ -64,6 +69,30 @@ add_executable(nautilus-execution-tests ${NAUTILUS_EXECUTION_TEST_SOURCES})
 target_link_libraries(nautilus-execution-tests PUBLIC nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus-execution-tests PRIVATE spdlog::spdlog)
+endif ()
+if (ENABLE_MLIR_BACKEND)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        include(CheckPIESupported)
+        check_pie_supported(LANGUAGES CXX)
+        set_property(TARGET nautilus-execution-tests PROPERTY POSITION_INDEPENDENT_CODE TRUE)
+        target_link_options(nautilus-execution-tests PRIVATE "LINKER:--build-id=sha1")
+        add_library(nautilus-unidentified-cache-proxy MODULE backends/mlir/UnidentifiedCacheProxy.cpp)
+        target_link_options(nautilus-unidentified-cache-proxy PRIVATE "LINKER:--build-id=none")
+        target_compile_definitions(nautilus-execution-tests PRIVATE
+                NAUTILUS_UNIDENTIFIED_CACHE_PROXY="$<TARGET_FILE:nautilus-unidentified-cache-proxy>")
+        add_dependencies(nautilus-execution-tests nautilus-unidentified-cache-proxy)
+        add_executable(nautilus-missing-compiler-build-id-test backends/mlir/MissingCompilerBuildIdTest.cpp)
+        target_link_libraries(nautilus-missing-compiler-build-id-test PRIVATE
+                nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
+        target_include_directories(nautilus-missing-compiler-build-id-test PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
+        target_link_options(nautilus-missing-compiler-build-id-test PRIVATE "LINKER:--build-id=none")
+        catch_discover_tests(nautilus-missing-compiler-build-id-test EXTRA_ARGS --allow-running-no-tests)
+    endif ()
+    find_package(MLIR QUIET CONFIG)
+    if (MLIR_INCLUDE_DIRS)
+        target_include_directories(nautilus-execution-tests SYSTEM PRIVATE ${MLIR_INCLUDE_DIRS})
+    endif ()
 endif ()
 target_include_directories(nautilus-execution-tests PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common>

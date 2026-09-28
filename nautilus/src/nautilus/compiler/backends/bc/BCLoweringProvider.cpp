@@ -1456,6 +1456,17 @@ void BCLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* c
 	program.blocks[block].code.emplace_back(oc);
 }
 
+void BCLoweringProvider::LoweringContext::visitRuntimeBinding(ir::RuntimeBindingOperation* op, short block,
+                                                              RegisterFrame& frame) {
+	auto defaultRegister = registerProvider.allocPinnedRegister();
+	allocateRegister(defaultRegister);
+	defaultRegisterFile[defaultRegister] = reinterpret_cast<int64_t>(op->getBinding().address);
+
+	auto targetRegister = getResultRegister(op, frame);
+	frame.setValue(op->getIdentifier(), targetRegister);
+	program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, defaultRegister, -1, targetRegister});
+}
+
 void BCLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBooleanOperation* constInt, short block,
                                                             RegisterFrame& frame) {
 	auto defaultRegister = registerProvider.allocPinnedRegister();

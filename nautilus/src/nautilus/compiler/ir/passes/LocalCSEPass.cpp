@@ -33,7 +33,7 @@ bool isCseCandidate(const IRGraph& ir, const Operation* op) {
 	// Purity is asked per operation rather than per opcode, so a call whose
 	// callee is known to touch no memory and to return is eligible. For every
 	// other opcode this is exactly what isPureOp(type) said.
-	return isPureOperation(ir, *op) && !isConstantOp(type);
+	return isPureOperation(ir, *op) && !isConstantOp(type) && type != OpType::RuntimeBindingOp;
 }
 
 /// Commutative operations may match regardless of operand order; their key

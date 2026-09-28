@@ -492,6 +492,12 @@ private:
 		emit(block, Op::MOV, target, constSlot(reinterpret_cast<uint64_t>(constPtr->getValue())));
 	}
 
+	void visitRuntimeBinding(ir::RuntimeBindingOperation* binding, int block, RegisterFrame& frame) {
+		const auto target = getResultRegister(binding, frame);
+		frame.setValue(binding->getIdentifier(), target);
+		emit(block, Op::MOV, target, constSlot(reinterpret_cast<uint64_t>(binding->getBinding().address)));
+	}
+
 	// ── Arithmetic / logic ───────────────────────────────────────────────────
 
 	/// Record the arithmetic op about to be emitted as immediate-foldable when

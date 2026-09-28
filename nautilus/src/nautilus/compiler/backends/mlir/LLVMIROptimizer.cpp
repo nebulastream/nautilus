@@ -45,6 +45,9 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		// tests rely on; without the pin, a runner with AVX-512 vectorizes wider
 		// than one without, so the generated IR differs run to run.
 		auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
+		if (!tmBuilderOrError) {
+			return tmBuilderOrError.takeError();
+		}
 		const std::string pinnedCpu = options.getOptionOrDefault<std::string>("mlir.targetCpu", "");
 		if (!pinnedCpu.empty()) {
 			tmBuilderOrError->setCPU(pinnedCpu);
