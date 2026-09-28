@@ -51,8 +51,7 @@ B1()
 	CAST	$27	$12	:ui64
 	MUL	$28	$27	$26	:ui64
 	ADD	$29	$7	$28	:ptr
-	ASSIGN	$30	$25	:ui32
-	STORE	$31	$29	$30	:void
+	STORE	$30	$29	$25	:void
 	RETURN	$0	:void
 B2()
 	RETURN	$0	:void

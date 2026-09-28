@@ -22,13 +22,13 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 	$8 = $6 cast_to ui64 :ui64
 	$9 = $8 * $7 :ui64
 	$10 = $1 + $9 :ptr
-	$12 = load($10) :ui32
-	$13 = $12 * $3 :ui32
-	$14 = 4 :ui64
-	$15 = $6 cast_to ui64 :ui64
-	$16 = $15 * $14 :ui64
-	$17 = $2 + $16 :ptr
-	store($13, $17) :void
+	$11 = load($10) :ui32
+	$12 = $11 * $3 :ui32
+	$13 = 4 :ui64
+	$14 = $6 cast_to ui64 :ui64
+	$15 = $14 * $13 :ui64
+	$16 = $2 + $15 :ptr
+	store($12, $16) :void
 	return :void
 }
 } //nautilus

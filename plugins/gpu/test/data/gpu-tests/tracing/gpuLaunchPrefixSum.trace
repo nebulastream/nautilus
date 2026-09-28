@@ -49,13 +49,11 @@ B3()
 	ASSIGN	$14	$24	:ui32
 	JMP	$0	B5()	:void
 B4()
-	ASSIGN	$31	$13	:ui32
-	CONST	$32	4	:ui64
-	CAST	$33	$10	:ui64
-	MUL	$34	$33	$32	:ui64
-	ADD	$35	$5	$34	:ptr
-	ASSIGN	$36	$31	:ui32
-	STORE	$37	$35	$36	:void
+	CONST	$31	4	:ui64
+	CAST	$32	$10	:ui64
+	MUL	$33	$32	$31	:ui64
+	ADD	$34	$5	$33	:ptr
+	STORE	$35	$34	$13	:void
 	RETURN	$0	:void
 B5() ControlFlowMerge
 	LTE	$15	$14	$10	:bool
