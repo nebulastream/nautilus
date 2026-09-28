@@ -18,22 +18,22 @@ Block_0($1:ptr, $2:ptr, $3:ptr):
 vecAdd($1:ptr, $2:ptr, $3:ptr) :void {
 Block_0($1:ptr, $2:ptr, $3:ptr):
 	$7 = call func_*#4() :ui32
-	$11 = 4 :ui64
-	$12 = $7 cast_to ui64 :ui64
-	$13 = $12 * $11 :ui64
-	$14 = $1 + $13 :ptr
-	$20 = 4 :ui64
-	$21 = $7 cast_to ui64 :ui64
-	$22 = $21 * $20 :ui64
-	$23 = $2 + $22 :ptr
-	$26 = load($14) :ui32
-	$27 = load($23) :ui32
-	$28 = $26 + $27 :ui32
-	$32 = 4 :ui64
-	$33 = $7 cast_to ui64 :ui64
-	$34 = $33 * $32 :ui64
-	$35 = $3 + $34 :ptr
-	store($28, $35) :void
+	$8 = 4 :ui64
+	$9 = $7 cast_to ui64 :ui64
+	$10 = $9 * $8 :ui64
+	$11 = $1 + $10 :ptr
+	$12 = 4 :ui64
+	$13 = $7 cast_to ui64 :ui64
+	$14 = $13 * $12 :ui64
+	$15 = $2 + $14 :ptr
+	$16 = load($11) :ui32
+	$17 = load($15) :ui32
+	$18 = $16 + $17 :ui32
+	$19 = 4 :ui64
+	$20 = $7 cast_to ui64 :ui64
+	$21 = $20 * $19 :ui64
+	$22 = $3 + $21 :ptr
+	store($18, $22) :void
 	return :void
 }
 } //nautilus

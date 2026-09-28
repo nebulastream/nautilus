@@ -37,35 +37,25 @@ B1()
 B2()
 	RETURN	$0	:void
 B3()
-	ASSIGN	$17	$4	:ptr
-	ASSIGN	$18	$14	:ui32
-	ASSIGN	$19	$18	:ui32
-	CONST	$20	4	:ui64
-	CAST	$21	$19	:ui64
-	MUL	$22	$21	$20	:ui64
-	ADD	$23	$17	$22	:ptr
-	ASSIGN	$24	$23	:ptr
-	ASSIGN	$25	$24	:ptr
-	LOAD	$26	$25	:ui32
-	ADD	$27	$13	$26	:ui32
-	ASSIGN	$13	$27	:ui32
-	CONST	$28	1	:ui32
-	ADD	$29	$14	$28	:ui32
-	ASSIGN	$14	$29	:ui32
+	CONST	$17	4	:ui64
+	CAST	$18	$14	:ui64
+	MUL	$19	$18	$17	:ui64
+	ADD	$20	$4	$19	:ptr
+	LOAD	$21	$20	:ui32
+	ADD	$22	$13	$21	:ui32
+	ASSIGN	$13	$22	:ui32
+	CONST	$23	1	:ui32
+	ADD	$24	$14	$23	:ui32
+	ASSIGN	$14	$24	:ui32
 	JMP	$0	B5()	:void
 B4()
-	ASSIGN	$36	$13	:ui32
-	ASSIGN	$37	$5	:ptr
-	ASSIGN	$38	$10	:ui32
-	ASSIGN	$39	$38	:ui32
-	CONST	$40	4	:ui64
-	CAST	$41	$39	:ui64
-	MUL	$42	$41	$40	:ui64
-	ADD	$43	$37	$42	:ptr
-	ASSIGN	$44	$43	:ptr
-	ASSIGN	$45	$44	:ptr
-	ASSIGN	$46	$36	:ui32
-	STORE	$47	$45	$46	:void
+	ASSIGN	$31	$13	:ui32
+	CONST	$32	4	:ui64
+	CAST	$33	$10	:ui64
+	MUL	$34	$33	$32	:ui64
+	ADD	$35	$5	$34	:ptr
+	ASSIGN	$36	$31	:ui32
+	STORE	$37	$35	$36	:void
 	RETURN	$0	:void
 B5() ControlFlowMerge
 	LTE	$15	$14	$10	:bool
