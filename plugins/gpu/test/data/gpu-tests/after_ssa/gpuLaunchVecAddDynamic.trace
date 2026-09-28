@@ -32,6 +32,6 @@ B0($1:ptr,$2:ptr,$3:ptr)
 	CAST	$20	$7	:ui64
 	MUL	$21	$20	$19	:ui64
 	ADD	$22	$3	$21	:ptr
-	STORE	$24	$22	$18	:void
+	STORE	$23	$22	$18	:void
 	RETURN	$0	:void
 
