@@ -4,6 +4,7 @@
 #include "nautilus/val_concepts.hpp"
 #include "nautilus/val_details.hpp"
 #include <concepts>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -285,7 +286,10 @@ using ArithmeticResultType = std::common_type_t<decltype(+std::declval<LHS>()), 
                                                                                                                        \
 		return val<resultType>(RawValueResolver<resultType>::getRawValue(std::forward<decltype(lValue)>(               \
 		    lValue)) OP RawValueResolver<resultType>::getRawValue(std::forward<decltype(rValue)>(rValue)));            \
-	}
+	}                                                                                                                  \
+	/* The type OP_NAME converts both operands to. */                                                                  \
+	template <typename LBase, typename RBase>                                                                          \
+	using OP_NAME##_operand_t = ArithmeticResultType<LBase, RBase>;
 
 DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(+, add, ADD)
 
@@ -323,7 +327,10 @@ DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH)
                                                                                                                        \
 		return val<RES_TYPE>(RawValueResolver<commonType>::getRawValue(std::forward<decltype(lValue)>(                 \
 		    lValue)) OP RawValueResolver<commonType>::getRawValue(std::forward<decltype(rValue)>(rValue)));            \
-	}
+	}                                                                                                                  \
+	/* The type OP_NAME converts both operands to. */                                                                  \
+	template <typename LBase, typename RBase>                                                                          \
+	using OP_NAME##_operand_t = std::common_type_t<LBase, RBase>;
 
 DEFINE_BINARY_OPERATOR_HELPER(==, eq, EQ, bool)
 
@@ -360,6 +367,37 @@ DEFINE_BINARY_OPERATOR_HELPER(|, bOr, BOR, COMMON_RETURN_TYPE)
 
 DEFINE_BINARY_OPERATOR_HELPER(^, bXOr, BXOR, COMMON_RETURN_TYPE)
 
+/// How a raw literal enters `val<ValBase> OP literal` (or `literal OP val<ValBase>`), where the operator converts both
+/// operands to `Operand<ValBase, Raw>`. When that conversion gives the same result as the traced CAST for every value
+/// of the literal's type (integral to integral, floating point to floating point, or an integer every value of which
+/// the floating-point type represents exactly), the literal is converted in C++ and traced as one CONST of the operand
+/// type; otherwise it stays a CONST of its own type, and the operator traces the CAST.
+template <template <typename, typename> typename Operand, typename ValBase, typename Raw>
+struct literal_operand {
+	static constexpr bool converts_in_cpp = false;
+};
+
+template <template <typename, typename> typename Operand, typename ValBase, typename Raw>
+    requires(is_arithmetic<ValBase> && is_arithmetic<Raw>)
+struct literal_operand<Operand, ValBase, Raw> {
+	using type = Operand<ValBase, Raw>;
+	static constexpr bool converts_in_cpp = !tracing::same_nautilus_type<Raw, type>::value &&
+	                                        ((std::is_integral_v<Raw> && std::is_integral_v<type>) ||
+	                                         (std::is_floating_point_v<Raw> && std::is_floating_point_v<type>) ||
+	                                         (std::is_integral_v<Raw> && std::is_floating_point_v<type> &&
+	                                          std::numeric_limits<Raw>::digits <= std::numeric_limits<type>::digits));
+};
+
+/// Whether literals are converted in C++ (see literal_operand): always outside of tracing, where it is plain C++
+/// arithmetic, and while tracing unless `engine.foldStaticConstants` is off.
+bool inline convertsLiteralsInCpp() {
+#ifdef ENABLE_TRACING
+	return !tracing::inTracer() || tracing::foldsStaticConstants();
+#else
+	return true;
+#endif
+}
+
 } // namespace details
 
 // Operator overloads for arithmetic types
@@ -373,6 +411,15 @@ DEFINE_BINARY_OPERATOR_HELPER(^, bXOr, BXOR, COMMON_RETURN_TYPE)
 	template <typename LHS, typename RHS>                                                                              \
 	    requires(is_##CATEGORY##_val<LHS> && convertible_to_##CATEGORY<RHS>)                                           \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
+		using Literal =                                                                                                \
+		    details::literal_operand<details::FUNC##_operand_t, typename std::remove_cvref_t<LHS>::basic_type,         \
+		                             std::remove_cvref_t<RHS>>;                                                        \
+		if constexpr (Literal::converts_in_cpp) {                                                                      \
+			if (details::convertsLiteralsInCpp()) {                                                                    \
+				using Operand = typename Literal::type;                                                                \
+				return details::FUNC(std::forward<LHS>(left), val<Operand>(static_cast<Operand>(right)));              \
+			}                                                                                                          \
+		}                                                                                                              \
 		auto&& rhsV = make_value(std::forward<RHS>(right));                                                            \
 		return details::FUNC(std::forward<LHS>(left), std::forward<decltype(rhsV)>(rhsV));                             \
 	}                                                                                                                  \
@@ -380,6 +427,15 @@ DEFINE_BINARY_OPERATOR_HELPER(^, bXOr, BXOR, COMMON_RETURN_TYPE)
 	template <typename LHS, typename RHS>                                                                              \
 	    requires(convertible_to_##CATEGORY<LHS> && is_##CATEGORY##_val<RHS>)                                           \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
+		using Literal =                                                                                                \
+		    details::literal_operand<details::FUNC##_operand_t, typename std::remove_cvref_t<RHS>::basic_type,         \
+		                             std::remove_cvref_t<LHS>>;                                                        \
+		if constexpr (Literal::converts_in_cpp) {                                                                      \
+			if (details::convertsLiteralsInCpp()) {                                                                    \
+				using Operand = typename Literal::type;                                                                \
+				return details::FUNC(val<Operand>(static_cast<Operand>(left)), std::forward<RHS>(right));              \
+			}                                                                                                          \
+		}                                                                                                              \
 		auto&& lhsV = make_value(std::forward<LHS>(left));                                                             \
 		return details::FUNC(std::forward<decltype(lhsV)>(lhsV), std::forward<RHS>(right));                            \
 	}                                                                                                                  \

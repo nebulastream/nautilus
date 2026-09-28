@@ -7,26 +7,18 @@ Block_0($1:i32):
 
 Block_1($1:i32):
 	$5 = alloca[0] :ptr
-	$12 = 0 :ui64
-	$13 = $5 + $12 :ptr
-	store($1, $13) :void
-	$23 = 0 :ui64
-	$24 = $5 + $23 :ptr
-	$27 = load($24) :i32
-	br Block_3($27) :void
+	store($1, $5) :void
+	$13 = load($5) :i32
+	br Block_3($13) :void
 
-Block_3($27:i32):
-	return ($27) :i32
+Block_3($13:i32):
+	return ($13) :i32
 
 Block_2():
-	$29 = alloca[1] :ptr
-	$34 = 0 :ui64
-	$35 = $29 + $34 :ptr
-	$38 = 42 :i32
-	store($38, $35) :void
-	$46 = 0 :ui64
-	$47 = $29 + $46 :ptr
-	$50 = load($47) :i32
-	br Block_3($50) :void
+	$15 = alloca[1] :ptr
+	$17 = 42 :i32
+	store($17, $15) :void
+	$22 = load($15) :i32
+	br Block_3($22) :void
 }
 } //nautilus

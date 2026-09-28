@@ -1,0 +1,8 @@
+nautilus {
+execute($1:i64) :i64 {
+Block_0($1:i64):
+	$2 = 10 :i64
+	$3 = $2 - $1 :i64
+	return ($3) :i64
+}
+} //nautilus

@@ -27,6 +27,17 @@ bool inTracer() {
 	return activeTracer != nullptr;
 }
 
+// `engine.foldStaticConstants` of the function being traced on this thread.
+static thread_local bool foldStaticConstants = true;
+
+bool foldsStaticConstants() {
+	return foldStaticConstants;
+}
+
+void setFoldStaticConstants(bool fold) {
+	foldStaticConstants = fold;
+}
+
 // --- Guarded wrappers: may be called from val<T> constructors/destructors
 //     that run outside a tracing context (e.g. copies, assignments, ref-counting).
 

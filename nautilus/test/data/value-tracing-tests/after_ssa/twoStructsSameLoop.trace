@@ -6,33 +6,21 @@ B0($1:i32)
 B1($1:i32,$2:i64,$3:i32)
 	ALLOCA	$6	:ptr
 	CONST	$7	10	:i64
-	CONST	$10	8	:ui64
-	CONST	$12	1	:ui64
-	MUL	$13	$10	$12	:ui64
-	ADD	$14	$6	$13	:ptr
-	STORE	$19	$14	$7	:void
-	ALLOCA	$20	:ptr
-	CONST	$21	20	:i64
-	CONST	$24	0	:ui64
-	CONST	$26	1	:ui64
-	MUL	$27	$24	$26	:ui64
-	ADD	$28	$20	$27	:ptr
-	STORE	$33	$28	$21	:void
-	CONST	$35	8	:ui64
-	CONST	$37	1	:ui64
-	MUL	$38	$35	$37	:ui64
-	ADD	$39	$6	$38	:ptr
-	LOAD	$42	$39	:i64
-	ADD	$43	$2	$42	:i64
-	CONST	$45	0	:ui64
-	CONST	$47	1	:ui64
-	MUL	$48	$45	$47	:ui64
-	ADD	$49	$20	$48	:ptr
-	LOAD	$52	$49	:i64
-	ADD	$53	$43	$52	:i64
-	CONST	$54	1	:i32
-	ADD	$55	$3	$54	:i32
-	JMP	$0	B3($53,$55,$1)	:void
+	CONST	$9	8	:ui64
+	ADD	$10	$6	$9	:ptr
+	STORE	$13	$10	$7	:void
+	ALLOCA	$14	:ptr
+	CONST	$15	20	:i64
+	STORE	$20	$14	$15	:void
+	CONST	$21	8	:ui64
+	ADD	$22	$6	$21	:ptr
+	LOAD	$23	$22	:i64
+	ADD	$24	$2	$23	:i64
+	LOAD	$26	$14	:i64
+	ADD	$27	$24	$26	:i64
+	CONST	$28	1	:i32
+	ADD	$29	$3	$28	:i32
+	JMP	$0	B3($27,$29,$1)	:void
 B2($2:i64)
 	RETURN	$0	$2	:i64
 B3($2:i64,$3:i32,$1:i32) ControlFlowMerge

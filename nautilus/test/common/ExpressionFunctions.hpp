@@ -284,4 +284,27 @@ val<uint32_t> u32WrapSubThenCompare(val<uint32_t> x, val<uint32_t> y) {
 	return result;
 }
 
+// Issue #517: a literal is traced as a constant of the type the operator converts it to, where that conversion is
+// exact for every value of the literal's type.
+inline val<int64_t> addInt64AndLiteral(val<int64_t> x) {
+	return x + 1;
+}
+
+inline val<int64_t> literalMinusInt64(val<int64_t> x) {
+	return 10 - x;
+}
+
+inline val<bool> compareUInt64AndLiteral(val<uint64_t> x) {
+	return x == 7;
+}
+
+inline val<double> mulDoubleAndLiteral(val<double> x) {
+	return x * 2;
+}
+
+// Not every int64_t is a float, so this keeps the traced CAST.
+inline val<float> addFloatAndInt64Literal(val<float> x) {
+	return x + int64_t {3};
+}
+
 } // namespace nautilus::engine

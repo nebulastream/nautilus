@@ -1,0 +1,8 @@
+nautilus {
+execute($1:ui64) :bool {
+Block_0($1:ui64):
+	$2 = 7 :ui64
+	$3 = $1 == $2 :bool
+	return ($3) :bool
+}
+} //nautilus

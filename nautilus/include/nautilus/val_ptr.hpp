@@ -41,12 +41,15 @@ public:
 	}
 	val(ValueType ref, tracing::TypedValueRef TypedValueRef) : state(TypedValueRef), ptr(&ref) {
 	}
-	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(ptr) {
+	// Callers hand over a temporary pointer wherever they can, so it is moved rather than copied. An lvalue pointer
+	// is still copied once: the caller may reassign it while this reference is alive, and sharing its reference
+	// would make this one follow that assignment.
+	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(std::move(ptr)) {
 	}
 #else
 	val(ValueType ref) : ptr(&ref) {
 	}
-	val(val<ptrType> ptr) : ptr(ptr) {
+	val(val<ptrType> ptr) : ptr(std::move(ptr)) {
 	}
 #endif
 	operator val<baseType>() {
@@ -175,7 +178,9 @@ concept ptr_offset =
 
 namespace details {
 template <is_ptr ValueType, is_integral_val IndexType>
-val<ValueType> ptrAdd(val<ValueType> left, IndexType offset);
+val<ValueType> ptrAdd(const val<ValueType>& left, const IndexType& offset);
+template <is_ptr ValueType>
+val<ValueType> ptrAddStatic(const val<ValueType>& left, size_t count);
 } // namespace details
 
 template <is_ptr ValuePtrType>
@@ -270,7 +275,9 @@ protected:
 	    requires std::is_pointer_v<ValueType>
 	friend val<bool> inline operator!=(val<ValueType> left, val<ValueType> right);
 	template <is_ptr ValueType, is_integral_val IndexType>
-	friend val<ValueType> inline details::ptrAdd(val<ValueType> left, IndexType offset);
+	friend val<ValueType> inline details::ptrAdd(const val<ValueType>& left, const IndexType& offset);
+	template <is_ptr ValueType>
+	friend val<ValueType> inline details::ptrAddStatic(const val<ValueType>& left, size_t count);
 
 	friend details::RawValueResolver<ValuePtrType>;
 	friend val<ValType>;
@@ -299,9 +306,10 @@ public:
 		val<uint8_t*> fieldBytePtr = bytePtr + offset;
 		val<F*> fieldPtr = static_cast<val<F*>>(fieldBytePtr);
 #ifdef ENABLE_TRACING
-		return val<F&>(fieldPtr, fieldPtr.state);
+		tracing::TypedValueRef fieldState = fieldPtr.state;
+		return val<F&>(std::move(fieldPtr), fieldState);
 #else
-		return val<F&>(fieldPtr);
+		return val<F&>(std::move(fieldPtr));
 #endif
 	}
 
@@ -323,8 +331,16 @@ public:
 	val(const val<ValuePtrType>& otherValue)
 	    : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
+
+	/// Move constructor: the moved-from temporary gives up its reference, so nothing is traced.
+	val(val<ValuePtrType>&& otherValue) noexcept
+	    : base_ptr_val<ValuePtrType>(otherValue.value, std::move(otherValue.state)) {
+	}
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
+	}
+
+	val(val<ValuePtrType>&& otherValue) noexcept : base_ptr_val<ValuePtrType>(otherValue.value) {
 	}
 #endif
 
@@ -338,7 +354,7 @@ public:
 		return *this;
 	}
 
-	val<ValType&> operator*() const
+	val<ValType&> operator*() const&
 	    requires is_arithmetic<ValType> || is_ptr<ValType>
 	{
 #ifdef ENABLE_TRACING
@@ -348,15 +364,27 @@ public:
 #endif
 	}
 
+	/// Dereferencing a temporary pointer (`*(ptr + 2)`) hands its reference to the result instead of copying it.
+	val<ValType&> operator*() &&
+	    requires is_arithmetic<ValType> || is_ptr<ValType>
+	{
+#ifdef ENABLE_TRACING
+		tracing::TypedValueRef ptrState = this->state;
+		return val<ValType&>(std::move(*this), ptrState);
+#else
+		return val<ValType&>(std::move(*this));
+#endif
+	}
+
 	template <ptr_offset IndexType>
 	val<ValType&> operator[](IndexType&& index) const
 	    requires is_arithmetic<ValType> || is_ptr<ValType>
 	{
 		auto valuePtr = (*this) + std::forward<IndexType>(index);
 #ifdef ENABLE_TRACING
-		return val<ValType&>(valuePtr, this->state);
+		return val<ValType&>(std::move(valuePtr), this->state);
 #else
-		return val<ValType&>(valuePtr);
+		return val<ValType&>(std::move(valuePtr));
 #endif
 	}
 
@@ -451,8 +479,16 @@ public:
 	val(const val<ValuePtrType>& otherValue)
 	    : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
+
+	/// Move constructor: the moved-from temporary gives up its reference, so nothing is traced.
+	val(val<ValuePtrType>&& otherValue) noexcept
+	    : base_ptr_val<ValuePtrType>(otherValue.value, std::move(otherValue.state)) {
+	}
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
+	}
+
+	val(val<ValuePtrType>&& otherValue) noexcept : base_ptr_val<ValuePtrType>(otherValue.value) {
 	}
 #endif
 
@@ -506,12 +542,24 @@ public:
 };
 
 namespace details {
-/// Core of all pointer arithmetic: advances `left` by `offset` elements.
+/// Core of all pointer arithmetic with a traced offset: advances `left` by `offset` elements.
+/// Both operands are read in place, so neither is copied.
 template <is_ptr ValueType, is_integral_val IndexType>
-val<ValueType> inline ptrAdd(val<ValueType> left, IndexType offset) {
-	auto offsetValue = make_value(offset);
-	auto size = ((size_t) (sizeof(typename std::remove_pointer_t<ValueType>)));
-	auto offsetBytes = offsetValue * size;
+val<ValueType> inline ptrAdd(const val<ValueType>& left, const IndexType& offset) {
+	constexpr size_t elementSize = sizeof(std::remove_pointer_t<ValueType>);
+#ifdef ENABLE_TRACING
+	if constexpr (elementSize == 1) {
+		// On a byte pointer the offset already is the byte offset: trace only its conversion to size_t, if any,
+		// instead of a multiplication by a traced 1.
+		if (tracing::inTracer() && tracing::foldsStaticConstants()) {
+			auto&& offsetBytes = cast_value<const IndexType&, size_t>(offset);
+			auto tc = tracing::traceBinaryOp(tracing::ADD, tracing::TypeResolver<ValueType>::to_type(), left.state,
+			                                 offsetBytes.state);
+			return val<ValueType>(tc);
+		}
+	}
+#endif
+	auto offsetBytes = offset * elementSize;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::ADD, tracing::TypeResolver<ValueType>::to_type(), left.state,
@@ -526,16 +574,38 @@ val<ValueType> inline ptrAdd(val<ValueType> left, IndexType offset) {
 	return val<ValueType>(newPtr);
 }
 
-/// Integral offset as a traced value; mirrors the conversions the built-in pointer operators apply.
+/// Pointer arithmetic with an offset C++ already knows (a raw integral, bool or static_val), given as an element
+/// count converted to size_t. The byte offset is computed in C++, in size_t, so a negative count wraps exactly like
+/// the traced ui64 multiplication would: `ptr + n` traces one CONST and the ADD, and `ptr + 0` a copy of `ptr`.
+/// The copy is what keeps `ptr + 0` a fresh value: the result may be assigned to, and that must not reassign `ptr`.
+template <is_ptr ValueType>
+val<ValueType> inline ptrAddStatic(const val<ValueType>& left, size_t count) {
+	const size_t offsetBytes = count * sizeof(std::remove_pointer_t<ValueType>);
+#ifdef ENABLE_TRACING
+	if (tracing::inTracer()) {
+		if (!tracing::foldsStaticConstants()) {
+			return ptrAdd(left, val<size_t>(count));
+		}
+		if (offsetBytes == 0) {
+			return val<ValueType>(left.value, tracing::traceCopy(left.state));
+		}
+		auto offsetRef = tracing::traceConstant(offsetBytes);
+		auto tc =
+		    tracing::traceBinaryOp(tracing::ADD, tracing::TypeResolver<ValueType>::to_type(), left.state, offsetRef);
+		return val<ValueType>(tc);
+	}
+#endif
+	return val<ValueType>((ValueType) (((uint8_t*) left.value) + offsetBytes));
+}
+
+/// Element count of an offset C++ already knows, converted to size_t like the built-in pointer operators convert it
+/// to ptrdiff_t (sign-extended for signed types, zero-extended for unsigned ones).
 template <typename IndexType>
-auto inline ptrOffsetValue(IndexType&& offset) {
-	using Index = std::remove_cvref_t<IndexType>;
-	if constexpr (is_static_val<Index>) {
-		return val<size_t>(static_cast<typename Index::raw_type>(offset));
-	} else if constexpr (is_integral_ref_val<Index>) {
-		return val<typename Index::baseType>(offset);
+size_t inline staticElementCount(const IndexType& offset) {
+	if constexpr (is_static_val<IndexType>) {
+		return static_cast<size_t>(static_cast<typename IndexType::raw_type>(offset));
 	} else {
-		return val<size_t>(offset);
+		return static_cast<size_t>(offset);
 	}
 }
 } // namespace details
@@ -545,10 +615,13 @@ auto inline ptrOffsetValue(IndexType&& offset) {
 template <is_ptr ValueType, ptr_offset IndexType>
     requires(!is_void_ptr<ValueType>)
 val<ValueType> inline operator+(const val<ValueType>& left, IndexType&& offset) {
-	if constexpr (is_integral_val<std::remove_cvref_t<IndexType>>) {
+	using Index = std::remove_cvref_t<IndexType>;
+	if constexpr (is_integral_val<Index>) {
 		return details::ptrAdd(left, offset);
+	} else if constexpr (is_integral_ref_val<Index>) {
+		return details::ptrAdd(left, val<typename Index::baseType>(offset));
 	} else {
-		return details::ptrAdd(left, details::ptrOffsetValue(std::forward<IndexType>(offset)));
+		return details::ptrAddStatic(left, details::staticElementCount(offset));
 	}
 }
 
@@ -564,12 +637,11 @@ val<ValueType> inline operator-(const val<ValueType>& left, IndexType&& offset) 
 	using Index = std::remove_cvref_t<IndexType>;
 	if constexpr (is_integral_val<Index>) {
 		return details::ptrAdd(left, 0 - offset);
-	} else if constexpr (is_static_val<Index>) {
-		return details::ptrAdd(left, details::ptrOffsetValue(0 - static_cast<typename Index::raw_type>(offset)));
 	} else if constexpr (is_integral_ref_val<Index>) {
 		return details::ptrAdd(left, 0 - val<typename Index::baseType>(offset));
 	} else {
-		return details::ptrAdd(left, details::ptrOffsetValue(0 - offset));
+		// Negated in C++ after widening to size_t, so `ptr - 2u` steps back by two elements.
+		return details::ptrAddStatic(left, size_t {0} - details::staticElementCount(offset));
 	}
 }
 
@@ -736,12 +808,12 @@ public:
 	}
 	val(bool& ref, tracing::TypedValueRef TypedValueRef) : state(TypedValueRef), ptr(&ref) {
 	}
-	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(ptr) {
+	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(std::move(ptr)) {
 	}
 #else
 	val(bool ref) : ptr(&ref) {
 	}
-	val(val<ptrType> ptr) : ptr(ptr) {
+	val(val<ptrType> ptr) : ptr(std::move(ptr)) {
 	}
 #endif
 

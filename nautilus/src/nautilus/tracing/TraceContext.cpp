@@ -30,6 +30,8 @@ TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionCon
     : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts),
       normalizeFunctionNames(opts.getOptionOrDefault("engine.normalizeFunctionNames", false)) {
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
+	// The val<T> layer asks for this on every pointer offset, so it is kept in a thread-local, not looked up here.
+	setFoldStaticConstants(opts.getOptionOrDefault("engine.foldStaticConstants", true));
 }
 
 TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,

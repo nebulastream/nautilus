@@ -1,72 +1,45 @@
 EXECUTE:
 B0($1:i32,$2:i64)
-	CONST	$3	0	:i32
-	CAST	$4	$3	:i64
-	GT	$5	$2	$4	:bool
-	CMP	$6	$5	B1()	B2()	:void
+	CONST	$3	0	:i64
+	GT	$4	$2	$3	:bool
+	CMP	$5	$4	B1()	B2()	:void
 B1()
-	CONST	$7	0	:i64
-	CONST	$8	0	:i32
+	CONST	$6	0	:i64
+	CONST	$7	0	:i32
 	JMP	$0	B5()	:void
 B2()
 	RETURN	$0	$2	:i64
 B3()
-	ALLOCA	$11	:ptr
-	CONST	$12	7	:i64
-	ASSIGN	$13	$12	:i64
-	ASSIGN	$14	$11	:ptr
-	CONST	$15	8	:ui64
-	ASSIGN	$16	$15	:ui64
-	CONST	$17	1	:ui64
-	MUL	$18	$16	$17	:ui64
-	ADD	$19	$14	$18	:ptr
-	ASSIGN	$20	$19	:ptr
-	ASSIGN	$21	$20	:ptr
-	ASSIGN	$22	$13	:i64
+	ALLOCA	$10	:ptr
+	CONST	$11	7	:i64
+	ASSIGN	$12	$11	:i64
+	CONST	$13	8	:ui64
+	ADD	$14	$10	$13	:ptr
+	ASSIGN	$15	$12	:i64
+	ASSIGN	$16	$15	:i64
+	STORE	$17	$14	$16	:void
+	ALLOCA	$18	:ptr
+	CONST	$19	3	:i64
+	ASSIGN	$20	$19	:i64
+	ASSIGN	$21	$18	:ptr
+	ASSIGN	$22	$20	:i64
 	ASSIGN	$23	$22	:i64
 	STORE	$24	$21	$23	:void
-	ALLOCA	$25	:ptr
-	CONST	$26	3	:i64
-	ASSIGN	$27	$26	:i64
-	ASSIGN	$28	$25	:ptr
-	CONST	$29	0	:ui64
-	ASSIGN	$30	$29	:ui64
-	CONST	$31	1	:ui64
-	MUL	$32	$30	$31	:ui64
-	ADD	$33	$28	$32	:ptr
-	ASSIGN	$34	$33	:ptr
-	ASSIGN	$35	$34	:ptr
-	ASSIGN	$36	$27	:i64
-	ASSIGN	$37	$36	:i64
-	STORE	$38	$35	$37	:void
-	ASSIGN	$39	$11	:ptr
-	CONST	$40	8	:ui64
-	ASSIGN	$41	$40	:ui64
-	CONST	$42	1	:ui64
-	MUL	$43	$41	$42	:ui64
-	ADD	$44	$39	$43	:ptr
-	ASSIGN	$45	$44	:ptr
-	ASSIGN	$46	$45	:ptr
-	LOAD	$47	$46	:i64
-	ADD	$48	$7	$47	:i64
-	ASSIGN	$49	$25	:ptr
-	CONST	$50	0	:ui64
-	ASSIGN	$51	$50	:ui64
-	CONST	$52	1	:ui64
-	MUL	$53	$51	$52	:ui64
-	ADD	$54	$49	$53	:ptr
-	ASSIGN	$55	$54	:ptr
-	ASSIGN	$56	$55	:ptr
-	LOAD	$57	$56	:i64
-	ADD	$58	$48	$57	:i64
-	ASSIGN	$7	$58	:i64
-	CONST	$59	1	:i32
-	ADD	$60	$8	$59	:i32
-	ASSIGN	$8	$60	:i32
+	CONST	$25	8	:ui64
+	ADD	$26	$10	$25	:ptr
+	LOAD	$27	$26	:i64
+	ADD	$28	$6	$27	:i64
+	ASSIGN	$29	$18	:ptr
+	LOAD	$30	$29	:i64
+	ADD	$31	$28	$30	:i64
+	ASSIGN	$6	$31	:i64
+	CONST	$32	1	:i32
+	ADD	$33	$7	$32	:i32
+	ASSIGN	$7	$33	:i32
 	JMP	$0	B5()	:void
 B4()
-	RETURN	$0	$7	:i64
+	RETURN	$0	$6	:i64
 B5() ControlFlowMerge
-	LT	$9	$8	$1	:bool
-	CMP	$10	$9	B3()	B4()	:void
+	LT	$8	$7	$1	:bool
+	CMP	$9	$8	B3()	B4()	:void
 

@@ -1,0 +1,10 @@
+EXECUTE:
+B0($1:ptr,$2:i32)
+	CONST	$4	4	:ui64
+	ADD	$5	$1	$4	:ptr
+	STORE	$8	$1	$2	:void
+	CONST	$9	1	:i32
+	ADD	$10	$2	$9	:i32
+	STORE	$13	$5	$10	:void
+	RETURN	$0	:void
+
