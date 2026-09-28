@@ -90,8 +90,8 @@ TypedValueRef& registerFunctionArgument(Type type, size_t index) {
 	return activeTracer->registerFunctionArgument(type, index);
 }
 
-TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
-	return activeTracer->traceConstant(type, value);
+TypedValueRef& traceConstant(Type type, const ConstantLiteral& value, ConstantOrigin origin) {
+	return activeTracer->traceConstant(type, value, origin);
 }
 
 TypedValueRef& traceRuntimeBinding(const runtime_binding::Entry& binding) {

@@ -38,7 +38,8 @@ public:
 	virtual TypedValueRef& registerFunctionArgument(Type type, size_t index) = 0;
 
 	/// Trace a constant value of the given type.
-	virtual TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) = 0;
+	virtual TypedValueRef& traceConstant(Type type, const ConstantLiteral& value,
+	                                     ConstantOrigin origin = ConstantOrigin::Unspecified) = 0;
 
 	virtual TypedValueRef& traceRuntimeBinding(const runtime_binding::Entry& binding) = 0;
 

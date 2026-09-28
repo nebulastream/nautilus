@@ -61,11 +61,12 @@ TypedValueRef& traceRuntimeBinding(const runtime_binding::Entry& binding);
 
 /// Traces a boolean branch with an associated taken-probability hint.
 bool traceBool(const TypedValueRef& value, double probability);
-TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
+TypedValueRef& traceConstant(Type type, const ConstantLiteral& value,
+                             ConstantOrigin origin = ConstantOrigin::Unspecified);
 template <typename T>
-TypedValueRef traceConstant(T&& value) {
+TypedValueRef traceConstant(T&& value, ConstantOrigin origin = ConstantOrigin::Unspecified) {
 	if (inTracer()) {
-		return traceConstant(TypeResolver<T>::to_type(), createConstLiteral(value));
+		return traceConstant(TypeResolver<T>::to_type(), createConstLiteral(value), origin);
 	}
 	return {0, TypeResolver<T>::to_type()};
 }

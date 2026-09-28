@@ -56,6 +56,7 @@ TraceOperation* cloneTraceOp(common::Arena& arena, const TraceOperation& source)
 	auto* clone = arena.create<TraceOperation>(copiedTag, source.op, source.resultType, source.resultRef, span);
 	// A clone stands for the same source operation, so it belongs to the same region.
 	clone->regionIndex = source.regionIndex;
+	clone->constantOrigin = source.constantOrigin;
 	return clone;
 }
 

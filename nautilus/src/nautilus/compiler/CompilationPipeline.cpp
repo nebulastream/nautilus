@@ -181,10 +181,10 @@ void addOptimizationPasses(ir::IRPassManager& passManager, const engine::ModuleO
 
 } // namespace
 
-std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions,
-                                                              const engine::ModuleOptions& moduleOptions,
-                                                              CompilationStatistics* statistics,
-                                                              IROptimizationLevel optimization) const {
+std::shared_ptr<ir::IRGraph>
+CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
+                                 CompilationStatistics* statistics, IROptimizationLevel optimization,
+                                 const std::function<void(const ir::IRGraph&)>& beforeOptimization) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(moduleOptions, compilationId);
 
@@ -233,6 +233,9 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	const auto irGenStart = std::chrono::steady_clock::now();
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(afterSSAModule, *irArenaPool_, compilationId);
+	if (beforeOptimization) {
+		beforeOptimization(*ir);
+	}
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("irGeneration.ms", irGenStart);
 		const auto snapshot = ir::computeStatistics(*ir);
@@ -323,7 +326,8 @@ std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr
 
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>&,
                                                               const engine::ModuleOptions&, CompilationStatistics*,
-                                                              IROptimizationLevel) const {
+                                                              IROptimizationLevel,
+                                                              const std::function<void(const ir::IRGraph&)>&) const {
 	throw RuntimeException("Jit not initialised");
 }
 

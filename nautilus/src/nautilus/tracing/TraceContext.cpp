@@ -140,13 +140,17 @@ TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
 	return currentOperation.resultRef;
 }
 
-TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
+TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& constValue, ConstantOrigin origin) {
 	if (paused_) {
 		return dummyRef_;
 	}
 	log::debug("Trace Constant");
 	auto op = Op::CONST;
 	if (isFollowing()) {
+		auto& currentOperation = state->executionTrace.getCurrentOperation();
+		if (currentOperation.constantOrigin != origin) {
+			currentOperation.constantOrigin = ConstantOrigin::Unspecified;
+		}
 		return follow(op);
 	}
 	auto tag = recordSnapshot();
@@ -154,11 +158,15 @@ TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& con
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
 		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
-		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		if (originalRef->op == op && originalRef->constantOrigin != origin) {
+			originalRef->constantOrigin = ConstantOrigin::Unspecified;
+			origin = ConstantOrigin::Unspecified;
+		}
+		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue}, origin);
 		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
 		return originalRef->resultRef;
 	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue}, origin);
 	}
 }
 

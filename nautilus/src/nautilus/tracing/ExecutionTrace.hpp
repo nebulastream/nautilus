@@ -180,7 +180,8 @@ public:
 	 * @return TypedValueRef& Reference to the resulting value
 	 */
 	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-	                                      std::initializer_list<InputVariant> inputs);
+	                                      std::initializer_list<InputVariant> inputs,
+	                                      ConstantOrigin origin = ConstantOrigin::Unspecified);
 
 	/**
 	 * @brief Adds a comparison operation to the trace with branch probability

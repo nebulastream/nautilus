@@ -259,6 +259,7 @@ public:
 	/// on the operation rather than on its block: the block that bounds a region
 	/// is collapsed by the block-cleanup passes, the operations are not.
 	RegionIndex regionIndex = NO_REGION;
+	ConstantOrigin constantOrigin = ConstantOrigin::Unspecified;
 };
 
 namespace detail {

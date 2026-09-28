@@ -2,6 +2,7 @@
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Executable.hpp"
+#include "nautilus/common/ConstantOrigin.hpp"
 #include "nautilus/common/ExecutableImage.hpp"
 #include "nautilus/compiler/CompilationPipeline.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
@@ -9,9 +10,12 @@
 #include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
@@ -656,6 +660,100 @@ bool resolveImports(const std::vector<ImportRecord>& imports, const RuntimeBindi
 	return true;
 }
 
+struct OperationLocation {
+	const ir::FunctionOperation* function = nullptr;
+	const ir::BasicBlock* block = nullptr;
+};
+using OperationLocations = std::unordered_map<const ir::Operation*, OperationLocation>;
+
+std::string operationTypeName(ir::Operation::OperationType type) {
+	using Op = ir::Operation::OperationType;
+	switch (type) {
+	case Op::AddOp:
+		return "AddOp";
+	case Op::AndOp:
+		return "AndOp";
+	case Op::NotOp:
+		return "NotOp";
+	case Op::BasicBlockArgument:
+		return "BasicBlockArgument";
+	case Op::BlockInvocation:
+		return "BlockInvocation";
+	case Op::BranchOp:
+		return "BranchOp";
+	case Op::ConstIntOp:
+		return "ConstIntOp";
+	case Op::ConstBooleanOp:
+		return "ConstBooleanOp";
+	case Op::ConstPtrOp:
+		return "ConstPtrOp";
+	case Op::ConstFloatOp:
+		return "ConstFloatOp";
+	case Op::CastOp:
+		return "CastOp";
+	case Op::CompareOp:
+		return "CompareOp";
+	case Op::DivOp:
+		return "DivOp";
+	case Op::ModOp:
+		return "ModOp";
+	case Op::FunctionOp:
+		return "FunctionOp";
+	case Op::IfOp:
+		return "IfOp";
+	case Op::LoadOp:
+		return "LoadOp";
+	case Op::MulOp:
+		return "MulOp";
+	case Op::MLIR_YIELD:
+		return "MLIR_YIELD";
+	case Op::NegateOp:
+		return "NegateOp";
+	case Op::OrOp:
+		return "OrOp";
+	case Op::CallOp:
+		return "CallOp";
+	case Op::IndirectCallOp:
+		return "IndirectCallOp";
+	case Op::ReturnOp:
+		return "ReturnOp";
+	case Op::SelectOp:
+		return "SelectOp";
+	case Op::StoreOp:
+		return "StoreOp";
+	case Op::SubOp:
+		return "SubOp";
+	case Op::BinaryComp:
+		return "BinaryComp";
+	case Op::ShiftOp:
+		return "ShiftOp";
+	case Op::AllocaOp:
+		return "AllocaOp";
+	case Op::FunctionAddressOfOp:
+		return "FunctionAddressOfOp";
+	case Op::RuntimeBindingOp:
+		return "RuntimeBindingOp";
+	}
+	return "Unknown(" + std::to_string(static_cast<unsigned>(type)) + ")";
+}
+
+std::string describeOperation(const ir::Operation* operation, OperationLocation location) {
+	std::string description =
+	    "function=" + (location.function ? location.function->getName() : std::string {"<module>"});
+	if (location.block != nullptr) {
+		description += " block=" + std::to_string(location.block->getIdentifier().getId());
+		const auto& operations = location.block->getOperations();
+		if (const auto position = std::ranges::find(operations, operation); position != operations.end()) {
+			description += " index=" + std::to_string(position - operations.begin());
+		}
+	}
+	if (operation == nullptr) {
+		return description + " operation=null";
+	}
+	return description + " operation=" + operation->getIdentifier().toString() +
+	       " type=" + operationTypeName(operation->getOperationType());
+}
+
 std::optional<bool> constantCondition(const ir::Operation* operation) {
 	if (const auto* boolean = operation->dynCast<ir::ConstBooleanOperation>()) {
 		return boolean->getValue();
@@ -711,6 +809,24 @@ enum AddressSource : uint8_t {
 using AddressSources = std::unordered_map<const ir::Operation*, uint8_t>;
 using AddressCallees = std::unordered_map<const ir::Operation*, std::vector<const ir::FunctionOperation*>>;
 using AddressValues = std::unordered_set<const ir::Operation*>;
+
+std::string describeAddressSources(uint8_t sources) {
+	std::string result;
+	for (const auto& [flag, name] : {std::pair {RuntimeInteger, "RuntimeInteger"},
+	                                 {RuntimePointer, "RuntimePointer"},
+	                                 {Constant, "Constant"},
+	                                 {Unsupported, "Unsupported"},
+	                                 {NullPointer, "NullPointer"},
+	                                 {PointerOffset, "PointerOffset"}}) {
+		if (sources & flag) {
+			if (!result.empty()) {
+				result += "|";
+			}
+			result += name;
+		}
+	}
+	return result.empty() ? "none" : result;
+}
 
 std::vector<ir::BasicBlockInvocation*> feasibleSuccessors(ir::Operation& operation) {
 	auto successors = ir::getSuccessorInvocations(operation);
@@ -860,7 +976,266 @@ uint8_t addressSources(const ir::Operation& operation, const AddressSources& sou
 
 } // namespace
 
-bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<std::string>& exports) {
+bool hasOnlyCacheInvariantScalars(const ir::IRGraph& graph, std::string* rejection) {
+	if (rejection != nullptr) {
+		rejection->clear();
+	}
+	const auto reject = [&](const ir::Operation* operation, OperationLocation location, const std::string& cause) {
+		if (rejection != nullptr) {
+			*rejection = describeOperation(operation, location) + " cause=" + cause;
+		}
+		return false;
+	};
+	std::unordered_set<const ir::FunctionOperation*> functions;
+	std::unordered_map<const ir::BasicBlock*, const ir::FunctionOperation*> blocks;
+	AddressValues arguments;
+	AddressValues included;
+	std::vector<std::pair<const ir::Operation*, OperationLocation>> operations;
+	const auto include = [&](const ir::Operation* operation, OperationLocation location) {
+		if (included.insert(operation).second) {
+			operations.emplace_back(operation, location);
+		}
+	};
+	for (const auto* function : graph.getFunctionOperations()) {
+		if (function == nullptr || function->getBasicBlocks().empty()) {
+			return reject(function, {function, nullptr}, "missing_function_body");
+		}
+		functions.insert(function);
+		include(function, {function, nullptr});
+		for (const auto* block : function->getBasicBlocks()) {
+			if (block == nullptr) {
+				return reject(function, {function, nullptr}, "null_basic_block");
+			}
+			const auto [owner, inserted] = blocks.emplace(block, function);
+			if (!inserted && owner->second != function) {
+				return reject(function, {function, block}, "shared_basic_block");
+			}
+			for (const auto* argument : block->getArguments()) {
+				if (argument == nullptr) {
+					return reject(argument, {function, block}, "null_block_argument");
+				}
+				arguments.insert(argument);
+				include(argument, {function, block});
+			}
+			for (const auto* operation : block->getOperations()) {
+				include(operation, {function, block});
+			}
+		}
+	}
+	const auto& table = graph.getFunctionTable();
+	const auto targetRejection = [&](ir::FunctionId id) -> std::string {
+		if (!table.contains(id)) {
+			return "missing_function_target=" + std::to_string(id);
+		}
+		const auto& target = table.get(id);
+		if (target.getId() != id) {
+			return "mismatched_function_target=" + std::to_string(id);
+		}
+		switch (target.getLinkage()) {
+		case ir::Linkage::Internal:
+			if (!functions.contains(target.getDefinition())) {
+				return "internal_definition_outside_graph=" + std::to_string(id);
+			}
+			break;
+		case ir::Linkage::External:
+		case ir::Linkage::Intrinsic:
+			if (target.getAddress() == nullptr) {
+				return "missing_native_address=" + std::to_string(id);
+			}
+			break;
+		default:
+			return "unsupported_function_linkage=" + std::to_string(id);
+		}
+		return {};
+	};
+	for (std::size_t index = 0; index < operations.size(); ++index) {
+		const auto [operation, location] = operations[index];
+		if (operation == nullptr) {
+			return reject(operation, location, "null_operand");
+		}
+		const auto inputs = operation->getInputs();
+		for (const auto* input : inputs) {
+			if (input == nullptr) {
+				return reject(operation, location, "null_input");
+			}
+			include(input, location);
+		}
+		const auto includeDestructors = [&](const auto& call) {
+			for (const auto& destructor : call.getDestructors()) {
+				if (destructor.functionPtr == nullptr) {
+					return reject(operation, location, "missing_cleanup_function");
+				}
+				include(destructor.address, location);
+			}
+			return true;
+		};
+		std::optional<std::size_t> arity;
+		using Op = ir::Operation::OperationType;
+		switch (operation->getOperationType()) {
+		case Op::ConstIntOp:
+			if (!isInteger(operation->getStamp()) ||
+			    operation->dynCast<ir::ConstIntOperation>()->getConstantOrigin() != ConstantOrigin::CacheInvariant) {
+				return reject(operation, location, "uncertified_scalar");
+			}
+			arity = 0;
+			break;
+		case Op::ConstBooleanOp:
+			if (operation->getStamp() != Type::b ||
+			    operation->dynCast<ir::ConstBooleanOperation>()->getConstantOrigin() !=
+			        ConstantOrigin::CacheInvariant) {
+				return reject(operation, location, "uncertified_scalar");
+			}
+			arity = 0;
+			break;
+		case Op::ConstFloatOp:
+			if (!isFloat(operation->getStamp()) ||
+			    operation->dynCast<ir::ConstFloatOperation>()->getConstantOrigin() != ConstantOrigin::CacheInvariant) {
+				return reject(operation, location, "uncertified_scalar");
+			}
+			arity = 0;
+			break;
+		case Op::ConstPtrOp:
+			if (operation->dynCast<ir::ConstPtrOperation>()->getValue() != nullptr) {
+				return reject(operation, location, "embedded_non_null_pointer");
+			}
+			arity = 0;
+			break;
+		case Op::BasicBlockArgument:
+			if (!arguments.contains(operation)) {
+				return reject(operation, location, "block_argument_outside_graph");
+			}
+			arity = 0;
+			break;
+		case Op::FunctionOp:
+			if (!functions.contains(operation->dynCast<ir::FunctionOperation>())) {
+				return reject(operation, location, "function_outside_graph");
+			}
+			arity = 0;
+			break;
+		case Op::FunctionAddressOfOp: {
+			const auto cause = targetRejection(operation->dynCast<ir::FunctionAddressOfOperation>()->getCalleeId());
+			if (!cause.empty()) {
+				return reject(operation, location, cause);
+			}
+			arity = 0;
+			break;
+		}
+		case Op::CallOp: {
+			const auto* call = operation->dynCast<ir::CallOperation>();
+			const auto cause = targetRejection(call->getCalleeId());
+			if (!cause.empty()) {
+				return reject(operation, location, cause);
+			}
+			const auto& target = table.get(call->getCalleeId());
+			const auto parameters = target.getParamTypes();
+			if (parameters.size() != inputs.size() || target.getResultType() != operation->getStamp()) {
+				return reject(operation, location, "callee_signature_mismatch");
+			}
+			for (std::size_t argument = 0; argument < inputs.size(); ++argument) {
+				if (parameters[argument] != inputs[argument]->getStamp()) {
+					return reject(operation, location, "callee_argument_type_mismatch=" + std::to_string(argument));
+				}
+			}
+			if (!includeDestructors(*call)) {
+				return false;
+			}
+			break;
+		}
+		case Op::IndirectCallOp:
+			if (inputs.empty() || inputs.front()->getStamp() != Type::ptr) {
+				return reject(operation, location, "invalid_indirect_callee_operand");
+			}
+			if (!includeDestructors(*operation->dynCast<ir::IndirectCallOperation>())) {
+				return false;
+			}
+			break;
+		case Op::BranchOp:
+			include(&operation->dynCast<ir::BranchOperation>()->getNextBlockInvocation(), location);
+			arity = 0;
+			break;
+		case Op::IfOp: {
+			const auto* branch = operation->dynCast<ir::IfOperation>();
+			include(&branch->getTrueBlockInvocation(), location);
+			include(&branch->getFalseBlockInvocation(), location);
+			arity = 1;
+			break;
+		}
+		case Op::BlockInvocation: {
+			const auto* invocation = operation->dynCast<ir::BasicBlockInvocation>();
+			const auto owner = blocks.find(invocation->getBlock());
+			if (owner == blocks.end() || owner->second != location.function) {
+				return reject(operation, location, "branch_target_outside_function");
+			}
+			const auto& parameters = invocation->getBlock()->getArguments();
+			if (parameters.size() != inputs.size()) {
+				return reject(operation, location, "branch_argument_count_mismatch");
+			}
+			for (std::size_t argument = 0; argument < inputs.size(); ++argument) {
+				if (parameters[argument]->getStamp() != inputs[argument]->getStamp()) {
+					return reject(operation, location, "branch_argument_type_mismatch=" + std::to_string(argument));
+				}
+			}
+			break;
+		}
+		case Op::RuntimeBindingOp:
+		case Op::AllocaOp:
+			arity = 0;
+			break;
+		case Op::CastOp:
+		case Op::LoadOp:
+		case Op::NotOp:
+		case Op::NegateOp:
+			arity = 1;
+			break;
+		case Op::AddOp:
+		case Op::SubOp:
+		case Op::MulOp:
+		case Op::DivOp:
+		case Op::ModOp:
+		case Op::BinaryComp:
+		case Op::ShiftOp:
+		case Op::AndOp:
+		case Op::OrOp:
+		case Op::CompareOp:
+		case Op::StoreOp:
+			arity = 2;
+			break;
+		case Op::SelectOp:
+			arity = 3;
+			break;
+		case Op::ReturnOp:
+			if (inputs.size() > 1) {
+				return reject(operation, location, "invalid_return_arity");
+			}
+			break;
+		default:
+			return reject(operation, location, "unsupported_operation");
+		}
+		if (arity && inputs.size() != *arity) {
+			return reject(operation, location, "invalid_operand_count");
+		}
+	}
+	for (std::size_t index = 0; index < table.size(); ++index) {
+		const auto cause = targetRejection(static_cast<ir::FunctionId>(index));
+		if (!cause.empty()) {
+			return reject(nullptr, {}, cause);
+		}
+	}
+	return true;
+}
+
+bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<std::string>& exports,
+                                   std::string* rejection) {
+	if (rejection != nullptr) {
+		rejection->clear();
+	}
+	OperationLocations operationLocations;
+	const auto reject = [&](const ir::Operation* operation, const std::string& cause) {
+		if (rejection != nullptr) {
+			*rejection = describeOperation(operation, operationLocations.at(operation)) + " cause=" + cause;
+		}
+		return true;
+	};
 	AddressSources sources;
 	AddressCallees callees;
 	AddressValues opaqueCalls;
@@ -871,6 +1246,7 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 	std::vector<const ir::Operation*> operations;
 	std::vector<const ir::Operation*> pointerExpressions;
 	std::vector<const ir::Operation*> cleanupAddresses;
+	std::vector<const ir::Operation*> cleanupCalls;
 	struct Edge {
 		const ir::Operation* destination;
 		const ir::Operation* input;
@@ -879,6 +1255,7 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 	};
 	std::vector<Edge> edges;
 	for (const auto* function : graph.getFunctionOperations()) {
+		operationLocations.emplace(function, OperationLocation {function, nullptr});
 		std::vector<const ir::BasicBlock*> pending {function->getEntryBlock()};
 		while (!pending.empty()) {
 			const auto* block = pending.back();
@@ -936,6 +1313,7 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 		const bool exported = std::ranges::find(exports, graph.getEmissionName(function)) != exports.end();
 		for (auto* block : function->getBasicBlocks()) {
 			for (const auto* argument : block->getArguments()) {
+				operationLocations.emplace(argument, OperationLocation {function, block});
 				if (block == function->getEntryBlock()) {
 					functionParameters.insert(argument);
 				}
@@ -944,6 +1322,7 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 				                        : 0;
 			}
 			for (auto* operation : block->getOperations()) {
+				operationLocations.emplace(operation, OperationLocation {function, block});
 				sources[operation] = 0;
 				operationBlocks.emplace(operation, block);
 				operations.push_back(operation);
@@ -967,22 +1346,23 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 			}
 		}
 	}
-	const auto includeInput = [&](const ir::Operation* input) {
+	const auto includeInput = [&](const ir::Operation* input, OperationLocation location) {
+		operationLocations.try_emplace(input, location);
 		if (sources.try_emplace(input, 0).second) {
 			operations.push_back(input);
 		}
 	};
 	for (const auto& edge : edges) {
-		includeInput(edge.input);
+		includeInput(edge.input, operationLocations.at(edge.destination));
 	}
 	for (std::size_t index = 0; index < operations.size(); ++index) {
 		const auto* operation = operations[index];
 		for (const auto* input : operation->getInputs()) {
-			includeInput(input);
+			includeInput(input, operationLocations.at(operation));
 		}
 		const auto* pointer = operation->dynCast<ir::ConstPtrOperation>();
 		if (pointer != nullptr && pointer->getValue() != nullptr) {
-			return true;
+			return reject(operation, "embedded_non_null_pointer");
 		}
 		const auto owner = operationBlocks.find(operation);
 		if (owner != operationBlocks.end() && !reachable.contains(owner->second)) {
@@ -1003,27 +1383,28 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 		std::span<ir::Operation* const> arguments;
 		if (const auto* address = operation->dynCast<ir::FunctionAddressOfOperation>()) {
 			if (!graph.getFunctionTable().contains(address->getCalleeId())) {
-				return true;
+				return reject(operation, "missing_function_target=" + std::to_string(address->getCalleeId()));
 			}
 			const auto& target = graph.getFunctionTarget(address->getCalleeId());
 			if (target.getLinkage() == ir::Linkage::Internal) {
 				if (target.getDefinition() == nullptr) {
-					return true;
+					return reject(operation, "missing_internal_definition=" + std::to_string(address->getCalleeId()));
 				}
 				callees[operation] = {target.getDefinition()};
 			}
 		} else if (const auto* call = operation->dynCast<ir::CallOperation>()) {
 			for (const auto& destructor : call->getDestructors()) {
-				includeInput(destructor.address);
+				includeInput(destructor.address, operationLocations.at(operation));
 				cleanupAddresses.push_back(destructor.address);
+				cleanupCalls.push_back(operation);
 			}
 			if (!graph.getFunctionTable().contains(call->getCalleeId())) {
-				return true;
+				return reject(operation, "missing_function_target=" + std::to_string(call->getCalleeId()));
 			}
 			const auto& target = graph.getFunctionTarget(call->getCalleeId());
 			if (target.getLinkage() == ir::Linkage::Internal) {
 				if (target.getDefinition() == nullptr) {
-					return true;
+					return reject(operation, "missing_internal_definition=" + std::to_string(call->getCalleeId()));
 				}
 				targets.push_back(target.getDefinition());
 				arguments = call->getInputArguments();
@@ -1032,8 +1413,9 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 			}
 		} else if (const auto* indirect = operation->dynCast<ir::IndirectCallOperation>()) {
 			for (const auto& destructor : indirect->getDestructors()) {
-				includeInput(destructor.address);
+				includeInput(destructor.address, operationLocations.at(operation));
 				cleanupAddresses.push_back(destructor.address);
+				cleanupCalls.push_back(operation);
 			}
 			arguments = indirect->getInputArguments();
 			std::vector<const ir::Operation*> pending {indirect->getFunctionPtrOperand()};
@@ -1045,14 +1427,16 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 				if (!visited.insert(value).second) {
 					continue;
 				}
+				operationLocations.try_emplace(value, operationLocations.at(operation));
 				if (const auto* address = value->dynCast<ir::FunctionAddressOfOperation>()) {
 					if (!graph.getFunctionTable().contains(address->getCalleeId())) {
-						return true;
+						return reject(value, "missing_function_target=" + std::to_string(address->getCalleeId()));
 					}
 					const auto& target = graph.getFunctionTarget(address->getCalleeId());
 					if (target.getLinkage() == ir::Linkage::Internal) {
 						if (target.getDefinition() == nullptr) {
-							return true;
+							return reject(value,
+							              "missing_internal_definition=" + std::to_string(address->getCalleeId()));
 						}
 						if (std::ranges::find(targets, target.getDefinition()) == targets.end()) {
 							targets.push_back(target.getDefinition());
@@ -1102,7 +1486,7 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 			for (const auto* target : targets) {
 				const auto& parameters = target->getEntryBlock()->getArguments();
 				if (parameters.size() != arguments.size()) {
-					return true;
+					return reject(operation, "callee_argument_count_mismatch function=" + target->getName());
 				}
 				for (std::size_t index = 0; index < parameters.size(); ++index) {
 					edges.emplace_back(parameters[index], arguments[index], block);
@@ -1194,17 +1578,55 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 		}
 	} while (changed);
 
+	const auto describeValue = [&](const ir::Operation* value) {
+		return describeOperation(value, operationLocations.at(value)) +
+		       " sources=" + describeAddressSources(sources.at(value));
+	};
+	const auto callRejection = [&](const ir::Operation* operation) {
+		const auto inputs = operation->getInputs();
+		if (opaqueCalls.contains(operation)) {
+			for (std::size_t index = 0; index < inputs.size(); ++index) {
+				if (sources.at(inputs[index]) & (Constant | Unsupported | PointerOffset)) {
+					return "opaque_call input[" + std::to_string(index) + "]={" + describeValue(inputs[index]) + "}";
+				}
+			}
+		}
+		const auto* call = operation->dynCast<ir::CallOperation>();
+		const auto effect = call == nullptr ? ModRefInfo::ModRef : call->getFunctionAttributes().modRefInfo;
+		if (opaqueCalls.contains(operation) &&
+		    (effect == ModRefInfo::Ref || effect == ModRefInfo::ModRef ||
+		     (call != nullptr && !call->getDestructors().empty())) &&
+		    (memory & (Unsupported | PointerOffset))) {
+			return "opaque_call whole_memory sources=" + describeAddressSources(memory);
+		}
+		if (const auto found = callees.find(operation); found != callees.end()) {
+			for (const auto* callee : found->second) {
+				if (sources.at(callee) & (Constant | Unsupported | PointerOffset | NullPointer)) {
+					return "callee_return={" + describeValue(callee) + "}";
+				}
+			}
+		}
+		return "call_result sources=" + describeAddressSources(sources.at(operation));
+	};
 	if (!cleanupAddresses.empty() && (memory & Unsupported)) {
-		return true;
+		for (std::size_t index = 0; index < cleanupAddresses.size(); ++index) {
+			if (sources.at(cleanupAddresses[index]) & (Constant | Unsupported | PointerOffset)) {
+				return reject(cleanupCalls[index], "cleanup input={" + describeValue(cleanupAddresses[index]) + "}");
+			}
+		}
+		return reject(cleanupCalls.front(), "cleanup whole_memory sources=" + describeAddressSources(memory));
 	}
-	for (const auto* operation : opaqueCalls) {
+	for (const auto* operation : operations) {
+		if (!opaqueCalls.contains(operation)) {
+			continue;
+		}
 		const auto* call = operation->dynCast<ir::CallOperation>();
 		if (call != nullptr && call->getFunctionAttributes().modRefInfo == ModRefInfo::NoModRef &&
 		    call->getDestructors().empty()) {
 			continue;
 		}
 		if (sources.at(operation) & Unsupported) {
-			return true;
+			return reject(operation, callRejection(operation));
 		}
 	}
 	for (const auto* expression : pointerExpressions) {
@@ -1214,7 +1636,19 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 		                      type == ir::Operation::OperationType::CallOp ||
 		                      type == ir::Operation::OperationType::IndirectCallOp;
 		if (provenance == 0 || (provenance & (Constant | Unsupported)) || (!nullable && (provenance & NullPointer))) {
-			return true;
+			std::string cause = "pointer_expression sources=" + describeAddressSources(provenance);
+			if (type == ir::Operation::OperationType::LoadOp && (memory & (Constant | Unsupported))) {
+				cause += " whole_memory sources=" + describeAddressSources(memory);
+			} else if (type == ir::Operation::OperationType::CallOp ||
+			           type == ir::Operation::OperationType::IndirectCallOp) {
+				cause += " " + callRejection(expression);
+			} else {
+				const auto inputs = expression->getInputs();
+				for (std::size_t index = 0; index < inputs.size(); ++index) {
+					cause += " input[" + std::to_string(index) + "]={" + describeValue(inputs[index]) + "}";
+				}
+			}
+			return reject(expression, cause);
 		}
 	}
 	return false;
@@ -1405,8 +1839,20 @@ std::unique_ptr<Executable> compileWithPersistentModuleCache(const CompilationPi
 		}
 	}
 
-	auto ir = compiler.compileToIR(functions, moduleOptions, statistics, compiler.irOptimizationLevel({"mlir"}));
-	if (containsNonRelocatablePointer(*ir, exports)) {
+	bool scalarCertificate = false;
+	std::string scalarRejection;
+	auto ir = compiler.compileToIR(
+	    functions, moduleOptions, statistics, compiler.irOptimizationLevel({"mlir"}),
+	    [&](const ir::IRGraph& graph) { scalarCertificate = hasOnlyCacheInvariantScalars(graph, &scalarRejection); });
+	if (statistics != nullptr) {
+		statistics->set("cache.scalarCertificate", int64_t {scalarCertificate ? 1 : 0});
+		statistics->set("cache.scalarRejection", std::move(scalarRejection));
+	}
+	std::string rejection;
+	if (!scalarCertificate && containsNonRelocatablePointer(*ir, exports, &rejection)) {
+		if (statistics != nullptr) {
+			statistics->set("cache.rejection", std::move(rejection));
+		}
 		markCacheState(statistics, objectState, bytecodeState, true, "non_relocatable_pointer");
 		return compiler.compileIR(ir, "mlir", moduleOptions, statistics);
 	}

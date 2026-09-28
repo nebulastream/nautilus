@@ -45,13 +45,43 @@ Identities must be stable and unique within a registry. Null addresses, conflict
 
 A module snapshots the registry, but **does not own the pointed-to data**. That storage must outlive all calls using the compiled module. Access to shared data remains the application's synchronization responsibility.
 
+## Cache-invariant scalar constants
+
+`<nautilus/val.hpp>` exposes two scalar factories:
+
+- `nautilus::cacheLiteral<V>()` returns `val<decltype(V)>` for a compile-time arithmetic or boolean value accepted as a template argument by the C++ compiler.
+- `nautilus::cacheInvariant(rawScalar)` returns `val<T>` for the raw arithmetic or boolean type `T`, with cv/ref qualifiers removed. This is an explicit caller assertion for audited program or configuration data.
+
+Both produce ordinary scalar constants while tracing and ordinary values when not tracing, using Nautilus's existing supported scalar representations. They do not call native getter functions or change runtime arithmetic. Neither accepts pointers, enums, `static_val`, or existing `val` expressions. An enum can be explicitly converted to its underlying scalar type before certification.
+
+```cpp
+#include <nautilus/val.hpp>
+
+auto zero = nautilus::cacheLiteral<0>();
+auto finalChunk = nautilus::cacheLiteral<true>();
+```
+
+Certification has a correctness contract:
+
+1. The value must be independent of process and module-instance addresses. This excludes address bits, fragments, hashes, encodings, and address-dependent differences or deltas, even when represented as small integers, booleans, or floating-point values.
+2. Equal effective cache keys must imply the same scalar value and every code-generation-relevant choice selecting that value. Captured configuration and trace-time control-flow choices must already be covered by the semantic key supplied before compilation. Warm hits skip tracing, so the assertion site is not executed or revalidated on a hit.
+3. The assertion grants no purity, no-alias, ownership, lifetime, synchronization, or exception guarantee. It does not make native function attributes such as `NoModRef` or `noUnwind` true.
+
+Prefer `cacheLiteral<V>()` for fixed literals. Use `cacheInvariant` only at an audited raw-scalar introduction, not to sanitize a computed traced expression. The contract also applies to literal factories: a hard-coded encoded address is not valid ordinary data. Incorrect annotations or incomplete semantic keys can make cache reuse incorrect; these factories are not an information-flow verifier.
+
+Nautilus automatically certifies only fixed internal scalar default zero/false, increment/decrement steps, internal unary zero, and typed-pointer `sizeof` scaling factors. Ordinary raw-value constructors, raw offset arguments, and `static_val` conversions remain uncertified, even when their numeric values match certified literals. Member-offset parameters are not implicitly certified. Mutable or instance-dependent scalar data should instead be loaded from current runtime arguments or `RuntimeBindings` storage, whose lifetime must cover execution.
+
+Scalar provenance is represented by `nautilus::ConstantOrigin::{Unspecified, CacheInvariant}` in `nautilus/common/ConstantOrigin.hpp`. Raw tracing calls and directly constructed scalar IR constants default to `Unspecified`; `ConstIntOperation`, `ConstBooleanOperation`, and `ConstFloatOperation` expose `getConstantOrigin()`. Trace cloning preserves origin, and replay disagreement downgrades it to `Unspecified` rather than upgrading an ordinary constant.
+
 ## Compatibility and fallback
 
 The internal key additionally incorporates the compiler build ID, LLVM version, host target/CPU/features/data layout, export signatures and attributes, module options, runtime-binding schema, and registered MLIR intrinsic-plugin fingerprints.
 
 Native imports are represented by ELF build ID and ELF load-bias-relative offset, not absolute addresses. Cache loading resolves them against the current process and rejects missing, changed, or ambiguous images. C++ exception personality imports use an identifiable native bridge, preserving unwinding through cached JIT frames.
 
-Modules containing captured raw addresses, integer-encoded addresses, or pointer origins that cannot be proved relocatable are compiled without publication. The analysis is deliberately conservative around aliasing memory, opaque native calls, and cleanup metadata. Even an ordinary integer constant passed to an opaque native consumer can prevent publication because the consumer might interpret it as an address. Use runtime data or trustworthy existing function attributes rather than disguising captures.
+Modules containing captured raw addresses, integer-encoded addresses, or pointer origins that cannot be proved relocatable are compiled without publication. A strict pre-optimization proof can accept a module whose embedded scalar leaves are all certified cache-invariant and whose remaining leaves and operations are supported and relocatable. The proof includes internal functions, block arguments, and destructor-only operands; certification never bypasses native-import, binding-schema, plugin, or artifact validation.
+
+If complete scalar certification fails, the existing conservative analysis still applies around aliasing memory, opaque native calls, and cleanup metadata. Even an ordinary integer constant passed to an opaque native consumer can prevent publication because the consumer might interpret it as an address. Use certified ordinary data under the contract above or current runtime data rather than disguising captures or inventing function attributes.
 
 Debugging and profiling options (`debug`, `perf`, `perf.sample`) bypass persistent caching so each compilation regenerates its source files and metadata. `mlir.inline_invoke_calls = true` also bypasses caching. Missing compiler identity, unsupported intrinsic plugins, unavailable cache storage, invalid artifacts, and publication failures also fall back to compilation. Cache eligibility does not change the selected backend or configured tiers.
 
@@ -68,3 +98,5 @@ A cache directory contains native objects (`.o`), MLIR bytecode (`.mlirbc`), and
 **Cache directories are trusted executable input.** Checksums detect accidental corruption, not malicious modification. Anyone who can write the cache can influence JIT-executed code. Do not share writable caches with untrusted users.
 
 `CompiledModule::getStatistics()` exposes `cache.key`, `cache.eligible`, `cache.object`, `cache.mlir`, `cache.tracingRan`, and `cache.fallback`, together with available compilation and backend timings. Unsupported configurations report their fallback reason and compile normally; a native hit reports `cache.object = "hit"` and `cache.tracingRan = 0`.
+
+On traced misses, `cache.scalarCertificate` records the complete-leaf proof result. `cache.scalarRejection` identifies the first uncertified or unsupported operation before optimization; a failed certificate can still pass the original provenance guard. A provenance fallback additionally reports `cache.rejection`, identifying the operation and whether rejection came from an immediate input, whole-module memory, or cleanup. Operation identifiers can be matched to IR dumps. `cache.eligible = 1` means the cache path was entered, not that either proof passed or artifacts were published. Include fallback modules when computing hit rates.

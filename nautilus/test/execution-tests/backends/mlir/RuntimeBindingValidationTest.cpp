@@ -18,11 +18,16 @@
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
 #include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
+#include "nautilus/region.hpp"
+#include "nautilus/select.hpp"
 #include "nautilus/val_std.hpp"
 #include <algorithm>
 #include <array>
@@ -61,6 +66,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -106,7 +112,419 @@ int32_t personalityProxy(int32_t value) {
 	return value + 1;
 }
 
+compiler::ir::FunctionOperation* scalarCertificateFunction(compiler::ir::IRGraph& graph,
+                                                           std::vector<compiler::ir::BasicBlock*> blocks,
+                                                           Type result = Type::v, const std::string& name = "execute") {
+	using namespace compiler::ir;
+	std::vector<Type> types;
+	std::vector<std::string> names;
+	for (const auto* argument : blocks.front()->getArguments()) {
+		types.push_back(argument->getStamp());
+		names.push_back(argument->getIdentifier().toString());
+	}
+	auto* function = graph.addFunctionOperation(
+	    graph.getArena().create<FunctionOperation>(name, std::move(blocks), types, std::move(names), result));
+	const auto definition = graph.internCallee({.kind = CalleeDescriptor::Kind::Internal,
+	                                            .key = function,
+	                                            .mangledName = name,
+	                                            .demangledName = name,
+	                                            .customName = name,
+	                                            .resultType = result,
+	                                            .paramTypes = types,
+	                                            .attrs = {}});
+	graph.defineFunction(definition, function);
+	return function;
+}
+
 } // namespace
+
+TEST_CASE("MLIR scalar certification checks every scalar leaf and rejects unsupported operands",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	IRGraph graph("complete-scalar-certificate");
+	auto& arena = graph.getArena();
+	auto* argument = arena.create<BasicBlockArgument>(OperationIdentifier(0), Type::ui64);
+	auto* block = arena.create<BasicBlock>(arena, BlockIdentifier(0), std::vector<BasicBlockArgument*> {argument});
+	std::vector<BasicBlock*> blocks {block};
+	Operation* leaf =
+	    arena.create<ConstIntOperation>(arena, OperationIdentifier(1), 7, Type::ui64, ConstantOrigin::CacheInvariant);
+	std::string cause;
+	SECTION("certified integer boolean floating and null constants") {
+		auto* boolean =
+		    block->addOperation<ConstBooleanOperation>(OperationIdentifier(2), true, ConstantOrigin::CacheInvariant);
+		auto* floating = block->addOperation<ConstFloatOperation>(OperationIdentifier(3), 2.5, Type::f64,
+		                                                          ConstantOrigin::CacheInvariant);
+		block->addOperation<ConstPtrOperation>(OperationIdentifier(4), nullptr);
+		REQUIRE(boolean->getConstantOrigin() == ConstantOrigin::CacheInvariant);
+		REQUIRE(floating->getConstantOrigin() == ConstantOrigin::CacheInvariant);
+	}
+	SECTION("ordinary integer with the same numeric value in an operand-only tree") {
+		leaf = arena.create<ConstIntOperation>(arena, OperationIdentifier(2), 7, Type::ui64);
+		REQUIRE(leaf->dynCast<ConstIntOperation>()->getValue() == 7);
+		REQUIRE(leaf->dynCast<ConstIntOperation>()->getConstantOrigin() == ConstantOrigin::Unspecified);
+		cause = "uncertified_scalar";
+	}
+	SECTION("ordinary boolean") {
+		auto* ordinary = arena.create<ConstBooleanOperation>(arena, OperationIdentifier(2), true);
+		REQUIRE(ordinary->getConstantOrigin() == ConstantOrigin::Unspecified);
+		leaf = arena.create<CastOperation>(arena, OperationIdentifier(3), ordinary, Type::ui64);
+		cause = "uncertified_scalar";
+	}
+	SECTION("ordinary floating point") {
+		auto* ordinary = arena.create<ConstFloatOperation>(arena, OperationIdentifier(2), 2.5, Type::f64);
+		REQUIRE(ordinary->getConstantOrigin() == ConstantOrigin::Unspecified);
+		leaf = arena.create<CastOperation>(arena, OperationIdentifier(3), ordinary, Type::ui64);
+		cause = "uncertified_scalar";
+	}
+	SECTION("raw heap pointer") {
+		auto* pointer = arena.create<ConstPtrOperation>(arena, OperationIdentifier(2), argument);
+		leaf = arena.create<CastOperation>(arena, OperationIdentifier(3), pointer, Type::ui64);
+		cause = "embedded_non_null_pointer";
+	}
+	SECTION("foreign block argument with an identical identifier") {
+		leaf = arena.create<BasicBlockArgument>(OperationIdentifier(0), Type::ui64);
+		cause = "block_argument_outside_graph";
+	}
+	SECTION("unsupported operation") {
+		leaf = arena.create<Operation>(Operation::OperationType::MLIR_YIELD, OperationIdentifier(2), Type::ui64);
+		cause = "unsupported_operation";
+	}
+	SECTION("constant in an unreachable block") {
+		auto* unreachable = arena.create<BasicBlock>(arena, BlockIdentifier(1), std::vector<BasicBlockArgument*> {});
+		auto* ordinary = unreachable->addOperation<ConstIntOperation>(OperationIdentifier(2), 7, Type::ui64);
+		unreachable->addOperation<ReturnOperation>(ordinary);
+		blocks.push_back(unreachable);
+		cause = "uncertified_scalar";
+	}
+	SECTION("constant in an uncalled internal function") {
+		auto* unused = arena.create<BasicBlock>(arena, BlockIdentifier(1), std::vector<BasicBlockArgument*> {});
+		auto* ordinary = unused->addOperation<ConstIntOperation>(OperationIdentifier(2), 7, Type::ui64);
+		unused->addOperation<ReturnOperation>(ordinary);
+		scalarCertificateFunction(graph, {unused}, Type::ui64, "unused");
+		cause = "uncertified_scalar";
+	}
+	auto* sum = block->addOperation<AddOperation>(OperationIdentifier(5), argument, leaf);
+	block->addOperation<ReturnOperation>(sum);
+	scalarCertificateFunction(graph, std::move(blocks), Type::ui64);
+	std::string rejection = "previous rejection";
+	REQUIRE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection) == cause.empty());
+	if (cause.empty()) {
+		REQUIRE(rejection.empty());
+	} else {
+		REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("cause=" + cause));
+		REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("function="));
+	}
+}
+
+TEST_CASE("MLIR scalar certification validates branch ownership and argument schemas",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	IRGraph graph("scalar-certificate-branches");
+	auto& arena = graph.getArena();
+	auto* input = arena.create<BasicBlockArgument>(OperationIdentifier(0), Type::ui64);
+	auto* output = arena.create<BasicBlockArgument>(OperationIdentifier(1), Type::ui64);
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier(0), std::vector<BasicBlockArgument*> {input});
+	auto* next = arena.create<BasicBlock>(arena, BlockIdentifier(1), std::vector<BasicBlockArgument*> {output});
+	next->addOperation<ReturnOperation>(output);
+	std::vector<BasicBlock*> blocks {entry, next};
+	std::vector<Operation*> arguments {input};
+	std::string cause;
+	SECTION("valid branch arguments") {
+	}
+	SECTION("foreign target") {
+		blocks.pop_back();
+		cause = "branch_target_outside_function";
+	}
+	SECTION("target belongs to another function") {
+		blocks.pop_back();
+		scalarCertificateFunction(graph, {next}, Type::ui64, "foreign");
+		cause = "branch_target_outside_function";
+	}
+	SECTION("missing branch argument") {
+		arguments.clear();
+		cause = "branch_argument_count_mismatch";
+	}
+	SECTION("wrong branch argument type") {
+		arguments[0] =
+		    entry->addOperation<ConstBooleanOperation>(OperationIdentifier(2), true, ConstantOrigin::CacheInvariant);
+		cause = "branch_argument_type_mismatch=0";
+	}
+	entry->addNextBlock(next, arguments);
+	scalarCertificateFunction(graph, std::move(blocks), Type::ui64);
+	std::string rejection;
+	REQUIRE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection) == cause.empty());
+	if (cause.empty()) {
+		REQUIRE(rejection.empty());
+	} else {
+		REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("cause=" + cause));
+	}
+}
+
+TEST_CASE("MLIR scalar certification validates called addressed and unused function targets",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	for (const std::string_view use : {"call", "function address", "unused"}) {
+		for (const std::string_view kind : {"valid", "missing target", "missing native address",
+		                                    "missing internal definition", "foreign internal definition"}) {
+			if (use == "unused" && kind == "missing target") {
+				continue;
+			}
+			CAPTURE(use, kind);
+			IRGraph graph("scalar-certificate-function-targets");
+			auto& arena = graph.getArena();
+			auto* argument = arena.create<BasicBlockArgument>(OperationIdentifier(0), Type::i32);
+			auto* block =
+			    arena.create<BasicBlock>(arena, BlockIdentifier(0), std::vector<BasicBlockArgument*> {argument});
+			auto* native = reinterpret_cast<void*>(personalityProxy);
+			const auto target = graph.internCallee({.key = native,
+			                                        .mangledName = "personalityProxy",
+			                                        .demangledName = "personalityProxy",
+			                                        .customName = "personalityProxy",
+			                                        .resultType = Type::i32,
+			                                        .paramTypes = {Type::i32},
+			                                        .attrs = {}});
+			std::string cause;
+			if (kind == "missing target") {
+				cause = "missing_function_target=";
+			} else if (kind == "missing native address") {
+				graph.getFunctionTableMut().getMut(target).getNativeMut()->address = nullptr;
+				cause = "missing_native_address=";
+			} else if (kind == "missing internal definition" || kind == "foreign internal definition") {
+				FunctionOperation* definition = nullptr;
+				if (kind == "foreign internal definition") {
+					definition = arena.create<FunctionOperation>("foreign", std::vector<BasicBlock*> {block},
+					                                             std::vector<Type> {Type::i32},
+					                                             std::vector<std::string> {"value"}, Type::i32);
+				}
+				auto& entry = graph.getFunctionTableMut().getMut(target);
+				entry = FunctionTarget(target, entry.getName(), definition);
+				cause = "internal_definition_outside_graph=";
+			}
+			const auto callee = kind == "missing target" ? INVALID_FUNCTION_ID : target;
+			if (use == "call") {
+				block->addOperation<CallOperation>("personalityProxy", "personalityProxy", native,
+				                                   OperationIdentifier(1), std::vector<Operation*> {argument},
+				                                   Type::i32, FunctionAttributes {}, callee);
+			} else if (use == "function address") {
+				block->addOperation<FunctionAddressOfOperation>("personalityProxy", "personalityProxy", native,
+				                                                OperationIdentifier(1), callee);
+			}
+			block->addOperation<ReturnOperation>();
+			scalarCertificateFunction(graph, {block});
+			std::string rejection;
+			REQUIRE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection) == cause.empty());
+			if (cause.empty()) {
+				REQUIRE(rejection.empty());
+			} else {
+				REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("cause=" + cause));
+			}
+		}
+	}
+}
+
+TEST_CASE("MLIR scalar certification rejects mismatched native call signatures", "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	IRGraph graph("scalar-certificate-signatures");
+	auto& arena = graph.getArena();
+	auto* argument = arena.create<BasicBlockArgument>(OperationIdentifier(0), Type::i32);
+	auto* block = arena.create<BasicBlock>(arena, BlockIdentifier(0), std::vector<BasicBlockArgument*> {argument});
+	auto* native = reinterpret_cast<void*>(personalityProxy);
+	const auto target = graph.internCallee({.key = native,
+	                                        .mangledName = "personalityProxy",
+	                                        .demangledName = "personalityProxy",
+	                                        .customName = "personalityProxy",
+	                                        .resultType = Type::i32,
+	                                        .paramTypes = {Type::i32},
+	                                        .attrs = {}});
+	std::vector<Operation*> arguments {argument};
+	Type result = Type::i32;
+	std::string cause = "callee_signature_mismatch";
+	SECTION("wrong result type") {
+		result = Type::i64;
+	}
+	SECTION("missing argument") {
+		arguments.clear();
+	}
+	SECTION("wrong argument type") {
+		arguments[0] = block->addOperation<ConstIntOperation>(OperationIdentifier(1), 7, Type::i64,
+		                                                      ConstantOrigin::CacheInvariant);
+		cause = "callee_argument_type_mismatch=0";
+	}
+	block->addOperation<CallOperation>("personalityProxy", "personalityProxy", native, OperationIdentifier(2),
+	                                   arguments, result, FunctionAttributes {}, target);
+	block->addOperation<ReturnOperation>();
+	scalarCertificateFunction(graph, {block});
+	std::string rejection;
+	REQUIRE_FALSE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection));
+	REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("cause=" + cause));
+}
+
+TEST_CASE("MLIR scalar certification walks direct and indirect destructor-only operand trees",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	for (const bool indirect : {false, true}) {
+		DYNAMIC_SECTION("indirect=" << indirect) {
+			IRGraph graph("scalar-certificate-cleanup-trees");
+			auto& arena = graph.getArena();
+			auto* base = arena.create<BasicBlockArgument>(OperationIdentifier(0), Type::ptr);
+			auto* block = arena.create<BasicBlock>(arena, BlockIdentifier(0), std::vector<BasicBlockArgument*> {base});
+			Operation* offset = arena.create<ConstIntOperation>(arena, OperationIdentifier(1), 7, Type::ui64,
+			                                                    ConstantOrigin::CacheInvariant);
+			std::string cause;
+			bool rawPointer = false, missingAddress = false;
+			auto* cleanup = reinterpret_cast<void*>(+[](int32_t* pointer) noexcept { ++*pointer; });
+			SECTION("certified operand tree") {
+			}
+			SECTION("ordinary integer only in cleanup") {
+				offset = arena.create<ConstIntOperation>(arena, OperationIdentifier(1), 7, Type::ui64);
+				cause = "uncertified_scalar";
+			}
+			SECTION("ordinary boolean only in cleanup") {
+				auto* bit = arena.create<ConstBooleanOperation>(arena, OperationIdentifier(1), true);
+				offset = arena.create<CastOperation>(arena, OperationIdentifier(2), bit, Type::ui64);
+				cause = "uncertified_scalar";
+			}
+			SECTION("ordinary floating point only in cleanup") {
+				auto* floating = arena.create<ConstFloatOperation>(arena, OperationIdentifier(1), 7.0, Type::f64);
+				offset = arena.create<CastOperation>(arena, OperationIdentifier(2), floating, Type::ui64);
+				cause = "uncertified_scalar";
+			}
+			SECTION("raw pointer only in cleanup") {
+				rawPointer = true;
+				cause = "embedded_non_null_pointer";
+			}
+			SECTION("missing cleanup address") {
+				missingAddress = true;
+				cause = "null_operand";
+			}
+			SECTION("missing cleanup function") {
+				cleanup = nullptr;
+				cause = "missing_cleanup_function";
+			}
+			auto* integer = arena.create<CastOperation>(arena, OperationIdentifier(3), base, Type::ui64);
+			auto* sum = arena.create<AddOperation>(arena, OperationIdentifier(4), integer, offset);
+			Operation* address = arena.create<CastOperation>(arena, OperationIdentifier(5), sum, Type::ptr);
+			if (rawPointer) {
+				address = arena.create<ConstPtrOperation>(arena, OperationIdentifier(5), base);
+			} else if (missingAddress) {
+				address = nullptr;
+			}
+			auto* throwing = reinterpret_cast<void*>(+[]() { throw std::runtime_error("scalar cleanup metadata"); });
+			const auto target = graph.internCallee({.key = throwing,
+			                                        .mangledName = "throwing",
+			                                        .demangledName = "throwing",
+			                                        .customName = "throwing",
+			                                        .paramTypes = {},
+			                                        .attrs = {}});
+			if (indirect) {
+				auto* callback = block->addOperation<FunctionAddressOfOperation>("throwing", "throwing", throwing,
+				                                                                 OperationIdentifier(6), target);
+				auto* call = block->addOperation<IndirectCallOperation>(
+				    OperationIdentifier(7), callback, std::vector<Operation*> {}, Type::v, FunctionAttributes {},
+				    std::vector<IndirectCallOperation::Destructor> {{address, "cleanup", "cleanup", cleanup}}, true);
+				REQUIRE(call->getInputArguments().empty());
+				REQUIRE(call->getDestructors().front().address == address);
+			} else {
+				auto* call = block->addOperation<CallOperation>(
+				    "throwing", "throwing", throwing, OperationIdentifier(7), std::vector<Operation*> {}, Type::v,
+				    FunctionAttributes {}, target,
+				    std::vector<CallOperation::Destructor> {{address, "cleanup", "cleanup", cleanup}}, true);
+				REQUIRE(call->getInputs().empty());
+				REQUIRE(call->getDestructors().front().address == address);
+			}
+			block->addOperation<ReturnOperation>();
+			scalarCertificateFunction(graph, {block});
+			REQUIRE(std::ranges::find(block->getOperations(), address) == block->getOperations().end());
+			REQUIRE(std::ranges::find(block->getOperations(), offset) == block->getOperations().end());
+			std::string rejection;
+			REQUIRE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection) == cause.empty());
+			if (cause.empty()) {
+				REQUIRE(rejection.empty());
+			} else {
+				REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("cause=" + cause));
+			}
+			if (cause == "uncertified_scalar" || rawPointer) {
+				REQUIRE(compiler::containsNonRelocatablePointer(graph, {"execute"}));
+			}
+		}
+	}
+}
+
+TEST_CASE("MLIR scalar certification observes region expressions before optimization discards origins",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	for (const std::string_view kind : {"certified", "ordinary folded operand", "unselected ordinary operand"}) {
+		CAPTURE(kind);
+		Options options;
+		options.setOption("engine.backend", std::string("mlir"));
+		options.setOption("ir.runOptimizationPasses", true);
+		options.setOption("ir.disableConstantFolding", false);
+		common::ArenaPool traceArenaPool, irArenaPool;
+		compiler::CompilationPipeline pipeline(options, traceArenaPool, irArenaPool);
+		std::list<compiler::CompilableFunction> functions;
+		functions.emplace_back("execute", details::createFunctionWrapper([kind](val<int64_t> input) {
+			                       val<int64_t> result;
+			                       region("folded scalars", [&] {
+				                       region("inner folded scalars", [&] {
+					                       auto left = cacheLiteral<int64_t {21}>();
+					                       auto right = kind == "ordinary folded operand"
+					                                        ? val<int64_t>(21)
+					                                        : cacheLiteral<int64_t {21}>();
+					                       auto unused = kind == "unselected ordinary operand"
+					                                         ? val<int64_t>(7)
+					                                         : cacheLiteral<int64_t {7}>();
+					                       auto folded = left + right;
+					                       result = input + select(cacheLiteral<true>(), folded, unused);
+				                       });
+			                       });
+			                       return result;
+		                       }));
+		std::size_t checks = 0, additionsBefore = 0;
+		auto ir = pipeline.compileToIR(
+		    functions, options.deriveModuleOptions(), nullptr, compiler::IROptimizationLevel::Full,
+		    [&](const IRGraph& graph) {
+			    ++checks;
+			    std::string rejection;
+			    REQUIRE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection) == (kind == "certified"));
+			    if (kind != "certified") {
+				    REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("uncertified_scalar"));
+			    }
+			    const auto* function = graph.getFunctionOperation("execute");
+			    REQUIRE(function != nullptr);
+			    REQUIRE(function->getRegionSpecs().size() == 2);
+			    std::size_t regionConstants = 0;
+			    for (const auto* block : function->getBasicBlocks()) {
+				    for (const auto* operation : block->getOperations()) {
+					    additionsBefore += operation->getOperationType() == Operation::OperationType::AddOp;
+					    if (const auto* constant = operation->dynCast<ConstIntOperation>();
+					        constant != nullptr && constant->getRegionIndex() != NO_REGION) {
+						    ++regionConstants;
+						    const bool ordinary = kind == "unselected ordinary operand" && constant->getValue() == 7;
+						    if (kind != "ordinary folded operand") {
+							    REQUIRE(constant->getConstantOrigin() ==
+							            (ordinary ? ConstantOrigin::Unspecified : ConstantOrigin::CacheInvariant));
+						    }
+					    }
+				    }
+			    }
+			    REQUIRE(regionConstants >= 3);
+		    });
+		REQUIRE(checks == 1);
+		std::size_t additionsAfter = 0, foldedConstants = 0;
+		for (const auto* block : ir->getFunctionOperation("execute")->getBasicBlocks()) {
+			for (const auto* operation : block->getOperations()) {
+				additionsAfter += operation->getOperationType() == Operation::OperationType::AddOp;
+				if (const auto* constant = operation->dynCast<ConstIntOperation>()) {
+					foldedConstants += constant->getValue() == 42;
+				}
+				REQUIRE(operation->getOperationType() != Operation::OperationType::SelectOp);
+			}
+		}
+		REQUIRE(additionsBefore > additionsAfter);
+		REQUIRE(additionsAfter == 1);
+		REQUIRE(foldedConstants == 1);
+	}
+}
 
 TEST_CASE("MLIR native function addresses reuse hook-renamed declarations", "[cache][codegen]") {
 	using namespace compiler::ir;

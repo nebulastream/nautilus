@@ -3,6 +3,7 @@
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/options.hpp"
+#include <functional>
 #include <initializer_list>
 #include <list>
 #include <memory>
@@ -63,7 +64,8 @@ public:
 	[[nodiscard]] std::shared_ptr<ir::IRGraph>
 	compileToIR(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
 	            CompilationStatistics* statistics = nullptr,
-	            IROptimizationLevel optimization = IROptimizationLevel::Full) const;
+	            IROptimizationLevel optimization = IROptimizationLevel::Full,
+	            const std::function<void(const ir::IRGraph&)>& beforeOptimization = {}) const;
 
 	/**
 	 * @brief The IR optimization level a graph compiled by every backend in

@@ -1,4 +1,5 @@
 #include "catch2/catch_test_macros.hpp"
+#include "catch2/matchers/catch_matchers_string.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/RuntimeBinding.hpp"
@@ -43,6 +44,9 @@
 
 namespace nautilus::engine {
 namespace {
+
+template <typename T>
+concept CacheInvariantScalar = requires(T&& value) { cacheInvariant(std::forward<T>(value)); };
 
 std::vector<std::string> bindingBackends(bool includeInterpreter = true) {
 	std::vector<std::string> result;
@@ -94,6 +98,52 @@ auto bindingLoop(RuntimeBinding<int64_t> left, RuntimeBinding<int64_t> right) {
 }
 
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
+struct CertifiedBindingState {
+	int64_t total = 0;
+	int64_t calls = 0;
+	int64_t cleanups = 0;
+	int64_t live = 0;
+	uint8_t byte = 0;
+	bool bit = false;
+
+	bool operator==(const CertifiedBindingState&) const = default;
+};
+
+struct CertifiedBindingCleanup {
+	CertifiedBindingState* state;
+
+	explicit CertifiedBindingCleanup(CertifiedBindingState* state) noexcept : state(state) {
+		++state->live;
+	}
+
+	~CertifiedBindingCleanup() noexcept {
+		--state->live;
+		++state->cleanups;
+	}
+};
+
+bool certifiedBindingReady(CertifiedBindingState* state, int64_t threshold) noexcept {
+	++state->calls;
+	return state->total >= threshold;
+}
+
+int64_t certifiedBindingCount(CertifiedBindingState* state, int64_t delta) noexcept {
+	++state->calls;
+	state->total += delta;
+	return state->total;
+}
+
+int64_t certifiedBindingThrow(CertifiedBindingState* state, int64_t value) {
+	++state->calls;
+	if (state->live != 1) {
+		throw std::runtime_error("missing live certified cleanup");
+	}
+	if (value < 0) {
+		throw std::runtime_error("certified scalar cleanup");
+	}
+	return state->total + value + state->byte + state->bit;
+}
+
 struct BindingAliasState {
 	int64_t first;
 	int64_t second;
@@ -238,6 +288,51 @@ void requireBindingAddresses(CompiledModule& module, int64_t* left, int64_t* rig
 #endif
 
 } // namespace
+
+TEST_CASE("Cache-invariant scalar factories preserve nontracing values and types", "[runtime-bindings][cache]") {
+	enum class ScalarEnum : int32_t { Value = 7 };
+	static_assert(CacheInvariantScalar<int32_t>);
+	static_assert(CacheInvariantScalar<const int64_t&>);
+	static_assert(CacheInvariantScalar<bool&>);
+	static_assert(CacheInvariantScalar<double>);
+	static_assert(!CacheInvariantScalar<int64_t*>);
+	static_assert(!CacheInvariantScalar<std::nullptr_t>);
+	static_assert(!CacheInvariantScalar<ScalarEnum>);
+	static_assert(!CacheInvariantScalar<val<int64_t>>);
+	static_assert(!CacheInvariantScalar<static_val<int64_t>>);
+	static_assert(std::is_same_v<decltype(cacheLiteral<true>()), val<bool>>);
+	static_assert(std::is_same_v<decltype(cacheLiteral<int32_t {7}>()), val<int32_t>>);
+	static_assert(std::is_same_v<decltype(cacheInvariant(std::declval<const int64_t&>())), val<int64_t>>);
+	const auto check = []<typename T>(T input) {
+		const T constant = input;
+		auto copied = cacheInvariant(constant);
+		auto moved = cacheInvariant(std::move(input));
+		static_assert(std::is_same_v<decltype(copied), val<T>>);
+		REQUIRE(nautilus::details::RawValueResolver<T>::getRawValue(copied) == constant);
+		REQUIRE(nautilus::details::RawValueResolver<T>::getRawValue(moved) == constant);
+	};
+	check(int8_t {-7});
+	check(uint8_t {251});
+	check(int16_t {-319});
+	check(uint16_t {65000});
+	check(int32_t {-123456});
+	check(uint32_t {3456789012U});
+	check(int64_t {-1234567890123});
+	check(uint64_t {123456789012345});
+	check(float {1.25});
+	check(double {-2.5});
+	check(false);
+	check(true);
+	REQUIRE(nautilus::details::RawValueResolver<int64_t>::getRawValue(cacheLiteral<int64_t {-17}>()) == -17);
+	REQUIRE(nautilus::details::RawValueResolver<bool>::getRawValue(cacheLiteral<true>()));
+	REQUIRE_FALSE(nautilus::details::RawValueResolver<bool>::getRawValue(cacheLiteral<false>()));
+	REQUIRE(nautilus::details::RawValueResolver<int64_t>::getRawValue(val<int64_t> {}) == 0);
+	REQUIRE_FALSE(nautilus::details::RawValueResolver<bool>::getRawValue(val<bool> {}));
+	auto number = cacheLiteral<int64_t {7}>();
+	REQUIRE(nautilus::details::RawValueResolver<int64_t>::getRawValue(++number) == 8);
+	REQUIRE(nautilus::details::RawValueResolver<int64_t>::getRawValue(number--) == 8);
+	REQUIRE(nautilus::details::RawValueResolver<int64_t>::getRawValue(-number) == -7);
+}
 
 TEST_CASE("RuntimeBindings validates registrations and preserves pointer types", "[runtime-bindings]") {
 	RuntimeBinding<int64_t> unbound;
@@ -398,6 +493,95 @@ TEST_CASE("RuntimeBindings is available to nested Nautilus functions", "[runtime
 }
 
 #ifdef ENABLE_TRACING
+TEST_CASE("Cache-invariant scalar origins survive nested regions and trace cloning", "[runtime-bindings][cache]") {
+	auto wrapper = details::createFunctionWrapper([] {
+		val<double> result;
+		region("scalar origins", [&] {
+			region("nested scalar origins", [&] {
+				auto integer = cacheLiteral<int64_t {7}>();
+				val<int64_t> ordinaryInteger = 7;
+				auto boolean = cacheLiteral<true>();
+				val<bool> ordinaryBoolean = true;
+				auto floating = cacheInvariant(2.5);
+				val<double> ordinaryFloating = 2.5;
+				result = select(boolean && ordinaryBoolean,
+				                static_cast<val<double>>(integer + ordinaryInteger) + floating, ordinaryFloating);
+			});
+		});
+		return result;
+	});
+	common::Arena arena, clonedArena;
+	auto trace = tracing::TraceContext::trace(wrapper, Options {}, arena);
+	REQUIRE(trace != nullptr);
+	std::array<std::array<std::size_t, 2>, 3> origins {};
+	for (const auto* block : trace->getBlocks()) {
+		for (const auto* operation : block->operations) {
+			if (operation->op != tracing::Op::CONST || operation->regionIndex == tracing::NO_REGION) {
+				continue;
+			}
+			const auto& literal = std::get<ConstantLiteral>(operation->input[0]);
+			std::size_t type = 0;
+			if (operation->resultType == Type::i64) {
+				REQUIRE(std::get<int64_t>(literal) == 7);
+			} else if (operation->resultType == Type::b) {
+				type = 1;
+				REQUIRE(std::get<bool>(literal));
+			} else {
+				type = 2;
+				REQUIRE(operation->resultType == Type::f64);
+				REQUIRE(std::get<double>(literal) == 2.5);
+			}
+			++origins[type][operation->constantOrigin == ConstantOrigin::CacheInvariant ? 1 : 0];
+			auto* clone = tracing::cloneTraceOp(clonedArena, *operation);
+			REQUIRE(clone != operation);
+			REQUIRE(clone->input.data() != operation->input.data());
+			REQUIRE(clone->constantOrigin == operation->constantOrigin);
+			REQUIRE(clone->regionIndex == operation->regionIndex);
+			REQUIRE(clone->resultType == operation->resultType);
+			REQUIRE(std::get<ConstantLiteral>(clone->input[0]) == literal);
+		}
+	}
+	for (const auto& counts : origins) {
+		REQUIRE(counts[0] > 0);
+		REQUIRE(counts[1] > 0);
+	}
+	REQUIRE_FALSE(tracing::inTracer());
+}
+
+TEST_CASE("Cache-invariant scalar replay disagreement never upgrades an ordinary constant",
+          "[runtime-bindings][cache]") {
+	for (const bool initiallyCertified : {false, true}) {
+		CAPTURE(initiallyCertified);
+		int iterations = 0;
+		auto wrapper = details::createFunctionWrapper([&](val<bool> condition) {
+			++iterations;
+			const auto origin =
+			    (iterations == 1) == initiallyCertified ? ConstantOrigin::CacheInvariant : ConstantOrigin::Unspecified;
+			auto ref = tracing::traceConstant(int64_t {7}, origin);
+			val<int64_t> value(ref);
+			if (condition) {
+				return value;
+			}
+			return -value;
+		});
+		common::Arena arena;
+		auto trace = tracing::TraceContext::trace(wrapper, Options {}, arena);
+		REQUIRE(iterations >= 2);
+		std::size_t constants = 0;
+		for (const auto* block : trace->getBlocks()) {
+			for (const auto* operation : block->operations) {
+				if (operation->op == tracing::Op::CONST && operation->resultType == Type::i64 &&
+				    std::get<int64_t>(std::get<ConstantLiteral>(operation->input[0])) == 7) {
+					++constants;
+					REQUIRE(operation->constantOrigin == ConstantOrigin::Unspecified);
+				}
+			}
+		}
+		REQUIRE(constants > 0);
+		REQUIRE_FALSE(tracing::inTracer());
+	}
+}
+
 TEST_CASE("RuntimeBindings validates standalone trace entry points from options", "[runtime-bindings]") {
 	const auto trace = tracing::TraceContext::trace;
 	int64_t left = 10, right = 100;
@@ -717,6 +901,293 @@ TEST_CASE("RuntimeBindings rejects handles absent from traced module snapshots",
 }
 
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
+TEST_CASE("RuntimeBindings caches certified scalars with ModRef calls stores and native cleanup",
+          "[runtime-bindings][cache]") {
+	BindingCacheDirectory cache;
+	std::vector<std::string> keys;
+	for (const auto configuration : {std::array<int64_t, 3> {2, 10, 7}, std::array<int64_t, 3> {3, 20, -4}}) {
+		const auto [scale, threshold, bias] = configuration;
+		CAPTURE(scale, threshold, bias);
+		const auto options = bindingCacheOptions(cache.path(), "certified-modref-v1/scale=" + std::to_string(scale) +
+		                                                           "/threshold=" + std::to_string(threshold) +
+		                                                           "/bias=" + std::to_string(bias));
+		int traces = 0;
+		const auto compile = [&](CertifiedBindingState& storage) {
+			RuntimeBindings bindings;
+			auto state = bindings.bind<CertifiedBindingState>("state", &storage);
+			auto total = bindings.bind<int64_t>("total", &storage.total);
+			auto byte = bindings.bind<uint8_t>("byte", &storage.byte);
+			auto bit = bindings.bind<bool>("bit", &storage.bit);
+			NautilusEngine engine(options);
+			auto module = engine.createModule();
+			module.setRuntimeBindings(bindings);
+			module.registerFunction<val<int64_t>(val<int64_t>)>("execute", [=, &traces](val<int64_t> delta) {
+				++traces;
+				val<CertifiedBindingCleanup> cleanup(state.get());
+				auto ready = invoke(certifiedBindingReady, state.get(), cacheInvariant(threshold));
+				auto count = invoke(certifiedBindingCount, state.get(),
+				                    delta * cacheInvariant(scale) + cacheLiteral<int64_t {2}>());
+				auto result = count + select(ready, cacheLiteral<int64_t {1}>(), cacheLiteral<int64_t {0}>()) +
+				              cacheInvariant(bias) +
+				              static_cast<val<int64_t>>(cacheInvariant(1.5) * cacheInvariant(2.0));
+				*total.get() = result;
+				*byte.get() = static_cast<val<uint8_t>>(result & cacheLiteral<int64_t {255}>());
+				*bit.get() = ready && cacheLiteral<true>();
+				return invoke(certifiedBindingThrow, state.get(), delta) + result;
+			});
+			module.registerFunction<val<int64_t>()>("implicit_scalars", [total] {
+				val<int64_t> value;
+				val<bool> flag;
+				val<double> floating;
+				++value;
+				auto previous = value--;
+				--value;
+				++value;
+				auto pointer = total.get();
+				++pointer;
+				--pointer;
+				auto distance = (pointer + cacheLiteral<int64_t {1}>()) - pointer;
+				return select(!flag, -value + previous + distance + static_cast<val<int64_t>>(floating),
+				              cacheLiteral<int64_t {0}>());
+			});
+			return module.compile();
+		};
+		const auto check = [&](CompiledModule& module, CertifiedBindingState& storage) {
+			REQUIRE(module.getFunction<int64_t()>("implicit_scalars")() == 2);
+			auto execute = module.getFunction<int64_t(int64_t)>("execute");
+			for (const int64_t delta : {4, -2, 0}) {
+				const auto before = storage;
+				const bool ready = before.total >= threshold;
+				const auto expected = before.total + delta * scale + 2 + ready + bias + 3;
+				const auto expectedByte = static_cast<uint8_t>(expected & 255);
+				if (delta < 0) {
+					REQUIRE_THROWS_WITH(execute(delta), "certified scalar cleanup");
+				} else {
+					REQUIRE(execute(delta) == expected * 2 + delta + expectedByte + ready);
+				}
+				REQUIRE(storage.total == expected);
+				REQUIRE(storage.byte == expectedByte);
+				REQUIRE(storage.bit == ready);
+				REQUIRE(storage.calls == before.calls + 3);
+				REQUIRE(storage.cleanups == before.cleanups + 1);
+				REQUIRE(storage.live == 0);
+			}
+		};
+		auto first = std::make_unique<CertifiedBindingState>();
+		auto second = std::make_unique<CertifiedBindingState>();
+		auto third = std::make_unique<CertifiedBindingState>();
+		first->total = 5;
+		second->total = 101;
+		third->total = 211;
+		REQUIRE(first.get() != second.get());
+		REQUIRE(second.get() != third.get());
+		const auto before = *first;
+		auto cold = compile(*first);
+		REQUIRE(*first == before);
+		REQUIRE(bindingStat<int64_t>(cold, "cache.scalarCertificate") == 1);
+		REQUIRE(bindingStat<std::string>(cold, "cache.scalarRejection").empty());
+		REQUIRE(bindingStat<std::string>(cold, "cache.fallback") == "none");
+		REQUIRE(bindingStat<std::string>(cold, "cache.object") == "written");
+		REQUIRE(bindingStat<std::string>(cold, "cache.mlir") == "written");
+		REQUIRE(bindingStat<int64_t>(cold, "cache.tracingRan") == 1);
+		keys.push_back(bindingStat<std::string>(cold, "cache.key"));
+		const auto coldTraces = traces;
+		REQUIRE(coldTraces > 0);
+		check(cold, *first);
+		const auto firstAfter = *first;
+		auto warm = compile(*second);
+		REQUIRE(second->total == 101);
+		REQUIRE(second->calls == 0);
+		REQUIRE(second->cleanups == 0);
+		REQUIRE(bindingStat<std::string>(warm, "cache.object") == "hit");
+		REQUIRE(bindingStat<int64_t>(warm, "cache.tracingRan") == 0);
+		REQUIRE(bindingStat<std::string>(warm, "cache.key") == keys.back());
+		REQUIRE(traces == coldTraces);
+		check(warm, *second);
+		REQUIRE(*first == firstAfter);
+		const auto secondAfter = *second;
+		REQUIRE(std::filesystem::remove(cache.path() / (keys.back() + ".o")));
+		auto repaired = compile(*third);
+		REQUIRE(third->total == 211);
+		REQUIRE(third->calls == 0);
+		REQUIRE(third->cleanups == 0);
+		REQUIRE(bindingStat<std::string>(repaired, "cache.mlir") == "hit");
+		REQUIRE(bindingStat<int64_t>(repaired, "cache.tracingRan") == 0);
+		REQUIRE(bindingStat<std::string>(repaired, "cache.key") == keys.back());
+		REQUIRE(std::filesystem::exists(cache.path() / (keys.back() + ".o")));
+		check(repaired, *third);
+		REQUIRE(*first == firstAfter);
+		REQUIRE(*second == secondAfter);
+		check(cold, *first);
+		REQUIRE(*second == secondAfter);
+		REQUIRE(traces == coldTraces);
+	}
+	REQUIRE(keys.size() == 2);
+	REQUIRE(keys[0] != keys[1]);
+}
+
+TEST_CASE("RuntimeBindings does not infer scalar certification from equal numeric values",
+          "[runtime-bindings][cache]") {
+	for (const bool certified : {false, true}) {
+		CAPTURE(certified);
+		BindingCacheDirectory cache;
+		const auto options = bindingCacheOptions(
+		    cache.path(), "same-numeric-origin-v1/certified=" + std::to_string(certified) + "/increment=7");
+		int traces = 0;
+		auto consume = +[](int64_t* state, int64_t increment) noexcept {
+			*state += increment;
+			return *state;
+		};
+		for (int iteration = 0; iteration < 2; ++iteration) {
+			int64_t value = 11 + iteration;
+			RuntimeBindings bindings;
+			auto state = bindings.bind<int64_t>("state", &value);
+			NautilusEngine engine(options);
+			auto module = engine.createModule();
+			module.setRuntimeBindings(bindings);
+			module.registerFunction<val<int64_t>()>("execute", [=, &traces] {
+				++traces;
+				auto increment = certified ? cacheLiteral<int64_t {7}>() : val<int64_t>(7);
+				return invoke(consume, state.get(), increment);
+			});
+			const auto priorTraces = traces;
+			auto compiled = module.compile();
+			REQUIRE(value == 11 + iteration);
+			REQUIRE(compiled.getFunction<int64_t()>("execute")() == 18 + iteration);
+			const bool hit = certified && iteration == 1;
+			REQUIRE(bindingStat<int64_t>(compiled, "cache.tracingRan") == (hit ? 0 : 1));
+			REQUIRE((hit ? traces == priorTraces : traces > priorTraces));
+			if (!hit) {
+				REQUIRE(bindingStat<int64_t>(compiled, "cache.scalarCertificate") == (certified ? 1 : 0));
+			}
+			if (certified) {
+				REQUIRE(bindingStat<std::string>(compiled, "cache.fallback") == "none");
+				REQUIRE(bindingStat<std::string>(compiled, "cache.object") == (hit ? "hit" : "written"));
+			} else {
+				REQUIRE(bindingStat<std::string>(compiled, "cache.fallback") == "non_relocatable_pointer");
+				REQUIRE(bindingStat<std::string>(compiled, "cache.scalarRejection").find("uncertified_scalar") !=
+				        std::string::npos);
+				for (const auto* extension : {".o", ".mlirbc", ".manifest"}) {
+					REQUIRE(bindingArtifact(cache.path(), extension).empty());
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("RuntimeBindings keeps the guard for mixed certified data and encoded heap fragments",
+          "[runtime-bindings][cache]") {
+	for (const bool foldConstants : {false, true}) {
+		for (const std::string_view kind : {"integer", "partial bytes", "boolean bits", "callback", "cleanup"}) {
+			CAPTURE(foldConstants, kind);
+			BindingCacheDirectory cache;
+			auto options = bindingCacheOptions(cache.path(), "mixed-certified-capture-v1/kind=" + std::string(kind));
+			options.setOption("ir.runOptimizationPasses", true);
+			options.setOption("ir.disableConstantFolding", !foldConstants);
+			std::array<std::unique_ptr<int64_t>, 2> values;
+			int traces = 0;
+			for (std::size_t iteration = 0; iteration < values.size(); ++iteration) {
+				values[iteration] = std::make_unique<int64_t>(41 + iteration);
+				if (iteration != 0) {
+					REQUIRE(values[0].get() != values[1].get());
+				}
+				const auto encoded = reinterpret_cast<uintptr_t>(values[iteration].get());
+				uintptr_t scratch = encoded;
+				std::array<bool, sizeof(uintptr_t) * 8> bits {};
+				int64_t marker = 0;
+				RuntimeBindings bindings;
+				auto slot = bindings.bind<uintptr_t>("scratch", &scratch);
+				auto bitStorage = bindings.bind<bool>("bits", bits.data());
+				auto marked = bindings.bind<int64_t>("marker", &marker);
+				auto consumeInteger = +[](uintptr_t address, int64_t* marker) noexcept {
+					return *reinterpret_cast<int64_t*>(address) + ++*marker;
+				};
+				auto consumeBytes = +[](uintptr_t* address, int64_t* marker) noexcept {
+					return *reinterpret_cast<int64_t*>(*address) + ++*marker;
+				};
+				auto consumeBits = +[](bool* bits, int64_t* marker) noexcept {
+					uintptr_t address = 0;
+					for (std::size_t index = 0; index < sizeof(uintptr_t) * 8; ++index) {
+						address |= static_cast<uintptr_t>(bits[index]) << index;
+					}
+					return *reinterpret_cast<int64_t*>(address) + ++*marker;
+				};
+				auto consumeCallback = +[](uintptr_t (*callback)(), int64_t* marker) {
+					return *reinterpret_cast<int64_t*>(callback()) + ++*marker;
+				};
+				auto cleanup = +[](int64_t* value) noexcept {
+					++*value;
+				};
+				auto throwing = +[](int64_t* marker, bool fail) {
+					++*marker;
+					if (fail) {
+						throw std::runtime_error("mixed certified cleanup");
+					}
+					return *marker;
+				};
+				NautilusFunction callback {"mixed_encoded_callback", [encoded] {
+					                           return val<uintptr_t>(encoded) + cacheLiteral<uintptr_t {0}>();
+				                           }};
+				NautilusEngine engine(options);
+				auto module = engine.createModule();
+				module.setRuntimeBindings(bindings);
+				module.registerFunction<val<int64_t>(val<bool>)>("execute", [=, &callback, &traces](val<bool> fail) {
+					++traces;
+					*marked.get() = cacheLiteral<int64_t {9}>();
+					if (kind == "partial bytes") {
+						auto bytes = static_cast<val<uint8_t*>>(slot.get());
+						const auto encodedBytes = std::bit_cast<std::array<uint8_t, sizeof(uintptr_t)>>(encoded);
+						for (static_val<std::size_t> index = 0; index < sizeof(uintptr_t) / 2; ++index) {
+							bytes[cacheInvariant(static_cast<std::size_t>(index))] = encodedBytes[index];
+						}
+						return invoke(consumeBytes, slot.get(), marked.get());
+					}
+					if (kind == "boolean bits") {
+						for (static_val<std::size_t> index = 0; index < sizeof(uintptr_t) * 8; ++index) {
+							bitStorage.get()[cacheInvariant(static_cast<std::size_t>(index))] =
+							    bool((encoded >> static_cast<std::size_t>(index)) & 1);
+						}
+						return invoke(consumeBits, bitStorage.get(), marked.get());
+					}
+					if (kind == "callback") {
+						return invoke(consumeCallback, callback.getFuncPtr(), marked.get());
+					}
+					if (kind == "cleanup") {
+						val<int64_t*> address = val<uintptr_t>(encoded) + cacheLiteral<uintptr_t {0}>();
+						tracing::registerDestructor(address.getState(), reinterpret_cast<void*>(cleanup));
+						auto result = invoke(throwing, marked.get(), fail);
+						tracing::unregisterDestructor(address.getState());
+						return result;
+					}
+					return invoke(consumeInteger, val<uintptr_t>(encoded) + cacheLiteral<uintptr_t {0}>(),
+					              marked.get());
+				});
+				const auto priorTraces = traces;
+				auto compiled = module.compile();
+				REQUIRE(marker == 0);
+				REQUIRE(bindingStat<int64_t>(compiled, "cache.scalarCertificate") == 0);
+				REQUIRE(bindingStat<std::string>(compiled, "cache.scalarRejection").find("uncertified_scalar") !=
+				        std::string::npos);
+				REQUIRE(bindingStat<std::string>(compiled, "cache.fallback") == "non_relocatable_pointer");
+				REQUIRE(bindingStat<int64_t>(compiled, "cache.tracingRan") == 1);
+				REQUIRE(traces > priorTraces);
+				auto execute = compiled.getFunction<int64_t(bool)>("execute");
+				REQUIRE(execute(false) == (kind == "cleanup" ? 10 : *values[iteration] + 10));
+				REQUIRE(marker == 10);
+				if (kind == "cleanup") {
+					const auto before = *values[iteration];
+					REQUIRE_THROWS_WITH(execute(true), "mixed certified cleanup");
+					REQUIRE(*values[iteration] == before + 1);
+					REQUIRE(marker == 10);
+				}
+				for (const auto* extension : {".o", ".mlirbc", ".manifest"}) {
+					REQUIRE(bindingArtifact(cache.path(), extension).empty());
+				}
+			}
+		}
+	}
+}
+
 TEST_CASE("RuntimeBindings cache keeps simultaneous module state independent", "[runtime-bindings][cache]") {
 	BindingCacheDirectory cache;
 	const auto options = bindingCacheOptions(cache.path(), "independent-binding-modules-v1");

@@ -73,7 +73,7 @@ public:
 
 #ifdef ENABLE_TRACING
 	/// Default constructor. Initializes with constant 0 and records in trace.
-	val() : state(tracing::traceConstant<raw_type>(0)), value(0) {
+	val() : state(tracing::traceConstant<raw_type>(0, ConstantOrigin::CacheInvariant)), value(0) {
 	}
 
 	/// Value constructor. Initializes with provided value and records in trace.
@@ -157,14 +157,14 @@ public:
 	/// Prefix increment operator.
 	/// Returns a non-const reference to allow chaining like ++(++x).
 	val<ValueType>& operator++() {
-		*this = *this + (ValueType) 1;
+		*this = *this + cacheInvariant(static_cast<ValueType>(1));
 		return *this;
 	}
 
 	/// Postfix increment operator.
 	val<ValueType> operator++(int) {
 		auto temp = *this;
-		*this = *this + (ValueType) 1;
+		*this = *this + cacheInvariant(static_cast<ValueType>(1));
 		return temp;
 	}
 
@@ -193,21 +193,21 @@ public:
 			// value) instead of going through cancellation.
 			return details::neg(*this);
 		} else {
-			return (ValueType) 0 - *this;
+			return cacheInvariant(static_cast<ValueType>(0)) - *this;
 		}
 	}
 
 	/// Prefix decrement operator.
 	/// Returns a non-const reference to allow chaining like --(--x).
 	val<ValueType>& operator--() {
-		*this = *this - (ValueType) 1;
+		*this = *this - cacheInvariant(static_cast<ValueType>(1));
 		return *this;
 	}
 
 	/// Postfix decrement operator.
 	val<ValueType> operator--(int) {
 		auto temp = *this;
-		*this = *this - (ValueType) 1;
+		*this = *this - cacheInvariant(static_cast<ValueType>(1));
 		return temp;
 	}
 
