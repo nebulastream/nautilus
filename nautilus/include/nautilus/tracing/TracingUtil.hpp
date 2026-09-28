@@ -29,6 +29,12 @@ TracingInterface* getActiveTracer();
 /// Pass nullptr to indicate that tracing is no longer active.
 void setActiveTracer(TracingInterface* tracer);
 
+/// Whether the val<T> layer folds operations over values C++ already knows while tracing, e.g. the byte offset of
+/// `ptr + 2` or the `* sizeof(T)` of a byte pointer (`engine.foldStaticConstants`, see docs/options.md).
+/// Only meaningful while inTracer(); set per traced function by the tracer.
+bool foldsStaticConstants();
+void setFoldStaticConstants(bool fold);
+
 /// RAII guard that clears the active tracer on scope exit. Use in tracing entry
 /// points so an exception escaping the symbolic-execution loop (RuntimeException
 /// from ExecutionTrace, TagCreationException, or any exception from the traced
@@ -37,6 +43,7 @@ struct ActiveTracerGuard {
 	ActiveTracerGuard() = default;
 	~ActiveTracerGuard() noexcept {
 		setActiveTracer(nullptr);
+		setFoldStaticConstants(true);
 	}
 	ActiveTracerGuard(const ActiveTracerGuard&) = delete;
 	ActiveTracerGuard& operator=(const ActiveTracerGuard&) = delete;

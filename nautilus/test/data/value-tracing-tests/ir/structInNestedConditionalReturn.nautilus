@@ -7,28 +7,20 @@ Block_0($1:i32):
 
 Block_1($1:i32):
 	$5 = alloca[0] :ptr
-	$9 = 0 :ui64
-	$11 = 1 :ui64
-	$12 = $9 * $11 :ui64
-	$13 = $5 + $12 :ptr
-	store($1, $13) :void
-	$20 = call readFieldA($5) :i32
-	br Block_3($20) :void
+	store($1, $5) :void
+	$13 = call readFieldA($5) :i32
+	br Block_3($13) :void
 
-Block_3($20:i32):
-	return ($20) :i32
+Block_3($13:i32):
+	return ($13) :i32
 
 Block_2():
-	$22 = 0 :i32
-	br Block_3($22) :void
+	$15 = 0 :i32
+	br Block_3($15) :void
 }
 readFieldA($1:ptr) :i32 {
 Block_0($1:ptr):
-	$3 = 0 :ui64
-	$5 = 1 :ui64
-	$6 = $3 * $5 :ui64
-	$7 = $1 + $6 :ptr
-	$10 = load($7) :i32
-	return ($10) :i32
+	$3 = load($1) :i32
+	return ($3) :i32
 }
 } //nautilus

@@ -2,20 +2,16 @@ nautilus {
 execute($1:f64, $2:i8) :f64 {
 Block_0($1:f64, $2:i8):
 	$3 = alloca[0] :ptr
-	$10 = 0 :ui64
-	$11 = $3 + $10 :ptr
-	store($1, $11) :void
-	$23 = 8 :ui64
-	$24 = $3 + $23 :ptr
-	store($2, $24) :void
-	$34 = 0 :ui64
-	$35 = $3 + $34 :ptr
-	$38 = load($35) :f64
-	$43 = 8 :ui64
-	$44 = $3 + $43 :ptr
-	$47 = load($44) :i8
-	$48 = $47 cast_to f64 :f64
-	$49 = $38 + $48 :f64
-	return ($49) :f64
+	store($1, $3) :void
+	$12 = 8 :ui64
+	$13 = $3 + $12 :ptr
+	store($2, $13) :void
+	$18 = load($3) :f64
+	$19 = 8 :ui64
+	$20 = $3 + $19 :ptr
+	$21 = load($20) :i8
+	$22 = $21 cast_to f64 :f64
+	$23 = $18 + $22 :f64
+	return ($23) :f64
 }
 } //nautilus

@@ -1,9 +1,7 @@
 nautilus {
 execute($1:ptr, $2:i32) :void {
 Block_0($1:ptr, $2:i32):
-	$8 = 0 :ui64
-	$9 = $1 + $8 :ptr
-	store($2, $9) :void
+	store($2, $1) :void
 	return :void
 }
 } //nautilus

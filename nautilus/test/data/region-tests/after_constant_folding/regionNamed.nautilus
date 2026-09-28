@@ -2,10 +2,9 @@ nautilus {
 execute($1:i64) :i64 {
 Block_0($1:i64):
 	$2 = 0 :i64
-	$3 = 42 :i32  ; region #0
-	$4 = $3 cast_to i64 :i64  ; region #0
-	$5 = $1 + $4 :i64  ; region #0
-	return ($5) :i64
+	$3 = 42 :i64  ; region #0
+	$4 = $1 + $3 :i64  ; region #0
+	return ($4) :i64
 }
 ; region #0 = "accumulate"
 } //nautilus

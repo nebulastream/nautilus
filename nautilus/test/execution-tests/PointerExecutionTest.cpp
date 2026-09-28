@@ -363,9 +363,74 @@ void pointerTest(engine::NautilusEngine& engine) {
 		f(&a, &b);
 		REQUIRE(a == 100); // max(5, 100), "lesser" arm taken -- previously miscompiled to 5
 	}
+
+	// Issue #517: folded offsets and pointer arithmetic without copies.
+	SECTION("pointerAddZero") {
+		auto f = engine.registerFunction(pointerAddZero);
+		REQUIRE(f(&values[3]) == 4);
+	}
+
+	SECTION("derefPointerTemporary") {
+		auto f = engine.registerFunction(derefPointerTemporary);
+		REQUIRE(f(values) == 3);
+	}
+
+	SECTION("pointerSubUnsignedConst") {
+		auto f = engine.registerFunction(pointerSubUnsignedConst);
+		REQUIRE(f(&values[4]) == 3);
+	}
+
+	SECTION("bytePointerIndexSizeT") {
+		int8_t data[] = {10, 20, 30, 40};
+		auto f = engine.registerFunction(bytePointerIndexSizeT);
+		REQUIRE(f(data, (size_t) 0) == 10);
+		REQUIRE(f(data, (size_t) 3) == 40);
+	}
+
+	SECTION("staticOffsetLoop") {
+		auto f = engine.registerFunction(staticOffsetLoop);
+		REQUIRE(f(&values[1]) == 2 + 3 + 4);
+	}
+
+	SECTION("getSecondField") {
+		TwoFieldStruct s {7, 11};
+		auto f = engine.registerFunction(getSecondField);
+		REQUIRE(f(&s) == 11);
+	}
+
+	SECTION("storeThroughStaleReference") {
+		int32_t data[] = {0, 0, 0};
+		auto f = engine.registerFunction(storeThroughStaleReference);
+		f(data, 5);
+		REQUIRE(data[0] == 5);
+		REQUIRE(data[1] == 6);
+		REQUIRE(data[2] == 0);
+	}
+
+	SECTION("assignToZeroOffset") {
+		auto f = engine.registerFunction(assignToZeroOffset);
+		REQUIRE(f(&values[2]) == 34);
+	}
+
+	SECTION("addToAllInLoop") {
+		int32_t data[] = {1, 2, 3, 4};
+		auto f = engine.registerFunction(addToAllInLoop);
+		f(data, 3, 10);
+		REQUIRE(data[0] == 11);
+		REQUIRE(data[1] == 12);
+		REQUIRE(data[2] == 13);
+		REQUIRE(data[3] == 4);
+	}
 }
 
 TEST_CASE("Pointer Test") {
 	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { pointerTest(engine); });
+}
+
+// The same programs, traced with engine.foldStaticConstants=false.
+TEST_CASE("Pointer Test without static constant folding") {
+	nautilus::testing::forEachBackend(
+	    [](engine::NautilusEngine& engine) { pointerTest(engine); }, false,
+	    [](engine::Options& options) { options.setOption("engine.foldStaticConstants", false); });
 }
 } // namespace nautilus::engine

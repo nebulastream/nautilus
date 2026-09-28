@@ -229,6 +229,11 @@ TEST_CASE("Expression Trace Test") {
 	    {"mulInt64AndNotDefinedI64", details::createFunctionWrapper(mulInt64AndNotDefinedI64)},
 	    {"subInt8AndInt8", details::createFunctionWrapper(subInt8AndInt8)},
 	    {"addInt8AndInt32", details::createFunctionWrapper(addInt8AndInt32)},
+	    {"addInt64AndLiteral", details::createFunctionWrapper(addInt64AndLiteral)},
+	    {"literalMinusInt64", details::createFunctionWrapper(literalMinusInt64)},
+	    {"compareUInt64AndLiteral", details::createFunctionWrapper(compareUInt64AndLiteral)},
+	    {"mulDoubleAndLiteral", details::createFunctionWrapper(mulDoubleAndLiteral)},
+	    {"addFloatAndInt64Literal", details::createFunctionWrapper(addFloatAndInt64Literal)},
 	};
 	runTraceTests("expression-tests", tests);
 }
@@ -523,8 +528,54 @@ TEST_CASE("Pointer Trace Test") {
 	    {"pointerPreIncrement_i8", details::createFunctionWrapper(pointerPreIncrement<int8_t>)},
 	    {"pointerPreIncrement_i32", details::createFunctionWrapper(pointerPreIncrement<int32_t>)},
 	    {"pointerPreIncrement_i64", details::createFunctionWrapper(pointerPreIncrement<int64_t>)},
+	    // offsets C++ already knows, and pointer arithmetic without copies (issue #517)
+	    {"pointerAddZero", details::createFunctionWrapper(pointerAddZero)},
+	    {"derefPointerTemporary", details::createFunctionWrapper(derefPointerTemporary)},
+	    {"pointerSubUnsignedConst", details::createFunctionWrapper(pointerSubUnsignedConst)},
+	    {"bytePointerIndexSizeT", details::createFunctionWrapper(bytePointerIndexSizeT)},
+	    {"staticOffsetLoop", details::createFunctionWrapper(staticOffsetLoop)},
+	    {"getSecondField", details::createFunctionWrapper(getSecondField)},
+	    {"storeThroughStaleReference", details::createFunctionWrapper(storeThroughStaleReference)},
+	    {"assignToZeroOffset", details::createFunctionWrapper(assignToZeroOffset)},
+	    {"addToAllInLoop", details::createFunctionWrapper(addToAllInLoop)},
 	};
 	runTraceTests("pointer-tests", tests);
+}
+
+namespace {
+std::string traceWithOptions(std::function<void()> func, const engine::Options& options) {
+	nautilus::log::options::setLogAddresses(false);
+	nautilus::log::options::setLogSourceLocations(false);
+	std::list<compiler::CompilableFunction> functionsToTrace;
+	functionsToTrace.emplace_back("execute", func);
+	common::Arena arena;
+	return tracing::TraceContext::Trace(functionsToTrace, options, arena)->toString();
+}
+} // namespace
+
+// engine.foldStaticConstants=false traces offsets and literals the way they were traced before they were folded.
+TEST_CASE("Static constant folding can be disabled") {
+	engine::Options unfolded;
+	unfolded.setOption("engine.foldStaticConstants", false);
+
+	auto folded = traceWithOptions(details::createFunctionWrapper(pointerAddConst), engine::Options());
+	CHECK(folded.find("MUL") == std::string::npos);
+	auto pointerAddConstUnfolded = traceWithOptions(details::createFunctionWrapper(pointerAddConst), unfolded);
+	CHECK(pointerAddConstUnfolded.find("CONST\t$2\t2\t:ui64") != std::string::npos);
+	CHECK(pointerAddConstUnfolded.find("CONST\t$3\t4\t:ui64") != std::string::npos);
+	CHECK(pointerAddConstUnfolded.find("MUL") != std::string::npos);
+
+	auto bytePointerUnfolded = traceWithOptions(details::createFunctionWrapper(bytePointerIndexSizeT), unfolded);
+	CHECK(bytePointerUnfolded.find("MUL") != std::string::npos);
+
+	auto literalFolded = traceWithOptions(details::createFunctionWrapper(addInt64AndLiteral), engine::Options());
+	CHECK(literalFolded.find("CAST") == std::string::npos);
+	auto literalUnfolded = traceWithOptions(details::createFunctionWrapper(addInt64AndLiteral), unfolded);
+	CHECK(literalUnfolded.find("CONST\t$2\t1\t:i32") != std::string::npos);
+	CHECK(literalUnfolded.find("CAST") != std::string::npos);
+
+	// The option applies to the trace it was given to only.
+	CHECK(traceWithOptions(details::createFunctionWrapper(pointerAddConst), engine::Options()) == folded);
 }
 
 TEST_CASE("Cast Trace Test") {

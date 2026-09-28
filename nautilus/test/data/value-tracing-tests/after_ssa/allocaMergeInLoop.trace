@@ -7,20 +7,16 @@ B1($1:i32,$2:i64,$3:i32)
 	CONST	$6	0	:i32
 	ALLOCA	$7	:ptr
 	CALL	$9	func_*($7)	:void
-	CONST	$11	0	:ui64
-	CONST	$13	1	:ui64
-	MUL	$14	$11	$13	:ui64
-	ADD	$15	$7	$14	:ptr
-	LOAD	$18	$15	:i32
-	ALLOCA	$19	:ptr
-	CALL	$21	func_*($19)	:void
-	CALL	$23	func_*($19)	:i64
-	ADD	$24	$2	$23	:i64
-	CAST	$25	$18	:i64
-	ADD	$26	$24	$25	:i64
-	CONST	$27	1	:i32
-	ADD	$28	$3	$27	:i32
-	JMP	$0	B3($26,$28,$1)	:void
+	LOAD	$11	$7	:i32
+	ALLOCA	$12	:ptr
+	CALL	$14	func_*($12)	:void
+	CALL	$16	func_*($12)	:i64
+	ADD	$17	$2	$16	:i64
+	CAST	$18	$11	:i64
+	ADD	$19	$17	$18	:i64
+	CONST	$20	1	:i32
+	ADD	$21	$3	$20	:i32
+	JMP	$0	B3($19,$21,$1)	:void
 B2($2:i64)
 	RETURN	$0	$2	:i64
 B3($2:i64,$3:i32,$1:i32) ControlFlowMerge

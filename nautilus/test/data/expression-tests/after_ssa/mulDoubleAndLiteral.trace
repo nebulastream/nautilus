@@ -1,0 +1,6 @@
+EXECUTE:
+B0($1:f64)
+	CONST	$2	2	:f64
+	MUL	$3	$1	$2	:f64
+	RETURN	$0	$3	:f64
+

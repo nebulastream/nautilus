@@ -320,6 +320,20 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f((int64_t) -7) == 0);
 		REQUIRE(f((int64_t) -14) == -7);
 	}
+	SECTION("literalOperands") {
+		auto addInt64 = engine.registerFunction(addInt64AndLiteral);
+		REQUIRE(addInt64((int64_t) -1) == 0);
+		REQUIRE(addInt64(INT64_MAX - 1) == INT64_MAX);
+		auto minusInt64 = engine.registerFunction(literalMinusInt64);
+		REQUIRE(minusInt64((int64_t) 20) == -10);
+		auto compareUInt64 = engine.registerFunction(compareUInt64AndLiteral);
+		REQUIRE(compareUInt64((uint64_t) 7) == true);
+		REQUIRE(compareUInt64((uint64_t) 7 + (uint64_t {1} << 32)) == false);
+		auto mulDouble = engine.registerFunction(mulDoubleAndLiteral);
+		REQUIRE(mulDouble(1.25) == 2.5);
+		auto addFloat = engine.registerFunction(addFloatAndInt64Literal);
+		REQUIRE(addFloat(0.5f) == 3.5f);
+	}
 	SECTION("floatAddExpression") {
 		auto f = engine.registerFunction(floatAddExpression);
 		REQUIRE(f((float) 7.0) == 14);

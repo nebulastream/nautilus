@@ -343,4 +343,63 @@ inline void storeMaxViaTernary(val<int32_t*> x, val<int32_t*> y) {
 	*x = (val<int32_t>) (a > b ? a : b);
 }
 
+// Issue #517: offsets C++ already knows are folded into one constant, and pointer arithmetic does not copy its
+// operands.
+inline val<int32_t> pointerAddZero(val<int32_t*> ptr) {
+	auto result = ptr + 0;
+	return *result;
+}
+
+inline val<int32_t> derefPointerTemporary(val<int32_t*> ptr) {
+	return *(ptr + 2);
+}
+
+inline val<int32_t> pointerSubUnsignedConst(val<int32_t*> ptr) {
+	return *(ptr - 2u);
+}
+
+inline val<int8_t> bytePointerIndexSizeT(val<int8_t*> ptr, val<size_t> index) {
+	return ptr[index];
+}
+
+inline val<int32_t> staticOffsetLoop(val<int32_t*> ptr) {
+	val<int32_t> sum = 0;
+	for (static_val<int32_t> i = 0; i < 3; i++) {
+		sum = sum + ptr[i];
+	}
+	return sum;
+}
+
+struct TwoFieldStruct {
+	int32_t a;
+	int32_t b;
+};
+
+inline val<int32_t> getSecondField(val<TwoFieldStruct*> ptr) {
+	val<int32_t> value = ptr.get(&TwoFieldStruct::b);
+	return value;
+}
+
+// A reference obtained by dereferencing a pointer keeps referring to the old address after the pointer is
+// reassigned, so the reference must not share the pointer's traced value.
+inline void storeThroughStaleReference(val<int32_t*> ptr, val<int32_t> value) {
+	val<int32_t&> ref = *ptr;
+	ptr = ptr + 1;
+	ref = value;
+	*ptr = value + 1;
+}
+
+// `ptr + 0` is a new value: assigning to it leaves `ptr` unchanged.
+inline val<int32_t> assignToZeroOffset(val<int32_t*> ptr) {
+	auto result = ptr + 0;
+	result = result + 1;
+	return *ptr * 10 + *result;
+}
+
+inline void addToAllInLoop(val<int32_t*> ptr, val<int32_t> length, val<int32_t> value) {
+	for (val<int32_t> i = 0; i < length; i = i + 1) {
+		ptr[i] += value;
+	}
+}
+
 } // namespace nautilus

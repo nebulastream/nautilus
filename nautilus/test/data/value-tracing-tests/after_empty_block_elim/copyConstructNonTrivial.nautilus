@@ -6,21 +6,13 @@ execute() :i32 {
 Block_0():
 	$1 = alloca[0] :ptr
 	call func_*#0($1) :void
-	$4 = 0 :ui64
-	$6 = 1 :ui64
-	$7 = $4 * $6 :ui64
-	$8 = $1 + $7 :ptr
-	$11 = 99 :i32
-	store($11, $8) :void
-	$15 = alloca[1] :ptr
-	call func_*#1($15,$1) :void
-	$18 = 0 :ui64
-	$20 = 1 :ui64
-	$21 = $18 * $20 :ui64
-	$22 = $15 + $21 :ptr
-	$25 = load($22) :i32
-	call func_*#2($15) :void
+	$4 = 99 :i32
+	store($4, $1) :void
+	$8 = alloca[1] :ptr
+	call func_*#1($8,$1) :void
+	$11 = load($8) :i32
+	call func_*#2($8) :void
 	call func_*#2($1) :void
-	return ($25) :i32
+	return ($11) :i32
 }
 } //nautilus
