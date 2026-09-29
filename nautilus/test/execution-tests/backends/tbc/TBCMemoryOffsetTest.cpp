@@ -78,6 +78,26 @@ val<uint64_t> tbcFoldedConstFirstUse(val<int8_t*> ptr, val<uint64_t> b) {
 	return sum;
 }
 
+// The same with an i32 constant, which folds into the i32 immediate forms.
+val<int32_t> tbcFoldedConstLastUseI32(val<int32_t> a) {
+	const val<int32_t> k {7};
+	const auto s = k - a;
+	const auto t = a + k;
+	return s * 10 + t;
+}
+
+// The register read and the fold of the constant sit in different branch arms.
+val<int64_t> tbcFoldedConstAcrossBlocks(val<int64_t> a) {
+	const val<int64_t> k {5};
+	val<int64_t> r = 0;
+	if (a > 0) {
+		r = k - a;
+	} else {
+		r = a + k;
+	}
+	return r + (a + k);
+}
+
 engine::NautilusEngine tbcEngine(const std::string& dispatch, bool superinstructions, bool immediates) {
 	engine::Options options;
 	options.setOption("engine.backend", std::string("tbc"));
@@ -194,6 +214,13 @@ TEST_CASE("TBC keeps a folded constant's MOV_imm when an earlier use reads its r
 				int8_t otherBuffer[16] = {};
 				REQUIRE(firstUse(otherBuffer, b) == b + 1);
 				REQUIRE(otherBuffer[1] == 42);
+			}
+			auto i32 = engine.registerFunction(tbcFoldedConstLastUseI32);
+			auto acrossBlocks = engine.registerFunction(tbcFoldedConstAcrossBlocks);
+			for (int32_t a = -4; a <= 4; ++a) {
+				REQUIRE(i32(a) == (7 - a) * 10 + (a + 7));
+				const int64_t r = a > 0 ? 5 - a : a + 5;
+				REQUIRE(acrossBlocks(int64_t {a}) == r + a + 5);
 			}
 		}
 	}
