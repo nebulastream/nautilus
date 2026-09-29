@@ -551,34 +551,41 @@ TEST_CASE("Cache-invariant scalar origins survive nested regions and trace cloni
 TEST_CASE("Cache-invariant scalar replay disagreement never upgrades an ordinary constant",
           "[runtime-bindings][cache]") {
 	for (const bool initiallyCertified : {false, true}) {
-		CAPTURE(initiallyCertified);
-		int iterations = 0;
-		auto wrapper = details::createFunctionWrapper([&](val<bool> condition) {
-			++iterations;
-			const auto origin =
-			    (iterations == 1) == initiallyCertified ? ConstantOrigin::CacheInvariant : ConstantOrigin::Unspecified;
-			auto ref = tracing::traceConstant(int64_t {7}, origin);
-			val<int64_t> value(ref);
-			if (condition) {
-				return value;
-			}
-			return -value;
-		});
-		common::Arena arena;
-		auto trace = tracing::TraceContext::trace(wrapper, Options {}, arena);
-		REQUIRE(iterations >= 2);
-		std::size_t constants = 0;
-		for (const auto* block : trace->getBlocks()) {
-			for (const auto* operation : block->operations) {
-				if (operation->op == tracing::Op::CONST && operation->resultType == Type::i64 &&
-				    std::get<int64_t>(std::get<ConstantLiteral>(operation->input[0])) == 7) {
-					++constants;
-					REQUIRE(operation->constantOrigin == ConstantOrigin::Unspecified);
+		for (const bool replayCertified : {false, true}) {
+			CAPTURE(initiallyCertified, replayCertified);
+			int iterations = 0;
+			auto wrapper = details::createFunctionWrapper([&](val<bool> condition) {
+				++iterations;
+				const auto origin = (iterations == 1 ? initiallyCertified : replayCertified)
+				                        ? ConstantOrigin::CacheInvariant
+				                        : ConstantOrigin::Unspecified;
+				auto ref = tracing::traceConstant(int64_t {7}, origin);
+				val<int64_t> value(ref);
+				if (condition) {
+					return value;
+				}
+				return -value;
+			});
+			common::Arena arena;
+			auto trace = tracing::TraceContext::trace(wrapper, Options {}, arena);
+			REQUIRE(iterations >= 2);
+			std::size_t constants = 0;
+			for (const auto* block : trace->getBlocks()) {
+				for (const auto* operation : block->operations) {
+					if (operation->op == tracing::Op::CONST && operation->resultType == Type::i64 &&
+					    std::get<int64_t>(std::get<ConstantLiteral>(operation->input[0])) == 7) {
+						++constants;
+						if (initiallyCertified && replayCertified) {
+							REQUIRE(operation->constantOrigin == ConstantOrigin::CacheInvariant);
+						} else {
+							REQUIRE(operation->constantOrigin == ConstantOrigin::Unspecified);
+						}
+					}
 				}
 			}
+			REQUIRE(constants > 0);
+			REQUIRE_FALSE(tracing::inTracer());
 		}
-		REQUIRE(constants > 0);
-		REQUIRE_FALSE(tracing::inTracer());
 	}
 }
 

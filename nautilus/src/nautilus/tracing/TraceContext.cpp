@@ -111,8 +111,11 @@ bool TraceContext::isFollowing() {
 	return state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
 
-TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
-	auto& currentOperation = state->executionTrace.getCurrentOperation();
+TypedValueRef& TraceContext::follow(Op op) {
+	return follow(op, state->executionTrace.getCurrentOperation());
+}
+
+TypedValueRef& TraceContext::follow([[maybe_unused]] Op op, TraceOperation& currentOperation) {
 	auto consumedTag = currentOperation.tag;
 	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
@@ -151,7 +154,7 @@ TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& con
 		if (currentOperation.constantOrigin != origin) {
 			currentOperation.constantOrigin = ConstantOrigin::Unspecified;
 		}
-		return follow(op);
+		return follow(op, currentOperation);
 	}
 	auto tag = recordSnapshot();
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);

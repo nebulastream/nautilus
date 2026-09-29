@@ -6,6 +6,7 @@ add_executable(nautilus-tracing-unit-tests
         ArenaTest.cpp
         SSACreationPhaseTest.cpp
         SSAVerifierTest.cpp
+        TraceContextTest.cpp
         TrieTest.cpp
 )
 

@@ -17,7 +17,8 @@ val<std::remove_cvref_t<T>> cacheInvariant(T&& value) {
 	using ValueType = std::remove_cvref_t<T>;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto ref = tracing::traceConstant(std::forward<T>(value), ConstantOrigin::CacheInvariant);
+		auto ref = tracing::traceConstant(tracing::TypeResolver<ValueType>::to_type(),
+		                                  tracing::createConstLiteral(value), ConstantOrigin::CacheInvariant);
 		return val<ValueType>(ref);
 	}
 #endif

@@ -216,8 +216,7 @@ void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::initia
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-                                                      std::initializer_list<InputVariant> inputs,
-                                                      ConstantOrigin origin) {
+                                                      std::initializer_list<InputVariant> inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -226,12 +225,19 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 	auto* to =
 	    makeTraceOp(*arena, snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), inputs);
 	to->regionIndex = currentRegion;
-	to->constantOrigin = origin;
 	operations.push_back(to);
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 	return to->resultRef;
+}
+
+TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
+                                                      std::initializer_list<InputVariant> inputs,
+                                                      ConstantOrigin origin) {
+	auto& result = addOperationWithResult(snapshot, operation, resultType, inputs);
+	blocks[currentBlockIndex]->operations.back()->constantOrigin = origin;
+	return result;
 }
 
 // Adds a comparison operation to the execution trace

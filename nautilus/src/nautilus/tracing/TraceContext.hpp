@@ -345,6 +345,7 @@ private:
 	void validateRuntimeBinding(const runtime_binding::Entry& binding) const;
 	bool isFollowing();
 	TypedValueRef& follow(Op op);
+	TypedValueRef& follow(Op op, TraceOperation& currentOperation);
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
