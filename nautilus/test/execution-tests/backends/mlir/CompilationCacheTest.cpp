@@ -482,6 +482,23 @@ TEST_CASE("MLIR persistent module cache prefers native objects and retains bytec
 		REQUIRE(cacheStat(module, "cache.object") == "hit");
 		REQUIRE(traces.load() == coldTraceCount);
 	}
+	for (const bool removeBytecode : {false, true}) {
+		CAPTURE(removeBytecode);
+		if (removeBytecode) {
+			REQUIRE(std::filesystem::remove(bytecodePath));
+		} else {
+			std::ofstream corrupt(bytecodePath, std::ios::binary | std::ios::trunc);
+			corrupt << "not MLIR bytecode";
+		}
+		auto module = compile(false);
+		REQUIRE(module.getFunction<int32_t(int32_t)>("increment")(41) == 42);
+		REQUIRE(cacheStat(module, "cache.object") == "hit");
+		REQUIRE(cacheStat(module, "cache.mlir") == "not_checked");
+		REQUIRE(cacheIntStat(module, "cache.tracingRan") == 0);
+		REQUIRE_FALSE(module.getStatistics()->contains("mlir.bytecodeLoad.ms"));
+		REQUIRE_FALSE(module.getStatistics()->contains("tracing.ms"));
+		REQUIRE(traces.load() == coldTraceCount);
+	}
 }
 
 TEST_CASE("MLIR persistent module cache rebinds proxy functions without persisting their addresses") {

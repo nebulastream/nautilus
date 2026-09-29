@@ -65,7 +65,7 @@ public:
 	compileToIR(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
 	            CompilationStatistics* statistics = nullptr,
 	            IROptimizationLevel optimization = IROptimizationLevel::Full,
-	            const std::function<void(const ir::IRGraph&)>& beforeOptimization = {}) const;
+	            const std::function<void(ir::IRGraph&)>& beforeOptimization = {}) const;
 
 	/**
 	 * @brief The IR optimization level a graph compiled by every backend in

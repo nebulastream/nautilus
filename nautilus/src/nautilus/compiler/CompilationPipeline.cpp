@@ -184,7 +184,7 @@ void addOptimizationPasses(ir::IRPassManager& passManager, const engine::ModuleO
 std::shared_ptr<ir::IRGraph>
 CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
                                  CompilationStatistics* statistics, IROptimizationLevel optimization,
-                                 const std::function<void(const ir::IRGraph&)>& beforeOptimization) const {
+                                 const std::function<void(ir::IRGraph&)>& beforeOptimization) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(moduleOptions, compilationId);
 
@@ -327,7 +327,7 @@ std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>&,
                                                               const engine::ModuleOptions&, CompilationStatistics*,
                                                               IROptimizationLevel,
-                                                              const std::function<void(const ir::IRGraph&)>&) const {
+                                                              const std::function<void(ir::IRGraph&)>&) const {
 	throw RuntimeException("Jit not initialised");
 }
 

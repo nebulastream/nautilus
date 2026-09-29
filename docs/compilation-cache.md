@@ -85,6 +85,14 @@ If complete scalar certification fails, the existing conservative analysis still
 
 Debugging and profiling options (`debug`, `perf`, `perf.sample`) bypass persistent caching so each compilation regenerates its source files and metadata. `mlir.inline_invoke_calls = true` also bypasses caching. Missing compiler identity, unsupported intrinsic plugins, unavailable cache storage, invalid artifacts, and publication failures also fall back to compilation. Cache eligibility does not change the selected backend or configured tiers.
 
+## Compiler stages and integration boundaries
+
+On a traced cache miss, `CacheScalarValidationPass` runs at `CompilationPipeline`'s pre-optimization hook, before folding or dead-code elimination can discard scalar origins. If its complete-leaf certificate fails, `PointerRelocatabilityPass` runs on the resulting IR, preserving the legacy acceptance rules. Both are read-only `IRPass` analyses in `compiler/ir/passes/CacheSafetyAnalysis`: `apply()` returns `false` because the graph is unchanged; acceptance and rejection details live in each pass instance's result. These mandatory cache checks are invoked directly, outside the optional optimizer and its fixed-point groups. Neither `ir.runPasses`, `ir.runOptimizationPasses`, nor iteration limits disable them.
+
+`MLIRCacheValidation` validates exports, runtime-binding declarations/schema, and external symbols after lowering when generating cache artifacts, or after parsing and verifying a cached MLIR module. It preserves validation order and does not resolve imports or load executable code. A native-object hit never enters this stage or reads/parses MLIR bytecode, and returns before tracing or IR construction.
+
+`PersistentModuleCache` owns compatibility, lookup, import resolution, fallback, and publication; these are not IR passes. `TieredCompiler` retains the single-tier/backend dispatch. Scalar origin and binding identity must still be recorded at the API/tracing boundary, where their meaning is known, and preserved through IR cloning. Backend-specific binding visitors retain their native register/address/symbol representations without rewriting the shared IR used for tier promotion. MLIR keeps binding symbols relocatable and opaque to alias analysis; JIT hooks register fresh per-module addresses before initialization and capture/load native objects.
+
 ## Intrinsic plugins
 
 Custom `MLIRIntrinsicPlugin` implementations are cache-ineligible unless they explicitly implement `cacheFingerprint()`. The fingerprint must identify the implementation build and every code-generation-relevant piece of state or dependency. Equal fingerprints must mean interchangeable generated code. An empty or absent fingerprint disables persistent caching.

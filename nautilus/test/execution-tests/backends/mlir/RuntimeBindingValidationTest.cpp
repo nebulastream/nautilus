@@ -13,7 +13,6 @@
 #include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
-#include "nautilus/compiler/cache/PersistentModuleCache.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
 #include "nautilus/compiler/ir/operations/CallOperation.hpp"
@@ -26,6 +25,7 @@
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
+#include "nautilus/compiler/ir/passes/CacheSafetyAnalysis.hpp"
 #include "nautilus/region.hpp"
 #include "nautilus/select.hpp"
 #include "nautilus/val_std.hpp"
@@ -138,6 +138,99 @@ compiler::ir::FunctionOperation* scalarCertificateFunction(compiler::ir::IRGraph
 
 } // namespace
 
+TEST_CASE("Cache safety analysis passes preserve graphs and reset independent results",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	IRGraph accepted("cache-analysis-accepted"), rejected("cache-analysis-rejected");
+	for (auto* graph : {&accepted, &rejected}) {
+		auto& arena = graph->getArena();
+		auto* argument = arena.create<BasicBlockArgument>(OperationIdentifier(0), Type::ui64);
+		auto* block = arena.create<BasicBlock>(arena, BlockIdentifier(0), std::vector<BasicBlockArgument*> {argument});
+		Operation* value;
+		if (graph == &rejected) {
+			value = block->addOperation<ConstPtrOperation>(OperationIdentifier(1), &rejected);
+		} else {
+			value = block->addOperation<CastOperation>(OperationIdentifier(1), argument, Type::ptr);
+		}
+		block->addOperation<ReturnOperation>(value);
+		scalarCertificateFunction(*graph, {block}, Type::ptr);
+	}
+	const auto acceptedBefore = accepted.toString();
+	const auto rejectedBefore = rejected.toString();
+	const auto requireUnchanged = [&] {
+		REQUIRE(accepted.toString() == acceptedBefore);
+		REQUIRE(rejected.toString() == rejectedBefore);
+	};
+
+	CacheScalarValidationPass scalar, independentScalar;
+	std::vector<std::string> exports {"execute"};
+	PointerRelocatabilityPass pointer(exports), independentPointer({"execute"});
+	exports.clear();
+	IRPass& scalarPass = scalar;
+	IRPass& pointerPass = pointer;
+	REQUIRE(scalarPass.getName() == "cacheScalarValidation");
+	REQUIRE(pointerPass.getName() == "pointerRelocatability");
+	REQUIRE_FALSE(scalar.getResult().certified);
+	REQUIRE(scalar.getResult().rejection.empty());
+	REQUIRE_FALSE(pointer.getResult().relocatable);
+	REQUIRE(pointer.getResult().rejection.empty());
+
+	REQUIRE_FALSE(independentScalar.apply(rejected));
+	REQUIRE_FALSE(independentPointer.apply(rejected));
+	const auto independentScalarResult = independentScalar.getResult();
+	const auto independentPointerResult = independentPointer.getResult();
+	REQUIRE_FALSE(independentScalarResult.certified);
+	REQUIRE_FALSE(independentPointerResult.relocatable);
+	requireUnchanged();
+
+	for (auto* graph : {&accepted, &rejected, &accepted, &rejected}) {
+		CAPTURE(graph->getId());
+		const bool expected = graph == &accepted;
+		REQUIRE_FALSE(scalarPass.apply(*graph));
+		const auto scalarResult = scalar.getResult();
+		REQUIRE(scalarResult.certified == expected);
+		REQUIRE(scalarResult.rejection.empty() == expected);
+		requireUnchanged();
+		REQUIRE_FALSE(pointerPass.apply(*graph));
+		const auto pointerResult = pointer.getResult();
+		REQUIRE(pointerResult.relocatable == expected);
+		REQUIRE(pointerResult.rejection.empty() == expected);
+		requireUnchanged();
+		if (!expected) {
+			REQUIRE_THAT(scalarResult.rejection, Catch::Matchers::ContainsSubstring("embedded_non_null_pointer"));
+			REQUIRE_THAT(pointerResult.rejection, Catch::Matchers::ContainsSubstring("embedded_non_null_pointer"));
+		}
+
+		REQUIRE_FALSE(scalarPass.apply(*graph));
+		REQUIRE(scalar.getResult().certified == scalarResult.certified);
+		REQUIRE(scalar.getResult().rejection == scalarResult.rejection);
+		REQUIRE_FALSE(pointerPass.apply(*graph));
+		REQUIRE(pointer.getResult().relocatable == pointerResult.relocatable);
+		REQUIRE(pointer.getResult().rejection == pointerResult.rejection);
+		requireUnchanged();
+		REQUIRE(independentScalar.getResult().certified == independentScalarResult.certified);
+		REQUIRE(independentScalar.getResult().rejection == independentScalarResult.rejection);
+		REQUIRE(independentPointer.getResult().relocatable == independentPointerResult.relocatable);
+		REQUIRE(independentPointer.getResult().rejection == independentPointerResult.rejection);
+	}
+
+	const auto scalarResult = scalar.getResult();
+	const auto pointerResult = pointer.getResult();
+	REQUIRE_FALSE(independentScalar.apply(accepted));
+	REQUIRE(independentScalar.getResult().certified);
+	REQUIRE(independentScalar.getResult().rejection.empty());
+	REQUIRE_FALSE(independentPointer.apply(accepted));
+	REQUIRE(independentPointer.getResult().relocatable);
+	REQUIRE(independentPointer.getResult().rejection.empty());
+	REQUIRE(scalar.getResult().certified == scalarResult.certified);
+	REQUIRE(scalar.getResult().rejection == scalarResult.rejection);
+	REQUIRE(pointer.getResult().relocatable == pointerResult.relocatable);
+	REQUIRE(pointer.getResult().rejection == pointerResult.rejection);
+	REQUIRE(scalarPass.getName() == "cacheScalarValidation");
+	REQUIRE(pointerPass.getName() == "pointerRelocatability");
+	requireUnchanged();
+}
+
 TEST_CASE("MLIR scalar certification checks every scalar leaf and rejects unsupported operands",
           "[runtime-bindings][cache][guard]") {
 	using namespace compiler::ir;
@@ -206,8 +299,10 @@ TEST_CASE("MLIR scalar certification checks every scalar leaf and rejects unsupp
 	auto* sum = block->addOperation<AddOperation>(OperationIdentifier(5), argument, leaf);
 	block->addOperation<ReturnOperation>(sum);
 	scalarCertificateFunction(graph, std::move(blocks), Type::ui64);
-	std::string rejection = "previous rejection";
-	REQUIRE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection) == cause.empty());
+	CacheScalarValidationPass pass;
+	REQUIRE_FALSE(pass.apply(graph));
+	const auto& rejection = pass.getResult().rejection;
+	REQUIRE(pass.getResult().certified == cause.empty());
 	if (cause.empty()) {
 		REQUIRE(rejection.empty());
 	} else {
@@ -251,8 +346,10 @@ TEST_CASE("MLIR scalar certification validates branch ownership and argument sch
 	}
 	entry->addNextBlock(next, arguments);
 	scalarCertificateFunction(graph, std::move(blocks), Type::ui64);
-	std::string rejection;
-	REQUIRE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection) == cause.empty());
+	CacheScalarValidationPass pass;
+	REQUIRE_FALSE(pass.apply(graph));
+	const auto& rejection = pass.getResult().rejection;
+	REQUIRE(pass.getResult().certified == cause.empty());
 	if (cause.empty()) {
 		REQUIRE(rejection.empty());
 	} else {
@@ -311,8 +408,10 @@ TEST_CASE("MLIR scalar certification validates called addressed and unused funct
 			}
 			block->addOperation<ReturnOperation>();
 			scalarCertificateFunction(graph, {block});
-			std::string rejection;
-			REQUIRE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection) == cause.empty());
+			CacheScalarValidationPass pass;
+			REQUIRE_FALSE(pass.apply(graph));
+			const auto& rejection = pass.getResult().rejection;
+			REQUIRE(pass.getResult().certified == cause.empty());
 			if (cause.empty()) {
 				REQUIRE(rejection.empty());
 			} else {
@@ -354,8 +453,10 @@ TEST_CASE("MLIR scalar certification rejects mismatched native call signatures",
 	                                   arguments, result, FunctionAttributes {}, target);
 	block->addOperation<ReturnOperation>();
 	scalarCertificateFunction(graph, {block});
-	std::string rejection;
-	REQUIRE_FALSE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection));
+	CacheScalarValidationPass pass;
+	REQUIRE_FALSE(pass.apply(graph));
+	const auto& rejection = pass.getResult().rejection;
+	REQUIRE_FALSE(pass.getResult().certified);
 	REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("cause=" + cause));
 }
 
@@ -436,15 +537,19 @@ TEST_CASE("MLIR scalar certification walks direct and indirect destructor-only o
 			scalarCertificateFunction(graph, {block});
 			REQUIRE(std::ranges::find(block->getOperations(), address) == block->getOperations().end());
 			REQUIRE(std::ranges::find(block->getOperations(), offset) == block->getOperations().end());
-			std::string rejection;
-			REQUIRE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection) == cause.empty());
+			CacheScalarValidationPass pass;
+			REQUIRE_FALSE(pass.apply(graph));
+			const auto& rejection = pass.getResult().rejection;
+			REQUIRE(pass.getResult().certified == cause.empty());
 			if (cause.empty()) {
 				REQUIRE(rejection.empty());
 			} else {
 				REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("cause=" + cause));
 			}
 			if (cause == "uncertified_scalar" || rawPointer) {
-				REQUIRE(compiler::containsNonRelocatablePointer(graph, {"execute"}));
+				PointerRelocatabilityPass pointerPass({"execute"});
+				REQUIRE_FALSE(pointerPass.apply(graph));
+				REQUIRE_FALSE(pointerPass.getResult().relocatable);
 			}
 		}
 	}
@@ -479,16 +584,27 @@ TEST_CASE("MLIR scalar certification observes region expressions before optimiza
 			                       });
 			                       return result;
 		                       }));
+		CacheScalarValidationPass scalar;
+		CacheScalarValidationPass::Result beforeOptimization;
 		std::size_t checks = 0, additionsBefore = 0;
 		auto ir = pipeline.compileToIR(
 		    functions, options.deriveModuleOptions(), nullptr, compiler::IROptimizationLevel::Full,
-		    [&](const IRGraph& graph) {
+		    [&](IRGraph& graph) {
 			    ++checks;
-			    std::string rejection;
-			    REQUIRE(compiler::hasOnlyCacheInvariantScalars(graph, &rejection) == (kind == "certified"));
+			    const auto before = graph.toString();
+			    REQUIRE_FALSE(scalar.apply(graph));
+			    beforeOptimization = scalar.getResult();
+			    const auto& rejection = scalar.getResult().rejection;
+			    REQUIRE(scalar.getResult().certified == (kind == "certified"));
 			    if (kind != "certified") {
 				    REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("uncertified_scalar"));
+			    } else {
+				    REQUIRE(rejection.empty());
 			    }
+			    REQUIRE_FALSE(scalar.apply(graph));
+			    REQUIRE(scalar.getResult().certified == beforeOptimization.certified);
+			    REQUIRE(scalar.getResult().rejection == beforeOptimization.rejection);
+			    REQUIRE(graph.toString() == before);
 			    const auto* function = graph.getFunctionOperation("execute");
 			    REQUIRE(function != nullptr);
 			    REQUIRE(function->getRegionSpecs().size() == 2);
@@ -510,6 +626,14 @@ TEST_CASE("MLIR scalar certification observes region expressions before optimiza
 			    REQUIRE(regionConstants >= 3);
 		    });
 		REQUIRE(checks == 1);
+		REQUIRE(scalar.getResult().certified == beforeOptimization.certified);
+		REQUIRE(scalar.getResult().rejection == beforeOptimization.rejection);
+		const auto afterOptimization = ir->toString();
+		PointerRelocatabilityPass pointer({"execute"});
+		REQUIRE_FALSE(pointer.apply(*ir));
+		REQUIRE(pointer.getResult().relocatable);
+		REQUIRE(pointer.getResult().rejection.empty());
+		REQUIRE(ir->toString() == afterOptimization);
 		std::size_t additionsAfter = 0, foldedConstants = 0;
 		for (const auto* block : ir->getFunctionOperation("execute")->getBasicBlocks()) {
 			for (const auto* operation : block->getOperations()) {
@@ -802,7 +926,9 @@ TEST_CASE("MLIR guarded cache checks operands present only in destructor metadat
 	REQUIRE(call->getDestructors().front().address == address);
 	REQUIRE(call->getInputs().empty());
 	REQUIRE(std::ranges::find(block->getOperations(), address) == block->getOperations().end());
-	REQUIRE(compiler::containsNonRelocatablePointer(graph, {"execute"}) == rejected);
+	PointerRelocatabilityPass pass({"execute"});
+	REQUIRE_FALSE(pass.apply(graph));
+	REQUIRE(pass.getResult().relocatable == !rejected);
 }
 
 TEST_CASE("RuntimeBindings validates cached MLIR declarations before the module manifest",

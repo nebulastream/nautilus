@@ -1075,6 +1075,76 @@ TEST_CASE("RuntimeBindings does not infer scalar certification from equal numeri
 	}
 }
 
+TEST_CASE("Cache safety analyses are mandatory independently of optimization scheduling",
+          "[runtime-bindings][cache][guard]") {
+	for (const std::string_view mode : {"passes disabled", "optimization disabled", "one iteration", "fixed point"}) {
+		for (const std::string_view kind : {"certified", "uncertified", "discarded uncertified", "legacy"}) {
+			CAPTURE(mode, kind);
+			BindingCacheDirectory cache;
+			auto options = bindingCacheOptions(cache.path(), "mandatory-cache-safety-v1/" + std::string(kind));
+			options.setOption("ir.runPasses", mode != "passes disabled");
+			options.setOption("ir.runOptimizationPasses", mode != "optimization disabled");
+			options.setOption("ir.maxPipelineIterations", mode == "one iteration" ? 1 : 8);
+			int traces = 0;
+			auto consume = +[](int64_t* state, int64_t increment) noexcept {
+				*state += increment;
+				return *state;
+			};
+			const bool certified = kind == "certified";
+			const bool published = certified || kind == "legacy";
+			for (int iteration = 0; iteration < 2; ++iteration) {
+				int64_t value = 11 + iteration;
+				RuntimeBindings bindings;
+				auto state = bindings.bind<int64_t>("state", &value);
+				NautilusEngine engine(options);
+				auto module = engine.createModule();
+				module.setRuntimeBindings(bindings);
+				module.registerFunction<val<int64_t>()>("execute", [=, &traces] {
+					++traces;
+					if (kind == "discarded uncertified") {
+						val<int64_t> unused(11);
+						(void) unused;
+					}
+					auto increment =
+					    kind == "uncertified" || kind == "legacy" ? val<int64_t>(7) : cacheLiteral<int64_t {7}>();
+					if (kind == "legacy") {
+						return static_cast<val<int64_t>>(*state.get()) + increment;
+					}
+					return invoke(consume, state.get(), increment);
+				});
+				const auto priorTraces = traces;
+				auto compiled = module.compile();
+				REQUIRE(value == 11 + iteration);
+				REQUIRE(compiled.getFunction<int64_t()>("execute")() == 18 + iteration);
+				REQUIRE(value == (kind == "legacy" ? 11 : 18) + iteration);
+				const bool hit = published && iteration == 1;
+				REQUIRE(bindingStat<int64_t>(compiled, "cache.tracingRan") == (hit ? 0 : 1));
+				REQUIRE((hit ? traces == priorTraces : traces > priorTraces));
+				if (!hit) {
+					REQUIRE(bindingStat<int64_t>(compiled, "cache.scalarCertificate") == (certified ? 1 : 0));
+					const auto rejection = bindingStat<std::string>(compiled, "cache.scalarRejection");
+					if (certified) {
+						REQUIRE(rejection.empty());
+					} else {
+						REQUIRE_THAT(rejection, Catch::Matchers::ContainsSubstring("uncertified_scalar"));
+					}
+				}
+				if (published) {
+					REQUIRE(bindingStat<std::string>(compiled, "cache.fallback") == "none");
+					REQUIRE(bindingStat<std::string>(compiled, "cache.object") == (hit ? "hit" : "written"));
+				} else {
+					REQUIRE(bindingStat<std::string>(compiled, "cache.fallback") == "non_relocatable_pointer");
+					REQUIRE_THAT(bindingStat<std::string>(compiled, "cache.rejection"),
+					             Catch::Matchers::ContainsSubstring("opaque_call"));
+					for (const auto* extension : {".o", ".mlirbc", ".manifest"}) {
+						REQUIRE(bindingArtifact(cache.path(), extension).empty());
+					}
+				}
+			}
+		}
+	}
+}
+
 TEST_CASE("RuntimeBindings keeps the guard for mixed certified data and encoded heap fragments",
           "[runtime-bindings][cache]") {
 	for (const bool foldConstants : {false, true}) {

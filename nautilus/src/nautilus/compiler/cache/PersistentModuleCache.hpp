@@ -3,8 +3,6 @@
 #include "nautilus/compiler/CompilationPipeline.hpp"
 #include <list>
 #include <memory>
-#include <string>
-#include <vector>
 
 namespace nautilus::engine {
 class ModuleOptions;
@@ -14,14 +12,6 @@ namespace nautilus::compiler {
 class CompilableFunction;
 class CompilationStatistics;
 class Executable;
-namespace ir {
-class IRGraph;
-}
-
-bool hasOnlyCacheInvariantScalars(const ir::IRGraph& graph, std::string* rejection = nullptr);
-
-bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<std::string>& exports,
-                                   std::string* rejection = nullptr);
 
 std::unique_ptr<Executable> compileWithPersistentModuleCache(const CompilationPipeline& compiler,
                                                              std::list<CompilableFunction>& functions,

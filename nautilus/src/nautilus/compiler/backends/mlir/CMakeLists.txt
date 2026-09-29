@@ -55,6 +55,7 @@ if (ENABLE_MLIR_BACKEND)
     add_source_files(nautilus
             MLIRLoweringProvider.cpp
             MLIRCompilationBackend.cpp
+            MLIRCacheValidation.cpp
             MLIRExecutable.cpp
             MLIRPassManager.cpp
             LLVMIROptimizer.cpp

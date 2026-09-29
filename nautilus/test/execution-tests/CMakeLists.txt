@@ -54,6 +54,7 @@ if (ENABLE_MLIR_BACKEND)
             PerfJitDumpExecutionTest.cpp
             backends/mlir/CompilationCacheTest.cpp
             backends/mlir/IntrinsicCacheFingerprintTest.cpp
+            backends/mlir/MLIRCacheValidationTest.cpp
             backends/mlir/RuntimeBindingValidationTest.cpp
             backends/mlir/RuntimeBindingBenchmark.cpp)
 endif ()
