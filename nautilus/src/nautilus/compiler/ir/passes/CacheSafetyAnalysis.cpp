@@ -1023,6 +1023,10 @@ bool containsNonRelocatablePointer(const ir::IRGraph& graph, const std::vector<s
 
 bool CacheScalarValidationPass::apply(IRGraph& ir) {
 	result = {};
+	if (!ir.hasRecordedConstantOrigins()) {
+		result.rejection = "constant_origins_not_recorded";
+		return false;
+	}
 	result.certified = hasOnlyCacheInvariantScalars(ir, &result.rejection);
 	return false;
 }

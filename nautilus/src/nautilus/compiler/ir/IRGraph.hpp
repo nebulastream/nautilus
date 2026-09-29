@@ -174,6 +174,14 @@ public:
 
 	[[nodiscard]] const CompilationUnitID& getId() const;
 
+	[[nodiscard]] bool hasRecordedConstantOrigins() const {
+		return constantOriginsRecorded;
+	}
+
+	void invalidateConstantOrigins() {
+		constantOriginsRecorded = false;
+	}
+
 	/// Returns the arena that backs every IR node in this graph.  Phases
 	/// that mint new nodes (e.g. TraceToIRConversionPhase) allocate through
 	/// this arena.
@@ -193,6 +201,7 @@ private:
 	/// Next region id to hand out; see nextRegionId().
 	uint32_t regionIdCounter = 0;
 	std::shared_ptr<const IRLocationMap> locationMap;
+	bool constantOriginsRecorded = true;
 };
 
 } // namespace nautilus::compiler::ir

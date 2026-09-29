@@ -1,12 +1,75 @@
+#include "nautilus/region.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
+#include "nautilus/val.hpp"
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
+#include <stdexcept>
 #include <vector>
 
 namespace nautilus::tracing {
+namespace {
+
+struct ExpectedConstant {
+	int64_t value;
+	ConstantOrigin origin;
+	RegionIndex regionIndex = NO_REGION;
+};
+
+void requireConstants(ExecutionTrace& trace, std::initializer_list<ExpectedConstant> expected) {
+	auto next = expected.begin();
+	for (const auto* block : trace.getBlocks()) {
+		for (const auto* operation : block->operations) {
+			if (operation->op != Op::CONST) {
+				REQUIRE(operation->constantOrigin == ConstantOrigin::Unspecified);
+				continue;
+			}
+			REQUIRE(next != expected.end());
+			CAPTURE(next->value, next->regionIndex);
+			REQUIRE(operation->resultType == Type::i64);
+			REQUIRE(operation->input.size() == 1);
+			REQUIRE(std::get<ConstantLiteral>(operation->input[0]) == ConstantLiteral {next->value});
+			REQUIRE(operation->constantOrigin ==
+			        (trace.recordsConstantOrigins() ? next->origin : ConstantOrigin::Unspecified));
+			REQUIRE(operation->regionIndex == next->regionIndex);
+			++next;
+		}
+	}
+	REQUIRE(next == expected.end());
+}
+
+} // namespace
+
+TEST_CASE("Constant origin recording is disabled by default", "[TraceContext][ExecutionTrace]") {
+	common::Arena arena;
+	{
+		ExecutionTrace trace(arena);
+		REQUIRE_FALSE(trace.recordsConstantOrigins());
+	}
+	arena.softReset();
+
+	std::function<void()> wrapper = [] {
+		val<int64_t> ordinary(11);
+		auto invariant = cacheInvariant(int64_t {7});
+		auto literal = cacheLiteral<int64_t {19}>();
+		val<int64_t> zero;
+		auto result = ordinary + invariant + literal + zero;
+		traceReturnOperation(Type::i64, result.state);
+	};
+	auto trace = TraceContext::trace(wrapper, engine::Options {}, arena);
+	REQUIRE(trace != nullptr);
+	REQUIRE_FALSE(inTracer());
+	REQUIRE_FALSE(trace->recordsConstantOrigins());
+	REQUIRE(trace->getBlocks().size() == 1);
+	requireConstants(*trace, {{11, ConstantOrigin::Unspecified},
+	                          {7, ConstantOrigin::CacheInvariant},
+	                          {19, ConstantOrigin::CacheInvariant},
+	                          {0, ConstantOrigin::CacheInvariant}});
+}
 
 TEST_CASE("ExecutionTrace result insertion resets reused origins and preserves metadata",
           "[TraceContext][ExecutionTrace]") {
@@ -21,7 +84,8 @@ TEST_CASE("ExecutionTrace result insertion resets reused origins and preserves m
 		const ConstantLiteral explicitLiteral {int64_t {7}};
 		std::array<TraceOperation*, 2> dirtyOperations {};
 		{
-			ExecutionTrace dirtyTrace(arena);
+			ExecutionTrace dirtyTrace(arena, ConstantOriginTracking::Enabled);
+			REQUIRE(dirtyTrace.recordsConstantOrigins());
 			const auto region = dirtyTrace.addRegion(RegionAttributes {.name = "dirty origin storage"}, 0);
 			dirtyTrace.setCurrentRegion(region);
 			dirtyTrace.addOperationWithResult(ordinarySnapshot, op, type, {ordinaryLiteral},
@@ -36,7 +100,8 @@ TEST_CASE("ExecutionTrace result insertion resets reused origins and preserves m
 		}
 		arena.softReset();
 
-		ExecutionTrace trace(arena);
+		ExecutionTrace trace(arena, ConstantOriginTracking::Enabled);
+		REQUIRE(trace.recordsConstantOrigins());
 		auto& ordinary = trace.addOperationWithResult(ordinarySnapshot, op, type, {ordinaryLiteral});
 		const auto region = trace.addRegion(RegionAttributes {.name = "explicit origin"}, 0);
 		REQUIRE(trace.setCurrentRegion(region) == NO_REGION);
@@ -81,12 +146,17 @@ TEST_CASE("ExecutionTrace result insertion resets reused origins and preserves m
 }
 
 TEST_CASE("TraceContext follows constants across reconciliation runs and jumps", "[TraceContext]") {
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	CAPTURE(tracking);
+	const auto recordedOrigin =
+	    tracking == ConstantOriginTracking::Enabled ? ConstantOrigin::CacheInvariant : ConstantOrigin::Unspecified;
 	for (const std::size_t reconciliationCount : {0, 1, 3}) {
 		for (const bool initialJump : {false, true}) {
 			for (const bool crossBlockJump : {false, true}) {
 				CAPTURE(reconciliationCount, initialJump, crossBlockJump);
 				common::Arena arena;
-				ExecutionTrace trace(arena);
+				ExecutionTrace trace(arena, tracking);
+				REQUIRE(trace.recordsConstantOrigins() == (tracking == ConstantOriginTracking::Enabled));
 				Tag primaryTag, nextTag, returnTag, initialJumpTag, crossBlockJumpTag;
 				Snapshot primarySnapshot(&primaryTag, 0), nextSnapshot(&nextTag, 0), returnSnapshot(&returnTag, 0);
 				Snapshot initialJumpSnapshot(&initialJumpTag, 0), crossBlockJumpSnapshot(&crossBlockJumpTag, 0);
@@ -100,8 +170,8 @@ TEST_CASE("TraceContext follows constants across reconciliation runs and jumps",
 				auto type = Type::i64;
 				const ConstantLiteral primaryLiteral {int64_t {7}};
 				const ConstantLiteral nextLiteral {int64_t {19}};
-				auto& original = trace.addOperationWithResult(primarySnapshot, op, type, {primaryLiteral},
-				                                              ConstantOrigin::CacheInvariant);
+				auto& original =
+				    trace.addOperationWithResult(primarySnapshot, op, type, {primaryLiteral}, recordedOrigin);
 				auto* primaryOperation = trace.getCurrentBlock().operations.back();
 				const auto appendReconciliations = [&](std::size_t count) {
 					for (std::size_t index = 0; index < count; ++index) {
@@ -118,8 +188,7 @@ TEST_CASE("TraceContext follows constants across reconciliation runs and jumps",
 					trace.setCurrentBlock(successor);
 				}
 				appendReconciliations(reconciliationCount - beforeJump);
-				auto& next =
-				    trace.addOperationWithResult(nextSnapshot, op, type, {nextLiteral}, ConstantOrigin::CacheInvariant);
+				auto& next = trace.addOperationWithResult(nextSnapshot, op, type, {nextLiteral}, recordedOrigin);
 				auto* nextOperation = trace.getCurrentBlock().operations.back();
 				const auto nextBlock = trace.getCurrentBlockIndex();
 				const auto nextIndex = trace.currentOperationIndex;
@@ -152,14 +221,14 @@ TEST_CASE("TraceContext follows constants across reconciliation runs and jumps",
 						REQUIRE(&followed == &original);
 						REQUIRE(followed.type == type);
 						REQUIRE(primaryOperation->constantOrigin ==
-						        (replay == 0 ? ConstantOrigin::CacheInvariant : ConstantOrigin::Unspecified));
+						        (replay == 0 ? recordedOrigin : ConstantOrigin::Unspecified));
 						REQUIRE(trace.getCurrentBlockIndex() == nextBlock);
 						REQUIRE(trace.currentOperationIndex == nextIndex);
 						REQUIRE(&trace.getCurrentOperation() == nextOperation);
 						auto& followedNext = traceConstant(type, nextLiteral, ConstantOrigin::CacheInvariant);
 						REQUIRE(&followedNext == &next);
 						REQUIRE(followedNext.type == type);
-						REQUIRE(nextOperation->constantOrigin == ConstantOrigin::CacheInvariant);
+						REQUIRE(nextOperation->constantOrigin == recordedOrigin);
 						REQUIRE(trace.getCurrentBlockIndex() == nextBlock);
 						REQUIRE(trace.currentOperationIndex == nextIndex + 1);
 						REQUIRE(&trace.getCurrentOperation() == returnOperation);
@@ -167,6 +236,12 @@ TEST_CASE("TraceContext follows constants across reconciliation runs and jumps",
 					}
 				}
 				REQUIRE_FALSE(inTracer());
+				for (const auto* block : trace.getBlocks()) {
+					for (const auto* operation : block->operations) {
+						REQUIRE(operation->constantOrigin ==
+						        (operation == nextOperation ? recordedOrigin : ConstantOrigin::Unspecified));
+					}
+				}
 			}
 		}
 	}
@@ -174,6 +249,8 @@ TEST_CASE("TraceContext follows constants across reconciliation runs and jumps",
 
 TEST_CASE("TraceContext RECORD collisions reconcile constant origins and preserve the canonical result",
           "[TraceContext]") {
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	CAPTURE(tracking);
 	for (const auto firstOrigin : {ConstantOrigin::Unspecified, ConstantOrigin::CacheInvariant}) {
 		for (const auto secondOrigin : {ConstantOrigin::Unspecified, ConstantOrigin::CacheInvariant}) {
 			CAPTURE(firstOrigin, secondOrigin);
@@ -192,8 +269,9 @@ TEST_CASE("TraceContext RECORD collisions reconcile constant origins and preserv
 				traceReturnOperation(Type::i64, *results.back());
 			};
 			common::Arena arena;
-			auto trace = TraceContext::trace(wrapper, engine::Options {}, arena);
+			auto trace = TraceContext::trace(wrapper, engine::Options {}, arena, tracking);
 			REQUIRE(trace != nullptr);
+			REQUIRE(trace->recordsConstantOrigins() == (tracking == ConstantOriginTracking::Enabled));
 			REQUIRE_FALSE(inTracer());
 			REQUIRE(trueVisits == 1);
 			REQUIRE(falseVisits == 1);
@@ -203,6 +281,7 @@ TEST_CASE("TraceContext RECORD collisions reconcile constant origins and preserv
 			REQUIRE(trace->getBlock(0).operations.size() == 1);
 			const auto* branch = trace->getBlock(0).operations[0];
 			REQUIRE(branch->op == Op::CMP);
+			REQUIRE(branch->constantOrigin == ConstantOrigin::Unspecified);
 			const auto firstBlock = std::get<BlockRef*>(branch->input[1])->block;
 			const auto secondBlock = std::get<BlockRef*>(branch->input[2])->block;
 			REQUIRE(firstBlock != secondBlock);
@@ -227,7 +306,8 @@ TEST_CASE("TraceContext RECORD collisions reconcile constant origins and preserv
 			REQUIRE(collision->resultRef != original->resultRef);
 			REQUIRE(reconciliation->resultRef == original->resultRef);
 			REQUIRE(std::get<TypedValueRef>(reconciliation->input[0]) == collision->resultRef);
-			const auto expectedOrigin = firstOrigin == ConstantOrigin::CacheInvariant && firstOrigin == secondOrigin
+			const bool bothInvariant = firstOrigin == ConstantOrigin::CacheInvariant && firstOrigin == secondOrigin;
+			const auto expectedOrigin = tracking == ConstantOriginTracking::Enabled && bothInvariant
 			                                ? ConstantOrigin::CacheInvariant
 			                                : ConstantOrigin::Unspecified;
 			REQUIRE(original->constantOrigin == expectedOrigin);
@@ -237,10 +317,85 @@ TEST_CASE("TraceContext RECORD collisions reconcile constant origins and preserv
 			REQUIRE(trace->globalTagMap.at(original->tag).operationIndex == 1);
 			REQUIRE(firstOperations[1]->op == Op::RETURN);
 			REQUIRE(secondOperations[2]->op == Op::RETURN);
+			REQUIRE(firstOperations[1]->constantOrigin == ConstantOrigin::Unspecified);
+			REQUIRE(secondOperations[2]->constantOrigin == ConstantOrigin::Unspecified);
 			REQUIRE(std::get<TypedValueRef>(firstOperations[1]->input[0]) == original->resultRef);
 			REQUIRE(std::get<TypedValueRef>(secondOperations[2]->input[0]) == original->resultRef);
 		}
 	}
+}
+
+TEST_CASE("TraceContext resets origin recording across nested regions and exception recovery", "[TraceContext]") {
+	const bool reuseArena = GENERATE(false, true);
+	const bool throwBeforeTrace = GENERATE(false, true);
+	CAPTURE(reuseArena, throwBeforeTrace);
+	bool failInRegion = false;
+	std::size_t failures = 0;
+	std::function<void()> wrapper = [&] {
+		val<int64_t> result(11);
+		auto invariant = cacheInvariant(int64_t {7});
+		result = result + invariant;
+		region("outer", [&] {
+			auto outerInvariant = cacheLiteral<int64_t {13}>();
+			val<int64_t> outerOrdinary(17);
+			result = result + outerInvariant + outerOrdinary;
+			region("inner", [&] {
+				auto innerInvariant = cacheInvariant(int64_t {19});
+				val<int64_t> innerOrdinary(23);
+				result = result + innerInvariant + innerOrdinary;
+				if (failInRegion) {
+					++failures;
+					throw std::runtime_error("constant origin recovery");
+				}
+			});
+			result = result + cacheLiteral<int64_t {29}>();
+		});
+		result = result + cacheInvariant(int64_t {31});
+		traceReturnOperation(Type::i64, result.state);
+	};
+	common::Arena reusedArena;
+	const Block* previousBlock = nullptr;
+	constexpr std::array modes {ConstantOriginTracking::Enabled, ConstantOriginTracking::Disabled,
+	                            ConstantOriginTracking::Enabled};
+	for (const auto tracking : modes) {
+		CAPTURE(tracking);
+		common::Arena freshArena;
+		auto& arena = reuseArena ? reusedArena : freshArena;
+		if (throwBeforeTrace) {
+			failInRegion = true;
+			const auto failingTracking = tracking == ConstantOriginTracking::Enabled ? ConstantOriginTracking::Disabled
+			                                                                         : ConstantOriginTracking::Enabled;
+			REQUIRE_THROWS_AS(TraceContext::trace(wrapper, engine::Options {}, arena, failingTracking),
+			                  std::runtime_error);
+			REQUIRE_FALSE(inTracer());
+			arena.softReset();
+			failInRegion = false;
+		}
+		auto trace = TraceContext::trace(wrapper, engine::Options {}, arena, tracking);
+		REQUIRE(trace != nullptr);
+		REQUIRE_FALSE(inTracer());
+		REQUIRE(trace->recordsConstantOrigins() == (tracking == ConstantOriginTracking::Enabled));
+		REQUIRE(&trace->getArena() == &arena);
+		REQUIRE(trace->getBlocks().size() == 1);
+		REQUIRE(trace->getRegions().size() == 2);
+		REQUIRE(trace->getRegions()[0].parent == NO_REGION);
+		REQUIRE(trace->getRegions()[1].parent == 0);
+		requireConstants(*trace, {{11, ConstantOrigin::Unspecified},
+		                          {7, ConstantOrigin::CacheInvariant},
+		                          {13, ConstantOrigin::CacheInvariant, 0},
+		                          {17, ConstantOrigin::Unspecified, 0},
+		                          {19, ConstantOrigin::CacheInvariant, 1},
+		                          {23, ConstantOrigin::Unspecified, 1},
+		                          {29, ConstantOrigin::CacheInvariant, 0},
+		                          {31, ConstantOrigin::CacheInvariant}});
+		if (reuseArena && previousBlock != nullptr) {
+			REQUIRE(&trace->getBlock(0) == previousBlock);
+		}
+		previousBlock = &trace->getBlock(0);
+		trace.reset();
+		arena.softReset();
+	}
+	REQUIRE(failures == (throwBeforeTrace ? modes.size() : 0));
 }
 
 } // namespace nautilus::tracing

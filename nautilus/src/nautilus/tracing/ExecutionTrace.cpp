@@ -9,11 +9,12 @@
 
 namespace nautilus::tracing {
 
-ExecutionTrace& TraceModule::addNewFunction(std::string_view functionName, Arena& arena) {
+ExecutionTrace& TraceModule::addNewFunction(std::string_view functionName, Arena& arena,
+                                            ConstantOriginTracking tracking) {
 	auto key = std::string(functionName);
 	auto& def = functions[key];
 	def.name = key;
-	def.trace = std::make_unique<ExecutionTrace>(arena);
+	def.trace = std::make_unique<ExecutionTrace>(arena, tracking);
 	return *def.trace;
 }
 
@@ -106,7 +107,8 @@ std::vector<std::string> TraceModule::getFunctionNames() const {
 	return names;
 }
 
-ExecutionTrace::ExecutionTrace(Arena& arena) : arena(&arena), currentBlockIndex(0), currentOperationIndex(0), blocks() {
+ExecutionTrace::ExecutionTrace(Arena& arena, ConstantOriginTracking tracking)
+    : arena(&arena), currentBlockIndex(0), currentOperationIndex(0), blocks(), constantOriginTracking(tracking) {
 	// A typical short trace has only a handful of blocks; reserving a small
 	// initial capacity eliminates the first few reallocations of the pointer
 	// vector in the tracing hot path.

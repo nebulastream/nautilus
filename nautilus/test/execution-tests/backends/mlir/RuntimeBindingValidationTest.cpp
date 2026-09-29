@@ -26,8 +26,13 @@
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/passes/CacheSafetyAnalysis.hpp"
+#include "nautilus/nautilus_function.hpp"
 #include "nautilus/region.hpp"
 #include "nautilus/select.hpp"
+#include "nautilus/tracing/TraceContext.hpp"
+#include "nautilus/tracing/phases/SSACreationPhase.hpp"
+#include "nautilus/tracing/phases/SSAVerifier.hpp"
+#include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/val_std.hpp"
 #include <algorithm>
 #include <array>
@@ -136,6 +141,25 @@ compiler::ir::FunctionOperation* scalarCertificateFunction(compiler::ir::IRGraph
 	return function;
 }
 
+void addIdentityTrace(tracing::ExecutionTrace& trace) {
+	const auto argument = trace.setArgument(Type::i64, 0);
+	tracing::Snapshot snapshot;
+	trace.addReturn(snapshot, argument.type, argument);
+	REQUIRE(tracing::VerifySSA(trace).valid);
+}
+
+void requireIdentityFunction(const compiler::ir::FunctionOperation* function) {
+	REQUIRE(function != nullptr);
+	REQUIRE(function->getOutputArg() == Type::i64);
+	REQUIRE(function->getBasicBlocks().size() == 1);
+	const auto* block = function->getBasicBlocks().front();
+	REQUIRE(block->getArguments().size() == 1);
+	REQUIRE(block->getOperations().size() == 1);
+	const auto* returned = block->getOperations().front()->dynCast<compiler::ir::ReturnOperation>();
+	REQUIRE(returned != nullptr);
+	REQUIRE(returned->getReturnValue() == block->getArguments().front());
+}
+
 } // namespace
 
 TEST_CASE("Cache safety analysis passes preserve graphs and reset independent results",
@@ -143,6 +167,7 @@ TEST_CASE("Cache safety analysis passes preserve graphs and reset independent re
 	using namespace compiler::ir;
 	IRGraph accepted("cache-analysis-accepted"), rejected("cache-analysis-rejected");
 	for (auto* graph : {&accepted, &rejected}) {
+		REQUIRE(graph->hasRecordedConstantOrigins());
 		auto& arena = graph->getArena();
 		auto* argument = arena.create<BasicBlockArgument>(OperationIdentifier(0), Type::ui64);
 		auto* block = arena.create<BasicBlock>(arena, BlockIdentifier(0), std::vector<BasicBlockArgument*> {argument});
@@ -229,6 +254,309 @@ TEST_CASE("Cache safety analysis passes preserve graphs and reset independent re
 	REQUIRE(scalarPass.getName() == "cacheScalarValidation");
 	REQUIRE(pointerPass.getName() == "pointerRelocatability");
 	requireUnchanged();
+	for (int invalidation = 0; invalidation < 2; ++invalidation) {
+		accepted.invalidateConstantOrigins();
+		REQUIRE_FALSE(accepted.hasRecordedConstantOrigins());
+		REQUIRE_FALSE(scalarPass.apply(accepted));
+		REQUIRE_FALSE(scalar.getResult().certified);
+		REQUIRE(scalar.getResult().rejection == "constant_origins_not_recorded");
+		REQUIRE_FALSE(pointerPass.apply(accepted));
+		REQUIRE(pointer.getResult().relocatable);
+		REQUIRE(pointer.getResult().rejection.empty());
+		requireUnchanged();
+	}
+	REQUIRE(rejected.hasRecordedConstantOrigins());
+}
+
+TEST_CASE("Trace conversion preserves constant origin availability in every overload",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	for (const std::string_view entryPoint : {"single", "module", "module context"}) {
+		for (const bool pooled : {false, true}) {
+			common::ArenaPool irArenaPool;
+			CacheScalarValidationPass scalar;
+			for (const auto tracking :
+			     {ConstantOriginTracking::Enabled, ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled}) {
+				CAPTURE(entryPoint, pooled, tracking);
+				const bool enabled = tracking == ConstantOriginTracking::Enabled;
+				common::Arena traceArena;
+				Options options;
+				auto wrapper = details::createFunctionWrapper([](val<int64_t> input) { return input; });
+				tracing::SSACreationPhase ssa;
+				tracing::TraceToIRConversionPhase conversion;
+				std::shared_ptr<IRGraph> ir;
+				if (entryPoint == "single") {
+					std::shared_ptr<tracing::ExecutionTrace> trace =
+					    enabled ? tracing::TraceContext::trace(wrapper, options, traceArena, tracking)
+					            : tracing::TraceContext::trace(wrapper, options, traceArena);
+					REQUIRE(trace->recordsConstantOrigins() == enabled);
+					trace = ssa.apply(std::move(trace));
+					REQUIRE(trace->recordsConstantOrigins() == enabled);
+					REQUIRE(tracing::VerifySSA(*trace).valid);
+					ir = pooled ? conversion.apply(trace, irArenaPool) : conversion.apply(trace);
+				} else {
+					std::list<compiler::CompilableFunction> functions;
+					functions.emplace_back("execute", wrapper);
+					std::shared_ptr<tracing::TraceModule> module;
+					if (entryPoint == "module context") {
+						tracing::TraceContext context;
+						module = enabled ? context.startTrace(functions, options, traceArena, tracking)
+						                 : context.startTrace(functions, options, traceArena);
+					} else {
+						module = enabled ? tracing::TraceContext::Trace(functions, options, traceArena, tracking)
+						                 : tracing::TraceContext::Trace(functions, options, traceArena);
+					}
+					REQUIRE(module->getFunction("execute")->recordsConstantOrigins() == enabled);
+					module = ssa.apply(std::move(module));
+					REQUIRE(module->getFunction("execute")->recordsConstantOrigins() == enabled);
+					REQUIRE(tracing::VerifySSA(*module->getFunction("execute")).valid);
+					ir = pooled ? conversion.apply(module, irArenaPool) : conversion.apply(module);
+				}
+				REQUIRE_FALSE(tracing::inTracer());
+				REQUIRE(ir->getFunctionOperations().size() == 1);
+				requireIdentityFunction(ir->getFunctionOperation("execute"));
+				const auto before = ir->toString();
+				REQUIRE(ir->hasRecordedConstantOrigins() == enabled);
+				REQUIRE_FALSE(scalar.apply(*ir));
+				REQUIRE(scalar.getResult().certified == enabled);
+				REQUIRE(scalar.getResult().rejection == (enabled ? "" : "constant_origins_not_recorded"));
+				REQUIRE(ir->toString() == before);
+				REQUIRE(ir->hasRecordedConstantOrigins() == enabled);
+			}
+		}
+	}
+}
+
+TEST_CASE("Mixed trace modules cannot certify an uncalled untracked constant-free function",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	for (const std::string unusedName : {"aaa_unused", "zzz_unused"}) {
+		for (const bool pooled : {false, true}) {
+			CAPTURE(unusedName, pooled);
+			common::Arena traceArena;
+			common::ArenaPool irArenaPool;
+			auto module = std::make_shared<tracing::TraceModule>();
+			auto& entry = module->addNewFunction("execute", traceArena, ConstantOriginTracking::Enabled);
+			auto& unused = module->addNewFunction(unusedName, traceArena);
+			addIdentityTrace(entry);
+			addIdentityTrace(unused);
+			REQUIRE(entry.recordsConstantOrigins());
+			REQUIRE_FALSE(unused.recordsConstantOrigins());
+			const auto names = module->getFunctionNames();
+			REQUIRE(names.size() == 2);
+			REQUIRE(names.front() == (unusedName == "aaa_unused" ? unusedName : "execute"));
+			tracing::TraceToIRConversionPhase conversion;
+			auto ir = pooled ? conversion.apply(module, irArenaPool) : conversion.apply(module);
+			REQUIRE(ir->getFunctionOperations().size() == 2);
+			requireIdentityFunction(ir->getFunctionOperation("execute"));
+			requireIdentityFunction(ir->getFunctionOperation(unusedName));
+			REQUIRE_FALSE(ir->hasRecordedConstantOrigins());
+			const auto before = ir->toString();
+			CacheScalarValidationPass scalar;
+			REQUIRE_FALSE(scalar.apply(*ir));
+			REQUIRE_FALSE(scalar.getResult().certified);
+			REQUIRE(scalar.getResult().rejection == "constant_origins_not_recorded");
+			PointerRelocatabilityPass pointer({"execute"});
+			REQUIRE_FALSE(pointer.apply(*ir));
+			REQUIRE(pointer.getResult().relocatable);
+			REQUIRE(pointer.getResult().rejection.empty());
+			REQUIRE(ir->toString() == before);
+			REQUIRE_FALSE(ir->hasRecordedConstantOrigins());
+		}
+	}
+}
+
+TEST_CASE("Default compilation cannot certify constant-free or optimized-away scalar origins",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	for (const bool discardedConstants : {false, true}) {
+		CAPTURE(discardedConstants);
+		Options options;
+		options.setOption("ir.runOptimizationPasses", true);
+		common::ArenaPool traceArenaPool, irArenaPool;
+		compiler::CompilationPipeline pipeline(options, traceArenaPool, irArenaPool);
+		std::list<compiler::CompilableFunction> functions;
+		functions.emplace_back("execute", details::createFunctionWrapper([discardedConstants](val<int64_t> input) {
+			                       if (discardedConstants) {
+				                       return select(cacheLiteral<true>(), input, val<int64_t>(7));
+			                       }
+			                       return input;
+		                       }));
+		CacheScalarValidationPass scalar;
+		std::size_t checks = 0;
+		auto ir =
+		    pipeline.compileToIR(functions, options.deriveModuleOptions(), nullptr, compiler::IROptimizationLevel::Full,
+		                         [&](IRGraph& graph) {
+			                         ++checks;
+			                         REQUIRE_FALSE(graph.hasRecordedConstantOrigins());
+			                         const auto before = graph.toString();
+			                         REQUIRE_FALSE(scalar.apply(graph));
+			                         REQUIRE_FALSE(scalar.getResult().certified);
+			                         REQUIRE(scalar.getResult().rejection == "constant_origins_not_recorded");
+			                         REQUIRE(graph.toString() == before);
+			                         std::size_t constants = 0;
+			                         for (const auto* block : graph.getFunctionOperation("execute")->getBasicBlocks()) {
+				                         for (const auto* operation : block->getOperations()) {
+					                         constants += operation->isConstOperation();
+				                         }
+			                         }
+			                         REQUIRE(constants == (discardedConstants ? 2 : 0));
+		                         });
+		REQUIRE(checks == 1);
+		requireIdentityFunction(ir->getFunctionOperation("execute"));
+		REQUIRE_FALSE(ir->hasRecordedConstantOrigins());
+		const auto before = ir->toString();
+		REQUIRE_FALSE(scalar.apply(*ir));
+		REQUIRE_FALSE(scalar.getResult().certified);
+		REQUIRE(scalar.getResult().rejection == "constant_origins_not_recorded");
+		REQUIRE(ir->toString() == before);
+	}
+}
+
+TEST_CASE("Constant origin tracking reaches every function and nested region independently of IR scheduling",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	for (const std::string_view scheduling : {"full", "argument pruning", "none", "passes disabled",
+	                                          "optimization disabled", "individual passes disabled"}) {
+		for (const auto tracking : {ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled}) {
+			CAPTURE(scheduling, tracking);
+			const bool enabled = tracking == ConstantOriginTracking::Enabled;
+			Options options;
+			options.setOption("ir.runPasses", scheduling != "passes disabled");
+			if (scheduling == "optimization disabled") {
+				options.setOption("ir.runOptimizationPasses", false);
+			}
+			if (scheduling == "individual passes disabled") {
+				for (const auto* option : {"ir.disableConstantFolding", "ir.disableAlgebraicSimplification",
+				                           "ir.disableConstantBranchFolding", "ir.disableEmptyBlockElimination",
+				                           "ir.disableBlockMerging", "ir.disableDeadCodeElimination",
+				                           "ir.disableBlockArgumentPruning", "ir.disableAttributeInference"}) {
+					options.setOption(option, true);
+				}
+				for (const auto* option : {"ir.enableLocalCSE", "ir.enableStrengthReduction", "ir.enableLICM"}) {
+					options.setOption(option, false);
+				}
+			}
+			const auto optimization = scheduling == "none" ? compiler::IROptimizationLevel::None
+			                          : scheduling == "argument pruning"
+			                              ? compiler::IROptimizationLevel::ArgumentPruning
+			                              : compiler::IROptimizationLevel::Full;
+			NautilusFunction inner {"origin_inner", [](val<int64_t> input) {
+				                        val<int64_t> result = input;
+				                        region("outer origins", [&] {
+					                        result = result + cacheLiteral<int64_t {7}>();
+					                        region("inner origins",
+					                               [&] { result = result + cacheLiteral<int64_t {11}>(); });
+				                        });
+				                        return result;
+			                        }};
+			NautilusFunction middle {
+			    "origin_middle", [&inner](val<int64_t> input) { return inner(input + cacheLiteral<int64_t {13}>()); }};
+			std::list<compiler::CompilableFunction> functions;
+			functions.emplace_back("execute", details::createFunctionWrapper([&middle](val<int64_t> input) {
+				                       return middle(input + cacheLiteral<int64_t {17}>());
+			                       }));
+			functions.emplace_back("unused_export", details::createFunctionWrapper([](val<int64_t> input) {
+				                       return input + cacheLiteral<int64_t {19}>();
+			                       }));
+			common::ArenaPool traceArenaPool, irArenaPool;
+			compiler::CompilationPipeline pipeline(options, traceArenaPool, irArenaPool);
+			CacheScalarValidationPass scalar;
+			std::size_t checks = 0;
+			const auto beforeOptimization = [&](IRGraph& graph) {
+				++checks;
+				REQUIRE(graph.hasRecordedConstantOrigins() == enabled);
+				REQUIRE(graph.getFunctionOperations().size() == 4);
+				const auto before = graph.toString();
+				REQUIRE_FALSE(scalar.apply(graph));
+				REQUIRE(scalar.getResult().certified == enabled);
+				REQUIRE(scalar.getResult().rejection == (enabled ? "" : "constant_origins_not_recorded"));
+				REQUIRE(graph.toString() == before);
+				for (const auto* name : {"execute", "unused_export", "origin_middle", "origin_inner"}) {
+					CAPTURE(name);
+					const auto* function = graph.getFunctionOperation(name);
+					REQUIRE(function != nullptr);
+					std::size_t constants = 0, regionConstants = 0;
+					for (const auto* block : function->getBasicBlocks()) {
+						for (const auto* operation : block->getOperations()) {
+							if (const auto* constant = operation->dynCast<ConstIntOperation>()) {
+								++constants;
+								regionConstants += constant->getRegionIndex() != NO_REGION;
+								REQUIRE(constant->getConstantOrigin() ==
+								        (enabled ? ConstantOrigin::CacheInvariant : ConstantOrigin::Unspecified));
+							}
+						}
+					}
+					const bool nested = function->getName() == "origin_inner";
+					REQUIRE(constants == (nested ? 2 : 1));
+					REQUIRE(regionConstants == (nested ? 2 : 0));
+					if (nested) {
+						const auto& regions = function->getRegionSpecs();
+						REQUIRE(regions.size() == 2);
+						REQUIRE(regions[0].parent == NO_REGION);
+						REQUIRE(regions[1].parent == 0);
+					}
+				}
+			};
+			auto ir = enabled ? pipeline.compileToIR(functions, options.deriveModuleOptions(), nullptr, optimization,
+			                                         beforeOptimization, tracking)
+			                  : pipeline.compileToIR(functions, options.deriveModuleOptions(), nullptr, optimization,
+			                                         beforeOptimization);
+			REQUIRE(checks == 1);
+			REQUIRE(ir->hasRecordedConstantOrigins() == enabled);
+			REQUIRE(ir->getFunctionOperations().size() == 4);
+			REQUIRE(scalar.getResult().certified == enabled);
+			REQUIRE(scalar.getResult().rejection == (enabled ? "" : "constant_origins_not_recorded"));
+		}
+	}
+}
+
+TEST_CASE("Legacy pointer analysis still accepts runtime addresses and rejects embedded addresses without origins",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	auto storage = std::make_unique<int64_t>(42);
+	for (const std::string_view kind : {"runtime", "null", "raw heap", "integer encoded"}) {
+		CAPTURE(kind);
+		Options options;
+		options.setOption("ir.runPasses", false);
+		common::ArenaPool traceArenaPool, irArenaPool;
+		compiler::CompilationPipeline pipeline(options, traceArenaPool, irArenaPool);
+		std::list<compiler::CompilableFunction> functions;
+		functions.emplace_back("execute", details::createFunctionWrapper(
+		                                      [kind, pointer = storage.get()](val<uintptr_t> address) -> val<int64_t*> {
+			                                      if (kind == "raw heap") {
+				                                      return val<int64_t*>(pointer);
+			                                      }
+			                                      if (kind == "null") {
+				                                      return val<int64_t*>(nullptr);
+			                                      }
+			                                      if (kind == "integer encoded") {
+				                                      address = val<uintptr_t>(reinterpret_cast<uintptr_t>(pointer));
+			                                      }
+			                                      val<int64_t*> result = address;
+			                                      return result;
+		                                      }));
+		auto ir = pipeline.compileToIR(functions, options.deriveModuleOptions());
+		REQUIRE_FALSE(ir->hasRecordedConstantOrigins());
+		const auto before = ir->toString();
+		CacheScalarValidationPass scalar;
+		REQUIRE_FALSE(scalar.apply(*ir));
+		REQUIRE_FALSE(scalar.getResult().certified);
+		REQUIRE(scalar.getResult().rejection == "constant_origins_not_recorded");
+		PointerRelocatabilityPass pointer({"execute"});
+		REQUIRE_FALSE(pointer.apply(*ir));
+		const bool relocatable = kind == "runtime" || kind == "null";
+		REQUIRE(pointer.getResult().relocatable == relocatable);
+		if (relocatable) {
+			REQUIRE(pointer.getResult().rejection.empty());
+		} else {
+			REQUIRE_THAT(pointer.getResult().rejection,
+			             Catch::Matchers::ContainsSubstring(kind == "raw heap" ? "embedded_non_null_pointer"
+			                                                                   : "pointer_expression"));
+		}
+		REQUIRE(ir->toString() == before);
+		REQUIRE_FALSE(ir->hasRecordedConstantOrigins());
+	}
 }
 
 TEST_CASE("MLIR scalar certification checks every scalar leaf and rejects unsupported operands",
@@ -591,6 +919,7 @@ TEST_CASE("MLIR scalar certification observes region expressions before optimiza
 		    functions, options.deriveModuleOptions(), nullptr, compiler::IROptimizationLevel::Full,
 		    [&](IRGraph& graph) {
 			    ++checks;
+			    REQUIRE(graph.hasRecordedConstantOrigins());
 			    const auto before = graph.toString();
 			    REQUIRE_FALSE(scalar.apply(graph));
 			    beforeOptimization = scalar.getResult();
@@ -624,8 +953,10 @@ TEST_CASE("MLIR scalar certification observes region expressions before optimiza
 				    }
 			    }
 			    REQUIRE(regionConstants >= 3);
-		    });
+		    },
+		    ConstantOriginTracking::Enabled);
 		REQUIRE(checks == 1);
+		REQUIRE(ir->hasRecordedConstantOrigins());
 		REQUIRE(scalar.getResult().certified == beforeOptimization.certified);
 		REQUIRE(scalar.getResult().rejection == beforeOptimization.rejection);
 		const auto afterOptimization = ir->toString();

@@ -30,7 +30,8 @@ static thread_local TraceContext traceContext;
 TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
     : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts),
       normalizeFunctionNames(opts.getOptionOrDefault("engine.normalizeFunctionNames", false)),
-      recordCopySites(opts.getOptionOrDefault("dump.copySites", false)) {
+      recordCopySites(opts.getOptionOrDefault("dump.copySites", false)),
+      recordConstantOrigins(et.recordsConstantOrigins()) {
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
 	// The val<T> layer asks for this on every pointer offset, so it is kept in a thread-local, not looked up here.
 	setFoldStaticConstants(opts.getOptionOrDefault("engine.foldStaticConstants", true));
@@ -151,7 +152,7 @@ TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& con
 	auto op = Op::CONST;
 	if (isFollowing()) {
 		auto& currentOperation = state->executionTrace.getCurrentOperation();
-		if (currentOperation.constantOrigin != origin) {
+		if (state->recordConstantOrigins && currentOperation.constantOrigin != origin) {
 			currentOperation.constantOrigin = ConstantOrigin::Unspecified;
 		}
 		return follow(op, currentOperation);
@@ -161,15 +162,19 @@ TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& con
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
 		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
-		if (originalRef->op == op && originalRef->constantOrigin != origin) {
+		if (state->recordConstantOrigins && originalRef->op == op && originalRef->constantOrigin != origin) {
 			originalRef->constantOrigin = ConstantOrigin::Unspecified;
 			origin = ConstantOrigin::Unspecified;
 		}
-		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue}, origin);
+		auto resultRef = state->recordConstantOrigins
+		                     ? state->executionTrace.addOperationWithResult(tag, op, type, {constValue}, origin)
+		                     : state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
 		return originalRef->resultRef;
 	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue}, origin);
+		return state->recordConstantOrigins
+		           ? state->executionTrace.addOperationWithResult(tag, op, type, {constValue}, origin)
+		           : state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 	}
 }
 
@@ -797,14 +802,15 @@ void TraceContext::traceRegion(std::function<void()>& regionFunction, const Regi
 }
 
 std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction,
-                                                    const engine::Options& options, Arena& arena) {
+                                                    const engine::Options& options, Arena& arena,
+                                                    ConstantOriginTracking tracking) {
 	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress, arena);
 
 	// The ExecutionTrace borrows the caller-provided arena for all
 	// allocations; the arena must outlive the returned trace.
-	auto executionTrace = std::make_unique<ExecutionTrace>(arena);
+	auto executionTrace = std::make_unique<ExecutionTrace>(arena, tracking);
 	SymbolicExecutionContext symbolicExecutionContext;
 
 	// Initialize TraceContext with references to our objects
@@ -837,12 +843,14 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 }
 
 std::unique_ptr<TraceModule> TraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
-                                                 const engine::Options& options, Arena& arena) {
-	return traceContext.startTrace(functions, options, arena);
+                                                 const engine::Options& options, Arena& arena,
+                                                 ConstantOriginTracking tracking) {
+	return traceContext.startTrace(functions, options, arena, tracking);
 }
 
 std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
-                                                      const engine::Options& options, Arena& arena) {
+                                                      const engine::Options& options, Arena& arena,
+                                                      ConstantOriginTracking tracking) {
 	log::debug("Initialize Tracing");
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
@@ -868,7 +876,7 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 			continue;
 		}
 
-		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena);
+		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena, tracking);
 		// Tag the first popped function as the entry point. Everything else in
 		// the queue was `invoke`d by some other traced function; that alone
 		// cannot tell us host-vs-device side (a plain NautilusFunction may be

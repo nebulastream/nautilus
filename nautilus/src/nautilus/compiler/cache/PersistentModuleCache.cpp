@@ -828,8 +828,9 @@ std::unique_ptr<Executable> compileWithPersistentModuleCache(const CompilationPi
 	}
 
 	ir::CacheScalarValidationPass scalarValidation;
-	auto ir = compiler.compileToIR(functions, moduleOptions, statistics, compiler.irOptimizationLevel({"mlir"}),
-	                               [&](ir::IRGraph& graph) { scalarValidation.apply(graph); });
+	auto ir = compiler.compileToIR(
+	    functions, moduleOptions, statistics, compiler.irOptimizationLevel({"mlir"}),
+	    [&](ir::IRGraph& graph) { scalarValidation.apply(graph); }, ConstantOriginTracking::Enabled);
 	const auto& scalarResult = scalarValidation.getResult();
 	if (statistics != nullptr) {
 		statistics->set("cache.scalarCertificate", int64_t {scalarResult.certified ? 1 : 0});

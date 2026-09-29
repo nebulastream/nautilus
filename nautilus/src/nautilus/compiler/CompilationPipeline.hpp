@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/common/ConstantOrigin.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/options.hpp"
 #include <functional>
@@ -65,7 +66,8 @@ public:
 	compileToIR(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
 	            CompilationStatistics* statistics = nullptr,
 	            IROptimizationLevel optimization = IROptimizationLevel::Full,
-	            const std::function<void(ir::IRGraph&)>& beforeOptimization = {}) const;
+	            const std::function<void(ir::IRGraph&)>& beforeOptimization = {},
+	            ConstantOriginTracking tracking = ConstantOriginTracking::Disabled) const;
 
 	/**
 	 * @brief The IR optimization level a graph compiled by every backend in

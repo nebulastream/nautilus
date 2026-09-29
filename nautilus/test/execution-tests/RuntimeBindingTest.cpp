@@ -1,4 +1,5 @@
 #include "catch2/catch_test_macros.hpp"
+#include "catch2/generators/catch_generators.hpp"
 #include "catch2/matchers/catch_matchers_string.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Engine.hpp"
@@ -511,7 +512,7 @@ TEST_CASE("Cache-invariant scalar origins survive nested regions and trace cloni
 		return result;
 	});
 	common::Arena arena, clonedArena;
-	auto trace = tracing::TraceContext::trace(wrapper, Options {}, arena);
+	auto trace = tracing::TraceContext::trace(wrapper, Options {}, arena, ConstantOriginTracking::Enabled);
 	REQUIRE(trace != nullptr);
 	std::array<std::array<std::size_t, 2>, 3> origins {};
 	for (const auto* block : trace->getBlocks()) {
@@ -567,7 +568,7 @@ TEST_CASE("Cache-invariant scalar replay disagreement never upgrades an ordinary
 				return -value;
 			});
 			common::Arena arena;
-			auto trace = tracing::TraceContext::trace(wrapper, Options {}, arena);
+			auto trace = tracing::TraceContext::trace(wrapper, Options {}, arena, ConstantOriginTracking::Enabled);
 			REQUIRE(iterations >= 2);
 			std::size_t constants = 0;
 			for (const auto* block : trace->getBlocks()) {
@@ -590,7 +591,10 @@ TEST_CASE("Cache-invariant scalar replay disagreement never upgrades an ordinary
 }
 
 TEST_CASE("RuntimeBindings validates standalone trace entry points from options", "[runtime-bindings]") {
-	const auto trace = tracing::TraceContext::trace;
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	const auto trace = [tracking](auto& wrapper, const Options& options, common::Arena& arena) {
+		return tracing::TraceContext::trace(wrapper, options, arena, tracking);
+	};
 	int64_t left = 10, right = 100;
 	RuntimeBindings bindings;
 	auto leftBinding = bindings.bind<int64_t>("left", &left);
@@ -661,7 +665,10 @@ TEST_CASE("RuntimeBindings tracing API rejects entries without initialized trace
 }
 
 TEST_CASE("RuntimeBindings tracing API requires the exact registered entry", "[runtime-bindings]") {
-	const auto trace = tracing::TraceContext::trace;
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	const auto trace = [tracking](auto& wrapper, const Options& options, common::Arena& arena) {
+		return tracing::TraceContext::trace(wrapper, options, arena, tracking);
+	};
 	int64_t value = 42;
 	RuntimeBindings bindings, foreign;
 	auto state = bindings.bind<int64_t>("state", &value);
@@ -695,7 +702,10 @@ TEST_CASE("RuntimeBindings tracing API requires the exact registered entry", "[r
 }
 
 TEST_CASE("RuntimeBindings rejects foreign handles while following a recorded prefix", "[runtime-bindings]") {
-	const auto trace = tracing::TraceContext::trace;
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	const auto trace = [tracking](auto& wrapper, const Options& options, common::Arena& arena) {
+		return tracing::TraceContext::trace(wrapper, options, arena, tracking);
+	};
 	for (const bool useHandle : {false, true}) {
 		DYNAMIC_SECTION("handle=" << useHandle) {
 			int64_t value = 42;
@@ -727,6 +737,7 @@ TEST_CASE("RuntimeBindings rejects foreign handles while following a recorded pr
 }
 
 TEST_CASE("RuntimeBindings validates handles even while tracing is paused", "[runtime-bindings]") {
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
 	for (const bool useHandle : {false, true}) {
 		DYNAMIC_SECTION("handle=" << useHandle) {
 			int64_t value = 42;
@@ -748,32 +759,33 @@ TEST_CASE("RuntimeBindings validates handles even while tracing is paused", "[ru
 				}
 			};
 			common::Arena arena;
-			REQUIRE_THROWS_AS(tracing::TraceContext::trace(wrapper, options, arena), std::invalid_argument);
+			REQUIRE_THROWS_AS(tracing::TraceContext::trace(wrapper, options, arena, tracking), std::invalid_argument);
 			REQUIRE(paused);
 			REQUIRE_FALSE(tracing::inTracer());
 			auto fresh = details::createFunctionWrapper([state] { return state.get(); });
-			REQUIRE_NOTHROW(tracing::TraceContext::trace(fresh, options, arena));
+			REQUIRE_NOTHROW(tracing::TraceContext::trace(fresh, options, arena, tracking));
 			REQUIRE_FALSE(tracing::inTracer());
 		}
 	}
 }
 
 TEST_CASE("RuntimeBindings keeps concurrent standalone tracing environments independent", "[runtime-bindings]") {
-	const auto trace = tracing::TraceContext::trace;
 	std::array<int64_t, 2> values {42, 97};
 	std::array<RuntimeBindings, 2> bindings;
 	std::array<RuntimeBinding<int64_t>, 2> handles {bindings[0].bind<int64_t>("state", &values[0]),
 	                                                bindings[1].bind<int64_t>("state", &values[1])};
 	std::array<std::exception_ptr, 2> errors;
-	std::array<bool, 2> rejected {}, cleared {}, recorded {};
+	std::array<bool, 2> rejected {}, cleared {}, recorded {}, originsCorrect {}, sawConstant {};
 	std::barrier synchronize(2);
 	auto worker = [&](size_t index) {
 		try {
 			Options options;
 			options.setRuntimeBindings(bindings[index]);
 			common::Arena arena;
+			const auto tracking = index == 0 ? ConstantOriginTracking::Enabled : ConstantOriginTracking::Disabled;
 			auto wrapper = details::createFunctionWrapper([&] {
 				synchronize.arrive_and_wait();
+				(void) cacheLiteral<int64_t {7}>();
 				try {
 					tracing::traceRuntimeBinding(*bindings[1 - index].entries().at("state"));
 				} catch (const std::invalid_argument&) {
@@ -781,13 +793,19 @@ TEST_CASE("RuntimeBindings keeps concurrent standalone tracing environments inde
 				}
 				return handles[index].get();
 			});
-			auto executionTrace = trace(wrapper, options, arena);
+			auto executionTrace = tracing::TraceContext::trace(wrapper, options, arena, tracking);
+			originsCorrect[index] = executionTrace->recordsConstantOrigins() == (index == 0);
 			cleared[index] = !tracing::inTracer();
 			for (const auto* block : executionTrace->getBlocks()) {
 				for (const auto* operation : block->operations) {
 					if (operation->op == tracing::Op::RUNTIME_BINDING) {
 						const auto* entry = std::get<const runtime_binding::Entry*>(operation->input[0]);
 						recorded[index] = entry->address == &values[index];
+					} else if (operation->op == tracing::Op::CONST) {
+						sawConstant[index] = true;
+						originsCorrect[index] &=
+						    operation->constantOrigin ==
+						    (index == 0 ? ConstantOrigin::CacheInvariant : ConstantOrigin::Unspecified);
 					}
 				}
 			}
@@ -805,6 +823,8 @@ TEST_CASE("RuntimeBindings keeps concurrent standalone tracing environments inde
 		REQUIRE(rejected[index]);
 		REQUIRE(cleared[index]);
 		REQUIRE(recorded[index]);
+		REQUIRE(originsCorrect[index]);
+		REQUIRE(sawConstant[index]);
 	}
 	REQUIRE_FALSE(tracing::inTracer());
 }

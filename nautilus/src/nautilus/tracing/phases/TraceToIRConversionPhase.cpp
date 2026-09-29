@@ -148,6 +148,9 @@ TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrac
                                                                    std::shared_ptr<compiler::ir::IRGraph> ir,
                                                                    const compiler::CompilationUnitID&)
     : trace(trace), ir(std::move(ir)) {
+	if (!trace->recordsConstantOrigins()) {
+		this->ir->invalidateConstantOrigins();
+	}
 }
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {

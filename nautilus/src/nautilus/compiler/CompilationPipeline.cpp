@@ -184,7 +184,8 @@ void addOptimizationPasses(ir::IRPassManager& passManager, const engine::ModuleO
 std::shared_ptr<ir::IRGraph>
 CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
                                  CompilationStatistics* statistics, IROptimizationLevel optimization,
-                                 const std::function<void(ir::IRGraph&)>& beforeOptimization) const {
+                                 const std::function<void(ir::IRGraph&)>& beforeOptimization,
+                                 ConstantOriginTracking tracking) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(moduleOptions, compilationId);
 
@@ -211,7 +212,8 @@ CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions, const
 	// finished, so this is safe (the IRGraph owns a separate IR arena).
 	auto traceArenaHandle = traceArenaPool_->acquire();
 	common::Arena& arena = *traceArenaHandle;
-	std::shared_ptr<tracing::TraceModule> traceModule = tracing::TraceContext::Trace(functions, moduleOptions, arena);
+	std::shared_ptr<tracing::TraceModule> traceModule =
+	    tracing::TraceContext::Trace(functions, moduleOptions, arena, tracking);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 	}
@@ -327,7 +329,8 @@ std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>&,
                                                               const engine::ModuleOptions&, CompilationStatistics*,
                                                               IROptimizationLevel,
-                                                              const std::function<void(ir::IRGraph&)>&) const {
+                                                              const std::function<void(ir::IRGraph&)>&,
+                                                              ConstantOriginTracking) const {
 	throw RuntimeException("Jit not initialised");
 }
 
