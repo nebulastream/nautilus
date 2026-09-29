@@ -261,6 +261,7 @@ public:
 
 		if (options.enableRegisterAllocator) {
 			countAllUsages(&functionBasicBlock);
+			totalUsageCounts = usageCounts;
 		}
 		processBlock(&functionBasicBlock, rootFrame);
 
@@ -283,6 +284,10 @@ private:
 	std::vector<std::pair<uint16_t, uint64_t>> constInits;
 	std::unordered_map<ir::BlockIdentifier, int> activeBlocks;
 	std::unordered_map<ir::OperationIdentifier, int> usageCounts;
+	/// Snapshot of `usageCounts` before lowering. `usageCounts` counts the
+	/// *remaining* uses (useValue decrements it), so it cannot tell whether a
+	/// use is a value's only one or merely its last one.
+	std::unordered_map<ir::OperationIdentifier, int> totalUsageCounts;
 	std::unordered_set<ir::OperationIdentifier> functionArgs;
 	/// Identifiers with at least one use outside their defining block (IR
 	/// passes such as block-argument pruning may replace a block argument
@@ -514,8 +519,11 @@ private:
 		entry.codeIndex = static_cast<uint32_t>(blocks[block].code.size());
 		entry.immediate = static_cast<int16_t>(value);
 		const auto siteIt = movImmSites.find(constInt->getIdentifier());
-		const auto usageIt = usageCounts.find(constInt->getIdentifier());
-		if (siteIt != movImmSites.end() && usageIt != usageCounts.end() && usageIt->second == 1) {
+		// Compare against the total use count: if an earlier use of the
+		// constant was lowered as a register read, the MOV_imm must stay even
+		// though this fold is the constant's last remaining use (issue #522).
+		const auto usageIt = totalUsageCounts.find(constInt->getIdentifier());
+		if (siteIt != movImmSites.end() && usageIt != totalUsageCounts.end() && usageIt->second == 1) {
 			entry.hasDeadMovSite = true;
 			entry.deadMovBlock = siteIt->second.first;
 			entry.deadMovIndex = siteIt->second.second;

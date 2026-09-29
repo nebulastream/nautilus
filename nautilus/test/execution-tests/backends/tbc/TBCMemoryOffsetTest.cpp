@@ -58,6 +58,26 @@ val<int64_t> tbcOffsetAddressReused(val<int64_t*> p) {
 	return first + second * 10;
 }
 
+// Issue #522: the constant `one` is read from its register by the first add
+// (constant on the left, not foldable) and then folded into an immediate by
+// the pointer add, its last use. Its MOV_imm must survive the fold.
+val<uint64_t> tbcFoldedConstLastUse(val<int8_t*> ptr, val<uint64_t> b) {
+	const val<uint64_t> one {1};
+	const auto sum = one + b;
+	const auto next = ptr + one;
+	*next = val<int8_t> {42};
+	return sum;
+}
+
+// Same as above with the uses in the opposite order: the fold comes first.
+val<uint64_t> tbcFoldedConstFirstUse(val<int8_t*> ptr, val<uint64_t> b) {
+	const val<uint64_t> one {1};
+	const auto next = ptr + one;
+	*next = val<int8_t> {42};
+	const auto sum = one + b;
+	return sum;
+}
+
 engine::NautilusEngine tbcEngine(const std::string& dispatch, bool superinstructions, bool immediates) {
 	engine::Options options;
 	options.setOption("engine.backend", std::string("tbc"));
@@ -146,6 +166,34 @@ TEST_CASE("TBC memory-offset superinstructions produce correct results") {
 				int64_t data[] = {base, base + 1, base + 2};
 				int64_t altData[] = {base, base + 1, base + 2};
 				REQUIRE(aReused(altData) == cReused(data));
+			}
+		}
+	}
+}
+
+TEST_CASE("TBC keeps a folded constant's MOV_imm when an earlier use reads its register") {
+	std::vector<std::string> modes = {"interpreter"};
+#ifdef ENABLE_TBC_JIT
+	// tbc.mode=jit is strict and throws where stitched code cannot run.
+	if (compiler::tbc::jit::jitRuntimeAvailable()) {
+		modes.emplace_back("jit");
+	}
+#endif
+	for (const auto& mode : modes) {
+		DYNAMIC_SECTION(mode) {
+			engine::Options options;
+			options.setOption("engine.backend", std::string("tbc"));
+			options.setOption("tbc.mode", mode);
+			NautilusEngine engine(options);
+			auto lastUse = engine.registerFunction(tbcFoldedConstLastUse);
+			auto firstUse = engine.registerFunction(tbcFoldedConstFirstUse);
+			for (uint64_t b : {uint64_t {0}, uint64_t {7}, uint64_t {1000}}) {
+				int8_t buffer[16] = {};
+				REQUIRE(lastUse(buffer, b) == b + 1);
+				REQUIRE(buffer[1] == 42);
+				int8_t otherBuffer[16] = {};
+				REQUIRE(firstUse(otherBuffer, b) == b + 1);
+				REQUIRE(otherBuffer[1] == 42);
 			}
 		}
 	}
