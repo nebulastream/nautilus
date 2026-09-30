@@ -122,6 +122,7 @@ public:
 		ShiftOp,
 		AllocaOp,
 		FunctionAddressOfOp,
+		RuntimeBindingOp,
 	};
 
 	/// Constructs an Operation that has no SSA inputs.

@@ -6,6 +6,9 @@ if (ENABLE_MLIR_BACKEND)
             $<BUILD_INTERFACE:${MLIR_INCLUDE_DIRS}>
             $<INSTALL_INTERFACE:include/nautilus/>)
     add_compile_definitions(MLIR_COMPILER)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND BUILD_SHARED_LIBS)
+        target_link_options(nautilus PRIVATE "LINKER:--build-id=sha1")
+    endif ()
     get_property(mlir_libs GLOBAL PROPERTY MLIR_ALL_LIBS)
     get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
     get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
@@ -27,6 +30,8 @@ if (ENABLE_MLIR_BACKEND)
             MLIRBuiltinToLLVMIRTranslation          # registerBuiltinDialectTranslation
             MLIRLLVMToLLVMIRTranslation             # registerLLVMDialectTranslation
             MLIRExecutionEngineUtils                # makeOptimizingTransformer (OptUtils)
+            MLIRBytecodeWriter
+            MLIRParser
             MLIRFuncAllExtensions
             # LLVM libs for our direct LLJIT build.
             LLVMOrcJIT
@@ -50,10 +55,12 @@ if (ENABLE_MLIR_BACKEND)
     add_source_files(nautilus
             MLIRLoweringProvider.cpp
             MLIRCompilationBackend.cpp
+            MLIRCacheValidation.cpp
             MLIRExecutable.cpp
             MLIRPassManager.cpp
             LLVMIROptimizer.cpp
             JITCompiler.cpp
+            ExceptionPersonality.cpp
             LLVMBackendHooks.cpp
             PropagatePersonalityPass.cpp
     )

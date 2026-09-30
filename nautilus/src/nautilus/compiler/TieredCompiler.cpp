@@ -10,10 +10,26 @@
 
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
+#ifdef ENABLE_MLIR_BACKEND
+#include "nautilus/compiler/cache/PersistentModuleCache.hpp"
+#endif
 #include <chrono>
 #include <thread>
 
 namespace nautilus::compiler {
+
+static void recordCacheIneligibility(const engine::ModuleOptions& options, CompilationStatistics& statistics,
+                                     const std::string& reason, bool tracingRan) {
+	if (options.getOptionOrDefault<std::string>("engine.Blob.CacheDir", "").empty() ||
+	    options.getOptionOrDefault<std::string>("engine.Blob.CacheKey", "").empty()) {
+		return;
+	}
+	statistics.set("cache.eligible", int64_t {0});
+	statistics.set("cache.object", std::string {"not_checked"});
+	statistics.set("cache.mlir", std::string {"not_checked"});
+	statistics.set("cache.tracingRan", int64_t {tracingRan ? 1 : 0});
+	statistics.set("cache.fallback", reason);
+}
 
 static std::string createPromotionUnitID() {
 	auto now = std::chrono::system_clock::now();
@@ -105,8 +121,27 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 	auto statistics = std::make_shared<CompilationStatistics>();
 	const auto compilationStart = std::chrono::steady_clock::now();
 
-	auto ir = pipeline_.compileToIR(functions, moduleOptions, statistics.get(), optimization);
-	auto executable = pipeline_.compileIR(ir, backend, moduleOptions, statistics.get());
+	statistics->set("backend.name", backend);
+	std::unique_ptr<Executable> executable;
+#ifdef ENABLE_MLIR_BACKEND
+	if (!config_.backgroundPromotion && backend == "mlir") {
+		executable = compileWithPersistentModuleCache(pipeline_, functions, moduleOptions, statistics.get());
+	}
+#endif
+	std::shared_ptr<ir::IRGraph> ir;
+	if (!executable) {
+		if (config_.backgroundPromotion) {
+			recordCacheIneligibility(moduleOptions, *statistics, "tiered_compilation", true);
+		} else if (backend != "mlir") {
+			recordCacheIneligibility(moduleOptions, *statistics, "backend_not_mlir", true);
+		} else if (!statistics->contains("cache.eligible")) {
+			recordCacheIneligibility(moduleOptions, *statistics, "cache_unavailable", true);
+		}
+		ir = pipeline_.compileToIR(functions, moduleOptions, statistics.get(), optimization);
+		executable = pipeline_.compileIR(ir, backend, moduleOptions, statistics.get());
+	} else if (!statistics->contains("compilation.unitId")) {
+		statistics->set("compilation.unitId", "cache-" + std::get<std::string>(*statistics->find("cache.key")));
+	}
 
 	statistics->recordTimingMs("compilation.totalMs", compilationStart);
 	statistics->set("tier", tierLabel);
@@ -192,6 +227,7 @@ void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>
 			statistics->set("compilation.unitId", compilationId);
 			statistics->set("tier", std::string {"tier1"});
 			statistics->set("backend.name", config.tier1.backend);
+			recordCacheIneligibility(options, *statistics, "tiered_compilation", false);
 
 			const auto promotionStart = std::chrono::steady_clock::now();
 			auto tier1Executable = backend->compile(ir, dumpHandler, options, statistics.get());
@@ -269,7 +305,7 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunct
 	throw RuntimeException("Jit not initialised");
 }
 std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableFunction>&, const engine::ModuleOptions&,
-                                                           const std::string&, const std::string&,
+                                                           const std::string&, const std::string&, IROptimizationLevel,
                                                            std::shared_ptr<ir::IRGraph>&) const {
 	throw RuntimeException("Jit not initialised");
 }

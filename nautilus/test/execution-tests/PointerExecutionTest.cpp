@@ -412,6 +412,80 @@ void pointerTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(&values[2]) == 34);
 	}
 
+	SECTION("pointerSubUnsignedValuesAndReferences") {
+		auto f = engine.registerFunction(+[](val<int32_t*> ptr, val<uint32_t> offset) { return ptr - offset; });
+		auto byte = engine.registerFunction(+[](val<int8_t*> ptr, val<uint32_t*> offset) { return ptr - *offset; });
+		int8_t data[] = {10, 20, 30, 40, 50};
+		for (uint32_t offset : {0u, 1u, 4u}) {
+			REQUIRE(f(&values[4], offset) == &values[4 - offset]);
+			REQUIRE(byte(&data[4], &offset) == &data[4 - offset]);
+		}
+	}
+
+	SECTION("pointerNegativeSubtraction") {
+		auto f = engine.registerFunction(+[](val<int32_t*> ptr, val<int32_t> offset) { return ptr - offset; });
+		REQUIRE(f(&values[4], -2) == &values[6]);
+		REQUIRE(f(&values[4], 0) == &values[4]);
+		REQUIRE(f(&values[4], 2) == &values[2]);
+	}
+
+	SECTION("zeroIndexReferenceSurvivesReassignment") {
+		auto f = engine.registerFunction(+[](val<int32_t*> ptr, val<int32_t> value) {
+			auto reference = ptr[0];
+			++ptr;
+			reference = value;
+			*ptr = value + 1;
+		});
+		int32_t data[] = {10, 20, 30};
+		f(data, 5);
+		REQUIRE(data[0] == 5);
+		REQUIRE(data[1] == 6);
+		REQUIRE(data[2] == 30);
+	}
+
+	SECTION("memberReferencesSurviveReassignment") {
+		auto f = engine.registerFunction(+[](val<TwoFieldStruct*> ptr, val<int32_t> value) {
+			auto first = ptr.get(&TwoFieldStruct::a);
+			auto second = ptr.get(&TwoFieldStruct::b);
+			++ptr;
+			first = value;
+			second = value + 1;
+			ptr.set(&TwoFieldStruct::a, value + 2);
+			ptr.set(&TwoFieldStruct::b, value + 3);
+		});
+		TwoFieldStruct data[] = {{10, 11}, {20, 21}, {30, 31}};
+		f(data, 5);
+		REQUIRE(data[0].a == 5);
+		REQUIRE(data[0].b == 6);
+		REQUIRE(data[1].a == 7);
+		REQUIRE(data[1].b == 8);
+		REQUIRE(data[2].a == 30);
+		REQUIRE(data[2].b == 31);
+	}
+
+	SECTION("boolReferencesSurviveReassignment") {
+		auto f = engine.registerFunction(+[](val<bool*> ptr, val<bool> value) {
+			auto original = *ptr;
+			++ptr;
+			auto indexed = ptr[0];
+			++ptr;
+			original = value;
+			indexed = !value;
+			*ptr = value;
+		});
+		bool data[] = {false, false, false, true};
+		f(data, true);
+		REQUIRE(data[0]);
+		REQUIRE_FALSE(data[1]);
+		REQUIRE(data[2]);
+		REQUIRE(data[3]);
+		f(data, false);
+		REQUIRE_FALSE(data[0]);
+		REQUIRE(data[1]);
+		REQUIRE_FALSE(data[2]);
+		REQUIRE(data[3]);
+	}
+
 	SECTION("moveThenReassign") {
 		auto f = engine.registerFunction(moveThenReassign);
 		REQUIRE(f(&values[2]) == 34);

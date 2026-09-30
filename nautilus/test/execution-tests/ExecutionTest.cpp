@@ -15,6 +15,7 @@
 #include <catch2/catch_all.hpp>
 #include <cmath>
 #include <limits>
+#include <type_traits>
 namespace nautilus::engine {
 
 val<bool> makeConstantOfTracingValue(val<int> ref) {
@@ -1736,6 +1737,91 @@ void runAllTests(engine::NautilusEngine& engine) {
 		REQUIRE(ff32_u8(f32, u8) == static_cast<decltype(f32 - u8)>(f32 - u8));
 		REQUIRE(fi16_i32(i16, i32) == static_cast<decltype(i16 - i32)>(i16 - i32));
 	}
+}
+
+template <typename LHS, typename RHS>
+void rawLeftShiftTests(engine::NautilusEngine& engine, const std::string& name) {
+	DYNAMIC_SECTION(name) {
+		using Result = decltype(LHS {1} << RHS {1});
+		auto shiftLeft = engine.registerFunction(+[](val<Result*> output, val<RHS> count) {
+			auto result = LHS {1} << count;
+			*output = result;
+			return result;
+		});
+		auto shiftRight = engine.registerFunction(+[](val<Result*> output, val<RHS> count) {
+			auto result = std::numeric_limits<LHS>::max() >> count;
+			*output = result;
+			return result;
+		});
+		const auto checkStore = [](auto& function, Result expected, auto... arguments) {
+			constexpr Result before = 0x12345678;
+			constexpr Result after = 0x76543210;
+			Result output[3] = {before, 0, after};
+			REQUIRE(function(output + 1, arguments...) == expected);
+			REQUIRE(output[0] == before);
+			REQUIRE(output[1] == expected);
+			REQUIRE(output[2] == after);
+		};
+		constexpr auto maxShift = std::numeric_limits<std::make_unsigned_t<Result>>::digits - 1;
+		for (auto shift : {0, 1, 7, maxShift}) {
+			auto count = static_cast<RHS>(shift);
+			CAPTURE(shift);
+			checkStore(shiftLeft, LHS {1} << count, count);
+			checkStore(shiftRight, std::numeric_limits<LHS>::max() >> count, count);
+		}
+		if constexpr (std::is_signed_v<LHS>) {
+			auto rawShiftRight = engine.registerFunction(+[](val<Result*> output, val<RHS> count) {
+				auto result = LHS {-64} >> count;
+				*output = result;
+				return result;
+			});
+			auto runtimeShiftRight = engine.registerFunction(+[](val<Result*> output, val<LHS> value, val<RHS> count) {
+				auto result = value >> count;
+				*output = result;
+				return result;
+			});
+			auto literalShiftRight = engine.registerFunction(+[](val<Result*> output, val<LHS> value) {
+				auto result = value >> RHS {1};
+				*output = result;
+				return result;
+			});
+			for (auto shift : {0, 1, 7, maxShift}) {
+				auto count = static_cast<RHS>(shift);
+				CAPTURE(shift);
+				checkStore(rawShiftRight, LHS {-64} >> count, count);
+				for (auto value : {LHS {-64}, LHS {-1}, std::numeric_limits<LHS>::lowest()}) {
+					CAPTURE(value);
+					checkStore(runtimeShiftRight, value >> count, value, count);
+					checkStore(literalShiftRight, value >> RHS {1}, value);
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("Mixed-type shifts preserve left width and signedness with static folding enabled and disabled",
+          "[expression][shift]") {
+	const auto foldStaticConstants = GENERATE(false, true);
+	CAPTURE(foldStaticConstants);
+	nautilus::testing::forEachBackend(
+	    [](engine::NautilusEngine& engine) {
+		    rawLeftShiftTests<int8_t, int32_t>(engine, "i8_i32");
+		    rawLeftShiftTests<int8_t, uint64_t>(engine, "i8_u64");
+		    rawLeftShiftTests<uint8_t, uint32_t>(engine, "u8_u32");
+		    rawLeftShiftTests<int16_t, int64_t>(engine, "i16_i64");
+		    rawLeftShiftTests<uint16_t, uint64_t>(engine, "u16_u64");
+		    rawLeftShiftTests<int, int64_t>(engine, "int_i64");
+		    rawLeftShiftTests<int, uint32_t>(engine, "int_u32");
+		    rawLeftShiftTests<int32_t, uint64_t>(engine, "i32_u64");
+		    rawLeftShiftTests<uint32_t, int64_t>(engine, "u32_i64");
+		    rawLeftShiftTests<int64_t, uint64_t>(engine, "i64_u64");
+		    rawLeftShiftTests<int64_t, int8_t>(engine, "i64_i8");
+		    rawLeftShiftTests<uint64_t, uint8_t>(engine, "u64_u8");
+	    },
+	    true,
+	    [foldStaticConstants](engine::Options& options) {
+		    options.setOption("engine.foldStaticConstants", foldStaticConstants);
+	    });
 }
 
 TEST_CASE("Engine Interpreter Test") {

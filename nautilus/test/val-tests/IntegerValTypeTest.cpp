@@ -3,8 +3,34 @@
 #include <catch2/catch_all.hpp>
 #include <iostream>
 #include <limits>
+#include <type_traits>
 
 namespace nautilus {
+
+TEMPLATE_TEST_CASE("Raw-left shifts preserve the promoted left type", "[value][template][shift]", int8_t, int16_t,
+                   int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t) {
+	const auto checkShifts = []<typename LHS>(LHS left) {
+		using Result = decltype(+left);
+		STATIC_REQUIRE(std::is_same_v<decltype(LHS {1} << val<TestType> {1}), val<Result>>);
+		STATIC_REQUIRE(std::is_same_v<decltype(LHS {1} >> val<TestType> {1}), val<Result>>);
+		for (auto shift : {0, 1, 7, std::numeric_limits<Result>::digits - 1}) {
+			const val<TestType> count = static_cast<TestType>(shift);
+			REQUIRE((left << count) == (left << shift));
+			REQUIRE((std::numeric_limits<LHS>::max() >> count) == (std::numeric_limits<LHS>::max() >> shift));
+			if constexpr (std::is_signed_v<LHS>) {
+				REQUIRE((LHS {-64} >> count) == (LHS {-64} >> shift));
+			}
+		}
+	};
+	checkShifts(int8_t {1});
+	checkShifts(int16_t {1});
+	checkShifts(int32_t {1});
+	checkShifts(int64_t {1});
+	checkShifts(uint8_t {1});
+	checkShifts(uint16_t {1});
+	checkShifts(uint32_t {1});
+	checkShifts(uint64_t {1});
+}
 
 TEMPLATE_TEST_CASE("Integer Val Operation Test", "[value][template]", int8_t, int16_t, int32_t, int64_t, uint8_t,
                    uint16_t, uint32_t, uint64_t) {

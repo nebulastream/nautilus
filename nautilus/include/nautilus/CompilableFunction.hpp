@@ -1,9 +1,12 @@
 #pragma once
 #include "nautilus/common/RegionAttributes.hpp"
+#include "nautilus/tracing/Types.hpp"
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace nautilus::compiler {
 
@@ -11,11 +14,23 @@ class CompilableFunction {
 	using wrapper_function = std::function<void()>;
 
 public:
+	struct Signature {
+		Type returnType;
+		std::vector<Type> argumentTypes;
+
+		bool operator==(const Signature&) const = default;
+	};
+
 	CompilableFunction(std::string_view name, wrapper_function function,
 	                   std::unordered_map<std::string, std::string> attributes = {}, const void* definition = nullptr,
-	                   SourceLocation location = {})
-	    : name(name), function(function), attributes(std::move(attributes)), definition(definition),
-	      location(location) {
+	                   SourceLocation location = {}, std::optional<Signature> signature = std::nullopt)
+	    : name(name), function(std::move(function)), attributes(std::move(attributes)), definition(definition),
+	      location(location), signature(std::move(signature)) {
+	}
+
+	CompilableFunction(std::string_view name, wrapper_function function,
+	                   std::unordered_map<std::string, std::string> attributes, std::optional<Signature> signature)
+	    : CompilableFunction(name, std::move(function), std::move(attributes), nullptr, {}, std::move(signature)) {
 	}
 
 	const std::string& getName() const {
@@ -29,6 +44,9 @@ public:
 	}
 	const std::unordered_map<std::string, std::string>& getAttributes() const {
 		return attributes;
+	}
+	const std::optional<Signature>& getSignature() const {
+		return signature;
 	}
 
 	/// Identity of the NautilusFunctionDefinition this function was traced
@@ -54,6 +72,7 @@ private:
 	std::unordered_map<std::string, std::string> attributes;
 	const void* definition = nullptr;
 	SourceLocation location;
+	std::optional<Signature> signature;
 };
 
 } // namespace nautilus::compiler

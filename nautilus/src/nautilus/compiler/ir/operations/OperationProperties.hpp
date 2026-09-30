@@ -51,6 +51,8 @@ constexpr std::array<uint8_t, kOpFlagTableSize> buildOpFlagTable() {
 		set(op, OpFlags::Pure);
 	}
 
+	set(OpType::RuntimeBindingOp, OpFlags::Pure);
+
 	// Terminators.
 	set(OpType::BranchOp, OpFlags::Terminator);
 	set(OpType::IfOp, OpFlags::Terminator);

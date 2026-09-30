@@ -73,7 +73,7 @@ public:
 
 #ifdef ENABLE_TRACING
 	/// Default constructor. Initializes with constant 0 and records in trace.
-	val() : state(tracing::traceConstant<raw_type>(0)), value(0) {
+	val() : state(tracing::traceConstant<raw_type>(0, ConstantOrigin::CacheInvariant)), value(0) {
 	}
 
 	/// Value constructor. Initializes with provided value and records in trace.
@@ -157,14 +157,14 @@ public:
 	/// Prefix increment operator.
 	/// Returns a non-const reference to allow chaining like ++(++x).
 	val<ValueType>& operator++() {
-		*this = *this + (ValueType) 1;
+		*this = *this + cacheInvariant(static_cast<ValueType>(1));
 		return *this;
 	}
 
 	/// Postfix increment operator.
 	val<ValueType> operator++(int) {
 		auto temp = *this;
-		*this = *this + (ValueType) 1;
+		*this = *this + cacheInvariant(static_cast<ValueType>(1));
 		return temp;
 	}
 
@@ -193,21 +193,21 @@ public:
 			// value) instead of going through cancellation.
 			return details::neg(*this);
 		} else {
-			return (ValueType) 0 - *this;
+			return cacheInvariant(static_cast<ValueType>(0)) - *this;
 		}
 	}
 
 	/// Prefix decrement operator.
 	/// Returns a non-const reference to allow chaining like --(--x).
 	val<ValueType>& operator--() {
-		*this = *this - (ValueType) 1;
+		*this = *this - cacheInvariant(static_cast<ValueType>(1));
 		return *this;
 	}
 
 	/// Postfix decrement operator.
 	val<ValueType> operator--(int) {
 		auto temp = *this;
-		*this = *this - (ValueType) 1;
+		*this = *this - cacheInvariant(static_cast<ValueType>(1));
 		return temp;
 	}
 
@@ -301,9 +301,41 @@ DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(/, div, DIV)
 
 DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(%, mod, MOD)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(>>, shr, RSH)
+template <typename Result, typename Value>
+decltype(auto) inline cast_shift_operand(Value&& value) {
+	using ValueType = typename std::remove_cvref_t<Value>::basic_type;
+	if constexpr (std::is_same_v<ValueType, Result>) {
+		return std::forward<Value>(value);
+	} else {
+		return static_cast<val<Result>>(value);
+	}
+}
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH)
+#define DEFINE_SHIFT_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE)                                                            \
+	template <typename LHS, typename RHS>                                                                              \
+	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
+		using LBase = typename std::remove_cvref_t<LHS>::basic_type;                                                   \
+		using RBase = typename std::remove_cvref_t<RHS>::basic_type;                                                   \
+		using resultType = decltype(std::declval<LBase>() OP std::declval<RBase>());                                   \
+		auto&& lValue = cast_shift_operand<resultType>(std::forward<LHS>(left));                                       \
+		auto&& rValue = cast_shift_operand<resultType>(std::forward<RHS>(right));                                      \
+                                                                                                                       \
+		if SHOULD_TRACE () {                                                                                           \
+			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<resultType>::to_type(),          \
+			                                 StateResolver<decltype(lValue)>::getState(lValue),                        \
+			                                 StateResolver<decltype(rValue)>::getState(rValue));                       \
+			return val<resultType>(tc);                                                                                \
+		}                                                                                                              \
+                                                                                                                       \
+		return val<resultType>(RawValueResolver<resultType>::getRawValue(lValue)                                       \
+		                           OP RawValueResolver<resultType>::getRawValue(rValue));                              \
+	}                                                                                                                  \
+	template <typename LBase, typename RBase>                                                                          \
+	using OP_NAME##_operand_t = decltype(+std::declval<LBase>());
+
+DEFINE_SHIFT_OPERATOR_HELPER(>>, shr, RSH)
+
+DEFINE_SHIFT_OPERATOR_HELPER(<<, shl, LSH)
 
 /// Binary operator helper for comparison operations (no promotion)
 #define DEFINE_BINARY_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE, RES_TYPE)                                                 \
@@ -431,9 +463,13 @@ bool inline convertsLiteralsInCpp() {
 		    details::literal_operand<details::FUNC##_operand_t, typename std::remove_cvref_t<RHS>::basic_type,         \
 		                             std::remove_cvref_t<LHS>>;                                                        \
 		if constexpr (Literal::converts_in_cpp) {                                                                      \
-			if (details::convertsLiteralsInCpp()) {                                                                    \
-				using Operand = typename Literal::type;                                                                \
-				return details::FUNC(val<Operand>(static_cast<Operand>(left)), std::forward<RHS>(right));              \
+			using Operand = typename Literal::type;                                                                    \
+			using RBase = typename std::remove_cvref_t<RHS>::basic_type;                                               \
+			using Result = decltype(left OP std::declval<RBase>());                                                    \
+			if constexpr (std::is_same_v<Result, decltype(std::declval<Operand>() OP std::declval<RBase>())>) {        \
+				if (details::convertsLiteralsInCpp()) {                                                                \
+					return details::FUNC(val<Operand>(static_cast<Operand>(left)), std::forward<RHS>(right));          \
+				}                                                                                                      \
 			}                                                                                                          \
 		}                                                                                                              \
 		auto&& lhsV = make_value(std::forward<LHS>(left));                                                             \

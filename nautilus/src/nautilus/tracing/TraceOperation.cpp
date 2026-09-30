@@ -44,13 +44,19 @@ TraceOperation* makeTraceOp(common::Arena& arena, Op op, std::initializer_list<I
 TraceOperation* cloneTraceOp(common::Arena& arena, const TraceOperation& source) {
 	auto* buffer = detail::allocateInputArray(arena, source.input.size());
 	for (size_t i = 0; i < source.input.size(); ++i) {
-		::new (&buffer[i]) InputVariant(source.input[i]);
+		if (const auto* binding = std::get_if<const runtime_binding::Entry*>(&source.input[i])) {
+			const auto* copiedBinding = arena.create<runtime_binding::Entry>(**binding);
+			::new (&buffer[i]) InputVariant(copiedBinding);
+		} else {
+			::new (&buffer[i]) InputVariant(source.input[i]);
+		}
 	}
 	std::span<InputVariant> span(buffer, source.input.size());
 	Snapshot copiedTag = source.tag;
 	auto* clone = arena.create<TraceOperation>(copiedTag, source.op, source.resultType, source.resultRef, span);
 	// A clone stands for the same source operation, so it belongs to the same region.
 	clone->regionIndex = source.regionIndex;
+	clone->constantOrigin = source.constantOrigin;
 	return clone;
 }
 

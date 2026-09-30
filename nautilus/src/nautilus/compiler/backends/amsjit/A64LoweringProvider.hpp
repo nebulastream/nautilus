@@ -162,6 +162,7 @@ private:
 		void visitConstInt(ir::ConstIntOperation* op, RegisterFrame& frame);
 		void visitConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame);
 		void visitConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame);
+		void visitRuntimeBinding(ir::RuntimeBindingOperation* op, RegisterFrame& frame);
 
 		void visitAdd(ir::AddOperation* op, RegisterFrame& frame);
 		void visitSub(ir::SubOperation* op, RegisterFrame& frame);

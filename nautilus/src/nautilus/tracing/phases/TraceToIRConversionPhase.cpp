@@ -17,6 +17,7 @@
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
+#include "nautilus/compiler/ir/operations/RuntimeBindingOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
@@ -147,6 +148,9 @@ TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrac
                                                                    std::shared_ptr<compiler::ir::IRGraph> ir,
                                                                    const compiler::CompilationUnitID&)
     : trace(trace), ir(std::move(ir)) {
+	if (!trace->recordsConstantOrigins()) {
+		this->ir->invalidateConstantOrigins();
+	}
 }
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
@@ -347,6 +351,14 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 	}
 	case Op::CONST: {
 		processConst(frame, currentIrBlock, operation);
+		return;
+	}
+	case Op::RUNTIME_BINDING: {
+		const auto& binding = *std::get<const runtime_binding::Entry*>(operation.input[0]);
+		auto resultIdentifier = createValueIdentifier(operation.resultRef);
+		auto* bindingOperation = currentIrBlock->addTaggedOperation<RuntimeBindingOperation>(provenanceOf(operation),
+		                                                                                     resultIdentifier, binding);
+		frame.setValue(resultIdentifier, bindingOperation);
 		return;
 	}
 	case Op::RETURN: {
@@ -672,14 +684,14 @@ void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& fra
 	    [&](auto&& value) {
 		    using T = std::decay_t<decltype(value)>;
 		    if constexpr (std::is_same_v<T, bool>) {
-			    constOperation =
-			        currentBlock->addTaggedOperation<ConstBooleanOperation>(provenance, resultIdentifier, value);
+			    constOperation = currentBlock->addTaggedOperation<ConstBooleanOperation>(
+			        provenance, resultIdentifier, value, operation.constantOrigin);
 		    } else if constexpr (std::is_integral_v<T>) {
-			    constOperation = currentBlock->addTaggedOperation<ConstIntOperation>(provenance, resultIdentifier,
-			                                                                         value, resultType);
+			    constOperation = currentBlock->addTaggedOperation<ConstIntOperation>(
+			        provenance, resultIdentifier, value, resultType, operation.constantOrigin);
 		    } else if constexpr (std::is_floating_point_v<T>) {
-			    constOperation = currentBlock->addTaggedOperation<ConstFloatOperation>(provenance, resultIdentifier,
-			                                                                           value, resultType);
+			    constOperation = currentBlock->addTaggedOperation<ConstFloatOperation>(
+			        provenance, resultIdentifier, value, resultType, operation.constantOrigin);
 		    } else if constexpr (std::is_pointer_v<T>) {
 			    constOperation =
 			        currentBlock->addTaggedOperation<ConstPtrOperation>(provenance, resultIdentifier, value);

@@ -4,6 +4,8 @@
 #include "nautilus/compiler/ir/IntrinsicRegistry.hpp"
 #include <fcntl.h>
 #include <functional>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 
@@ -52,7 +54,11 @@ private:
 class MLIRIntrinsicPlugin {
 public:
 	virtual void registerIntrinsics(MLIRIntrinsicManager& manager) = 0;
+	virtual std::optional<std::string> cacheFingerprint() const;
 	virtual ~MLIRIntrinsicPlugin() = default;
+
+protected:
+	static std::optional<std::string> cacheFingerprintForAddress(const void* address);
 };
 
 class MLIRIntrinsicPluginRegistry {
@@ -63,6 +69,8 @@ public:
 	// register all plugins into a manager
 	void registerAllIntrinsics(MLIRIntrinsicManager& manager) const;
 
+	std::optional<std::string> cacheFingerprint() const;
+
 	// global accessor (thread-safe init)
 	static MLIRIntrinsicPluginRegistry& instance();
 
@@ -70,6 +78,7 @@ private:
 	MLIRIntrinsicPluginRegistry() = default;
 	mutable std::mutex mutex_;
 	std::vector<std::shared_ptr<MLIRIntrinsicPlugin>> plugins_;
+	bool registrationFailed_ = false;
 	/// Handlers harvested as each plugin is added, so an intrinsic's identity
 	/// exists in the IntrinsicRegistry from the moment its plugin is
 	/// registered -- which is before any graph that calls it is converted.

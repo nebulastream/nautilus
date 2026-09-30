@@ -20,5 +20,6 @@ add_source_files(nautilus
         BranchOperation.cpp
         ConstBooleanOperation.cpp
         ConstPtrOperation.cpp
+        RuntimeBindingOperation.cpp
         SelectOperation.cpp
 )
