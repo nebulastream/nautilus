@@ -147,7 +147,8 @@ TEST_CASE("ExecutionTrace result insertion resets reused origins and preserves m
 
 TEST_CASE("TraceContext follows constants across reconciliation runs and jumps", "[TraceContext]") {
 	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
-	CAPTURE(tracking);
+	const bool folded = GENERATE(false, true);
+	CAPTURE(tracking, folded);
 	const auto recordedOrigin =
 	    tracking == ConstantOriginTracking::Enabled ? ConstantOrigin::CacheInvariant : ConstantOrigin::Unspecified;
 	for (const std::size_t reconciliationCount : {0, 1, 3}) {
@@ -217,9 +218,18 @@ TEST_CASE("TraceContext follows constants across reconciliation runs and jumps",
 						REQUIRE(trace.getCurrentBlockIndex() == 0);
 						REQUIRE(trace.currentOperationIndex == 0);
 						REQUIRE(trace.getBlock(0).operations[0]->op == (initialJump ? Op::JMP : Op::CONST));
-						auto& followed = traceConstant(type, primaryLiteral, origins[replay]);
-						REQUIRE(&followed == &original);
-						REQUIRE(followed.type == type);
+						if (folded) {
+							traceFoldedConstant(type, primaryLiteral, origins[replay]);
+							if (tracking == ConstantOriginTracking::Disabled) {
+								REQUIRE(trace.getCurrentBlockIndex() == 0);
+								REQUIRE(trace.currentOperationIndex == 0);
+							}
+						}
+						if (!folded || tracking == ConstantOriginTracking::Disabled) {
+							auto& followed = traceConstant(type, primaryLiteral, origins[replay]);
+							REQUIRE(&followed == &original);
+							REQUIRE(followed.type == type);
+						}
 						REQUIRE(primaryOperation->constantOrigin ==
 						        (replay == 0 ? recordedOrigin : ConstantOrigin::Unspecified));
 						REQUIRE(trace.getCurrentBlockIndex() == nextBlock);
@@ -396,6 +406,204 @@ TEST_CASE("TraceContext resets origin recording across nested regions and except
 		arena.softReset();
 	}
 	REQUIRE(failures == (throwBeforeTrace ? modes.size() : 0));
+}
+
+TEST_CASE("Folded constant RECORD collisions reconcile origins", "[TraceContext]") {
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	const auto firstOrigin = GENERATE(ConstantOrigin::Unspecified, ConstantOrigin::CacheInvariant);
+	const auto secondOrigin = GENERATE(ConstantOrigin::Unspecified, ConstantOrigin::CacheInvariant);
+	CAPTURE(tracking, firstOrigin, secondOrigin);
+	std::size_t trueVisits = 0, falseVisits = 0;
+	const ConstantLiteral literal {int64_t {7}};
+	std::function<void()> wrapper = [&] {
+		auto& condition = registerFunctionArgument(Type::b, 0);
+		if (traceBool(condition, 0.5)) {
+			++trueVisits;
+		} else {
+			++falseVisits;
+		}
+		traceFoldedConstant(Type::i64, literal, falseVisits == 0 ? firstOrigin : secondOrigin);
+		traceReturnOperation(Type::b, condition);
+	};
+	common::Arena arena;
+	auto trace = TraceContext::trace(wrapper, engine::Options {}, arena, tracking);
+	REQUIRE(trace != nullptr);
+	REQUIRE_FALSE(inTracer());
+	REQUIRE(trace->recordsConstantOrigins() == (tracking == ConstantOriginTracking::Enabled));
+	REQUIRE(trueVisits == 1);
+	REQUIRE(falseVisits == 1);
+	REQUIRE(trace->getBlocks().size() == 3);
+	REQUIRE(trace->getBlock(0).operations.size() == 1);
+	const auto* branch = trace->getBlock(0).operations[0];
+	REQUIRE(branch->op == Op::CMP);
+	const auto firstBlock = std::get<BlockRef*>(branch->input[1])->block;
+	const auto secondBlock = std::get<BlockRef*>(branch->input[2])->block;
+	REQUIRE(firstBlock != secondBlock);
+	const auto& firstOperations = trace->getBlock(firstBlock).operations;
+	const auto& secondOperations = trace->getBlock(secondBlock).operations;
+	if (tracking == ConstantOriginTracking::Enabled) {
+		REQUIRE(firstOperations.size() == 2);
+		REQUIRE(secondOperations.size() == 3);
+		const auto* original = firstOperations[0];
+		const auto* collision = secondOperations[0];
+		const auto* reconciliation = secondOperations[1];
+		REQUIRE(original->op == Op::CONST);
+		REQUIRE(collision->op == Op::CONST);
+		REQUIRE(reconciliation->op == Op::ASSIGN);
+		REQUIRE(original->tag.getTag() != nullptr);
+		REQUIRE(collision->tag == original->tag);
+		REQUIRE(reconciliation->tag == original->tag);
+		REQUIRE(collision->resultRef != original->resultRef);
+		REQUIRE(reconciliation->resultRef == original->resultRef);
+		REQUIRE(std::get<TypedValueRef>(reconciliation->input[0]) == collision->resultRef);
+		const auto expectedOrigin = firstOrigin == secondOrigin ? firstOrigin : ConstantOrigin::Unspecified;
+		requireConstants(*trace, {{7, expectedOrigin}, {7, expectedOrigin}});
+		REQUIRE(trace->globalTagMap.at(original->tag).blockIndex == secondBlock);
+		REQUIRE(trace->globalTagMap.at(original->tag).operationIndex == 1);
+	} else {
+		REQUIRE(firstOperations.size() == 1);
+		REQUIRE(secondOperations.size() == 1);
+		requireConstants(*trace, {});
+	}
+	for (const auto* operation : {firstOperations.back(), secondOperations.back()}) {
+		REQUIRE(operation->op == Op::RETURN);
+		REQUIRE(operation->resultType == Type::b);
+		REQUIRE(std::get<TypedValueRef>(operation->input[0]) == trace->getArguments()[0]);
+	}
+}
+
+TEST_CASE("Folded constants preserve nested regions and copy sites across tracing sessions", "[TraceContext]") {
+	const bool recordCopySites = GENERATE(false, true);
+	const bool foldStaticConstants = GENERATE(false, true);
+	const bool throwBeforeTrace = GENERATE(false, true);
+	CAPTURE(recordCopySites, foldStaticConstants, throwBeforeTrace);
+	engine::Options options;
+	options.setOption("dump.copySites", recordCopySites);
+	options.setOption("engine.foldStaticConstants", foldStaticConstants);
+	bool failInRegion = false;
+	std::size_t failures = 0;
+	std::function<void()> wrapper = [&] {
+		auto& argument = registerFunctionArgument(Type::i64, 0);
+		traceFoldedConstant(Type::i64, ConstantLiteral {int64_t {11}});
+		auto copy = traceCopy(argument);
+		region("outer folded constants", [&] {
+			traceFoldedConstant(Type::i64, ConstantLiteral {int64_t {13}}, ConstantOrigin::CacheInvariant);
+			auto outerCopy = traceCopy(copy);
+			region("inner folded constants", [&] {
+				traceFoldedConstant(Type::i64, ConstantLiteral {int64_t {17}});
+				(void) traceCopy(outerCopy);
+				if (failInRegion) {
+					++failures;
+					throw std::runtime_error("folded constant recovery");
+				}
+			});
+			traceFoldedConstant(Type::i64, ConstantLiteral {int64_t {19}}, ConstantOrigin::CacheInvariant);
+		});
+		traceFoldedConstant(Type::i64, ConstantLiteral {int64_t {23}}, ConstantOrigin::CacheInvariant);
+		traceReturnOperation(Type::i64, copy);
+	};
+	common::Arena arena;
+	std::vector<std::vector<TagAddress>> previousCopySites;
+	constexpr std::array modes {ConstantOriginTracking::Enabled, ConstantOriginTracking::Disabled,
+	                            ConstantOriginTracking::Enabled};
+	for (const auto tracking : modes) {
+		CAPTURE(tracking);
+		if (throwBeforeTrace) {
+			failInRegion = true;
+			const auto failingTracking = tracking == ConstantOriginTracking::Enabled ? ConstantOriginTracking::Disabled
+			                                                                         : ConstantOriginTracking::Enabled;
+			REQUIRE_THROWS_AS(TraceContext::trace(wrapper, options, arena, failingTracking), std::runtime_error);
+			REQUIRE_FALSE(inTracer());
+			arena.softReset();
+			failInRegion = false;
+		}
+		auto trace = TraceContext::trace(wrapper, options, arena, tracking);
+		REQUIRE(trace != nullptr);
+		REQUIRE_FALSE(inTracer());
+		REQUIRE(trace->recordsConstantOrigins() == (tracking == ConstantOriginTracking::Enabled));
+		REQUIRE(trace->getBlocks().size() == 1);
+		REQUIRE(trace->getRegions().size() == 2);
+		REQUIRE(trace->getRegions()[0].parent == NO_REGION);
+		REQUIRE(trace->getRegions()[1].parent == 0);
+		const auto& operations = trace->getBlock(0).operations;
+		REQUIRE(operations.size() == (tracking == ConstantOriginTracking::Enabled ? 9 : 4));
+		if (tracking == ConstantOriginTracking::Enabled) {
+			requireConstants(*trace, {{11, ConstantOrigin::Unspecified},
+			                          {13, ConstantOrigin::CacheInvariant, 0},
+			                          {17, ConstantOrigin::Unspecified, 1},
+			                          {19, ConstantOrigin::CacheInvariant, 0},
+			                          {23, ConstantOrigin::CacheInvariant}});
+		} else {
+			requireConstants(*trace, {});
+		}
+		const auto* source = &trace->getArguments()[0];
+		const TypedValueRef* firstCopy = nullptr;
+		constexpr std::array<RegionIndex, 3> copyRegions {NO_REGION, 0, 1};
+		std::size_t copyCount = 0;
+		for (const auto* operation : operations) {
+			if (operation->op == Op::ASSIGN) {
+				REQUIRE(copyCount < copyRegions.size());
+				REQUIRE(operation->regionIndex == copyRegions[copyCount]);
+				REQUIRE(operation->resultType == Type::i64);
+				REQUIRE(std::get<TypedValueRef>(operation->input[0]) == *source);
+				source = &operation->resultRef;
+				if (copyCount == 0) {
+					firstCopy = source;
+				}
+				++copyCount;
+			}
+		}
+		REQUIRE(copyCount == copyRegions.size());
+		REQUIRE(firstCopy != nullptr);
+		REQUIRE(operations.back()->op == Op::RETURN);
+		REQUIRE(operations.back()->regionIndex == NO_REGION);
+		REQUIRE(std::get<TypedValueRef>(operations.back()->input[0]) == *firstCopy);
+		REQUIRE(trace->copyTags.empty());
+		REQUIRE(trace->copySites.size() == (recordCopySites ? copyRegions.size() : 0));
+		for (const auto& site : trace->copySites) {
+			REQUIRE_FALSE(site.empty());
+		}
+		if (!previousCopySites.empty()) {
+			REQUIRE(trace->copySites == previousCopySites);
+		}
+		previousCopySites = trace->copySites;
+		trace.reset();
+		arena.softReset();
+	}
+	REQUIRE(failures == (throwBeforeTrace ? modes.size() : 0));
+}
+
+TEST_CASE("Folded constants are ignored without an active tracer and while paused", "[TraceContext]") {
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	CAPTURE(tracking);
+	REQUIRE_FALSE(inTracer());
+	REQUIRE_NOTHROW(traceFoldedConstant(Type::i64, ConstantLiteral {int64_t {53}}));
+	std::size_t pausedVisits = 0, activeVisits = 0;
+	std::function<void()> wrapper = [&] {
+		auto& condition = registerFunctionArgument(Type::b, 0);
+		while (traceBool(condition, 0.5)) {
+		}
+		if (traceCopy(condition).type == Type::v) {
+			++pausedVisits;
+			traceFoldedConstant(Type::i64, ConstantLiteral {int64_t {59}}, ConstantOrigin::CacheInvariant);
+		} else {
+			++activeVisits;
+			traceFoldedConstant(Type::i64, ConstantLiteral {int64_t {61}}, ConstantOrigin::CacheInvariant);
+			traceReturnOperation(Type::b, condition);
+		}
+	};
+	common::Arena arena;
+	auto trace = TraceContext::trace(wrapper, engine::Options {}, arena, tracking);
+	REQUIRE(trace != nullptr);
+	REQUIRE_FALSE(inTracer());
+	REQUIRE(pausedVisits == 1);
+	REQUIRE(activeVisits == 1);
+	if (tracking == ConstantOriginTracking::Enabled) {
+		requireConstants(*trace, {{61, ConstantOrigin::CacheInvariant}});
+	} else {
+		requireConstants(*trace, {});
+	}
+	REQUIRE_NOTHROW(traceFoldedConstant(Type::i64, ConstantLiteral {int64_t {67}}, ConstantOrigin::CacheInvariant));
 }
 
 } // namespace nautilus::tracing

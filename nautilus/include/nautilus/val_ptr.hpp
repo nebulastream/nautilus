@@ -491,6 +491,7 @@ private:
 		}
 		val<F*> fieldPtr = static_cast<val<F*>>(*this);
 #ifdef ENABLE_TRACING
+		tracing::traceFoldedConstant(tracing::TypeResolver<size_t>::to_type(), tracing::createConstLiteral(size_t {0}));
 		tracing::TypedValueRef fieldState = fieldPtr.state;
 		val<F&> field(std::move(fieldPtr), fieldState);
 #else
@@ -601,7 +602,7 @@ val<ValueType> inline ptrAdd(const val<ValueType>& left, const IndexType& offset
 /// the traced ui64 multiplication would: `ptr + n` traces one CONST and the ADD, and `ptr + 0` a copy of `ptr`.
 /// The copy is what keeps `ptr + 0` a fresh value: the result may be assigned to, and that must not reassign `ptr`.
 template <is_ptr ValueType>
-val<ValueType> inline ptrAddStatic(const val<ValueType>& left, size_t count, ConstantOrigin origin) {
+val<ValueType> inline ptrAddStatic(const val<ValueType>& left, size_t count, [[maybe_unused]] ConstantOrigin origin) {
 	const size_t offsetBytes = count * sizeof(std::remove_pointer_t<ValueType>);
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
@@ -610,6 +611,8 @@ val<ValueType> inline ptrAddStatic(const val<ValueType>& left, size_t count, Con
 			                                                       tracing::createConstLiteral(count), origin)));
 		}
 		if (offsetBytes == 0) {
+			tracing::traceFoldedConstant(tracing::TypeResolver<size_t>::to_type(),
+			                             tracing::createConstLiteral(offsetBytes), origin);
 			return val<ValueType>(left.value, tracing::traceCopy(left.state));
 		}
 		auto offsetRef = tracing::traceConstant(tracing::TypeResolver<size_t>::to_type(),
@@ -660,9 +663,9 @@ template <is_ptr ValueType, ptr_offset IndexType>
 val<ValueType> inline operator-(const val<ValueType>& left, IndexType&& offset) {
 	using Index = std::remove_cvref_t<IndexType>;
 	if constexpr (is_integral_val<Index>) {
-		return details::ptrAdd(left, cacheLiteral<0>() - offset);
+		return details::ptrAdd(left, cacheLiteral<size_t {0}>() - offset);
 	} else if constexpr (is_integral_ref_val<Index>) {
-		return details::ptrAdd(left, cacheLiteral<0>() - val<typename Index::baseType>(offset));
+		return details::ptrAdd(left, cacheLiteral<size_t {0}>() - val<typename Index::baseType>(offset));
 	} else {
 		// Negated in C++ after widening to size_t, so `ptr - 2u` steps back by two elements.
 		return details::ptrAddStatic(left, size_t {0} - details::staticElementCount(offset));

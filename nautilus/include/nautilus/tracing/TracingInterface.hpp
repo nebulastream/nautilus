@@ -41,6 +41,9 @@ public:
 	virtual TypedValueRef& traceConstant(Type type, const ConstantLiteral& value,
 	                                     ConstantOrigin origin = ConstantOrigin::Unspecified) = 0;
 
+	virtual void traceFoldedConstant(Type type, const ConstantLiteral& value,
+	                                 ConstantOrigin origin = ConstantOrigin::Unspecified) = 0;
+
 	virtual TypedValueRef& traceRuntimeBinding(const runtime_binding::Entry& binding) = 0;
 
 	/// Trace a stack allocation of @p size bytes with @p align byte alignment.

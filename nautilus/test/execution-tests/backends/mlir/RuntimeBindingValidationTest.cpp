@@ -2,6 +2,7 @@
 
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
 #include "catch2/catch_test_macros.hpp"
+#include "catch2/generators/catch_generators.hpp"
 #include "catch2/matchers/catch_matchers_string.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/RuntimeBinding.hpp"
@@ -29,6 +30,7 @@
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/region.hpp"
 #include "nautilus/select.hpp"
+#include "nautilus/static.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/SSAVerifier.hpp"
@@ -508,6 +510,303 @@ TEST_CASE("Constant origin tracking reaches every function and nested region ind
 			REQUIRE(scalar.getResult().certified == enabled);
 			REQUIRE(scalar.getResult().rejection == (enabled ? "" : "constant_origins_not_recorded"));
 		}
+	}
+}
+
+TEST_CASE("Frontend pointer folding preserves scalar certification boundaries before optimization",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	const bool fold = GENERATE(false, true);
+	const bool optimize = GENERATE(false, true);
+	const bool bytePointer = GENERATE(false, true);
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	const bool enabled = tracking == ConstantOriginTracking::Enabled;
+	for (const std::string_view kind :
+	     {"raw zero", "raw false", "raw subtract zero", "static zero", "static nonzero", "raw increment",
+	      "raw decrement", "certified zero", "certified nonzero", "certified unsigned subtraction", "prefix increment",
+	      "prefix decrement", "postfix increment", "postfix decrement"}) {
+		CAPTURE(fold, optimize, bytePointer, tracking, kind);
+		const bool certifiedOffset = kind.starts_with("certified");
+		const bool certified = certifiedOffset || kind.starts_with("prefix") || kind.starts_with("postfix");
+		const bool zero =
+		    kind == "raw zero" || kind == "raw false" || kind == "raw subtract zero" || kind == "static zero";
+		Options options;
+		options.setOption("engine.foldStaticConstants", fold);
+		options.setOption("ir.runOptimizationPasses", optimize);
+		options.setOption("ir.maxPipelineIterations", 8);
+		std::size_t iterations = 0;
+		const auto makeWrapper = [&]<typename T>() {
+			return details::createFunctionWrapper([kind, &iterations](val<T*> input, val<bool> condition) {
+				++iterations;
+				auto pointer = input;
+				if (kind == "raw zero") {
+					pointer = input + 0;
+				} else if (kind == "raw false") {
+					pointer = input + false;
+				} else if (kind == "raw subtract zero") {
+					pointer = input - 0;
+				} else if (kind == "static zero") {
+					static_val<std::size_t> offset = 0;
+					pointer = input + offset;
+				} else if (kind == "static nonzero") {
+					static_val<std::size_t> offset = 1;
+					pointer = input + offset;
+				} else if (kind == "raw increment") {
+					pointer = input + std::size_t {1};
+				} else if (kind == "raw decrement") {
+					pointer = input - std::size_t {1};
+				} else if (kind == "certified zero") {
+					pointer = input + cacheLiteral<std::size_t {0}>();
+				} else if (kind == "certified nonzero") {
+					pointer = input + cacheLiteral<std::size_t {1}>();
+				} else if (kind == "certified unsigned subtraction") {
+					pointer = input - cacheLiteral<uint32_t {1}>();
+				} else if (kind == "prefix increment") {
+					++pointer;
+				} else if (kind == "prefix decrement") {
+					--pointer;
+				} else if (kind == "postfix increment") {
+					pointer++;
+				} else if (kind == "postfix decrement") {
+					pointer--;
+				}
+				if (condition) {
+					return pointer;
+				}
+				return input;
+			});
+		};
+		std::list<compiler::CompilableFunction> functions;
+		functions.emplace_back("execute",
+		                       bytePointer ? makeWrapper.operator()<uint8_t>() : makeWrapper.operator()<int64_t>());
+		common::ArenaPool traceArenaPool, irArenaPool;
+		compiler::CompilationPipeline pipeline(options, traceArenaPool, irArenaPool);
+		CacheScalarValidationPass scalar;
+		std::size_t checks = 0;
+		auto ir = pipeline.compileToIR(
+		    functions, options.deriveModuleOptions(), nullptr, compiler::IROptimizationLevel::Full,
+		    [&](IRGraph& graph) {
+			    ++checks;
+			    REQUIRE(graph.hasRecordedConstantOrigins() == enabled);
+			    const auto before = graph.toString();
+			    REQUIRE_FALSE(scalar.apply(graph));
+			    REQUIRE(scalar.getResult().certified == (enabled && certified));
+			    if (!enabled) {
+				    REQUIRE(scalar.getResult().rejection == "constant_origins_not_recorded");
+			    } else if (certified) {
+				    REQUIRE(scalar.getResult().rejection.empty());
+			    } else {
+				    REQUIRE_THAT(scalar.getResult().rejection,
+				                 Catch::Matchers::ContainsSubstring("uncertified_scalar"));
+			    }
+			    std::size_t constants = 0, unspecified = 0, zeros = 0, multiplications = 0, subtractions = 0;
+			    for (const auto* block : graph.getFunctionOperation("execute")->getBasicBlocks()) {
+				    for (const auto* operation : block->getOperations()) {
+					    multiplications += operation->getOperationType() == Operation::OperationType::MulOp;
+					    if (operation->getOperationType() == Operation::OperationType::SubOp) {
+						    ++subtractions;
+						    REQUIRE(operation->getStamp() == tracing::TypeResolver<std::size_t>::to_type());
+					    }
+					    if (const auto* constant = operation->dynCast<ConstIntOperation>()) {
+						    ++constants;
+						    unspecified += constant->getConstantOrigin() == ConstantOrigin::Unspecified;
+						    if (zero && constant->getValue() == 0) {
+							    ++zeros;
+							    REQUIRE(constant->getConstantOrigin() == ConstantOrigin::Unspecified);
+						    }
+					    }
+				    }
+			    }
+			    REQUIRE((constants == 0) == (!enabled && fold && zero));
+			    if (enabled) {
+				    REQUIRE((unspecified == 0) == certified);
+				    if (zero) {
+					    REQUIRE(zeros > 0);
+				    }
+			    } else {
+				    REQUIRE(unspecified == constants);
+			    }
+			    REQUIRE((multiplications > 0) == (!fold || (certifiedOffset && !bytePointer)));
+			    REQUIRE((subtractions > 0) == (kind == "certified unsigned subtraction"));
+			    REQUIRE(graph.toString() == before);
+		    },
+		    tracking);
+		REQUIRE(checks == 1);
+		REQUIRE(iterations >= 2);
+		REQUIRE_FALSE(tracing::inTracer());
+		REQUIRE(ir->hasRecordedConstantOrigins() == enabled);
+		REQUIRE(scalar.getResult().certified == (enabled && certified));
+	}
+}
+
+TEST_CASE("Field stores keep uncertified offsets even when the stored value is certified",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	struct Fields {
+		int64_t first;
+		int64_t second;
+	};
+	const bool fold = GENERATE(false, true);
+	const bool optimize = GENERATE(false, true);
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	const bool enabled = tracking == ConstantOriginTracking::Enabled;
+	for (const auto member : {&Fields::first, &Fields::second}) {
+		const auto offset = field_offset(member);
+		CAPTURE(fold, optimize, tracking, offset);
+		Options options;
+		options.setOption("engine.foldStaticConstants", fold);
+		options.setOption("ir.runOptimizationPasses", optimize);
+		options.setOption("ir.maxPipelineIterations", 8);
+		std::size_t iterations = 0;
+		std::list<compiler::CompilableFunction> functions;
+		functions.emplace_back(
+		    "execute", details::createFunctionWrapper([member, &iterations](val<Fields*> pointer, val<bool> condition) {
+			    ++iterations;
+			    pointer.set(member, cacheLiteral<int64_t {7}>());
+			    if (condition) {
+				    return pointer;
+			    }
+			    return pointer;
+		    }));
+		common::ArenaPool traceArenaPool, irArenaPool;
+		compiler::CompilationPipeline pipeline(options, traceArenaPool, irArenaPool);
+		CacheScalarValidationPass scalar;
+		std::size_t checks = 0;
+		auto ir = pipeline.compileToIR(
+		    functions, options.deriveModuleOptions(), nullptr, compiler::IROptimizationLevel::Full,
+		    [&](IRGraph& graph) {
+			    ++checks;
+			    REQUIRE(graph.hasRecordedConstantOrigins() == enabled);
+			    const auto before = graph.toString();
+			    REQUIRE_FALSE(scalar.apply(graph));
+			    REQUIRE_FALSE(scalar.getResult().certified);
+			    if (enabled) {
+				    REQUIRE_THAT(scalar.getResult().rejection,
+				                 Catch::Matchers::ContainsSubstring("uncertified_scalar"));
+			    } else {
+				    REQUIRE(scalar.getResult().rejection == "constant_origins_not_recorded");
+			    }
+			    std::size_t values = 0, offsets = 0, stores = 0, additions = 0, multiplications = 0;
+			    for (const auto* block : graph.getFunctionOperation("execute")->getBasicBlocks()) {
+				    for (const auto* operation : block->getOperations()) {
+					    stores += operation->getOperationType() == Operation::OperationType::StoreOp;
+					    additions += operation->getOperationType() == Operation::OperationType::AddOp;
+					    multiplications += operation->getOperationType() == Operation::OperationType::MulOp;
+					    if (const auto* constant = operation->dynCast<ConstIntOperation>()) {
+						    if (constant->getStamp() == Type::i64 && constant->getValue() == 7) {
+							    ++values;
+							    REQUIRE(constant->getConstantOrigin() ==
+							            (enabled ? ConstantOrigin::CacheInvariant : ConstantOrigin::Unspecified));
+						    } else if (constant->getStamp() == tracing::TypeResolver<std::size_t>::to_type() &&
+						               constant->getValue() == static_cast<int64_t>(offset)) {
+							    ++offsets;
+							    REQUIRE(constant->getConstantOrigin() == ConstantOrigin::Unspecified);
+						    }
+					    }
+				    }
+			    }
+			    REQUIRE(values == 1);
+			    REQUIRE(offsets == (enabled || offset != 0 ? 1 : 0));
+			    REQUIRE(stores == 1);
+			    REQUIRE(additions == (offset == 0 ? 0 : 1));
+			    REQUIRE(multiplications == (!fold && offset != 0 ? 1 : 0));
+			    REQUIRE(graph.toString() == before);
+		    },
+		    tracking);
+		REQUIRE(checks == 1);
+		REQUIRE(iterations >= 2);
+		REQUIRE_FALSE(tracing::inTracer());
+		REQUIRE(ir->hasRecordedConstantOrigins() == enabled);
+		REQUIRE_FALSE(scalar.getResult().certified);
+	}
+}
+
+TEST_CASE("Frontend scalar conversions never certify ordinary constructors static values or mixed raw operands",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	const bool fold = GENERATE(false, true);
+	const bool optimize = GENERATE(false, true);
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	const bool enabled = tracking == ConstantOriginTracking::Enabled;
+	for (const std::string_view kind : {"integer constructor", "boolean constructor", "floating constructor",
+	                                    "static conversion", "mixed integer right", "mixed integer left",
+	                                    "mixed floating", "mixed integer floating", "certified conversion"}) {
+		CAPTURE(fold, optimize, tracking, kind);
+		const bool certified = kind == "certified conversion";
+		Options options;
+		options.setOption("engine.foldStaticConstants", fold);
+		options.setOption("ir.runOptimizationPasses", optimize);
+		options.setOption("ir.maxPipelineIterations", 8);
+		std::list<compiler::CompilableFunction> functions;
+		functions.emplace_back("execute",
+		                       details::createFunctionWrapper([kind](val<int64_t> input, val<double> number) {
+			                       if (kind == "integer constructor") {
+				                       (void) val<int64_t>(0);
+			                       } else if (kind == "boolean constructor") {
+				                       (void) val<bool>(false);
+			                       } else if (kind == "floating constructor") {
+				                       (void) val<double>(0.0);
+			                       } else if (kind == "static conversion") {
+				                       static_val<int64_t> value = 0;
+				                       (void) val<int64_t>(value);
+			                       } else if (kind == "mixed integer right") {
+				                       (void) (input + int32_t {1});
+			                       } else if (kind == "mixed integer left") {
+				                       (void) (int32_t {1} + input);
+			                       } else if (kind == "mixed floating") {
+				                       (void) (number + float {1.25});
+			                       } else if (kind == "mixed integer floating") {
+				                       (void) (number + int32_t {1});
+			                       } else if (kind == "certified conversion") {
+				                       (void) static_cast<val<double>>(cacheLiteral<int32_t {1}>());
+			                       }
+			                       return input;
+		                       }));
+		common::ArenaPool traceArenaPool, irArenaPool;
+		compiler::CompilationPipeline pipeline(options, traceArenaPool, irArenaPool);
+		CacheScalarValidationPass scalar;
+		std::size_t checks = 0;
+		auto ir = pipeline.compileToIR(
+		    functions, options.deriveModuleOptions(), nullptr, compiler::IROptimizationLevel::Full,
+		    [&](IRGraph& graph) {
+			    ++checks;
+			    REQUIRE(graph.hasRecordedConstantOrigins() == enabled);
+			    const auto before = graph.toString();
+			    REQUIRE_FALSE(scalar.apply(graph));
+			    REQUIRE(scalar.getResult().certified == (enabled && certified));
+			    if (!enabled) {
+				    REQUIRE(scalar.getResult().rejection == "constant_origins_not_recorded");
+			    } else if (certified) {
+				    REQUIRE(scalar.getResult().rejection.empty());
+			    } else {
+				    REQUIRE_THAT(scalar.getResult().rejection,
+				                 Catch::Matchers::ContainsSubstring("uncertified_scalar"));
+			    }
+			    std::size_t constants = 0;
+			    for (const auto* block : graph.getFunctionOperation("execute")->getBasicBlocks()) {
+				    for (const auto* operation : block->getOperations()) {
+					    std::optional<ConstantOrigin> origin;
+					    if (const auto* integer = operation->dynCast<ConstIntOperation>()) {
+						    origin = integer->getConstantOrigin();
+					    } else if (const auto* boolean = operation->dynCast<ConstBooleanOperation>()) {
+						    origin = boolean->getConstantOrigin();
+					    } else if (const auto* floating = operation->dynCast<ConstFloatOperation>()) {
+						    origin = floating->getConstantOrigin();
+					    }
+					    if (origin) {
+						    ++constants;
+						    REQUIRE(*origin == (enabled && certified ? ConstantOrigin::CacheInvariant
+						                                             : ConstantOrigin::Unspecified));
+					    }
+				    }
+			    }
+			    REQUIRE(constants == 1);
+			    REQUIRE(graph.toString() == before);
+		    },
+		    tracking);
+		REQUIRE(checks == 1);
+		REQUIRE(ir->hasRecordedConstantOrigins() == enabled);
+		REQUIRE(scalar.getResult().certified == (enabled && certified));
 	}
 }
 

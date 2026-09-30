@@ -178,6 +178,12 @@ TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& con
 	}
 }
 
+void TraceContext::traceFoldedConstant(Type type, const ConstantLiteral& value, ConstantOrigin origin) {
+	if (state->recordConstantOrigins) {
+		traceConstant(type, value, origin);
+	}
+}
+
 void TraceContext::validateRuntimeBinding(const runtime_binding::Entry& binding) const {
 	if (state) {
 		const auto& bindings = state->options.getRuntimeBindings().entries();

@@ -1053,6 +1053,155 @@ TEST_CASE("RuntimeBindings caches certified scalars with ModRef calls stores and
 	REQUIRE(keys[0] != keys[1]);
 }
 
+TEST_CASE("RuntimeBindings caches certified pointer steps against rebound storage", "[runtime-bindings][cache]") {
+	const bool fold = GENERATE(false, true);
+	const bool optimize = GENERATE(false, true);
+	CAPTURE(fold, optimize);
+	BindingCacheDirectory cache;
+	auto options = bindingCacheOptions(cache.path(), "certified-pointer-steps-v1");
+	options.setOption("engine.foldStaticConstants", fold);
+	options.setOption("ir.runOptimizationPasses", optimize);
+	options.setOption("ir.maxPipelineIterations", 8);
+	int traces = 0;
+	const auto compile = [&](std::array<int64_t, 4>& values) {
+		RuntimeBindings bindings;
+		auto state = bindings.bind<int64_t>("state", values.data());
+		NautilusEngine engine(options);
+		auto module = engine.createModule();
+		module.setRuntimeBindings(bindings);
+		module.registerFunction<val<int64_t>(val<int64_t>)>(
+		    "execute", [state, &traces](val<int64_t> delta) -> val<int64_t> {
+			    ++traces;
+			    auto pointer = state.get() + cacheLiteral<std::size_t {0}>();
+			    *++pointer += delta;
+			    auto previous = pointer++;
+			    *previous += delta;
+			    *pointer += delta;
+			    auto next = pointer--;
+			    *next += delta;
+			    *--pointer += delta;
+			    return *pointer;
+		    });
+		module.registerFunction<val<int64_t*>(val<uint32_t>)>(
+		    "back", [state](val<uint32_t> offset) { return (state.get() + cacheLiteral<std::size_t {3}>()) - offset; });
+		module.registerFunction<val<int64_t*>(val<uint32_t*>)>("back_ref", [state](val<uint32_t*> offset) {
+			return (state.get() + cacheLiteral<std::size_t {3}>()) - *offset;
+		});
+		return module.compile();
+	};
+	const auto check = [](CompiledModule& module, std::array<int64_t, 4>& values, int64_t delta) {
+		auto expected = values;
+		expected[0] += delta;
+		expected[1] += 2 * delta;
+		expected[2] += 2 * delta;
+		REQUIRE(module.getFunction<int64_t(int64_t)>("execute")(delta) == expected[0]);
+		REQUIRE(values == expected);
+		for (uint32_t offset : {0, 1, 2, 3}) {
+			CAPTURE(offset);
+			REQUIRE(module.getFunction<int64_t*(uint32_t)>("back")(offset) == values.data() + 3 - offset);
+			REQUIRE(module.getFunction<int64_t*(uint32_t*)>("back_ref")(&offset) == values.data() + 3 - offset);
+		}
+		REQUIRE(values == expected);
+	};
+	std::array<int64_t, 4> first {11, 23, 37, 53}, second {101, 211, 307, 401};
+	REQUIRE(first.data() != second.data());
+	const auto firstBefore = first;
+	const auto secondBefore = second;
+	auto cold = compile(first);
+	REQUIRE(first == firstBefore);
+	REQUIRE(bindingStat<int64_t>(cold, "cache.scalarCertificate") == 1);
+	REQUIRE(bindingStat<std::string>(cold, "cache.scalarRejection").empty());
+	REQUIRE(bindingStat<std::string>(cold, "cache.fallback") == "none");
+	REQUIRE(bindingStat<std::string>(cold, "cache.object") == "written");
+	REQUIRE(bindingStat<std::string>(cold, "cache.mlir") == "written");
+	REQUIRE(bindingStat<int64_t>(cold, "cache.tracingRan") == 1);
+	const auto coldTraces = traces;
+	REQUIRE(coldTraces > 0);
+	check(cold, first, 7);
+	const auto firstAfter = first;
+	auto warm = compile(second);
+	REQUIRE(second == secondBefore);
+	REQUIRE(bindingStat<std::string>(warm, "cache.fallback") == "none");
+	REQUIRE(bindingStat<std::string>(warm, "cache.object") == "hit");
+	REQUIRE(bindingStat<int64_t>(warm, "cache.tracingRan") == 0);
+	REQUIRE(bindingStat<std::string>(warm, "cache.key") == bindingStat<std::string>(cold, "cache.key"));
+	REQUIRE(traces == coldTraces);
+	check(warm, second, -3);
+	REQUIRE(first == firstAfter);
+	const auto secondAfter = second;
+	check(cold, first, 2);
+	REQUIRE(second == secondAfter);
+	REQUIRE(traces == coldTraces);
+}
+
+TEST_CASE("RuntimeBindings retains folded zero evidence without disabling legacy cache publication",
+          "[runtime-bindings][cache][guard]") {
+	const bool fold = GENERATE(false, true);
+	const bool optimize = GENERATE(false, true);
+	const bool opaque = GENERATE(false, true);
+	CAPTURE(fold, optimize, opaque);
+	BindingCacheDirectory cache;
+	auto options = bindingCacheOptions(cache.path(), "folded-zero-cache-evidence-v1");
+	options.setOption("engine.foldStaticConstants", fold);
+	options.setOption("ir.runOptimizationPasses", optimize);
+	options.setOption("ir.maxPipelineIterations", 8);
+	std::array<int64_t, 2> values {11, 31};
+	int traces = 0;
+	std::string key;
+	auto consume = +[](int64_t* state, int64_t increment) noexcept {
+		*state += increment;
+		return *state;
+	};
+	for (std::size_t iteration = 0; iteration < values.size(); ++iteration) {
+		CAPTURE(iteration);
+		RuntimeBindings bindings;
+		auto state = bindings.bind<int64_t>("state", &values[iteration]);
+		NautilusEngine engine(options);
+		auto module = engine.createModule();
+		module.setRuntimeBindings(bindings);
+		module.registerFunction<val<int64_t>()>("execute", [=, &traces] {
+			++traces;
+			auto pointer = state.get() + 0;
+			auto increment = cacheLiteral<int64_t {7}>();
+			if (opaque) {
+				return invoke(consume, pointer, increment);
+			}
+			return static_cast<val<int64_t>>(*pointer) + increment;
+		});
+		const auto before = values;
+		const auto priorTraces = traces;
+		auto compiled = module.compile();
+		REQUIRE(values == before);
+		const bool hit = !opaque && iteration == 1;
+		REQUIRE(bindingStat<int64_t>(compiled, "cache.tracingRan") == (hit ? 0 : 1));
+		REQUIRE((hit ? traces == priorTraces : traces > priorTraces));
+		if (!hit) {
+			REQUIRE(bindingStat<int64_t>(compiled, "cache.scalarCertificate") == 0);
+			REQUIRE_THAT(bindingStat<std::string>(compiled, "cache.scalarRejection"),
+			             Catch::Matchers::ContainsSubstring("uncertified_scalar"));
+		}
+		if (opaque) {
+			REQUIRE(bindingStat<std::string>(compiled, "cache.fallback") == "non_relocatable_pointer");
+			REQUIRE_THAT(bindingStat<std::string>(compiled, "cache.rejection"),
+			             Catch::Matchers::ContainsSubstring("opaque_call"));
+			for (const auto* extension : {".o", ".mlirbc", ".manifest"}) {
+				REQUIRE(bindingArtifact(cache.path(), extension).empty());
+			}
+		} else {
+			REQUIRE(bindingStat<std::string>(compiled, "cache.fallback") == "none");
+			REQUIRE(bindingStat<std::string>(compiled, "cache.object") == (hit ? "hit" : "written"));
+			if (hit) {
+				REQUIRE(bindingStat<std::string>(compiled, "cache.key") == key);
+			} else {
+				key = bindingStat<std::string>(compiled, "cache.key");
+			}
+		}
+		REQUIRE(compiled.getFunction<int64_t()>("execute")() == before[iteration] + 7);
+		REQUIRE(values[iteration] == before[iteration] + (opaque ? 7 : 0));
+		REQUIRE(values[1 - iteration] == before[1 - iteration]);
+	}
+}
+
 TEST_CASE("RuntimeBindings does not infer scalar certification from equal numeric values",
           "[runtime-bindings][cache]") {
 	for (const bool certified : {false, true}) {

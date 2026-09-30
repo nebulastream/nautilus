@@ -71,6 +71,8 @@ TypedValueRef traceConstant(T&& value, ConstantOrigin origin = ConstantOrigin::U
 	return {0, TypeResolver<T>::to_type()};
 }
 
+void traceFoldedConstant(Type type, const ConstantLiteral& value, ConstantOrigin origin = ConstantOrigin::Unspecified);
+
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
 TypedValueRef traceCopy(const TypedValueRef& ref);
 
