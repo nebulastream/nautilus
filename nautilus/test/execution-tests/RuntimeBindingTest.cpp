@@ -505,7 +505,7 @@ TEST_CASE("Cache-invariant scalar origins survive nested regions and trace cloni
 				val<bool> ordinaryBoolean = true;
 				auto floating = cacheInvariant(2.5);
 				val<double> ordinaryFloating = 2.5;
-				result = select(boolean && ordinaryBoolean,
+				result = select(select(boolean, ordinaryBoolean, boolean),
 				                static_cast<val<double>>(integer + ordinaryInteger) + floating, ordinaryFloating);
 			});
 		});
@@ -959,7 +959,7 @@ TEST_CASE("RuntimeBindings caches certified scalars with ModRef calls stores and
 				              static_cast<val<int64_t>>(cacheInvariant(1.5) * cacheInvariant(2.0));
 				*total.get() = result;
 				*byte.get() = static_cast<val<uint8_t>>(result & cacheLiteral<int64_t {255}>());
-				*bit.get() = ready && cacheLiteral<true>();
+				*bit.get() = select(ready, cacheLiteral<true>(), cacheLiteral<false>());
 				return invoke(certifiedBindingThrow, state.get(), delta) + result;
 			});
 			module.registerFunction<val<int64_t>()>("implicit_scalars", [total] {

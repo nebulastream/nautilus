@@ -25,8 +25,10 @@
 
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
 #include <llvm/Config/llvm-config.h>
-#include <llvm/Support/Process.h>
 #include <llvm/TargetParser/Host.h>
+#ifdef __linux__
+#include <unistd.h>
+#endif
 
 namespace nautilus::engine {
 namespace {
@@ -234,8 +236,12 @@ TEST_CASE("RuntimeBindings pointer access benchmark", "[.runtime-bindings-benchm
 	BindingBenchmarkDirectory directory;
 	std::ofstream metadata(directory.path() / "environment.txt");
 	metadata << "compiler=" << __VERSION__ << "\nllvm=" << LLVM_VERSION_STRING
-	         << "\ntarget=" << llvm::sys::getProcessTriple()
-	         << "\npage_bytes=" << llvm::sys::Process::getPageSizeEstimate() << '\n';
+	         << "\ntarget=" << llvm::sys::getProcessTriple() << '\n';
+#ifdef __linux__
+	const auto pageBytes = ::sysconf(_SC_PAGESIZE);
+	REQUIRE(pageBytes > 0);
+	metadata << "page_bytes=" << pageBytes << '\n';
+#endif
 	metadata << "live_code_sharing=none; each live executable owns an LLJIT and separately relocated code pages\n";
 #ifdef NDEBUG
 	metadata << "build=release\n";

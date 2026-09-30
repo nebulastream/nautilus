@@ -3,6 +3,7 @@
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/generators/catch_generators.hpp"
+#include "catch2/matchers/catch_matchers_exception.hpp"
 #include "catch2/matchers/catch_matchers_string.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/RuntimeBinding.hpp"
@@ -637,6 +638,69 @@ TEST_CASE("Frontend pointer folding preserves scalar certification boundaries be
 		REQUIRE(ir->hasRecordedConstantOrigins() == enabled);
 		REQUIRE(scalar.getResult().certified == (enabled && certified));
 	}
+}
+
+TEST_CASE("Materialized logical booleans stay uncertified in both boolean configurations",
+          "[runtime-bindings][cache][guard]") {
+	using namespace compiler::ir;
+	const bool useOr = GENERATE(false, true);
+	const bool symbolic = GENERATE(false, true);
+	const bool optimize = GENERATE(false, true);
+	const auto tracking = GENERATE(ConstantOriginTracking::Disabled, ConstantOriginTracking::Enabled);
+	const bool enabled = tracking == ConstantOriginTracking::Enabled;
+	CAPTURE(useOr, symbolic, optimize, tracking);
+	Options options;
+	options.setOption("ir.runOptimizationPasses", optimize);
+	options.setOption("ir.maxPipelineIterations", 8);
+	std::list<compiler::CompilableFunction> functions;
+	functions.emplace_back(
+	    "execute", details::createFunctionWrapper([useOr, symbolic](val<bool> left, val<bool> right) {
+		    if (symbolic) {
+			    return useOr ? select(left, cacheLiteral<true>(), right) : select(left, right, cacheLiteral<false>());
+		    }
+		    const bool materialized = useOr ? left || right : left && right;
+		    return val<bool>(materialized);
+	    }));
+	common::ArenaPool traceArenaPool, irArenaPool;
+	compiler::CompilationPipeline pipeline(options, traceArenaPool, irArenaPool);
+	std::size_t checks = 0;
+	auto ir = pipeline.compileToIR(
+	    functions, options.deriveModuleOptions(), nullptr, compiler::IROptimizationLevel::Full,
+	    [&](IRGraph& graph) {
+		    ++checks;
+		    const auto before = graph.toString();
+		    CacheScalarValidationPass scalar;
+		    REQUIRE_FALSE(scalar.apply(graph));
+		    REQUIRE(scalar.getResult().certified == (enabled && symbolic));
+		    if (!enabled) {
+			    REQUIRE(scalar.getResult().rejection == "constant_origins_not_recorded");
+		    } else if (symbolic) {
+			    REQUIRE(scalar.getResult().rejection.empty());
+		    } else {
+			    REQUIRE_THAT(scalar.getResult().rejection, Catch::Matchers::ContainsSubstring("ConstBooleanOp"));
+			    REQUIRE_THAT(scalar.getResult().rejection, Catch::Matchers::ContainsSubstring("uncertified_scalar"));
+		    }
+		    std::array<std::size_t, 2> values {};
+		    for (const auto* block : graph.getFunctionOperation("execute")->getBasicBlocks()) {
+			    for (const auto* operation : block->getOperations()) {
+				    if (const auto* constant = operation->dynCast<ConstBooleanOperation>()) {
+					    ++values[constant->getValue()];
+					    REQUIRE(constant->getConstantOrigin() ==
+					            (enabled && symbolic ? ConstantOrigin::CacheInvariant : ConstantOrigin::Unspecified));
+				    }
+			    }
+		    }
+		    if (symbolic) {
+			    REQUIRE(values[useOr] > 0);
+		    } else {
+			    REQUIRE(values[false] > 0);
+			    REQUIRE(values[true] > 0);
+		    }
+		    REQUIRE(graph.toString() == before);
+	    },
+	    tracking);
+	REQUIRE(checks == 1);
+	REQUIRE(ir->hasRecordedConstantOrigins() == enabled);
 }
 
 TEST_CASE("Field stores keep uncertified offsets even when the stored value is certified",
@@ -1442,7 +1506,8 @@ TEST_CASE("MLIR guarded cache imports the exception personality and still valida
 		auto execute = executable.getInvocableMember<int32_t, int32_t*, int32_t>("execute");
 		REQUIRE(execute(&cleanups, 7) == 8);
 		REQUIRE(cleanups == 1);
-		REQUIRE_THROWS_WITH(execute(&cleanups, -1), "personality cleanup");
+		REQUIRE_THROWS_MATCHES(execute(&cleanups, -1), std::runtime_error,
+		                       Catch::Matchers::Message("personality cleanup"));
 		REQUIRE(cleanups == 2);
 		REQUIRE(execute(&cleanups, 19) == 20);
 		REQUIRE(cleanups == 3);
