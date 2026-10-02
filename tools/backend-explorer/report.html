@@ -248,8 +248,10 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
 		<h2>LLVM pass ablation</h2>
 		<p class="hint">Each row removes every instance of one pass from the expanded default pipeline and compares the
 			result with the unmodified expanded pipeline. A negative compile change means the pass costs that much
-			compile time. A positive runtime change means the code is that much slower without the pass. Passes in the
-			top-left of the trade-off are cheap to keep and costly to lose.</p>
+			compile time. A positive runtime change means the code is that much slower without the pass. <i>Own time</i>
+			is the pass's exclusive time in the profile of the same level, as a share of the compile metric;
+			<i>indirect</i> is the saving minus that own time: work later passes and code generation do because of what
+			the pass produced. Passes in the top-left of the trade-off are cheap to keep and costly to lose.</p>
 		<div class="controls">
 			<label>Base pipeline <select id="ablationBase"></select></label>
 			<label>Compile metric <select id="ablationMetric">
@@ -258,6 +260,29 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
 			</select></label>
 		</div>
 		<div class="scroll"><table id="ablation"></table></div>
+	</section>
+
+	<section id="profileSection">
+		<h2>Why passes are slow</h2>
+		<p class="hint">Pass profiles of the default O0–O3 pipelines, O3 without the LLVM inliner, and the greedy
+			pipeline, recorded with <code>mlir.recordPassTimings</code>. Every time is <i>exclusive</i>: a pass does
+			not own the analyses it requests or the passes nested in it. Means per compilation over the selected
+			kernels. A pass whose own time is small can still be expensive overall: compare its own time here with
+			what removing it saves in the ablation above. The difference is downstream work it causes, mostly through
+			the IR it produces.</p>
+		<div class="controls">
+			<label>Profile <select id="profileSelect"></select></label>
+			<label>Compare with <select id="profileCompare"></select></label>
+			<label><input type="checkbox" id="profileAll" /> all passes</label>
+		</div>
+		<div id="profileFindings"></div>
+		<div id="profileBreakdown"></div>
+		<h3 style="font-size:14px;margin:16px 0 4px">LLVM IR passes</h3>
+		<div class="scroll"><table id="profilePasses"></table></div>
+		<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;margin-top:16px">
+			<div><h3 style="font-size:14px;margin:0 0 4px">Analyses</h3><div class="scroll" style="max-height:360px"><table id="profileAnalyses"></table></div></div>
+			<div><h3 style="font-size:14px;margin:0 0 4px">Machine-code generation passes</h3><div class="scroll" style="max-height:360px"><table id="profileCodegen"></table></div></div>
+		</div>
 	</section>
 
 	<section id="greedySection">
@@ -332,7 +357,7 @@ function backendColor(backend) {
 // The reference checksum per kernel: the default MLIR configuration's, else the most common one.
 const referenceChecksum = {};
 for (const kernel of kernels) {
-	const baseline = configs.find((c) => c.group === "backends" && c.backend === "mlir");
+	const baseline = configs.find((c) => c.group === "backends" && c.backend === "mlir" && (!c.meta || c.meta.optLevel == null || c.meta.optLevel === 3));
 	const fromBaseline = baseline && baseline.results[kernel] && baseline.results[kernel].status === "ok"
 		? baseline.results[kernel].checksum : null;
 	if (fromBaseline != null) { referenceChecksum[kernel] = fromBaseline; continue; }
@@ -367,8 +392,8 @@ function failureReason(config, kernel) {
 	return null;
 }
 
-const baselineConfig = configs.find((c) => c.group === "backends" && c.backend === "mlir")
-	|| configs.find((c) => c.backend === "mlir") || configs[0];
+const isDefaultMlirO3 = (c) => c.group === "backends" && c.backend === "mlir" && (!c.meta || c.meta.optLevel == null || c.meta.optLevel === 3);
+const baselineConfig = configs.find(isDefaultMlirO3) || configs.find((c) => c.backend === "mlir") || configs[0];
 
 function geomean(values) {
 	const v = values.filter((x) => x > 0 && Number.isFinite(x));
@@ -690,6 +715,10 @@ function renderScatter() {
 		const anchor = x > width * 0.7 ? "end" : "start";
 		out += `<text x="${x + (anchor === "end" ? -10 : 10)}" y="${y - 8}" text-anchor="${anchor}" style="fill:var(--text-primary);font-weight:500">${esc(text)}</text>`;
 	};
+	// The MLIR backend's default optimization levels are the reference points everything else is compared with.
+	for (const p of shown) {
+		if (p.config.meta && p.config.meta.defaultLevel) label(p, `O${p.config.meta.optLevel}`);
+	}
 	if (frontier.length) {
 		label(frontier[0], frontier[0].config.label);
 		label(frontier[frontier.length - 1], frontier[frontier.length - 1].config.label);
@@ -926,7 +955,10 @@ function setupAblation() {
 	const bases = configs.filter((c) => c.group === "llvm-ablation" && c.meta && c.meta.removedPass == null);
 	const section = document.getElementById("ablationSection");
 	if (!bases.length) { section.style.display = "none"; return; }
-	document.getElementById("ablationBase").innerHTML = bases.map((b) => `<option value="${esc(b.id)}">${esc(b.label)}</option>`).join("");
+	const select = document.getElementById("ablationBase");
+	select.innerHTML = bases.map((b) => `<option value="${esc(b.id)}">${esc(b.label)}</option>`).join("");
+	const o3 = bases.find((b) => b.meta.baseLevel === 3);
+	if (o3) select.value = o3.id;
 }
 
 function renderAblation() {
@@ -937,6 +969,14 @@ function renderAblation() {
 	const metric = document.getElementById("ablationMetric").value;
 	const sel = selectedKernels();
 	const compileOf = (r) => (metric === "opt" ? r.stats["llvm.optimize.ms"] : compileMetric(r, "wall"));
+	// The pass's own (exclusive) time in the profile of the same default level, as a share of the same metric.
+	const levelProfile = configs.find((c) => c.group === "llvm-profile" && c.meta && c.meta.profileOf === `O${base.meta.baseLevel}`);
+	const prof = levelProfile ? profileOf(levelProfile, sel) : null;
+	const ownShare = (pass) => {
+		if (!prof || !prof.passes[pass]) return prof ? 0 : null;
+		const denominator = metric === "opt" ? prof.totals.optimize : prof.totals.compile;
+		return denominator > 0 ? prof.passes[pass].ms / denominator : null;
+	};
 	const rows = [];
 	for (const c of configs) {
 		if (c.group !== "llvm-ablation" || !c.meta || c.meta.removedPass == null || c.meta.baseLevel !== base.meta.baseLevel) continue;
@@ -951,13 +991,17 @@ function renderAblation() {
 			runRatios.push(rr);
 			if (!worst || rr > worst.ratio) worst = { kernel: k, ratio: rr };
 		}
+		const own = ownShare(c.meta.removedPass);
+		const compileRatio = geomean(compileRatios);
 		rows.push({
 			config: c, pass: c.meta.removedPass, instances: c.meta.instances,
-			compile: geomean(compileRatios), run: geomean(runRatios), worst, failures,
+			compile: compileRatio, run: geomean(runRatios), worst, failures, own,
+			indirect: own != null && compileRatio != null ? (1 - compileRatio) - own : null,
 		});
 	}
 	const s = state.ablationSort;
-	const keyOf = (r) => ({ pass: r.pass, instances: r.instances, compile: r.compile ?? 9, run: r.run ?? 9, worst: r.worst ? r.worst.ratio : 9 }[s.key]);
+	const keyOf = (r) => ({ pass: r.pass, instances: r.instances, compile: r.compile ?? 9, run: r.run ?? 9, worst: r.worst ? r.worst.ratio : 9, own: r.own ?? -1, indirect: r.indirect ?? -9 }[s.key]);
+	const share = (v) => (v == null ? "–" : `${(v * 100).toFixed(Math.abs(v) < 0.1 ? 1 : 0)}%`);
 	rows.sort((a, b) => {
 		const va = keyOf(a), vb = keyOf(b);
 		return (va < vb ? -1 : va > vb ? 1 : 0) * s.dir;
@@ -974,10 +1018,13 @@ function renderAblation() {
 	const th = (key, label, cls = "") => `<th class="${cls}" data-key="${key}">${label}${s.key === key ? (s.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
 	table.innerHTML = `<thead><tr>${th("pass", "removed pass", "l")}${th("instances", "instances")}
 		${th("compile", metric === "opt" ? "Δ LLVM optimizer time" : "Δ compile time")}<th class="bar-cell">← saves · costs →</th>
+		${th("own", "own time")}${th("indirect", "indirect")}
 		${th("run", "Δ runtime")}<th class="bar-cell">← faster · slower →</th>${th("worst", "worst kernel")}<th class="l">failures</th></tr></thead>
 		<tbody>${rows.map((r) => `<tr data-id="${esc(r.config.id)}" style="cursor:pointer" class="${r.config.id === state.selected ? "selected" : ""}">
 			<td class="mono">${esc(r.pass)}</td><td class="num">${r.instances}</td>
 			<td class="num">${fmtPct(r.compile)}</td><td class="bar-cell">${bar(r.compile, compileSpan)}</td>
+			<td class="num" title="the pass's exclusive time in the O${base.meta.baseLevel} profile">${share(r.own)}</td>
+			<td class="num" title="saving from removing it minus its own time: downstream work it causes">${share(r.indirect)}</td>
 			<td class="num">${fmtPct(r.run)}</td><td class="bar-cell">${bar(r.run, runSpan)}</td>
 			<td class="num">${r.worst ? `${esc(r.worst.kernel)} ${fmtPct(r.worst.ratio)}` : "–"}</td>
 			<td class="l ${r.failures.length ? "bad-text" : ""}" title="${esc(r.failures.join("\n"))}">${r.failures.length ? `${r.failures.length} kernel(s)` : ""}</td></tr>`).join("")}</tbody>`;
@@ -989,6 +1036,148 @@ function renderAblation() {
 	table.querySelectorAll("tr[data-id]").forEach((tr) => tr.addEventListener("click", () => select(tr.dataset.id)));
 }
 
+
+// ------------------------------------------------------------------------------------------------
+// Pass profiles
+
+const MANAGER_PASS = /PassManager|Adaptor|DevirtSCC|ModuleInlinerWrapper|RequireAnalysis|InvalidateAnalysis|PassInstrumentation|VerifierPass/;
+
+/** Mean per compilation over the selected kernels of every pass, analysis and machine-code generation pass. */
+function profileOf(config, sel) {
+	const ks = sel.filter((k) => kernelOk(config, k));
+	if (!ks.length) return null;
+	const n = ks.length;
+	const passes = {}, analyses = {}, codegen = {};
+	const totals = { optimize: 0, codegen: 0, compile: 0, frontend: 0, mlir: 0, setup: 0, irIn: 0, irOut: 0, bytes: 0, backend: 0 };
+	const field = (map, name, key, v) => {
+		const e = map[name] || (map[name] = { ms: 0, runs: 0, changed: 0, instructions: 0 });
+		e[key] += v / n;
+	};
+	for (const k of ks) {
+		const r = config.results[k];
+		const st = r.stats || {};
+		for (const [key, v] of Object.entries(st)) {
+			if (key.startsWith("llvm.pass.") || key.startsWith("llvm.analysis.")) {
+				const analysis = key.startsWith("llvm.analysis.");
+				const rest = key.slice(analysis ? 14 : 10);
+				const dot = rest.lastIndexOf(".");
+				let name = rest.slice(0, dot);
+				if (analysis) name = name.replace(/^A:/, "");
+				field(analysis ? analyses : passes, name, rest.slice(dot + 1), v);
+			} else if (key.startsWith("llvm.codegen.")) {
+				field(codegen, key.slice(13, -3), "ms", v);
+			}
+		}
+		totals.optimize += (st["llvm.optimize.ms"] || 0) / n;
+		totals.codegen += (st["jit.codegen.ms"] || 0) / n;
+		totals.compile += r.compileMs / n;
+		totals.frontend += (st["frontend.totalMs"] || 0) / n;
+		totals.mlir += ((st["mlir.loweringFromIR.ms"] || 0) + (st["mlir.pipeline.ms"] || 0)) / n;
+		totals.setup += Math.max(0, (st["jit.compile.ms"] || 0) - (st["llvm.optimize.ms"] || 0) - (st["jit.codegen.ms"] || 0)) / n;
+		totals.backend += (st["backend.totalMs"] || 0) / n;
+		totals.irIn += (st["llvm.ir.instructions.before"] || 0) / n;
+		totals.irOut += (st["llvm.ir.instructions.after"] || 0) / n;
+		totals.bytes += (r.codeBytes || 0) / n;
+	}
+	const sum = (map, filter = () => true) => Object.entries(map).filter(([k]) => filter(k)).reduce((a, [, e]) => a + e.ms, 0);
+	totals.passMs = sum(passes, (k) => !MANAGER_PASS.test(k));
+	totals.managerMs = sum(passes, (k) => MANAGER_PASS.test(k));
+	totals.analysisMs = sum(analyses);
+	totals.codegenPassMs = Math.min(sum(codegen), totals.codegen);
+	return { passes, analyses, codegen, totals, kernels: n };
+}
+
+function setupProfile() {
+	const profiles = configs.filter((c) => c.group === "llvm-profile");
+	const section = document.getElementById("profileSection");
+	if (!profiles.length) { section.style.display = "none"; return; }
+	const options = profiles.map((p) => `<option value="${esc(p.id)}">${esc(p.label.replace(/^profile: /, ""))}</option>`).join("");
+	const select = document.getElementById("profileSelect");
+	select.innerHTML = options;
+	const o3 = profiles.find((p) => p.meta && p.meta.profileOf === "O3");
+	if (o3) select.value = o3.id;
+	document.getElementById("profileCompare").innerHTML = `<option value="">(none)</option>` + options;
+	for (const id of ["profileSelect", "profileCompare", "profileAll"]) document.getElementById(id).addEventListener("change", renderProfile);
+}
+
+function renderProfile() {
+	const select = document.getElementById("profileSelect");
+	if (!select.value) return;
+	const sel = selectedKernels();
+	const config = configs.find((c) => c.id === select.value);
+	const cmpConfig = configs.find((c) => c.id === document.getElementById("profileCompare").value);
+	const prof = profileOf(config, sel);
+	const cmp = cmpConfig && cmpConfig !== config ? profileOf(cmpConfig, sel) : null;
+	const showAll = document.getElementById("profileAll").checked;
+	if (!prof) { document.getElementById("profileBreakdown").innerHTML = '<p class="empty">No successful profile for the selected kernels.</p>'; return; }
+	const t = prof.totals;
+
+	// Where one compilation's time goes.
+	const segments = [
+		["Nautilus frontend (trace, SSA, IR, IR passes)", t.frontend],
+		["MLIR lowering + MLIR passes", t.mlir],
+		["LLVM translation, target machine, JIT setup", t.setup],
+		["LLVM IR passes (exclusive)", t.passMs],
+		["LLVM analyses", t.analysisMs],
+		["pass managers + profiling overhead", Math.max(0, t.optimize - t.passMs - t.analysisMs)],
+		["machine-code generation passes", t.codegenPassMs],
+		["object emission + JIT linking", Math.max(0, t.codegen - t.codegenPassMs)],
+		["engine overhead", Math.max(0, t.compile - t.frontend - t.backend)],
+	];
+	const total = segments.reduce((a, [, v]) => a + v, 0);
+	const colors = segments.map((_, i) => `var(--series-${(i % 8) + 1})`);
+	const irGrowth = t.irIn > 0 ? t.irOut / t.irIn : null;
+	document.getElementById("profileBreakdown").innerHTML = `
+		<div class="legend-inline" style="margin:8px 0 4px">${segments.map(([name, v], i) => `<span><i class="swatch" style="background:${colors[i]}"></i>${esc(name)} <b class="num">${fmtMs(v)}</b></span>`).join("")}</div>
+		<div class="stack" style="height:22px">${segments.map(([name, v], i) => v > 0 ? `<div title="${esc(name)}: ${fmtMs(v)} (${((v / total) * 100).toFixed(0)}%)" style="width:${(v / total) * 100}%;background:${colors[i]}"></div>` : "").join("")}</div>
+		<p class="hint" style="margin:6px 0 0">Per compilation: <b>${fmtMs(t.compile)}</b> end to end, of which LLVM optimizer <b>${fmtMs(t.optimize)}</b>
+		and machine-code generation <b>${fmtMs(t.codegen)}</b>. LLVM IR grows from ${Math.round(t.irIn)} to ${Math.round(t.irOut)} instructions${irGrowth ? ` (${irGrowth.toFixed(1)}×)` : ""};
+		${Math.round(t.bytes)} bytes of machine code.${cmp ? ` Compared profile: ${fmtMs(cmp.totals.compile)} end to end, optimizer ${fmtMs(cmp.totals.optimize)}, code generation ${fmtMs(cmp.totals.codegen)}, ${Math.round(cmp.totals.irOut)} instructions out.` : ""}</p>`;
+
+	// Findings derived from the profile.
+	const findings = [];
+	const passRows = Object.entries(prof.passes).filter(([k]) => !MANAGER_PASS.test(k)).sort((a, b) => b[1].ms - a[1].ms);
+	for (const [name, e] of passRows.slice(0, 12)) {
+		const shareOpt = t.optimize > 0 ? e.ms / t.optimize : 0;
+		const changed = e.runs > 0 ? e.changed / e.runs : 0;
+		if (shareOpt >= 0.03 && changed < 0.25) {
+			findings.push(`<b>${esc(name)}</b> takes ${(shareOpt * 100).toFixed(0)}% of the optimizer (${fmtMs(e.ms)}) but changed the IR in ${(changed * 100).toFixed(0)}% of its ${e.runs.toFixed(1)} runs.`);
+		}
+	}
+	if (irGrowth && irGrowth > 2) findings.push(`The pipeline grows the IR ${irGrowth.toFixed(1)}× (unrolling, vectorization, inlining); every later pass and code generation pays for the larger IR.`);
+	const topCodegen = Object.entries(prof.codegen).sort((a, b) => b[1].ms - a[1].ms)[0];
+	if (topCodegen && t.codegen > 0) findings.push(`Code generation is dominated by <b>${esc(topCodegen[0])}</b> (${fmtMs(topCodegen[1].ms)}, ${((topCodegen[1].ms / t.codegen) * 100).toFixed(0)}% of code generation).`);
+	if (cmp) {
+		const deltas = [];
+		for (const [kind, a, b] of [["", prof.passes, cmp.passes], ["codegen ", prof.codegen, cmp.codegen], ["analysis ", prof.analyses, cmp.analyses]]) {
+			for (const name of new Set([...Object.keys(a), ...Object.keys(b)])) deltas.push([kind + name, (a[name]?.ms || 0) - (b[name]?.ms || 0)]);
+		}
+		deltas.sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
+		findings.push(`Largest differences to the compared profile: ${deltas.slice(0, 5).map(([n, d]) => `${esc(n)} ${d > 0 ? "+" : ""}${fmtMs(d)}`).join(", ")}.`);
+	}
+	document.getElementById("profileFindings").innerHTML = findings.length ? `<ul class="hint" style="margin:0 0 8px 18px;padding:0">${findings.map((f) => `<li>${f}</li>`).join("")}</ul>` : "";
+
+	const table = (el, map, opts) => {
+		const rows = Object.entries(map).filter(([k]) => opts.filter ? opts.filter(k) : true).sort((a, b) => b[1].ms - a[1].ms);
+		const shown = showAll ? rows : rows.slice(0, opts.limit);
+		const max = Math.max(...rows.map(([, e]) => e.ms), 1e-9);
+		const cmpMap = cmp ? cmp[opts.kind] : null;
+		document.getElementById(el).innerHTML = `<thead><tr><th class="l">${opts.title}</th>${opts.runs ? "<th>runs</th>" : ""}${opts.changed ? "<th>changed IR</th><th>instructions seen</th>" : ""}
+			<th>ms / compile</th><th class="bar-cell">share of ${opts.of}</th>${opts.changed ? "<th>µs / 100 instr.</th>" : ""}${cmpMap ? "<th>Δ vs compared</th>" : ""}</tr></thead><tbody>
+			${shown.map(([name, e]) => `<tr><td class="l mono">${esc(name)}${MANAGER_PASS.test(name) ? ' <span style="color:var(--text-muted)">(manager)</span>' : ""}</td>
+				${opts.runs ? `<td class="num">${e.runs.toFixed(1)}</td>` : ""}
+				${opts.changed ? `<td class="num ${e.runs > 0 && e.changed / e.runs < 0.1 && e.ms > 0.2 ? "bad-text" : ""}">${e.runs > 0 ? `${((e.changed / e.runs) * 100).toFixed(0)}%` : "–"}</td><td class="num">${fmtCount(e.instructions)}</td>` : ""}
+				<td class="num">${e.ms.toFixed(2)}</td>
+				<td class="bar-cell"><div class="stack" style="height:10px;margin:0"><div style="width:${(e.ms / max) * 100}%;background:var(--series-1)"></div></div></td>
+				${opts.changed ? `<td class="num">${e.instructions > 0 ? ((e.ms * 1e5) / e.instructions).toFixed(1) : "–"}</td>` : ""}
+				${cmpMap ? `<td class="num">${(() => { const d = e.ms - (cmpMap[name]?.ms || 0); return `${d > 0 ? "+" : ""}${d.toFixed(2)}`; })()}</td>` : ""}</tr>`).join("")}
+			${rows.length > shown.length ? `<tr><td class="l" colspan="8" style="color:var(--text-muted)">${rows.length - shown.length} more (tick “all passes”)</td></tr>` : ""}</tbody>`;
+	};
+	table("profilePasses", prof.passes, { title: "pass", runs: true, changed: true, limit: 25, of: `optimizer (${fmtMs(t.optimize)})`, kind: "passes" });
+	table("profileAnalyses", prof.analyses, { title: "analysis", runs: true, limit: 15, of: "analyses", kind: "analyses" });
+	table("profileCodegen", prof.codegen, { title: "pass", limit: 15, of: `code generation (${fmtMs(t.codegen)})`, kind: "codegen" });
+}
+
 // ------------------------------------------------------------------------------------------------
 // Greedy
 
@@ -998,11 +1187,23 @@ function renderGreedy() {
 	if (!steps.length) { section.style.display = "none"; return; }
 	const sel = selectedKernels();
 	const selected = steps.filter((c) => c.meta && c.meta.selected).sort((a, b) => a.meta.step - b.meta.step);
-	const ref = configs.find((c) => c.group === "backends" && c.backend === "mlir");
+	const ref = baselineConfig;
 	const refAgg = ref ? aggregate(ref, sel, state.xmode) : null;
 	const table = document.getElementById("greedy");
+	// The default levels (and O3 without the inliner) as reference rows above the search path.
+	const references = [0, 1, 2, 3].map((level) => configs.find((c) => c.group === "backends" && c.backend === "mlir" && c.meta && c.meta.defaultLevel && c.meta.optLevel === level))
+		.concat([configs.find((c) => c.group === "llvm-ablation" && c.meta && c.meta.removedPass === "inline" && c.meta.baseLevel === 3)])
+		.filter(Boolean);
+	const referenceRows = references.map((c) => {
+		const agg = aggregate(c, sel, state.xmode);
+		return `<tr data-id="${esc(c.id)}" style="cursor:pointer;background:var(--surface-2)" class="${c.id === state.selected ? "selected" : ""}">
+			<td class="l"><i>reference</i></td><td class="l">${esc(c.label)}</td><td></td>
+			<td class="num">${agg ? fmtMs(agg.x) : "–"}</td><td class="num">${agg ? fmtNs(agg.y) : "–"}</td>
+			${refAgg ? `<td class="num">${agg ? `${(agg.y / refAgg.y).toFixed(2)}×` : "–"}</td>` : ""}
+			<td class="l" style="white-space:normal;color:var(--text-secondary)">${c.meta && c.meta.removedPass ? "default O3 pipeline without the LLVM inliner" : "default LLVM pipeline"}</td></tr>`;
+	}).join("");
 	table.innerHTML = `<thead><tr><th class="l">step</th><th class="l">added pass</th><th>candidates</th><th>compile</th><th>runtime</th>
-		${refAgg ? `<th>runtime vs ${esc(ref.label)}</th>` : ""}<th class="l">pipeline</th></tr></thead><tbody>
+		${refAgg ? `<th>runtime vs ${esc(ref.label)}</th>` : ""}<th class="l">pipeline</th></tr></thead><tbody>${referenceRows}
 		${selected.map((c) => {
 			const agg = aggregate(c, sel, state.xmode);
 			const candidates = steps.filter((s) => s.meta.step === c.meta.step).length;
@@ -1101,12 +1302,14 @@ function renderAll() {
 	renderDetails();
 	renderBreakdown();
 	renderAblation();
+	renderProfile();
 	renderGreedy();
 	renderTable();
 }
 
 setupControls();
 setupAblation();
+setupProfile();
 setupScatterHover();
 renderHeader();
 renderAll();
