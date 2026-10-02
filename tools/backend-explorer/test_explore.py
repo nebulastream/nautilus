@@ -130,6 +130,13 @@ class ResultsTest(unittest.TestCase):
             self.assertTrue(reloaded.has(config))
             self.assertEqual(json.loads(path.read_text())["configs"][0]["results"]["k"]["status"], "ok")
 
+    def test_report_payload_keeps_only_report_stats(self):
+        data = {"configs": [{"id": "c", "results": {"k": {"status": "ok", "stats": {
+            "llvm.optimize.ms": 1.0, "irPasses.deadCodeElimination.ms": 0.1}}}}]}
+        payload = explore.report_payload(data)
+        self.assertEqual(payload["configs"][0]["results"]["k"]["stats"], {"llvm.optimize.ms": 1.0})
+        self.assertIn("irPasses.deadCodeElimination.ms", data["configs"][0]["results"]["k"]["stats"])
+
     def test_aggregate_is_geomean_and_requires_every_kernel(self):
         entry = {"results": {"a": {"status": "ok", "compileMs": 1.0, "runNs": 4.0, "compileMsMin": 1.0, "runNsMin": 1.0},
                              "b": {"status": "ok", "compileMs": 4.0, "runNs": 1.0, "compileMsMin": 1.0, "runNsMin": 1.0},
