@@ -33,6 +33,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable
@@ -455,6 +456,10 @@ class RunSettings:
     # Independent processes per configuration. Code and data placement differ per process and can shift a
     # kernel's runtime by tens of percent, so one process is one sample of that layout lottery.
     process_reps: int = 3
+    # Re-measure the reference configuration after this many measured configurations (0: never). The machine's
+    # speed drifts over a long sweep -- by 20-25% over two hours on a cloud VM -- and the reference timeline lets
+    # every result be corrected for the speed at the time it was measured.
+    reference_every: int = 4
 
 
 class Runner:
@@ -625,6 +630,80 @@ def round_sig(value, digits: int = 5):
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# Machine drift
+
+REFERENCE_LABEL = "reference: mlir O3"
+# metric -> (result field or stat key)
+DRIFT_METRICS = {"run": "runNs", "compile": "compileMs", "optimize": "llvm.optimize.ms", "codegen": "jit.codegen.ms"}
+
+
+def drift_value(result: dict, metric: str):
+    key = DRIFT_METRICS[metric]
+    value = result.get(key) if key in result else result.get("stats", {}).get(key)
+    return value if isinstance(value, (int, float)) and value > 0 else None
+
+
+def drift_factors(references: list[dict], kernel: str, t: float | None) -> dict[str, float]:
+    """How much slower than usual the machine ran @p kernel at time @p t, per metric: the reference's value
+    interpolated linearly between the reference measurements around @p t (clamped at both ends), divided by its
+    median over the whole run. A result divided by its factor is what it would have measured at typical speed.
+    Without a timeline (or a timestamp) every factor is 1."""
+    factors = {}
+    for metric in DRIFT_METRICS:
+        series = sorted((r["t"], r["results"][kernel][metric]) for r in references
+                        if kernel in r.get("results", {}) and metric in r["results"][kernel])
+        if t is None or len(series) < 2:
+            factors[metric] = 1.0
+            continue
+        typical = statistics.median(v for _, v in series)
+        if t <= series[0][0]:
+            at = series[0][1]
+        elif t >= series[-1][0]:
+            at = series[-1][1]
+        else:
+            at = series[-1][1]
+            for (t0, v0), (t1, v1) in zip(series, series[1:]):
+                if t0 <= t <= t1:
+                    at = v0 + (v1 - v0) * ((t - t0) / (t1 - t0) if t1 > t0 else 0.0)
+                    break
+        factors[metric] = at / typical if typical > 0 else 1.0
+    return factors
+
+
+def reference_config() -> Config:
+    return make_config("reference", REFERENCE_LABEL, "mlir")
+
+
+class ReferenceTimeline:
+    """Measures the reference configuration before the first measured configuration and then after every
+    `reference_every` measured configurations, so drift_factors() can interpolate around each of them."""
+
+    def __init__(self, runner: "Runner", results: "Results", kernels: list[str]):
+        self.runner, self.results, self.kernels = runner, results, kernels
+        self.since = None  # measured configurations since the last reference; None: none measured yet
+
+    def before_measuring(self) -> None:
+        every = self.runner.settings.reference_every
+        if every <= 0:
+            return
+        if self.since is None or self.since >= every:
+            self.measure_reference()
+        self.since += 1
+
+    def finish(self) -> None:
+        if self.runner.settings.reference_every > 0 and self.since:
+            self.measure_reference()
+
+    def measure_reference(self) -> None:
+        started = time.time()
+        raw = self.runner.run(reference_config(), self.kernels)
+        self.results.add_reference({k: summarize_kernel(raw.get(k, {"status": "missing"})) for k in self.kernels},
+                                   started)
+        self.since = 0
+        print(f"       {'(reference measurement for drift correction)':<60}", file=sys.stderr, flush=True)
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # Results file
 
 
@@ -642,16 +721,31 @@ class Results:
     def get(self, config: Config) -> dict | None:
         return self._by_id.get(config.id)
 
-    def add(self, config: Config, kernel_results: dict[str, dict]) -> dict:
+    def add(self, config: Config, kernel_results: dict[str, dict], started: float | None = None) -> dict:
         entry = config.to_json()
         entry["results"] = kernel_results
         entry["measuredAt"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+        now = time.time()
+        entry["measuredEpoch"] = round((started + now) / 2 if started else now, 1)
         if config.id in self._by_id:
             self.data["configs"] = [c for c in self.data["configs"] if c["id"] != config.id]
         self.data["configs"].append(entry)
         self._by_id[config.id] = entry
         self.save()
         return entry
+
+    def add_reference(self, kernel_results: dict[str, dict], started: float) -> None:
+        """Appends one measurement of the reference configuration to the drift timeline (only the metrics the
+        correction uses are kept)."""
+        compact = {}
+        for kernel, result in kernel_results.items():
+            if result.get("status") != "ok":
+                continue
+            compact[kernel] = {metric: value for metric in DRIFT_METRICS
+                               if (value := drift_value(result, metric)) is not None}
+        self.data.setdefault("references", []).append(
+            {"t": round((started + time.time()) / 2, 1), "results": compact})
+        self.save()
 
     def save(self) -> None:
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
@@ -698,17 +792,18 @@ def geomean(values: list[float]) -> float | None:
     return math.exp(sum(math.log(v) for v in values) / len(values))
 
 
-def aggregate(entry: dict, kernels: list[str], best: bool = False) -> tuple[float | None, float | None]:
+def aggregate(entry: dict, kernels: list[str], best: bool = False,
+              references: list[dict] | None = None) -> tuple[float | None, float | None]:
     """Geometric mean of compile ms and run ns over @p kernels, or None if any kernel failed. With @p best, the
-    fastest repetition rather than the median: interference from other processes only ever adds time, so the minimum
-    is the more stable statistic for small differences."""
+    fastest repetition rather than the median. With @p references, corrected for machine drift (drift_factors)."""
     compile_ms, run_ns = [], []
     for kernel in kernels:
         result = entry["results"].get(kernel)
         if not result or result.get("status") != "ok":
             return None, None
-        compile_ms.append(result["compileMsMin" if best else "compileMs"])
-        run_ns.append(result["runNsMin" if best else "runNs"])
+        factors = drift_factors(references, kernel, entry.get("measuredEpoch")) if references else None
+        compile_ms.append(result["compileMsMin" if best else "compileMs"] / (factors["compile"] if factors else 1.0))
+        run_ns.append(result["runNsMin" if best else "runNs"] / (factors["run"] if factors else 1.0))
     return geomean(compile_ms), geomean(run_ns)
 
 
@@ -720,30 +815,40 @@ def progress(index: int, total: int, config: Config, note: str) -> None:
     print(f"[{index:>4}/{total}] {config.label:<60} {note}", file=sys.stderr, flush=True)
 
 
-def measure(runner: Runner, results: Results, configs: list[Config], kernels: list[str], rerun: bool) -> None:
+def measure(runner: Runner, results: Results, configs: list[Config], kernels: list[str], rerun: bool,
+            timeline: ReferenceTimeline | None = None) -> None:
     for index, config in enumerate(configs, 1):
         if results.has(config) and not rerun:
             progress(index, len(configs), config, "(cached)")
             continue
+        if timeline is not None:
+            timeline.before_measuring()
+        started = time.time()
         raw = runner.run(config, kernels)
         summarized = {kernel: summarize_kernel(raw.get(kernel, {"status": "missing"})) for kernel in kernels}
-        results.add(config, summarized)
+        results.add(config, summarized, started)
         ok = sum(1 for r in summarized.values() if r["status"] == "ok")
         progress(index, len(configs), config, f"{ok}/{len(kernels)} ok")
 
 
 def greedy_search(runner: Runner, results: Results, kernels: list[str], steps: int, min_gain: float,
-                  rerun: bool) -> None:
+                  rerun: bool, timeline: ReferenceTimeline | None = None) -> None:
     """Forward selection: starting from an empty LLVM pipeline, repeatedly append the candidate pass with the best
     runtime gain per millisecond of added compile time, until no candidate improves the geometric-mean runtime by
-    at least @p min_gain. Decisions use the best repetition of each measurement (see aggregate()). Every evaluated candidate is kept as a configuration, so the search also maps the
+    at least @p min_gain. Decisions use drift-corrected medians when a reference timeline is measured (the
+    candidates of one step are measured minutes apart, and an uncorrected search prefers whichever candidate
+    happened to run while the machine was fast), otherwise the best repetition of each measurement. Every evaluated candidate is kept as a configuration, so the search also maps the
     neighbourhood of the path it takes."""
     chosen: list[tuple[str, str, str]] = []
     base = make_config("llvm-greedy", "step 0: no LLVM passes", "mlir",
                        string_options={"mlir.llvmPipeline": greedy_pipeline([])},
                        meta={"step": 0, "pipeline": [], "added": None, "selected": True})
-    measure(runner, results, [base], kernels, rerun)
-    current = aggregate(results.get(base), kernels, best=True)
+    def score(entry: dict) -> tuple[float | None, float | None]:
+        references = results.data.get("references") if timeline is not None else None
+        return aggregate(entry, kernels, best=references is None, references=references)
+
+    measure(runner, results, [base], kernels, rerun, timeline)
+    current = score(results.get(base))
     if current[0] is None:
         print("greedy: the empty pipeline failed; aborting the search", file=sys.stderr)
         return
@@ -756,8 +861,8 @@ def greedy_search(runner: Runner, results: Results, kernels: list[str], steps: i
                                  string_options={"mlir.llvmPipeline": greedy_pipeline(elements)},
                                  meta={"step": step, "pipeline": [e[0] for e in elements], "added": candidate[0],
                                        "selected": False})
-            measure(runner, results, [config], kernels, rerun)
-            compile_ms, run_ns = aggregate(results.get(config), kernels, best=True)
+            measure(runner, results, [config], kernels, rerun, timeline)
+            compile_ms, run_ns = score(results.get(config))
             if compile_ms is None:
                 continue
             gain = math.log(current[1] / run_ns)
@@ -768,7 +873,9 @@ def greedy_search(runner: Runner, results: Results, kernels: list[str], steps: i
             print(f"greedy: no candidate improves runtime by {min_gain:.0%} at step {step}; stopping",
                   file=sys.stderr)
             break
-        _, candidate, config, current = best
+        # Re-score the whole step with the references measured meanwhile: decisions use the final correction.
+        _, candidate, config, _ = best
+        current = score(results.get(config))
         chosen.append(candidate)
         entry = results.get(config)
         entry["meta"]["selected"] = True
@@ -779,13 +886,14 @@ def greedy_search(runner: Runner, results: Results, kernels: list[str], steps: i
         profile = make_config("llvm-profile", "profile: greedy pipeline", "mlir", PROFILE_OPTION,
                               string_options={"mlir.llvmPipeline": greedy_pipeline(chosen)},
                               meta={"profileOf": "greedy", "pipeline": [c[0] for c in chosen]})
-        measure(runner, results, [profile], kernels, rerun)
+        measure(runner, results, [profile], kernels, rerun, timeline)
 
 
 def cmd_run(args: argparse.Namespace) -> None:
     settings = RunSettings(compile_reps=args.compile_reps, samples=args.samples, sample_ms=args.sample_ms,
                            kernel_budget_ms=args.kernel_budget_ms, timeout_s=args.timeout, cpu=args.cpu)
     settings.process_reps = args.process_reps
+    settings.reference_every = args.reference_every
     if args.quick:
         settings.compile_reps, settings.samples, settings.sample_ms, settings.process_reps = 2, 3, 2.0, 1
     runner = Runner(find_runner(args.runner), settings, args.opt or [])
@@ -829,9 +937,12 @@ def cmd_run(args: argparse.Namespace) -> None:
     seen = set()
     configs = [c for c in configs if not (c.id in seen or seen.add(c.id))]
     print(f"{len(configs)} configurations x {len(kernels)} kernels using {runner.path}", file=sys.stderr)
-    measure(runner, results, configs, kernels, args.rerun)
+    timeline = ReferenceTimeline(runner, results, kernels) if settings.reference_every > 0 else None
+    measure(runner, results, configs, kernels, args.rerun, timeline)
     if "llvm-greedy" in sweeps and "mlir" in info["backends"]:
-        greedy_search(runner, results, kernels, args.greedy_steps, args.greedy_min_gain, args.rerun)
+        greedy_search(runner, results, kernels, args.greedy_steps, args.greedy_min_gain, args.rerun, timeline)
+    if timeline is not None:
+        timeline.finish()
     results.data["meta"]["finishedAt"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     results.save()
     if args.report:
@@ -869,17 +980,31 @@ PROFILE_STATS_PREFIXES = ("llvm.pass.", "llvm.analysis.", "llvm.codegen.", "llvm
 
 def report_payload(data: dict) -> dict:
     configs = []
+    references = data.get("references") or []
     for config in data["configs"]:
         results = {}
         profiled = config.get("group") == "llvm-profile"
         for kernel, result in config["results"].items():
             result = dict(result)
+            if references and result.get("status") == "ok":
+                result["drift"] = {m: round(f, 4) for m, f in
+                                   drift_factors(references, kernel, config.get("measuredEpoch")).items()}
             if "stats" in result:
                 result["stats"] = {k: v for k, v in result["stats"].items()
                                    if k in REPORT_STATS or (profiled and k.startswith(PROFILE_STATS_PREFIXES))}
             results[kernel] = result
         configs.append({**config, "results": results})
-    return {**data, "configs": configs}
+    # The reference timeline, as the geometric mean over kernels of each metric relative to its median.
+    timeline = []
+    kernels = sorted({k for r in references for k in r.get("results", {})})
+    for reference in references:
+        point = {"t": reference["t"]}
+        for metric in DRIFT_METRICS:
+            ratios = [drift_factors(references, k, reference["t"])[metric] for k in kernels
+                      if metric in reference["results"].get(k, {})]
+            point[metric] = round(geomean(ratios), 4) if ratios else None
+        timeline.append(point)
+    return {**{k: v for k, v in data.items() if k != "references"}, "configs": configs, "driftTimeline": timeline}
 
 
 def write_report(data: dict, out: Path) -> None:
@@ -935,6 +1060,9 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument("--kernel-budget-ms", type=float, default=2000.0)
     run.add_argument("--process-reps", type=int, default=3,
                      help="independent runner processes per configuration (code/data layout differs per process)")
+    run.add_argument("--reference-every", type=int, default=4,
+                     help="re-measure the reference configuration after this many configurations, to correct for "
+                          "machine drift (0: off)")
     run.add_argument("--timeout", type=float, default=900.0, help="seconds per runner process")
     run.add_argument("--cpu", type=int, help="pin the runner to this CPU (taskset)")
     run.add_argument("--quick", action="store_true", help="1 process, 2 compiles, 3 samples, a kernel subset")
