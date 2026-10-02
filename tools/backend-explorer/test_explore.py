@@ -109,15 +109,18 @@ class ConfigTest(unittest.TestCase):
 
 
 class DriftTest(unittest.TestCase):
-    REFERENCES = [
-        {"t": 0.0, "results": {"k": {"run": 10.0, "compile": 4.0, "optimize": 2.0, "codegen": 1.0}}},
-        {"t": 100.0, "results": {"k": {"run": 20.0, "compile": 4.0, "optimize": 2.0, "codegen": 1.0}}},
-        {"t": 200.0, "results": {"k": {"run": 10.0, "compile": 4.0, "optimize": 2.0, "codegen": 1.0}}},
-    ]
+    # A slow trend (10 -> 20 -> 10) sampled densely enough that the 5-wide running median keeps it.
+    REFERENCES = [{"t": float(t), "results": {"k": {"run": run, "compile": 4.0, "optimize": 2.0, "codegen": 1.0}}}
+                  for t, run in [(0, 10.0), (25, 10.0), (50, 10.0), (75, 20.0), (100, 20.0), (125, 20.0),
+                                 (150, 10.0), (175, 10.0), (200, 10.0)]]
+
+    def test_smoothing_removes_a_single_outlier(self):
+        series = [(0.0, 10.0), (1.0, 10.0), (2.0, 30.0), (3.0, 10.0), (4.0, 10.0)]
+        self.assertEqual([v for _, v in explore.smoothed(series)], [10.0] * 5)
 
     def test_factor_interpolates_the_reference_against_its_median(self):
         self.assertAlmostEqual(explore.drift_factors(self.REFERENCES, "k", 100.0)["run"], 2.0)
-        self.assertAlmostEqual(explore.drift_factors(self.REFERENCES, "k", 50.0)["run"], 1.5)
+        self.assertAlmostEqual(explore.drift_factors(self.REFERENCES, "k", 62.5)["run"], 1.5)
         self.assertAlmostEqual(explore.drift_factors(self.REFERENCES, "k", 50.0)["compile"], 1.0)
 
     def test_factor_clamps_outside_the_timeline_and_defaults_to_one(self):
@@ -140,7 +143,7 @@ class DriftTest(unittest.TestCase):
              "results": {"k": {"status": "ok", "runNs": 20.0, "stats": {}}}}]}
         payload = explore.report_payload(data)
         self.assertAlmostEqual(payload["configs"][0]["results"]["k"]["drift"]["run"], 2.0)
-        self.assertEqual([p["run"] for p in payload["driftTimeline"]], [1.0, 2.0, 1.0])
+        self.assertEqual([p["run"] for p in payload["driftTimeline"]], [1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0])
         self.assertNotIn("references", payload)
 
 
