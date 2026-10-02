@@ -820,12 +820,33 @@ def expand_sweeps(names: list[str]) -> list[str]:
     return sweeps
 
 
+# The statistics report.html reads; the rest stay in results.json only, which keeps the report a few MB.
+REPORT_STATS = {
+    "tracing.ms", "ssaCreation.ms", "irGeneration.ms", "irPasses.totalMs", "mlir.loweringFromIR.ms",
+    "cpp.loweringFromIR.ms", "mlir.pipeline.ms", "llvm.optimize.ms", "jit.codegen.ms", "cpp.compile.ms",
+    "asmjit.compile.ms", "backend.totalMs",
+}
+
+
+def report_payload(data: dict) -> dict:
+    configs = []
+    for config in data["configs"]:
+        results = {}
+        for kernel, result in config["results"].items():
+            result = dict(result)
+            if "stats" in result:
+                result["stats"] = {k: v for k, v in result["stats"].items() if k in REPORT_STATS}
+            results[kernel] = result
+        configs.append({**config, "results": results})
+    return {**data, "configs": configs}
+
+
 def write_report(data: dict, out: Path) -> None:
     template = (HERE / "report.html").read_text()
     marker = "/*__RESULTS__*/null"
     if marker not in template:
         sys.exit("report.html is missing the results placeholder")
-    payload = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
+    payload = json.dumps(report_payload(data), separators=(",", ":")).replace("</", "<\\/")
     out.write_text(template.replace(marker, payload))
     print(f"wrote {out} ({len(data['configs'])} configurations)", file=sys.stderr)
 
