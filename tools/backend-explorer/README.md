@@ -13,8 +13,11 @@ It answers questions like:
 ## Quick start
 
 ```bash
-# 1. Build the runner (Release, so the measured compile times are representative)
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_BENCHMARKS=ON
+# 1. Build the runner with Clang (Release, so the measured compile times are representative).
+#    It is opt-in and not part of any default or CI build.
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_CXX_COMPILER=clang++-21 -DCMAKE_C_COMPILER=clang-21 \
+      -DENABLE_BACKEND_EXPLORER=ON
 cmake --build build --target nautilus-backend-explorer
 
 # 2. Measure and render (1-2 hours for the full default sweep; resumable)
@@ -39,7 +42,7 @@ explore.py run ──► nautilus-backend-explorer --backend B --opt k=v ...   (
 explore.py         ──► results.json (appended, resumable) ──► explore.py report ──► report.html
 ```
 
-- **Kernels** (`nautilus/test/benchmark/BenchmarkKernels.hpp`): 20 kernels in four categories: *micro*
+- **Kernels** (`runner/BenchmarkKernels.hpp`): 20 kernels in four categories: *micro*
   (arithmetic and memory loops), *query* (filter/aggregate, TPC-H Q6, group-by, hash-join probe, binary search),
   *control-flow* (data-dependent loops, sorting, 100-deep if-chains), and *calls* (internal and external calls). Each
   returns a checksum. A configuration whose checksum differs from the default MLIR backend's is reported as a wrong
