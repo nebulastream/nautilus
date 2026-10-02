@@ -78,6 +78,29 @@ class ConfigTest(unittest.TestCase):
         for config in configs:
             self.assertTrue(config.string_options["mlir.llvmPipeline"])
 
+    def test_profile_sweep_covers_default_levels_and_o3_without_inline(self):
+        configs = explore.sweep_llvm_profile({"backends": ["mlir"]}, {"O3": O1_EXCERPT})
+        self.assertEqual([c.meta["profileOf"] for c in configs], ["O0", "O1", "O2", "O3", "O3 without inline"])
+        self.assertTrue(all(c.options["mlir.recordPassTimings"] is True for c in configs))
+        self.assertNotIn("inline,", configs[-1].string_options["mlir.llvmPipeline"])
+
+    def test_backend_labels_name_their_options(self):
+        configs = explore.sweep_backends({"backends": ["mlir", "asmjit", "bc", "tbc"], "tbcJit": True})
+        labels = [c.label for c in configs]
+        self.assertFalse([label for label in labels if "tuned" in label])
+        for level in (0, 1, 2):
+            self.assertIn(f"mlir O{level}", labels)
+        self.assertIn("mlir O3 (default)", labels)
+        self.assertIn("asmjit + IR LICM + local CSE", labels)
+
+    def test_report_payload_keeps_profile_stats_for_profiles_only(self):
+        stats = {"llvm.optimize.ms": 1.0, "llvm.pass.instcombine.ms": 0.5}
+        data = {"configs": [{"id": "p", "group": "llvm-profile", "results": {"k": {"status": "ok", "stats": stats}}},
+                            {"id": "a", "group": "backends", "results": {"k": {"status": "ok", "stats": stats}}}]}
+        payload = explore.report_payload(data)
+        self.assertIn("llvm.pass.instcombine.ms", payload["configs"][0]["results"]["k"]["stats"])
+        self.assertNotIn("llvm.pass.instcombine.ms", payload["configs"][1]["results"]["k"]["stats"])
+
     def test_sweeps_respect_available_backends(self):
         configs = explore.sweep_backends({"backends": ["bc"], "tbcJit": False})
         self.assertTrue(configs)

@@ -41,7 +41,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 RUNNER_NAME = "nautilus-backend-explorer"
 
-ALL_SWEEPS = ["backends", "backend-flags", "ir-passes", "mlir-levels", "llvm-ablation"]
+ALL_SWEEPS = ["backends", "backend-flags", "ir-passes", "mlir-levels", "llvm-ablation", "llvm-profile"]
 OPTIONAL_SWEEPS = ["llvm-greedy"]
 
 # Stats copied into the results per (config, kernel). Everything else the runner reports is dropped to keep the
@@ -91,35 +91,42 @@ def make_config(group: str, label: str, backend: str, options: dict | None = Non
 
 
 def sweep_backends(info: dict) -> list[Config]:
-    """Each backend at its defaults, plus the cpp backend's -O levels and the tuned configurations
-    ExecutionBenchmark.cpp tracks."""
+    """Each backend at its defaults, the MLIR backend at each of its default optimization levels, the cpp backend
+    at each -O level, and the configurations ExecutionBenchmark.cpp tracks. Labels name every option that differs
+    from the backend's defaults."""
     backends = set(info["backends"])
     configs = []
     if "mlir" in backends:
-        configs.append(make_config("backends", "mlir (default, O3)", "mlir"))
+        configs.append(make_config("backends", "mlir O3 (default)", "mlir"))
+        for level in (0, 1, 2):
+            configs.append(make_config("backends", f"mlir O{level}", "mlir", {"optimizationLevel": level},
+                                       meta={"optLevel": level, "defaultLevel": True}))
+        configs[0].meta = {"optLevel": 3, "defaultLevel": True}
     if "cpp" in backends:
-        configs.append(make_config("backends", "cpp (default, O0)", "cpp"))
+        configs.append(make_config("backends", "cpp -O0 (default)", "cpp"))
         for level in (1, 2, 3):
             configs.append(make_config("backends", f"cpp -O{level}", "cpp", {"cpp.optimizationLevel": level}))
         configs.append(make_config("backends", "cpp -O3 -march=native", "cpp",
                                    {"cpp.optimizationLevel": 3, "cpp.nativeArch": True}))
-    tuned_ir = {"ir.enableLICM": True, "ir.enableLocalCSE": True}
+    ir_licm_cse = {"ir.enableLICM": True, "ir.enableLocalCSE": True}
     if "bc" in backends:
         configs.append(make_config("backends", "bc (default)", "bc"))
-        configs.append(make_config("backends", "bc (tuned)", "bc", {
-            **tuned_ir, "bc.registerAllocator": True, "bc.dispatch": "threaded", "bc.regfileReuse": True,
-            "bc.superinstructions": True, "bc.immediates": True}))
+        configs.append(make_config(
+            "backends", "bc + IR LICM + local CSE, threaded dispatch, regfile reuse, superinstructions, immediates",
+            "bc", {**ir_licm_cse, "bc.registerAllocator": True, "bc.dispatch": "threaded", "bc.regfileReuse": True,
+                   "bc.superinstructions": True, "bc.immediates": True}))
     if "tbc" in backends:
         configs.append(make_config("backends", "tbc interp (default)", "tbc"))
-        configs.append(make_config("backends", "tbc interp (tuned)", "tbc", {**tuned_ir, "tbc.mode": "interp"}))
+        configs.append(make_config("backends", "tbc interp + IR LICM + local CSE", "tbc",
+                                   {**ir_licm_cse, "tbc.mode": "interp"}))
         if info.get("tbcJit"):
             configs.append(make_config("backends", "tbc jit", "tbc", {"tbc.mode": "jit"}))
-            configs.append(make_config("backends", "tbc jit (tuned)", "tbc", {**tuned_ir, "tbc.mode": "jit"}))
+            configs.append(make_config("backends", "tbc jit + IR LICM + local CSE", "tbc",
+                                       {**ir_licm_cse, "tbc.mode": "jit"}))
     if "asmjit" in backends:
         configs.append(make_config("backends", "asmjit (default)", "asmjit"))
-        configs.append(make_config("backends", "asmjit (tuned)", "asmjit", {
-            **tuned_ir, "asmjit.enableBranchFusion": True, "asmjit.enableConstFolding": True,
-            "asmjit.enableSelectCmov": True}))
+        # Branch fusion, constant folding and cmov are asmjit defaults already; only the IR passes differ.
+        configs.append(make_config("backends", "asmjit + IR LICM + local CSE", "asmjit", ir_licm_cse))
     return configs
 
 
@@ -346,6 +353,27 @@ def sweep_llvm_ablation(info: dict, pipelines: dict[str, str], levels: Iterable[
             configs.append(make_config("llvm-ablation", f"O{level} without {name}", "mlir",
                                        string_options={"mlir.llvmPipeline": ablated or "verify"},
                                        meta={"baseLevel": level, "removedPass": name, "instances": count}))
+    return configs
+
+
+PROFILE_OPTION = {"mlir.recordPassTimings": True}
+
+
+def sweep_llvm_profile(info: dict, pipelines: dict[str, str]) -> list[Config]:
+    """The default O0-O3 pipelines, and O3 without the LLVM inliner, with every LLVM pass, analysis and
+    machine-code generation pass timed (`mlir.recordPassTimings`). Kept apart from the timing sweeps: the
+    instrumentation itself costs a little compile time."""
+    if "mlir" not in info["backends"]:
+        return []
+    configs = [make_config("llvm-profile", f"profile: mlir O{level}", "mlir",
+                           {**PROFILE_OPTION, "optimizationLevel": level},
+                           meta={"profileOf": f"O{level}", "optLevel": level})
+               for level in (0, 1, 2, 3)]
+    if pipelines.get("O3"):
+        without_inline = render_pipeline(remove_pass(parse_pipeline(pipelines["O3"]), "inline"))
+        configs.append(make_config("llvm-profile", "profile: mlir O3 without inline", "mlir", PROFILE_OPTION,
+                                   string_options={"mlir.llvmPipeline": without_inline},
+                                   meta={"profileOf": "O3 without inline", "optLevel": 3}))
     return configs
 
 
@@ -747,6 +775,11 @@ def greedy_search(runner: Runner, results: Results, kernels: list[str], steps: i
         results.save()
         print(f"greedy: step {step} selects {candidate[0]} (pipeline: {', '.join(c[0] for c in chosen)})",
               file=sys.stderr)
+    if chosen:
+        profile = make_config("llvm-profile", "profile: greedy pipeline", "mlir", PROFILE_OPTION,
+                              string_options={"mlir.llvmPipeline": greedy_pipeline(chosen)},
+                              meta={"profileOf": "greedy", "pipeline": [c[0] for c in chosen]})
+        measure(runner, results, [profile], kernels, rerun)
 
 
 def cmd_run(args: argparse.Namespace) -> None:
@@ -771,7 +804,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     results.data["backends"] = info["backends"]
 
     sweeps = expand_sweeps(args.sweep or ["all"])
-    levels = [int(level) for level in args.ablation_levels.split(",")] if args.ablation_levels else [3]
+    levels = [int(level) for level in args.ablation_levels.split(",")] if args.ablation_levels else [0, 1, 2, 3]
     if "mlir" in info["backends"]:
         for level in sorted(set(levels) | {0, 1, 2, 3}):
             results.data["pipelines"][f"O{level}"] = runner.print_pipeline(level)
@@ -783,6 +816,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         "ir-passes": lambda: sweep_ir_passes(info),
         "mlir-levels": lambda: sweep_mlir_levels(info),
         "llvm-ablation": lambda: sweep_llvm_ablation(info, results.data["pipelines"], levels),
+        "llvm-profile": lambda: sweep_llvm_profile(info, results.data["pipelines"]),
     }
     configs = []
     for sweep in sweeps:
@@ -823,19 +857,26 @@ def expand_sweeps(names: list[str]) -> list[str]:
 # The statistics report.html reads; the rest stay in results.json only, which keeps the report a few MB.
 REPORT_STATS = {
     "tracing.ms", "ssaCreation.ms", "irGeneration.ms", "irPasses.totalMs", "mlir.loweringFromIR.ms",
-    "cpp.loweringFromIR.ms", "mlir.pipeline.ms", "llvm.optimize.ms", "jit.codegen.ms", "cpp.compile.ms",
-    "asmjit.compile.ms", "backend.totalMs",
+    "cpp.loweringFromIR.ms", "mlir.pipeline.ms", "llvm.optimize.ms", "jit.codegen.ms", "jit.compile.ms",
+    "cpp.compile.ms", "asmjit.compile.ms", "backend.totalMs", "frontend.totalMs", "llvm.ir.instructions.before",
+    "llvm.ir.instructions.after",
 }
+
+
+# Pass profiles (`llvm-profile` configurations only) keep their per-pass statistics too.
+PROFILE_STATS_PREFIXES = ("llvm.pass.", "llvm.analysis.", "llvm.codegen.", "llvm.ir.", "jit.", "mlir.")
 
 
 def report_payload(data: dict) -> dict:
     configs = []
     for config in data["configs"]:
         results = {}
+        profiled = config.get("group") == "llvm-profile"
         for kernel, result in config["results"].items():
             result = dict(result)
             if "stats" in result:
-                result["stats"] = {k: v for k, v in result["stats"].items() if k in REPORT_STATS}
+                result["stats"] = {k: v for k, v in result["stats"].items()
+                                   if k in REPORT_STATS or (profiled and k.startswith(PROFILE_STATS_PREFIXES))}
             results[kernel] = result
         configs.append({**config, "results": results})
     return {**data, "configs": configs}
@@ -884,7 +925,7 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument("--config-file", help="JSON list of extra configurations: "
                                            "[{label, backend, options, stringOptions, group, meta}]")
     run.add_argument("--opt", action="append", help="key=value option applied to every configuration")
-    run.add_argument("--ablation-levels", default="3", help="LLVM levels to ablate passes from, e.g. 2,3")
+    run.add_argument("--ablation-levels", default="0,1,2,3", help="LLVM levels to ablate passes from, e.g. 2,3")
     run.add_argument("--greedy-steps", type=int, default=12, help="maximum passes the greedy search selects")
     run.add_argument("--greedy-min-gain", type=float, default=0.01,
                      help="minimum geometric-mean runtime improvement for a greedy step")

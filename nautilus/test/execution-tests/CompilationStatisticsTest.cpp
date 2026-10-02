@@ -258,6 +258,44 @@ TEST_CASE("CompilationStatistics: mlir.llvmPipeline replaces the optimization-le
 	}
 }
 
+TEST_CASE("CompilationStatistics: mlir.recordPassTimings attributes compile time to passes") {
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.eager_compilation", true);
+	options.setOption("mlir.recordPassTimings", true);
+	NautilusEngine engine(options);
+	// Twice: code generation timers are LLVM globals and must be reset per compilation.
+	for (int rep = 0; rep < 2; ++rep) {
+		auto fn = engine.registerFunction(statsSumTo);
+		REQUIRE(fn(100) == 14850);
+		auto stats = fn.getStatistics();
+		REQUIRE(stats != nullptr);
+		// An O3 pipeline always runs instcombine on the function.
+		REQUIRE(std::get<double>(*stats->find("llvm.pass.instcombine.ms")) >= 0.0);
+		REQUIRE(std::get<int64_t>(*stats->find("llvm.pass.instcombine.runs")) > 0);
+		REQUIRE(std::get<int64_t>(*stats->find("llvm.pass.instcombine.instructions")) > 0);
+		REQUIRE(stats->contains("llvm.pass.instcombine.changed"));
+		double passMs = 0, codegenMs = 0;
+		bool analyses = false;
+		for (const auto& [key, value] : *stats) {
+			if (key.starts_with("llvm.pass.") && key.ends_with(".ms")) {
+				passMs += std::get<double>(value);
+			} else if (key.starts_with("llvm.codegen.")) {
+				codegenMs += std::get<double>(value);
+			} else if (key.starts_with("llvm.analysis.")) {
+				analyses = true;
+			}
+		}
+		INFO("rep " << rep);
+		REQUIRE(analyses);
+		// Exclusive times cannot add up to more than the stage they partition.
+		REQUIRE(passMs > 0.0);
+		REQUIRE(passMs <= std::get<double>(*stats->find("llvm.optimize.ms")) * 1.05);
+		REQUIRE(codegenMs > 0.0);
+		REQUIRE(codegenMs <= std::get<double>(*stats->find("jit.codegen.ms")) * 1.05);
+	}
+}
+
 TEST_CASE("CompilationStatistics: mlir code generation level and inliner options") {
 	for (int level = 0; level <= 3; ++level) {
 		for (const bool inliner : {true, false}) {

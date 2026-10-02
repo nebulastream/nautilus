@@ -17,6 +17,7 @@
 #include <chrono>
 #include <fstream>
 #include <llvm/Support/TargetSelect.h>
+#include <map>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
 #include <mlir/Dialect/Func/Extensions/AllExtensions.h>
@@ -29,6 +30,7 @@
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
 #include <mlir/Transforms/Inliner.h>
+#include <string>
 namespace nautilus::compiler::mlir {
 
 MLIRCompilationBackend::MLIRCompilationBackend() {
@@ -185,6 +187,13 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	    debugInfo.perfEmitDebugInfo, debugInfo.perfEmitUnwindInfo, debugInfo.perfRegionSymbols,
 	    debugInfo.enableSampleSymbols, ir->getId(), codeSize);
 	if (eagerCompilation) {
+		// `mlir.recordPassTimings` also breaks machine-code generation down by
+		// pass (instruction selection, register allocation, ...).
+		const bool profileCodegen =
+		    statistics != nullptr && options.getOptionOrDefault("mlir.recordPassTimings", false);
+		if (profileCodegen) {
+			resetCodegenPassTimers();
+		}
 		const auto codegenStart = std::chrono::steady_clock::now();
 		auto result = engine->lookupPacked("execute");
 		if (!result) {
@@ -193,6 +202,11 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 		if (statistics != nullptr) {
 			statistics->recordTimingMs("jit.codegen.ms", codegenStart);
 			statistics->set("jit.code.bytes", codeSize->load());
+		}
+		if (profileCodegen) {
+			for (const auto& [pass, ms] : snapshotCodegenPassTimers()) {
+				statistics->set("llvm.codegen." + pass + ".ms", ms);
+			}
 		}
 	}
 	if (statistics != nullptr) {
