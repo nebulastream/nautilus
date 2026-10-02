@@ -108,6 +108,42 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(explore.sweep_mlir_levels({"backends": ["bc"]}), [])
 
 
+class DriftTest(unittest.TestCase):
+    REFERENCES = [
+        {"t": 0.0, "results": {"k": {"run": 10.0, "compile": 4.0, "optimize": 2.0, "codegen": 1.0}}},
+        {"t": 100.0, "results": {"k": {"run": 20.0, "compile": 4.0, "optimize": 2.0, "codegen": 1.0}}},
+        {"t": 200.0, "results": {"k": {"run": 10.0, "compile": 4.0, "optimize": 2.0, "codegen": 1.0}}},
+    ]
+
+    def test_factor_interpolates_the_reference_against_its_median(self):
+        self.assertAlmostEqual(explore.drift_factors(self.REFERENCES, "k", 100.0)["run"], 2.0)
+        self.assertAlmostEqual(explore.drift_factors(self.REFERENCES, "k", 50.0)["run"], 1.5)
+        self.assertAlmostEqual(explore.drift_factors(self.REFERENCES, "k", 50.0)["compile"], 1.0)
+
+    def test_factor_clamps_outside_the_timeline_and_defaults_to_one(self):
+        self.assertAlmostEqual(explore.drift_factors(self.REFERENCES, "k", -50.0)["run"], 1.0)
+        self.assertAlmostEqual(explore.drift_factors(self.REFERENCES, "k", 999.0)["run"], 1.0)
+        self.assertEqual(explore.drift_factors(self.REFERENCES, "other", 50.0)["run"], 1.0)
+        self.assertEqual(explore.drift_factors(self.REFERENCES, "k", None)["run"], 1.0)
+        self.assertEqual(explore.drift_factors([], "k", 50.0)["run"], 1.0)
+
+    def test_aggregate_corrects_for_drift(self):
+        entry = {"measuredEpoch": 100.0, "results": {"k": {"status": "ok", "compileMs": 4.0, "runNs": 20.0}}}
+        for got, expected in zip(explore.aggregate(entry, ["k"]), (4.0, 20.0)):
+            self.assertAlmostEqual(got, expected)
+        for got, expected in zip(explore.aggregate(entry, ["k"], references=self.REFERENCES), (4.0, 10.0)):
+            self.assertAlmostEqual(got, expected)
+
+    def test_report_payload_carries_factors_and_a_timeline(self):
+        data = {"references": self.REFERENCES, "configs": [
+            {"id": "c", "group": "backends", "measuredEpoch": 100.0,
+             "results": {"k": {"status": "ok", "runNs": 20.0, "stats": {}}}}]}
+        payload = explore.report_payload(data)
+        self.assertAlmostEqual(payload["configs"][0]["results"]["k"]["drift"]["run"], 2.0)
+        self.assertEqual([p["run"] for p in payload["driftTimeline"]], [1.0, 2.0, 1.0])
+        self.assertNotIn("references", payload)
+
+
 class ResultsTest(unittest.TestCase):
     def test_summarize_kernel(self):
         raw = {"kernel": "k", "status": "ok", "checksum": "7", "compileWallMs": [3.0, 1.0, 2.0],
