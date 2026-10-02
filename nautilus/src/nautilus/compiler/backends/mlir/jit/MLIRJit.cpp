@@ -221,7 +221,7 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 			    auto parsed = llvm::object::ObjectFile::createObjectFile(object->getMemBufferRef());
 			    if (!parsed) {
 				    llvm::consumeError(parsed.takeError());
-				    return std::move(object);
+				    return object;
 			    }
 			    int64_t bytes = 0;
 			    for (const auto& section : (*parsed)->sections()) {
@@ -230,7 +230,7 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 				    }
 			    }
 			    *codeSize += bytes;
-			    return std::move(object);
+			    return object;
 		    });
 	}
 
