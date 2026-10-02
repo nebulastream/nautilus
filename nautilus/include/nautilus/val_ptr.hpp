@@ -58,7 +58,7 @@ public:
 	val(val<ptrType>&& ptr) : ptr(details::RawValueResolver<ptrType>::getRawValue(ptr)) {
 	}
 #endif
-	operator val<baseType>() {
+	operator val<baseType>() const {
 		// load
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
@@ -102,8 +102,7 @@ public:
 	}
 
 	// The val<T> operands below are taken by const reference, so an operand that is already a val is not copied,
-	// and converted to baseType only when its type differs. A val<U&> operand is still taken by value: loading it
-	// needs a non-const val<U&>.
+	// and converted to baseType only when its type differs. A val<U&> operand is still taken by value.
 #define BINARY_AND_ASSIGN_OPERATOR(OP)                                                                                 \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
@@ -869,7 +868,7 @@ public:
 		    details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
 	}
 
-	operator val<baseType>() {
+	operator val<baseType>() const {
 		// load
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {

@@ -10,6 +10,30 @@
 
 namespace nautilus {
 
+namespace details {
+template <typename T>
+struct is_ref_val_type : std::false_type {};
+
+template <typename T>
+struct is_ref_val_type<val<T&>> : std::true_type {};
+
+/// True for a val<T&>, e.g. the element reference `ptr[i]` returns.
+template <typename T>
+concept is_ref_val = is_ref_val_type<std::remove_cvref_t<T>>::value;
+
+/// Loads a val<T&> call argument into a val<T>; any other argument is passed through. The trace state of a val<T&> is
+/// the address it refers to, so a call traced with it would hand the callee that address instead of the element
+/// (#525). Call operators route their arguments through this before tracing the call.
+template <typename Argument>
+decltype(auto) loadReference(Argument&& argument) {
+	if constexpr (is_ref_val<Argument>) {
+		return val<typename std::remove_cvref_t<Argument>::baseType>(argument);
+	} else {
+		return std::forward<Argument>(argument);
+	}
+}
+} // namespace details
+
 template <typename... ValueArguments>
 auto getArgumentReferences(const ValueArguments&... arguments) {
 	return std::vector<tracing::TypedValueRef> {details::StateResolver<const ValueArguments&>::getState(arguments)...};
@@ -35,6 +59,9 @@ public:
 	template <typename... FunctionArgumentsRaw>
 	    requires(!std::is_void_v<R>)
 	auto operator()(FunctionArgumentsRaw&&... args) {
+		if constexpr ((details::is_ref_val<FunctionArgumentsRaw> || ...)) {
+			return (*this)(details::loadReference(std::forward<FunctionArgumentsRaw>(args))...);
+		}
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
@@ -63,6 +90,9 @@ public:
 	template <typename... FunctionArgumentsRaw>
 	    requires std::is_void_v<R>
 	void operator()(FunctionArgumentsRaw&&... args) {
+		if constexpr ((details::is_ref_val<FunctionArgumentsRaw> || ...)) {
+			return (*this)(details::loadReference(std::forward<FunctionArgumentsRaw>(args))...);
+		}
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
