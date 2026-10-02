@@ -140,6 +140,9 @@ public:
 
 	template <typename... ValueArgs>
 	decltype(auto) operator()(ValueArgs&&... args) {
+		if constexpr ((details::is_ref_val<ValueArgs> || ...)) {
+			return (*this)(details::loadReference(std::forward<ValueArgs>(args))...);
+		}
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto fnPtrRef = details::StateResolver<const val<void*>&>::getState(ptr);

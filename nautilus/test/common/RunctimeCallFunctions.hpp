@@ -244,4 +244,27 @@ val<int16_t> i16NarrowCallArgCompare(val<int64_t> x, val<int16_t> y) {
 	return invoke(minI16, truncated, y);
 }
 
+__attribute__((noinline)) int64_t identityI64(int64_t v) noexcept {
+	return v;
+}
+
+__attribute__((noinline)) int64_t subI64(int64_t x, int64_t y) noexcept {
+	return x - y;
+}
+
+// Regression (#525): an array element reference (val<int64_t&>) passed straight
+// to invoke() for a by-value parameter must hand the callee the loaded element,
+// not the array's base address.
+val<int64_t> invokeWithElementRef(val<int64_t*> data) {
+	return invoke(identityI64, data[1]);
+}
+
+val<int64_t> invokeWithElementRefs(val<int64_t*> data) {
+	return invoke(subI64, data[2], data[0]);
+}
+
+val<int64_t> invokeWithDereferencedPtr(val<int64_t*> data) {
+	return invoke(identityI64, *data);
+}
+
 } // namespace nautilus::engine

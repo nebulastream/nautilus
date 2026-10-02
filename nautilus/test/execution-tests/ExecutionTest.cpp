@@ -1048,6 +1048,16 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		// Negative wide value truncating to a negative narrow one.
 		REQUIRE(f(int64_t(-65538), int16_t(5)) == -2);
 	}
+	// Regression (#525): see invokeWithElementRef in RunctimeCallFunctions.hpp.
+	SECTION("invokeWithElementRef") {
+		int64_t data[3] = {11, 42, 100};
+		auto f = engine.registerFunction(invokeWithElementRef);
+		REQUIRE(f(data) == 42);
+		auto g = engine.registerFunction(invokeWithElementRefs);
+		REQUIRE(g(data) == 89);
+		auto h = engine.registerFunction(invokeWithDereferencedPtr);
+		REQUIRE(h(data) == 11);
+	}
 }
 
 void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {

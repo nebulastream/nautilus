@@ -135,6 +135,9 @@ public:
 	template <class... Args>
 	    requires std::invocable<F&, Args...>
 	decltype(auto) operator()(Args&&... args) {
+		if constexpr ((details::is_ref_val<Args> || ...)) {
+			return (*this)(details::loadReference(std::forward<Args>(args))...);
+		}
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<Args>(args)...);
