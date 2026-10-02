@@ -2,8 +2,10 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
+#include <atomic>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/CodeGen.h>
+#include <memory>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Pass/Pass.h>
 #include <string>
@@ -20,14 +22,13 @@ public:
 	JITCompiler() = delete;  // Disable default constructor
 	~JITCompiler() = delete; // Disable default destructor
 
-	static std::unique_ptr<MLIRJit>
-	jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
-	                 llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
-	                 const std::vector<std::string>& jitProxyFunctionSymbols,
-	                 const std::vector<void*>& jitProxyFunctionTargetAddresses,
-	                 llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive,
-	                 bool enableDebuggerSupport = false, bool enablePerfSupport = false, bool perfEmitDebugInfo = true,
-	                 bool perfEmitUnwindInfo = true, bool perfRegionSymbols = true,
-	                 bool enableJitSymbolRegistration = false, const std::string& compilationUnitId = {});
+	static std::unique_ptr<MLIRJit> jitCompileModule(
+	    ::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule, llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
+	    const std::vector<std::string>& jitProxyFunctionSymbols,
+	    const std::vector<void*>& jitProxyFunctionTargetAddresses,
+	    llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive, bool enableDebuggerSupport = false,
+	    bool enablePerfSupport = false, bool perfEmitDebugInfo = true, bool perfEmitUnwindInfo = true,
+	    bool perfRegionSymbols = true, bool enableJitSymbolRegistration = false,
+	    const std::string& compilationUnitId = {}, std::shared_ptr<std::atomic<int64_t>> codeSizeOut = nullptr);
 };
 } // namespace nautilus::compiler::mlir
