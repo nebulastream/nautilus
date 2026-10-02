@@ -5,8 +5,10 @@
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h>
+#include <llvm/ExecutionEngine/Orc/ObjectTransformLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/Object/ObjectFile.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/TargetParser/Triple.h>
@@ -210,6 +212,26 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		if (auto err = llvm::orc::enableDebuggerSupport(*jit)) {
 			return err;
 		}
+	}
+
+	if (options.codeSizeOut) {
+		jit->getObjTransformLayer().setTransform(
+		    [codeSize = options.codeSizeOut](
+		        std::unique_ptr<llvm::MemoryBuffer> object) -> llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> {
+			    auto parsed = llvm::object::ObjectFile::createObjectFile(object->getMemBufferRef());
+			    if (!parsed) {
+				    llvm::consumeError(parsed.takeError());
+				    return std::move(object);
+			    }
+			    int64_t bytes = 0;
+			    for (const auto& section : (*parsed)->sections()) {
+				    if (section.isText()) {
+					    bytes += static_cast<int64_t>(section.getSize());
+				    }
+			    }
+			    *codeSize += bytes;
+			    return std::move(object);
+		    });
 	}
 
 	llvm::orc::ThreadSafeModule tsm(std::move(llvmModule), std::move(ctx));

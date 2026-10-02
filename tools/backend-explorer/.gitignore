@@ -1,0 +1,5 @@
+__pycache__/
+*.json
+*.json.tmp
+/report*.html
+!/report.html

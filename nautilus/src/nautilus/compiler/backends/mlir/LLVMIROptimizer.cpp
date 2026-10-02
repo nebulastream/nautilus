@@ -1,14 +1,18 @@
 
 
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
+#include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/mlir/LLVMBackendHooks.hpp"
 #include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
+#include <chrono>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IRReader/IRReader.h>
+#include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/FileCollector.h>
 #include <mlir/ExecutionEngine/OptUtils.h>
 
@@ -28,13 +32,135 @@ int getOptimizationLevel(const engine::Options& options) {
 	return options.getOptionOrDefault("optimizationLevel", defaultLevel);
 }
 
+llvm::CodeGenOptLevel getCodeGenOptLevel(const engine::Options& options) {
+	if (options.hasOption("mlir.codegenOptLevel")) {
+		switch (options.getOptionOrDefault("mlir.codegenOptLevel", 3)) {
+		case 0:
+			return llvm::CodeGenOptLevel::None;
+		case 1:
+			return llvm::CodeGenOptLevel::Less;
+		case 2:
+			return llvm::CodeGenOptLevel::Default;
+		default:
+			return llvm::CodeGenOptLevel::Aggressive;
+		}
+	}
+	return debugInfoOptionsFromEngineOptions(options).enableDebug ? llvm::CodeGenOptLevel::Less
+	                                                              : llvm::CodeGenOptLevel::Aggressive;
+}
+
+namespace {
+
+int64_t countInstructions(const llvm::Module& module) {
+	int64_t count = 0;
+	for (const auto& func : module) {
+		count += static_cast<int64_t>(func.getInstructionCount());
+	}
+	return count;
+}
+
+int64_t countBasicBlocks(const llvm::Module& module) {
+	int64_t count = 0;
+	for (const auto& func : module) {
+		count += static_cast<int64_t>(func.size());
+	}
+	return count;
+}
+
+llvm::OptimizationLevel toOptimizationLevel(int level) {
+	switch (level) {
+	case 0:
+		return llvm::OptimizationLevel::O0;
+	case 1:
+		return llvm::OptimizationLevel::O1;
+	case 2:
+		return llvm::OptimizationLevel::O2;
+	default:
+		return llvm::OptimizationLevel::O3;
+	}
+}
+
+/// Pass-manager state for one run, configured like mlir::makeOptimizingTransformer
+/// so a textual pipeline is directly comparable with the `optimizationLevel`
+/// one. With a non-null @p instrumentation, the PassBuilder registers every
+/// pass's class-to-name mapping in it, which printPipeline() needs.
+struct PipelineContext {
+	llvm::LoopAnalysisManager lam;
+	llvm::FunctionAnalysisManager fam;
+	llvm::CGSCCAnalysisManager cgam;
+	llvm::ModuleAnalysisManager mam;
+	llvm::PassBuilder pb;
+
+	static llvm::PipelineTuningOptions tuningOptions() {
+		llvm::PipelineTuningOptions options;
+		options.LoopUnrolling = true;
+		options.LoopInterleaving = true;
+		options.LoopVectorization = true;
+		options.SLPVectorization = true;
+		return options;
+	}
+
+	PipelineContext(llvm::TargetMachine* targetMachine, llvm::PassInstrumentationCallbacks* instrumentation)
+	    : pb(targetMachine, tuningOptions(), std::nullopt, instrumentation) {
+		pb.registerModuleAnalyses(mam);
+		pb.registerCGSCCAnalyses(cgam);
+		pb.registerFunctionAnalyses(fam);
+		pb.registerLoopAnalyses(lam);
+		pb.crossRegisterProxies(lam, fam, cgam, mam);
+	}
+};
+
+/// Runs the textual new-pass-manager pipeline @p pipeline (the `opt -passes=`
+/// syntax, e.g. `default<O2>` or `function(sroa,instcombine)`) over @p module.
+llvm::Error runTextualPipeline(llvm::Module& module, llvm::TargetMachine* targetMachine, llvm::StringRef pipeline) {
+	PipelineContext context(targetMachine, nullptr);
+	llvm::ModulePassManager mpm;
+	if (auto err = context.pb.parsePassPipeline(mpm, pipeline)) {
+		return llvm::make_error<llvm::StringError>("invalid mlir.llvmPipeline '" + pipeline.str() +
+		                                               "': " + llvm::toString(std::move(err)),
+		                                           llvm::inconvertibleErrorCode());
+	}
+	mpm.run(module, context.mam);
+	return llvm::Error::success();
+}
+
+/// The fully expanded textual form of the pipeline a compile runs: @p pipeline
+/// itself when set, otherwise the default pipeline for @p level. Feeding the
+/// result back through `mlir.llvmPipeline` reproduces that pipeline pass for
+/// pass, which is what lets a tool ablate individual passes out of it.
+std::string printPipeline(llvm::TargetMachine* targetMachine, int level, llvm::StringRef pipeline) {
+	llvm::PassInstrumentationCallbacks instrumentation;
+	PipelineContext context(targetMachine, &instrumentation);
+	llvm::ModulePassManager mpm;
+	if (!pipeline.empty()) {
+		if (auto err = context.pb.parsePassPipeline(mpm, pipeline)) {
+			llvm::consumeError(std::move(err));
+			return pipeline.str();
+		}
+	} else if (level == 0) {
+		mpm.addPass(context.pb.buildO0DefaultPipeline(llvm::OptimizationLevel::O0));
+	} else {
+		mpm.addPass(context.pb.buildPerModuleDefaultPipeline(toOptimizationLevel(level)));
+	}
+	std::string text;
+	llvm::raw_string_ostream stream(text);
+	mpm.printPipeline(stream, [&](llvm::StringRef className) {
+		auto passName = instrumentation.getPassNameForClassName(className);
+		return passName.empty() ? className : passName;
+	});
+	return text;
+}
+
+} // namespace
+
 LLVMIROptimizer::LLVMIROptimizer() = default;
 LLVMIROptimizer::~LLVMIROptimizer() = default;
 
 std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipeline(const engine::Options& options,
-                                                                                    const DumpHandler& handler) {
+                                                                                    const DumpHandler& handler,
+                                                                                    CompilationStatistics* statistics) {
 	// Return LLVM optimizer pipeline.
-	return [options, &handler](llvm::Module* llvmIRModule) {
+	return [options, &handler, statistics](llvm::Module* llvmIRModule) {
 		// Currently, we do not increase the sizeLevel requirement of the
 		// optimizingTransformer beyond 0.
 		constexpr int SIZE_LEVEL = 0;
@@ -63,9 +189,9 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		// and breaks LLVM's DWARF emission for dbg.value expressions.
 		// Keyed on `enableDebug` alone: perf-only mode keeps the codegen
 		// level the IR optimizer above chose.
+		// `mlir.codegenOptLevel` overrides either.
 		const auto debugInfoForCodegen = debugInfoOptionsFromEngineOptions(options);
-		targetMachinePtr->setOptLevel(debugInfoForCodegen.enableDebug ? llvm::CodeGenOptLevel::Less
-		                                                              : llvm::CodeGenOptLevel::Aggressive);
+		targetMachinePtr->setOptLevel(getCodeGenOptLevel(options));
 
 		// Add target-specific attributes to all non-declaration functions in the module.
 		for (auto& func : *llvmIRModule) {
@@ -125,9 +251,26 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 			return llvmIRString;
 		});
 
-		auto optPipeline =
-		    ::mlir::makeOptimizingTransformer(getOptimizationLevel(options), SIZE_LEVEL, targetMachinePtr);
-		auto optimizedModule = optPipeline(llvmIRModule);
+		// `mlir.llvmPipeline` replaces the `optimizationLevel` pipeline with an
+		// arbitrary textual one, so individual LLVM passes can be measured.
+		const auto optimizationLevel = getOptimizationLevel(options);
+		const auto customPipeline = options.getOptionOrDefault<std::string>("mlir.llvmPipeline", "");
+		if (statistics != nullptr) {
+			statistics->set("llvm.ir.instructions.before", countInstructions(*llvmIRModule));
+			if (options.getOptionOrDefault("mlir.recordLLVMPipeline", false)) {
+				statistics->set("llvm.pipeline", printPipeline(targetMachinePtr, optimizationLevel, customPipeline));
+			}
+		}
+		const auto optimizeStart = std::chrono::steady_clock::now();
+		auto optimizedModule =
+		    customPipeline.empty()
+		        ? ::mlir::makeOptimizingTransformer(optimizationLevel, SIZE_LEVEL, targetMachinePtr)(llvmIRModule)
+		        : runTextualPipeline(*llvmIRModule, targetMachinePtr, customPipeline);
+		if (statistics != nullptr) {
+			statistics->recordTimingMs("llvm.optimize.ms", optimizeStart);
+			statistics->set("llvm.ir.instructions.after", countInstructions(*llvmIRModule));
+			statistics->set("llvm.ir.basicBlocks.after", countBasicBlocks(*llvmIRModule));
+		}
 
 		handler.dump("after_llvm_generation", "ll", [&]() {
 			std::string llvmIRString;

@@ -35,7 +35,8 @@ public:
 	 * @param request CompilationRequest
 	 * @return CompilationResult
 	 */
-	[[nodiscard]] std::shared_ptr<SharedLibrary> compile(const std::string& identifier, const std::string& code) const;
+	[[nodiscard]] std::shared_ptr<SharedLibrary> compile(const std::string& identifier, const std::string& code,
+	                                                     const std::vector<std::string>& extraFlags = {}) const;
 
 private:
 	/**
