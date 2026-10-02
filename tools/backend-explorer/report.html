@@ -210,6 +210,7 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
 				<option value="median">median</option>
 				<option value="min">best repetition</option>
 			</select></label>
+			<label id="driftLabel" title="divide every result by how much slower the machine ran at the time it was measured, according to the reference re-measured throughout the run"><input type="checkbox" id="drift" checked /> correct for machine drift</label>
 			<label><input type="checkbox" id="frontierOnly" /> frontier only</label>
 		</div>
 		<div class="controls">
@@ -250,8 +251,9 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
 			result with the unmodified expanded pipeline. A negative compile change means the pass costs that much
 			compile time. A positive runtime change means the code is that much slower without the pass. <i>Own time</i>
 			is the pass's exclusive time in the profile of the same level, as a share of the compile metric;
-			<i>indirect</i> is the saving minus that own time: work later passes and code generation do because of what
-			the pass produced. Passes in the top-left of the trade-off are cheap to keep and costly to lose.</p>
+			<i>indirect</i> is the saving minus that own time, both as shares of the total over the selected kernels:
+			work later passes and code generation do because of what the pass produced. Small values (a few percent)
+			are within measurement noise. Passes in the top-left of the trade-off are cheap to keep and costly to lose.</p>
 		<div class="controls">
 			<label>Base pipeline <select id="ablationBase"></select></label>
 			<label>Compile metric <select id="ablationMetric">
@@ -402,13 +404,20 @@ function geomean(values) {
 }
 
 // Per-phase statistics (backend only) are always medians; the end-to-end compile and the runtime follow the
-// statistic selector.
+// statistic selector. With drift correction on, each value is divided by how much slower than usual the machine
+// ran at the time it was measured (explore.py's reference timeline).
+function driftOf(r, metric) {
+	return state.drift && r.drift && r.drift[metric] > 0 ? r.drift[metric] : 1;
+}
 function compileMetric(r, mode) {
-	if (mode === "backend") return r.stats["backend.totalMs"] ?? r.compileMs;
-	return state.stat === "min" ? r.compileMsMin ?? r.compileMs : r.compileMs;
+	if (mode === "backend") return (r.stats["backend.totalMs"] ?? r.compileMs) / driftOf(r, "compile");
+	return (state.stat === "min" ? r.compileMsMin ?? r.compileMs : r.compileMs) / driftOf(r, "compile");
 }
 function runMetric(r) {
-	return state.stat === "min" ? r.runNsMin ?? r.runNs : r.runNs;
+	return (state.stat === "min" ? r.runNsMin ?? r.runNs : r.runNs) / driftOf(r, "run");
+}
+function optimizeMetric(r) {
+	return r.stats["llvm.optimize.ms"] / driftOf(r, "optimize");
 }
 
 /** Aggregate one config over the selected kernels; null when any of them failed. */
@@ -473,6 +482,7 @@ const state = {
 	ymode: "abs",
 	frontierOnly: false,
 	stat: "median",
+	drift: true,
 	backends: new Set(backendOrder),
 	groups: new Set(groups),
 	selected: null,
@@ -547,6 +557,8 @@ function setupControls() {
 	document.getElementById("xmetric").addEventListener("change", (e) => { state.xmode = e.target.value; renderAll(); });
 	document.getElementById("ymode").addEventListener("change", (e) => { state.ymode = e.target.value; renderAll(); });
 	document.getElementById("stat").addEventListener("change", (e) => { state.stat = e.target.value; renderAll(); });
+	document.getElementById("drift").addEventListener("change", (e) => { state.drift = e.target.checked; renderAll(); });
+	if (!(data.driftTimeline && data.driftTimeline.length > 1)) document.getElementById("driftLabel").style.display = "none";
 	document.getElementById("frontierOnly").addEventListener("change", (e) => { state.frontierOnly = e.target.checked; renderAll(); });
 	const slider = document.getElementById("executions");
 	slider.addEventListener("input", () => { state.executionsLog = parseFloat(slider.value); renderScatter(); renderPick(); });
@@ -968,7 +980,7 @@ function renderAblation() {
 	if (!base) return;
 	const metric = document.getElementById("ablationMetric").value;
 	const sel = selectedKernels();
-	const compileOf = (r) => (metric === "opt" ? r.stats["llvm.optimize.ms"] : compileMetric(r, "wall"));
+	const compileOf = (r) => (metric === "opt" ? optimizeMetric(r) : compileMetric(r, "wall"));
 	// The pass's own (exclusive) time in the profile of the same default level, as a share of the same metric.
 	const levelProfile = configs.find((c) => c.group === "llvm-profile" && c.meta && c.meta.profileOf === `O${base.meta.baseLevel}`);
 	const prof = levelProfile ? profileOf(levelProfile, sel) : null;
@@ -981,22 +993,26 @@ function renderAblation() {
 	for (const c of configs) {
 		if (c.group !== "llvm-ablation" || !c.meta || c.meta.removedPass == null || c.meta.baseLevel !== base.meta.baseLevel) continue;
 		const compileRatios = [], runRatios = [];
-		let worst = null, failures = [];
+		let worst = null, failures = [], baseTotal = 0, ablatedTotal = 0;
 		for (const k of sel) {
 			if (!kernelOk(base, k)) continue;
 			if (!kernelOk(c, k)) { failures.push(`${k}: ${failureReason(c, k)}`); continue; }
 			const rb = base.results[k], rc = c.results[k];
 			compileRatios.push(compileOf(rc) / compileOf(rb));
+			baseTotal += compileOf(rb);
+			ablatedTotal += compileOf(rc);
 			const rr = runMetric(rc) / runMetric(rb);
 			runRatios.push(rr);
 			if (!worst || rr > worst.ratio) worst = { kernel: k, ratio: rr };
 		}
+		// Own time and indirect cost are shares of the suite's total compile time (sums over the selected kernels),
+		// so one slow kernel weighs as much as it costs; the Δ column is the usual geometric mean of ratios.
 		const own = ownShare(c.meta.removedPass);
-		const compileRatio = geomean(compileRatios);
+		const saving = baseTotal > 0 ? 1 - ablatedTotal / baseTotal : null;
 		rows.push({
 			config: c, pass: c.meta.removedPass, instances: c.meta.instances,
-			compile: compileRatio, run: geomean(runRatios), worst, failures, own,
-			indirect: own != null && compileRatio != null ? (1 - compileRatio) - own : null,
+			compile: geomean(compileRatios), run: geomean(runRatios), worst, failures, own,
+			indirect: own != null && saving != null ? saving - own : null,
 		});
 	}
 	const s = state.ablationSort;
@@ -1278,6 +1294,14 @@ function renderHeader() {
 	}
 	const failed = configs.reduce((n, c) => n + kernels.filter((k) => c.results[k] && c.results[k].status !== "ok").length, 0);
 	if (failed) warnings.push(`<b>${failed} failed compilation(s) or run(s).</b> See the "failed kernels" column of the table and the configuration details.`);
+	const timeline = data.driftTimeline || [];
+	if (timeline.length > 1) {
+		const runs = timeline.map((p) => p.run).filter((v) => v), opts = timeline.map((p) => p.optimize).filter((v) => v);
+		const spread = (v) => (Math.max(...v) / Math.min(...v) - 1) * 100;
+		if (Math.max(spread(runs), spread(opts)) > 5) {
+			warnings.push(`<b>The machine's speed drifted during the run.</b> The reference configuration, re-measured ${timeline.length} times, varied by ${spread(runs).toFixed(0)}% in runtime and ${spread(opts).toFixed(0)}% in LLVM optimizer time. Results are corrected for it (“correct for machine drift”); see the timeline under measurement settings.`);
+		}
+	}
 	if (m.governor && m.governor !== "performance") warnings.push(`<b>CPU governor is "${esc(m.governor)}".</b> Frequency scaling adds noise; prefer the performance governor.`);
 	document.getElementById("warnings").innerHTML = warnings.map((w) => `<div class="warn">${w}</div>`).join("");
 	const settings = m.settings || {};
@@ -1288,7 +1312,31 @@ function renderHeader() {
 		whose result differs between processes is reported as nondeterministic. Aggregates are geometric
 		means over the selected kernels. The expected-executions picker minimizes compile + N × runtime over the frontier.</p>
 		<p class="hint">Runner: <code>${esc(m.runner || "?")}</code>${m.extraOptions && m.extraOptions.length ? ` · options on every configuration: <code>${esc(m.extraOptions.join(" "))}</code>` : ""}</p>
+		${driftChart()}
 		${Object.entries(data.pipelines || {}).map(([k, v]) => `<p><b>${esc(k)}</b> (${v.length} chars)</p><pre class="mono" style="white-space:pre-wrap;word-break:break-all;background:var(--surface-2);padding:8px;border-radius:6px">${esc(v)}</pre>`).join("")}`;
+}
+
+function driftChart() {
+	const timeline = (data.driftTimeline || []).filter((p) => p.run && p.optimize);
+	if (timeline.length < 2) return "";
+	const w = 760, h = 180, m = { l: 48, r: 12, t: 12, b: 32 };
+	const t0 = timeline[0].t, t1 = timeline[timeline.length - 1].t;
+	const values = timeline.flatMap((p) => [p.run, p.optimize, p.compile].filter(Boolean));
+	const lo = Math.min(0.9, ...values), hi = Math.max(1.1, ...values);
+	const sx = (t) => m.l + ((t - t0) / Math.max(1, t1 - t0)) * (w - m.l - m.r);
+	const sy = (v) => h - m.b - ((v - lo) / (hi - lo)) * (h - m.t - m.b);
+	const series = [["run", "runtime", "var(--series-1)"], ["optimize", "LLVM optimizer", "var(--series-2)"], ["compile", "end-to-end compile", "var(--series-3)"]];
+	let out = `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px" role="img" aria-label="Reference configuration over time">`;
+	for (const v of [0.9, 1, 1.1].filter((v) => v >= lo && v <= hi)) out += `<line x1="${m.l}" x2="${w - m.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${sy(v) + 4}" text-anchor="end">${v.toFixed(1)}×</text>`;
+	const minutes = (t1 - t0) / 60;
+	for (let i = 0; i <= 4; i++) out += `<text x="${sx(t0 + ((t1 - t0) * i) / 4)}" y="${h - 10}" text-anchor="middle">${((minutes * i) / 4).toFixed(minutes < 20 ? 1 : 0)} min</text>`;
+	for (const [key, name, color] of series) {
+		const pts = timeline.filter((p) => p[key]);
+		out += `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${sx(p.t).toFixed(1)},${sy(p[key]).toFixed(1)}`).join("")}" fill="none" stroke="${color}" stroke-width="2"/>`;
+	}
+	out += "</svg>";
+	return `<p class="hint"><b>Machine drift.</b> The reference configuration (mlir O3) re-measured throughout the run, relative to its median (geometric mean over kernels). Above 1× the machine was slower than usual. With “correct for machine drift” on, every result is divided by this factor, interpolated to the time it was measured.</p>
+		<div class="legend-inline">${series.map(([, name, color]) => `<span><i class="swatch" style="background:${color}"></i>${name}</span>`).join("")}</div>${out}`;
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -56,6 +56,13 @@ explore.py         ──► results.json (appended, resumable) ──► explor
   samples are pooled. Code and data placement differ per process and can shift one kernel's runtime by tens of
   percent with identical code. One process measures one draw of that layout, not the configuration. A kernel whose
   checksum differs between processes is reported as *nondeterministic*.
+- **Machine drift**: a long sweep cannot assume the machine runs at a constant speed. On a cloud VM, code that
+  compiled to identical machine code measured 20–25% faster two hours later. Every `--reference-every` (default 4)
+  measured configurations, the driver re-measures a reference (mlir O3 with default options). The report divides
+  each result by the reference's slowdown at the time it was measured, interpolated between reference measurements
+  (toggle "correct for machine drift"), and shows the reference timeline under the measurement settings. The greedy
+  search decides on corrected values. Without the correction, it preferred whichever candidate ran while the machine
+  was fast: it once selected `slp-vectorizer`, a pass that never changed the IR.
 - **Aggregates** over several kernels are geometric means, so every kernel weighs the same regardless of its absolute
   runtime.
 - **Crashes**: each configuration runs in its own process. If the process dies, the remaining kernels are retried one
@@ -70,9 +77,10 @@ explore.py         ──► results.json (appended, resumable) ──► explor
 | `ir-passes` | Nautilus' own IR pipeline: all on/off per backend, then each pass toggled on asmjit and bc |
 | `mlir-levels` | LLVM IR optimization level (`optimizationLevel`) × machine-code generation level (`mlir.codegenOptLevel`), and the MLIR inliner off |
 | `llvm-ablation` | Leave-one-out over the expanded LLVM pipeline: for each distinct pass, the pipeline without any instance of it (`--ablation-levels 2,3`) |
+| `llvm-profile` | The default O0–O3 pipelines, O3 without the LLVM inliner, and (after `llvm-greedy`) the greedy pipeline, profiled with `mlir.recordPassTimings`: each LLVM pass's exclusive time, runs, runs that changed the IR and instructions processed; each analysis; each machine-code generation pass |
 | `llvm-greedy` | *(opt-in)* Forward selection: starting from an empty pipeline, repeatedly append the pass with the best runtime gain per millisecond of compile time (`--greedy-steps`, `--greedy-min-gain`) |
 
-`all` (the default) runs every sweep except `llvm-greedy`, which evaluates about 30 candidates per step:
+`--ablation-levels` defaults to `0,1,2,3`. `all` (the default) runs every sweep except `llvm-greedy`, which evaluates about 30 candidates per step:
 
 ```bash
 explore.py run --out results.json --sweep all --sweep llvm-greedy
@@ -115,8 +123,14 @@ See `docs/options.md` for the full option reference.
   points for tiered compilation.
 - **Where compilation time goes**: compile phases (tracing, IR passes, lowering, LLVM optimization, code generation,
   ...) for the selected and frontier configurations.
-- **LLVM pass ablation**: the change in compile and run time from removing each pass, sortable, with the
-  kernel that suffers most.
+- **LLVM pass ablation**: the change in compile and run time from removing each pass, at each default level. The
+  table is sortable and names the kernel that suffers most. *Own time* is the pass's exclusive time in the profile;
+  *indirect* is the rest of the saving: work later passes and code generation do because of what the pass produced.
+- **Why passes are slow**: a pass profile per default level, with a compare mode. It shows where one compilation's
+  time goes (frontend, MLIR, LLVM setup, passes, analyses, pass managers, code generation passes, object emission and
+  linking) and how much the IR grows. It lists passes by exclusive time, how often they changed the IR, and µs per 100
+  instructions processed, plus tables of analyses and code generation passes. Findings it derives automatically
+  include passes that cost time without changing the IR.
 - **Greedy pipeline construction**: the passes the search selected and the cost/quality after each step.
 - **All configurations**: the table view; filterable and sortable.
 
