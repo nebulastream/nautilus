@@ -10,6 +10,8 @@ It answers questions like:
 
 ![The report: a scatter of configurations with the Pareto frontier, the iso-cost curve for the expected number of executions, and the per-configuration details.](docs/report.png)
 
+![The pass profile: where one compilation's time goes, and each LLVM pass's exclusive time, compared with O3 without the inliner.](docs/profile.png)
+
 ## Quick start
 
 ```bash
