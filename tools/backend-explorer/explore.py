@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Backend explorer: measure how Nautilus' backends and their options trade compilation latency for code quality.
 
-Sweeps backend configurations over the benchmark kernels (nautilus/test/benchmark/BenchmarkKernels.hpp), runs each
+Sweeps backend configurations over the benchmark kernels (runner/BenchmarkKernels.hpp), runs each
 configuration in its own `nautilus-backend-explorer` process, and writes the results as JSON plus a self-contained
 HTML report with a compile-time vs. execution-time frontier.
 
@@ -407,12 +407,12 @@ def greedy_pipeline(elements: list[tuple[str, str, str]]) -> str:
 def find_runner(explicit: str | None) -> Path:
     if explicit:
         return Path(explicit)
-    candidates = sorted(glob.glob(str(REPO / "build*" / "nautilus" / "test" / "benchmark" / RUNNER_NAME)) +
-                        glob.glob(str(REPO / "cmake-build-*" / "nautilus" / "test" / "benchmark" / RUNNER_NAME)),
+    relative = Path("tools") / "backend-explorer" / "runner" / RUNNER_NAME
+    candidates = sorted(glob.glob(str(REPO / "build*" / relative)) + glob.glob(str(REPO / "cmake-build-*" / relative)),
                         key=os.path.getmtime, reverse=True)
     if not candidates:
-        sys.exit(f"could not find {RUNNER_NAME}; build it (cmake -DENABLE_BENCHMARKS=ON, target {RUNNER_NAME}) "
-                 "or pass --runner")
+        sys.exit(f"could not find {RUNNER_NAME}; build it with Clang (cmake -DENABLE_BACKEND_EXPLORER=ON, target "
+                 f"{RUNNER_NAME}) or pass --runner")
     return Path(candidates[0])
 
 
