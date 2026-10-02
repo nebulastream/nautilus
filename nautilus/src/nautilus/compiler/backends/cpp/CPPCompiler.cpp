@@ -21,7 +21,8 @@ CPPCompiler::CPPCompiler() : runtimePathConfig(ExecutablePath::loadRuntimePathCo
 
 CPPCompiler::~CPPCompiler() noexcept = default;
 
-SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::string& code) const {
+SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::string& code,
+                                      const std::vector<std::string>& extraFlags) const {
 	// Timer timer("CPPCompiler");
 	// timer.start();
 	std::string fileName = (std::filesystem::temp_directory_path() / identifier);
@@ -54,6 +55,9 @@ SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::
 	// }
 	compilationFlags.addFlag("-shared");
 	compilationFlags.addFlag("-g");
+	for (const auto& flag : extraFlags) {
+		compilationFlags.addFlag(flag);
+	}
 
 	// add header
 	for (auto libPaths : runtimePathConfig.libPaths) {
