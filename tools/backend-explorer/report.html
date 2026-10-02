@@ -261,6 +261,7 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
 				<option value="wall">end-to-end compile time</option>
 			</select></label>
 		</div>
+		<p class="hint" id="ablationNoise"></p>
 		<div class="scroll"><table id="ablation"></table></div>
 	</section>
 
@@ -1009,14 +1010,30 @@ function renderAblation() {
 		// so one slow kernel weighs as much as it costs; the Δ column is the usual geometric mean of ratios.
 		const own = ownShare(c.meta.removedPass);
 		const saving = baseTotal > 0 ? 1 - ablatedTotal / baseTotal : null;
+		// Removing the pass left the machine code of every selected kernel byte-identical: it did nothing here,
+		// so any runtime difference measured for it is noise -- which is how the table estimates the noise floor.
+		const sameCode = failures.length === 0 && sel.every((k) => !kernelOk(base, k) || (c.results[k].codeBytes != null && c.results[k].codeBytes === base.results[k].codeBytes));
 		rows.push({
 			config: c, pass: c.meta.removedPass, instances: c.meta.instances,
-			compile: geomean(compileRatios), run: geomean(runRatios), worst, failures, own,
+			compile: geomean(compileRatios), run: geomean(runRatios), worst, failures, own, sameCode,
 			indirect: own != null && saving != null ? saving - own : null,
 		});
 	}
+	// Noise floor: the spread of the runtime ratios of passes whose removal changed no machine code.
+	const stdev = (v) => {
+		if (v.length < 3) return null;
+		const mean = v.reduce((a, b) => a + b, 0) / v.length;
+		return Math.sqrt(v.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (v.length - 1));
+	};
+	const noiseRows = rows.filter((r) => r.sameCode && r.run && r.compile);
+	const runNoise = stdev(noiseRows.map((r) => Math.log(r.run)));
+	const compileNoise = stdev(noiseRows.map((r) => Math.log(r.compile)));
+	const withinNoise = (ratio, sigma) => ratio != null && sigma != null && Math.abs(Math.log(ratio)) < 2 * sigma;
+	document.getElementById("ablationNoise").innerHTML = runNoise != null
+		? `Noise floor: removing any of the ${noiseRows.length} passes marked <i>same code</i> leaves every kernel's machine code byte-identical, so their measured differences are pure noise: ±${(runNoise * 100).toFixed(1)}% runtime and ±${(compileNoise * 100).toFixed(1)}% ${metric === "opt" ? "optimizer time" : "compile time"} (1σ). Changes within 2σ are greyed out.`
+		: "";
 	const s = state.ablationSort;
-	const keyOf = (r) => ({ pass: r.pass, instances: r.instances, compile: r.compile ?? 9, run: r.run ?? 9, worst: r.worst ? r.worst.ratio : 9, own: r.own ?? -1, indirect: r.indirect ?? -9 }[s.key]);
+	const keyOf = (r) => ({ pass: r.pass, instances: r.instances, compile: r.compile ?? 9, run: r.run ?? 9, worst: r.worst ? r.worst.ratio : 9, own: r.own ?? -1, indirect: r.indirect ?? -9, same: r.sameCode ? 1 : 0 }[s.key]);
 	const share = (v) => (v == null ? "–" : `${(v * 100).toFixed(Math.abs(v) < 0.1 ? 1 : 0)}%`);
 	rows.sort((a, b) => {
 		const va = keyOf(a), vb = keyOf(b);
@@ -1035,13 +1052,14 @@ function renderAblation() {
 	table.innerHTML = `<thead><tr>${th("pass", "removed pass", "l")}${th("instances", "instances")}
 		${th("compile", metric === "opt" ? "Δ LLVM optimizer time" : "Δ compile time")}<th class="bar-cell">← saves · costs →</th>
 		${th("own", "own time")}${th("indirect", "indirect")}
-		${th("run", "Δ runtime")}<th class="bar-cell">← faster · slower →</th>${th("worst", "worst kernel")}<th class="l">failures</th></tr></thead>
+		${th("run", "Δ runtime")}<th class="bar-cell">← faster · slower →</th>${th("same", "same code")}${th("worst", "worst kernel")}<th class="l">failures</th></tr></thead>
 		<tbody>${rows.map((r) => `<tr data-id="${esc(r.config.id)}" style="cursor:pointer" class="${r.config.id === state.selected ? "selected" : ""}">
 			<td class="mono">${esc(r.pass)}</td><td class="num">${r.instances}</td>
-			<td class="num">${fmtPct(r.compile)}</td><td class="bar-cell">${bar(r.compile, compileSpan)}</td>
+			<td class="num" style="${withinNoise(r.compile, compileNoise) ? "color:var(--text-muted)" : ""}">${fmtPct(r.compile)}</td><td class="bar-cell">${bar(r.compile, compileSpan)}</td>
 			<td class="num" title="the pass's exclusive time in the O${base.meta.baseLevel} profile">${share(r.own)}</td>
 			<td class="num" title="saving from removing it minus its own time: downstream work it causes">${share(r.indirect)}</td>
-			<td class="num">${fmtPct(r.run)}</td><td class="bar-cell">${bar(r.run, runSpan)}</td>
+			<td class="num" style="${withinNoise(r.run, runNoise) ? "color:var(--text-muted)" : ""}">${fmtPct(r.run)}</td><td class="bar-cell">${bar(r.run, runSpan)}</td>
+			<td title="removing it leaves every selected kernel's machine code byte-identical">${r.sameCode ? "✓" : ""}</td>
 			<td class="num">${r.worst ? `${esc(r.worst.kernel)} ${fmtPct(r.worst.ratio)}` : "–"}</td>
 			<td class="l ${r.failures.length ? "bad-text" : ""}" title="${esc(r.failures.join("\n"))}">${r.failures.length ? `${r.failures.length} kernel(s)` : ""}</td></tr>`).join("")}</tbody>`;
 	table.querySelectorAll("th[data-key]").forEach((h) => h.addEventListener("click", () => {

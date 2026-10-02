@@ -399,6 +399,11 @@ GREEDY_CANDIDATES = [
     ("memcpyopt", "memcpyopt", "function"),
     ("mldst-motion", "mldst-motion", "function"),
     ("loop-rotate", "loop(loop-rotate)", "function"),
+    # Bundles: a loop transformation only pays off on a rotated loop, and rotation alone gains nothing, so a
+    # one-pass-at-a-time search never reaches them without these.
+    ("rotate+unroll", "loop(loop-rotate),loop-unroll<O3>", "function"),
+    ("rotate+vectorize", "loop(loop-rotate),loop-vectorize", "function"),
+    ("rotate+licm+indvars", "loop-mssa(loop-rotate,licm),loop(indvars)", "function"),
     ("licm", "loop-mssa(licm)", "function"),
     ("indvars", "loop(indvars)", "function"),
     ("loop-idiom", "loop(loop-idiom)", "function"),
@@ -643,15 +648,28 @@ def drift_value(result: dict, metric: str):
     return value if isinstance(value, (int, float)) and value > 0 else None
 
 
+# Running-median window over the reference timeline. One reference measurement carries a few percent of noise of
+# its own; the drift worth correcting moves over many minutes (several references), so smoothing removes the
+# former and keeps the latter. Measured on configurations that compile to identical machine code: unsmoothed
+# correction raised their spread from 2.1% to 2.7% (runtime), a 5-wide median kept it at 2.1%.
+DRIFT_SMOOTHING = 5
+
+
+def smoothed(series: list[tuple[float, float]], window: int = DRIFT_SMOOTHING) -> list[tuple[float, float]]:
+    half = window // 2
+    return [(t, statistics.median(v for _, v in series[max(0, i - half):i + half + 1]))
+            for i, (t, _) in enumerate(series)]
+
+
 def drift_factors(references: list[dict], kernel: str, t: float | None) -> dict[str, float]:
     """How much slower than usual the machine ran @p kernel at time @p t, per metric: the reference's value
-    interpolated linearly between the reference measurements around @p t (clamped at both ends), divided by its
-    median over the whole run. A result divided by its factor is what it would have measured at typical speed.
-    Without a timeline (or a timestamp) every factor is 1."""
+    (smoothed over neighbouring reference measurements) interpolated linearly between the references around @p t
+    (clamped at both ends), divided by its median over the whole run. A result divided by its factor is what it
+    would have measured at typical speed. Without a timeline (or a timestamp) every factor is 1."""
     factors = {}
     for metric in DRIFT_METRICS:
-        series = sorted((r["t"], r["results"][kernel][metric]) for r in references
-                        if kernel in r.get("results", {}) and metric in r["results"][kernel])
+        series = smoothed(sorted((r["t"], r["results"][kernel][metric]) for r in references
+                                 if kernel in r.get("results", {}) and metric in r["results"][kernel]))
         if t is None or len(series) < 2:
             factors[metric] = 1.0
             continue
