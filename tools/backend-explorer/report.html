@@ -1,0 +1,1391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nautilus Backend Explorer</title>
+<style>
+:root {
+	color-scheme: light;
+	--surface-0: #f4f3f0;
+	--surface-1: #fcfcfb;
+	--surface-2: #f0efec;
+	--border: #dddcd7;
+	--grid: #e8e7e3;
+	--text-primary: #0b0b0b;
+	--text-secondary: #52514e;
+	--text-muted: #7a7974;
+	--accent: #2a78d6;
+	--series-1: #2a78d6;
+	--series-2: #eb6834;
+	--series-3: #1baf7a;
+	--series-4: #eda100;
+	--series-5: #e87ba4;
+	--series-6: #008300;
+	--series-7: #4a3aa7;
+	--series-8: #e34948;
+	--good: #2a78d6;
+	--bad: #e34948;
+	--neutral: #f0efec;
+	--frontier: #0b0b0b;
+	--critical: #c62828;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		color-scheme: dark;
+		--surface-0: #121211;
+		--surface-1: #1a1a19;
+		--surface-2: #242422;
+		--border: #383835;
+		--grid: #2c2c2a;
+		--text-primary: #ffffff;
+		--text-secondary: #c3c2b7;
+		--text-muted: #8f8e86;
+		--accent: #3987e5;
+		--series-1: #3987e5;
+		--series-2: #d95926;
+		--series-3: #199e70;
+		--series-4: #c98500;
+		--series-5: #d55181;
+		--series-6: #008300;
+		--series-7: #9085e9;
+		--series-8: #e66767;
+		--good: #3987e5;
+		--bad: #e66767;
+		--neutral: #383835;
+		--frontier: #ffffff;
+		--critical: #ef5350;
+	}
+}
+:root[data-theme="dark"] {
+	color-scheme: dark;
+	--surface-0: #121211;
+	--surface-1: #1a1a19;
+	--surface-2: #242422;
+	--border: #383835;
+	--grid: #2c2c2a;
+	--text-primary: #ffffff;
+	--text-secondary: #c3c2b7;
+	--text-muted: #8f8e86;
+	--accent: #3987e5;
+	--series-1: #3987e5;
+	--series-2: #d95926;
+	--series-3: #199e70;
+	--series-4: #c98500;
+	--series-5: #d55181;
+	--series-6: #008300;
+	--series-7: #9085e9;
+	--series-8: #e66767;
+	--good: #3987e5;
+	--bad: #e66767;
+	--neutral: #383835;
+	--frontier: #ffffff;
+	--critical: #ef5350;
+}
+* { box-sizing: border-box; }
+body {
+	margin: 0;
+	background: var(--surface-0);
+	color: var(--text-primary);
+	font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+header {
+	display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px;
+	padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface-1);
+}
+header h1 { font-size: 18px; margin: 0; }
+header .meta { color: var(--text-secondary); font-size: 12px; }
+header .spacer { flex: 1; }
+button, select, input[type="text"] {
+	font: inherit; color: var(--text-primary); background: var(--surface-1);
+	border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px;
+}
+button { cursor: pointer; }
+button:hover { background: var(--surface-2); }
+main { padding: 16px 24px 48px; max-width: 1600px; margin: 0 auto; }
+section {
+	background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+	padding: 16px; margin-bottom: 16px;
+}
+section h2 { font-size: 15px; margin: 0 0 4px; }
+section > p.hint { margin: 0 0 12px; color: var(--text-secondary); font-size: 13px; max-width: 900px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; }
+.controls label { color: var(--text-secondary); font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+	display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px;
+	border: 1px solid var(--border); font-size: 12px; cursor: pointer; user-select: none; color: var(--text-secondary);
+}
+.chip[aria-pressed="true"] { background: var(--surface-2); color: var(--text-primary); border-color: var(--text-muted); }
+.chip svg { flex: none; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; }
+@media (max-width: 1100px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.chart-wrap { position: relative; width: 100%; }
+svg text { fill: var(--text-secondary); font-size: 11px; }
+svg .axis-title { fill: var(--text-secondary); font-size: 12px; }
+.grid line { stroke: var(--grid); stroke-width: 1; }
+.tooltip {
+	position: absolute; pointer-events: none; z-index: 10; background: var(--surface-1); color: var(--text-primary);
+	border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+	box-shadow: 0 4px 16px rgba(0,0,0,.15); max-width: 360px; display: none;
+}
+.tooltip .t-title { font-weight: 600; margin-bottom: 4px; }
+.tooltip .t-row { display: flex; justify-content: space-between; gap: 16px; color: var(--text-secondary); }
+.tooltip .t-row b { color: var(--text-primary); font-weight: 500; }
+.slider-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 8px; }
+.slider-row input[type="range"] { flex: 1; min-width: 200px; accent-color: var(--accent); }
+.slider-row output { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 120px; }
+.envelope { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin-top: 8px; border: 1px solid var(--border); }
+.envelope div {
+	display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff;
+	white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; border-right: 2px solid var(--surface-1); cursor: pointer;
+}
+.envelope-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.pick {
+	margin-top: 10px; padding: 10px 12px; background: var(--surface-2); border-radius: 8px; font-size: 13px;
+}
+.pick b { font-weight: 600; }
+.details h3 { font-size: 14px; margin: 0 0 2px; }
+.details .sub { color: var(--text-secondary); font-size: 12px; margin-bottom: 8px; }
+.details code, .opt-list code {
+	font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2); padding: 1px 4px; border-radius: 4px;
+	word-break: break-all;
+}
+.opt-list { margin: 6px 0 10px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.empty { color: var(--text-muted); font-size: 13px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th, td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { color: var(--text-secondary); font-weight: 600; position: sticky; top: 0; background: var(--surface-1); cursor: pointer; }
+th:first-child, td:first-child { text-align: left; }
+td.l, th.l { text-align: left; }
+tbody tr:hover { background: var(--surface-2); }
+tr.selected { background: var(--surface-2); outline: 2px solid var(--accent); outline-offset: -2px; }
+.scroll { max-height: 520px; overflow: auto; }
+.num { font-variant-numeric: tabular-nums; }
+.bad-text { color: var(--critical); font-weight: 600; }
+.bar-cell { width: 220px; }
+.dbar { position: relative; height: 12px; background: transparent; }
+.dbar .mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--text-muted); }
+.dbar .fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.stack { display: flex; height: 18px; border-radius: 4px; overflow: hidden; gap: 2px; margin: 6px 0; }
+.stack div { height: 100%; }
+.legend-inline { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--text-secondary); }
+.legend-inline span { display: inline-flex; align-items: center; gap: 4px; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.warn {
+	border-left: 3px solid var(--critical); padding: 8px 12px; background: var(--surface-2); border-radius: 0 6px 6px 0;
+	margin-bottom: 12px; font-size: 13px;
+}
+.warn b::before { content: "⚠ "; }
+.mono { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+	<h1>Nautilus backend explorer</h1>
+	<span class="meta" id="meta"></span>
+	<span class="spacer"></span>
+	<button type="button" id="theme">◐ theme</button>
+</header>
+<main>
+	<div id="warnings"></div>
+
+	<section>
+		<h2>Compilation latency vs. code quality</h2>
+		<p class="hint">Each point is one configuration: a backend plus its options. A point is plotted only if every
+			selected kernel compiled and returned the reference checksum. The line connects the Pareto frontier, the
+			configurations that no other configuration beats on both axes. Click a point to inspect it.</p>
+		<div class="controls">
+			<label>Kernels <select id="kernel"></select></label>
+			<label>Compile time <select id="xmetric">
+				<option value="wall">end-to-end (trace → executable)</option>
+				<option value="backend">backend only</option>
+			</select></label>
+			<label>Runtime <select id="ymode">
+				<option value="abs">absolute per call</option>
+				<option value="rel">relative to baseline</option>
+			</select></label>
+			<label>Statistic <select id="stat">
+				<option value="median">median</option>
+				<option value="min">best repetition</option>
+			</select></label>
+			<label id="driftLabel" title="divide every result by how much slower the machine ran at the time it was measured, according to the reference re-measured throughout the run"><input type="checkbox" id="drift" checked /> correct for machine drift</label>
+			<label><input type="checkbox" id="frontierOnly" /> frontier only</label>
+		</div>
+		<div class="controls">
+			<span class="chips" id="backendChips" aria-label="Backends"></span>
+		</div>
+		<div class="controls">
+			<span class="chips" id="groupChips" aria-label="Sweeps"></span>
+		</div>
+		<div class="layout">
+			<div>
+				<div class="chart-wrap" id="scatterWrap">
+					<svg id="scatter" role="img" aria-label="Compile time versus runtime scatter plot"></svg>
+					<div class="tooltip" id="tooltip"></div>
+				</div>
+				<div class="slider-row">
+					<label for="executions">Expected executions per compilation</label>
+					<input type="range" id="executions" min="0" max="10" step="0.05" value="4" />
+					<output id="executionsOut"></output>
+				</div>
+				<div class="pick" id="pick"></div>
+				<div class="envelope" id="envelope"></div>
+				<div class="envelope-axis" id="envelopeAxis"></div>
+			</div>
+			<div class="details" id="details"><p class="empty">Select a configuration in the chart or the table.</p></div>
+		</div>
+	</section>
+
+	<section id="breakdownSection">
+		<h2>Where compilation time goes</h2>
+		<p class="hint">Compile phases of the selected configuration and the frontier configurations, for the selected
+			kernels (mean milliseconds per compilation).</p>
+		<div id="breakdown"></div>
+	</section>
+
+	<section id="ablationSection">
+		<h2>LLVM pass ablation</h2>
+		<p class="hint">Each row removes every instance of one pass from the expanded default pipeline and compares the
+			result with the unmodified expanded pipeline. A negative compile change means the pass costs that much
+			compile time. A positive runtime change means the code is that much slower without the pass. <i>Own time</i>
+			is the pass's exclusive time in the profile of the same level, as a share of the compile metric;
+			<i>indirect</i> is the saving minus that own time, both as shares of the total over the selected kernels:
+			work later passes and code generation do because of what the pass produced. Small values (a few percent)
+			are within measurement noise. Passes in the top-left of the trade-off are cheap to keep and costly to lose.</p>
+		<div class="controls">
+			<label>Base pipeline <select id="ablationBase"></select></label>
+			<label>Compile metric <select id="ablationMetric">
+				<option value="opt">LLVM optimizer time</option>
+				<option value="wall">end-to-end compile time</option>
+			</select></label>
+		</div>
+		<p class="hint" id="ablationNoise"></p>
+		<div class="scroll"><table id="ablation"></table></div>
+	</section>
+
+	<section id="profileSection">
+		<h2>Why passes are slow</h2>
+		<p class="hint">Pass profiles of the default O0–O3 pipelines, O3 without the LLVM inliner, and the greedy
+			pipeline, recorded with <code>mlir.recordPassTimings</code>. Every time is <i>exclusive</i>: a pass does
+			not own the analyses it requests or the passes nested in it. Means per compilation over the selected
+			kernels. A pass whose own time is small can still be expensive overall: compare its own time here with
+			what removing it saves in the ablation above. The difference is downstream work it causes, mostly through
+			the IR it produces.</p>
+		<div class="controls">
+			<label>Profile <select id="profileSelect"></select></label>
+			<label>Compare with <select id="profileCompare"></select></label>
+			<label><input type="checkbox" id="profileAll" /> all passes</label>
+		</div>
+		<div id="profileFindings"></div>
+		<div id="profileBreakdown"></div>
+		<h3 style="font-size:14px;margin:16px 0 4px">LLVM IR passes</h3>
+		<div class="scroll"><table id="profilePasses"></table></div>
+		<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;margin-top:16px">
+			<div><h3 style="font-size:14px;margin:0 0 4px">Analyses</h3><div class="scroll" style="max-height:360px"><table id="profileAnalyses"></table></div></div>
+			<div><h3 style="font-size:14px;margin:0 0 4px">Machine-code generation passes</h3><div class="scroll" style="max-height:360px"><table id="profileCodegen"></table></div></div>
+		</div>
+	</section>
+
+	<section id="greedySection">
+		<h2>Greedy pipeline construction</h2>
+		<p class="hint">Starting from an empty LLVM pipeline, each step appends the candidate pass with the best
+			runtime gain per millisecond of added compile time (geometric mean over the measured kernels). Every
+			candidate evaluated along the way is in the scatter plot under the <i>llvm-greedy</i> sweep.</p>
+		<div class="scroll"><table id="greedy"></table></div>
+	</section>
+
+	<section>
+		<h2>All configurations</h2>
+		<p class="hint">The table view of the chart, for the selected kernels. Click a column header to sort it and a
+			row to select the configuration.</p>
+		<div class="controls"><label>Filter <input type="text" id="tableFilter" placeholder="label, option, backend…" /></label></div>
+		<div class="scroll"><table id="table"></table></div>
+	</section>
+
+	<section>
+		<details>
+			<summary>Measurement settings and LLVM pipelines</summary>
+			<div id="settings"></div>
+		</details>
+	</section>
+</main>
+
+<script>
+const RESULTS = /*__RESULTS__*/null;
+</script>
+<script>
+"use strict";
+
+// ------------------------------------------------------------------------------------------------
+// Theme
+
+(function setupTheme() {
+	const root = document.documentElement;
+	let stored = null;
+	try { stored = localStorage.getItem("nautilus-explorer-theme"); } catch (e) { /* storage unavailable */ }
+	if (stored === "light" || stored === "dark") root.dataset.theme = stored;
+	document.getElementById("theme").addEventListener("click", () => {
+		const dark = root.dataset.theme
+			? root.dataset.theme === "dark"
+			: matchMedia("(prefers-color-scheme: dark)").matches;
+		root.dataset.theme = dark ? "light" : "dark";
+		try { localStorage.setItem("nautilus-explorer-theme", root.dataset.theme); } catch (e) { /* ignore */ }
+		renderAll();
+	});
+})();
+
+// ------------------------------------------------------------------------------------------------
+// Data model
+
+const data = RESULTS || { meta: {}, kernels: [], configs: [], pipelines: {} };
+const configs = data.configs;
+const kernels = data.kernels.map((k) => k.name);
+const kernelInfo = Object.fromEntries(data.kernels.map((k) => [k.name, k]));
+const BACKENDS = ["mlir", "cpp", "asmjit", "tbc", "bc"];
+const SHAPES = { mlir: "circle", cpp: "square", asmjit: "triangle", tbc: "diamond", bc: "cross" };
+const backendOrder = BACKENDS.filter((b) => configs.some((c) => c.backend === b))
+	.concat([...new Set(configs.map((c) => c.backend))].filter((b) => !BACKENDS.includes(b)));
+const groups = [...new Set(configs.map((c) => c.group))];
+
+function cssVar(name) {
+	return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+function backendColor(backend) {
+	const index = backendOrder.indexOf(backend);
+	return cssVar(`--series-${(index % 8) + 1}`);
+}
+
+// The reference checksum per kernel: the default MLIR configuration's, else the most common one.
+const referenceChecksum = {};
+for (const kernel of kernels) {
+	const baseline = configs.find((c) => c.group === "backends" && c.backend === "mlir" && (!c.meta || c.meta.optLevel == null || c.meta.optLevel === 3));
+	const fromBaseline = baseline && baseline.results[kernel] && baseline.results[kernel].status === "ok"
+		? baseline.results[kernel].checksum : null;
+	if (fromBaseline != null) { referenceChecksum[kernel] = fromBaseline; continue; }
+	const counts = {};
+	for (const c of configs) {
+		const r = c.results[kernel];
+		if (r && r.status === "ok") counts[r.checksum] = (counts[r.checksum] || 0) + 1;
+	}
+	referenceChecksum[kernel] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+
+// A kernel whose result disagrees with the reference in most configurations is broken itself (e.g. its result
+// depends on an address), not the configurations. Leave it out of the aggregates rather than every configuration.
+const unreliableKernels = new Set(kernels.filter((k) => {
+	let ok = 0, matching = 0;
+	for (const c of configs) {
+		const r = c.results[k];
+		if (r && r.status === "ok") { ok++; if (r.checksum === referenceChecksum[k]) matching++; }
+	}
+	return ok >= 4 && matching / ok < 0.5;
+}));
+
+function kernelOk(config, kernel) {
+	const r = config.results[kernel];
+	return r && r.status === "ok" && r.checksum === referenceChecksum[kernel];
+}
+function failureReason(config, kernel) {
+	const r = config.results[kernel];
+	if (!r) return "not measured";
+	if (r.status !== "ok") return `${r.status}: ${r.error || ""}`;
+	if (r.checksum !== referenceChecksum[kernel]) return `wrong result (${r.checksum} ≠ ${referenceChecksum[kernel]})`;
+	return null;
+}
+
+const isDefaultMlirO3 = (c) => c.group === "backends" && c.backend === "mlir" && (!c.meta || c.meta.optLevel == null || c.meta.optLevel === 3);
+const baselineConfig = configs.find(isDefaultMlirO3) || configs.find((c) => c.backend === "mlir") || configs[0];
+
+function geomean(values) {
+	const v = values.filter((x) => x > 0 && Number.isFinite(x));
+	if (!v.length || v.length !== values.length) return null;
+	return Math.exp(v.reduce((s, x) => s + Math.log(x), 0) / v.length);
+}
+
+// Per-phase statistics (backend only) are always medians; the end-to-end compile and the runtime follow the
+// statistic selector. With drift correction on, each value is divided by how much slower than usual the machine
+// ran at the time it was measured (explore.py's reference timeline).
+function driftOf(r, metric) {
+	return state.drift && r.drift && r.drift[metric] > 0 ? r.drift[metric] : 1;
+}
+function compileMetric(r, mode) {
+	if (mode === "backend") return (r.stats["backend.totalMs"] ?? r.compileMs) / driftOf(r, "compile");
+	return (state.stat === "min" ? r.compileMsMin ?? r.compileMs : r.compileMs) / driftOf(r, "compile");
+}
+function runMetric(r) {
+	return (state.stat === "min" ? r.runNsMin ?? r.runNs : r.runNs) / driftOf(r, "run");
+}
+function optimizeMetric(r) {
+	return r.stats["llvm.optimize.ms"] / driftOf(r, "optimize");
+}
+
+/** Aggregate one config over the selected kernels; null when any of them failed. */
+function aggregate(config, selected, xmode) {
+	const xs = [], ys = [], bytes = [];
+	for (const k of selected) {
+		if (!kernelOk(config, k)) return null;
+		const r = config.results[k];
+		xs.push(compileMetric(r, xmode));
+		ys.push(runMetric(r));
+		if (r.codeBytes) bytes.push(r.codeBytes);
+	}
+	const x = geomean(xs), y = geomean(ys);
+	if (x == null || y == null) return null;
+	return { x, y, codeBytes: bytes.length === selected.length ? geomean(bytes) : null };
+}
+
+// ------------------------------------------------------------------------------------------------
+// Formatting
+
+function fmtNs(ns) {
+	if (ns == null || !Number.isFinite(ns)) return "–";
+	const abs = Math.abs(ns);
+	if (abs < 1e3) return `${ns.toPrecision(3)} ns`;
+	if (abs < 1e6) return `${(ns / 1e3).toPrecision(3)} µs`;
+	if (abs < 1e9) return `${(ns / 1e6).toPrecision(3)} ms`;
+	if (abs < 60e9) return `${(ns / 1e9).toPrecision(3)} s`;
+	if (abs < 3600e9) return `${(ns / 60e9).toPrecision(3)} min`;
+	return `${(ns / 3600e9).toPrecision(3)} h`;
+}
+function fmtMs(ms) { return ms == null ? "–" : fmtNs(ms * 1e6); }
+function fmtBytes(b) {
+	if (b == null) return "–";
+	if (b < 1024) return `${Math.round(b)} B`;
+	return `${(b / 1024).toPrecision(3)} KiB`;
+}
+function fmtCount(n) {
+	if (n < 1e3) return `${Math.round(n)}`;
+	const units = [[1e12, "T"], [1e9, "G"], [1e6, "M"], [1e3, "k"]];
+	for (const [v, u] of units) if (n >= v) return `${(n / v).toPrecision(3)}${u}`;
+	return `${n}`;
+}
+function fmtPct(r) {
+	if (r == null || !Number.isFinite(r)) return "–";
+	const p = (r - 1) * 100;
+	return `${p > 0 ? "+" : ""}${p.toFixed(Math.abs(p) < 10 ? 1 : 0)}%`;
+}
+function esc(s) {
+	return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function optionsText(config) {
+	const entries = Object.entries(config.options || {});
+	return entries.length ? entries.map(([k, v]) => `${k}=${v}`).join(" ") : "(defaults)";
+}
+
+// ------------------------------------------------------------------------------------------------
+// State
+
+const state = {
+	kernel: "__all__",
+	xmode: "wall",
+	ymode: "abs",
+	frontierOnly: false,
+	stat: "median",
+	drift: true,
+	backends: new Set(backendOrder),
+	groups: new Set(groups),
+	selected: null,
+	executionsLog: 4,
+	tableSort: { key: "x", dir: 1 },
+	tableFilter: "",
+	ablationSort: { key: "run", dir: -1 },
+};
+
+function selectedKernels() {
+	if (state.kernel === "__all__") return kernels.filter((k) => !unreliableKernels.has(k));
+	if (state.kernel.startsWith("cat:")) {
+		const cat = state.kernel.slice(4);
+		return kernels.filter((k) => kernelInfo[k].category === cat && !unreliableKernels.has(k));
+	}
+	return [state.kernel];
+}
+
+/** Points for the current selection: every visible config that succeeded on all selected kernels. */
+function computePoints() {
+	const sel = selectedKernels();
+	const base = aggregate(baselineConfig, sel, state.xmode);
+	const points = [];
+	for (const config of configs) {
+		if (!state.backends.has(config.backend) || !state.groups.has(config.group)) continue;
+		const agg = aggregate(config, sel, state.xmode);
+		if (!agg) continue;
+		const y = state.ymode === "rel" && base ? agg.y / base.y : agg.y;
+		points.push({ config, x: agg.x, y, runNs: agg.y, codeBytes: agg.codeBytes });
+	}
+	// Pareto frontier: minimize both x and y.
+	const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+	let best = Infinity;
+	for (const p of sorted) {
+		if (p.y < best) { p.frontier = true; best = p.y; } else p.frontier = false;
+	}
+	return { points, frontier: sorted.filter((p) => p.frontier), base };
+}
+
+/** Lower envelope of total cost compile + N * run over N: which frontier config is cheapest for which N. */
+function envelope(frontier) {
+	if (!frontier.length) return [];
+	const pts = [...frontier].sort((a, b) => a.x - b.x);
+	const segments = [];
+	let current = pts[0];
+	let start = 0;
+	for (;;) {
+		let next = null, nextN = Infinity;
+		for (const p of pts) {
+			if (p.runNs >= current.runNs) continue;
+			const n = ((p.x - current.x) * 1e6) / (current.runNs - p.runNs);
+			if (n >= start && (n < nextN || (n === nextN && p.runNs < next.runNs))) { next = p; nextN = n; }
+		}
+		segments.push({ point: current, from: start, to: next ? nextN : Infinity });
+		if (!next) break;
+		current = next;
+		start = nextN;
+	}
+	return segments;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Controls
+
+function setupControls() {
+	const kernelSelect = document.getElementById("kernel");
+	const cats = [...new Set(data.kernels.map((k) => k.category))];
+	kernelSelect.innerHTML = `<option value="__all__">All ${kernels.length - unreliableKernels.size} kernels (geometric mean)</option>` +
+		cats.map((c) => `<option value="cat:${esc(c)}">Category: ${esc(c)} (geometric mean)</option>`).join("") +
+		kernels.map((k) => `<option value="${esc(k)}">${esc(k)} – ${esc(kernelInfo[k].description)}</option>`).join("");
+	kernelSelect.addEventListener("change", () => { state.kernel = kernelSelect.value; renderAll(); });
+	document.getElementById("xmetric").addEventListener("change", (e) => { state.xmode = e.target.value; renderAll(); });
+	document.getElementById("ymode").addEventListener("change", (e) => { state.ymode = e.target.value; renderAll(); });
+	document.getElementById("stat").addEventListener("change", (e) => { state.stat = e.target.value; renderAll(); });
+	document.getElementById("drift").addEventListener("change", (e) => { state.drift = e.target.checked; renderAll(); });
+	if (!(data.driftTimeline && data.driftTimeline.length > 1)) document.getElementById("driftLabel").style.display = "none";
+	document.getElementById("frontierOnly").addEventListener("change", (e) => { state.frontierOnly = e.target.checked; renderAll(); });
+	const slider = document.getElementById("executions");
+	slider.addEventListener("input", () => { state.executionsLog = parseFloat(slider.value); renderScatter(); renderPick(); });
+	document.getElementById("tableFilter").addEventListener("input", (e) => { state.tableFilter = e.target.value.toLowerCase(); renderTable(); });
+	document.getElementById("ablationMetric").addEventListener("change", renderAblation);
+	document.getElementById("ablationBase").addEventListener("change", renderAblation);
+}
+
+function renderChips() {
+	const backendChips = document.getElementById("backendChips");
+	backendChips.innerHTML = '<span class="legend-inline" style="margin-right:4px">Backends</span>' +
+		backendOrder.map((b) => `<span class="chip" role="button" tabindex="0" data-backend="${esc(b)}" aria-pressed="${state.backends.has(b)}">
+			${markerSvg(b, 12)}${esc(b)}</span>`).join("");
+	backendChips.querySelectorAll(".chip").forEach((chip) => {
+		const toggle = () => {
+			const b = chip.dataset.backend;
+			if (state.backends.has(b)) state.backends.delete(b); else state.backends.add(b);
+			renderAll();
+		};
+		chip.addEventListener("click", toggle);
+		chip.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+	});
+	const groupChips = document.getElementById("groupChips");
+	const counts = Object.fromEntries(groups.map((g) => [g, configs.filter((c) => c.group === g).length]));
+	groupChips.innerHTML = '<span class="legend-inline" style="margin-right:4px">Sweeps</span>' +
+		groups.map((g) => `<span class="chip" role="button" tabindex="0" data-group="${esc(g)}" aria-pressed="${state.groups.has(g)}">
+			${esc(g)} <span style="color:var(--text-muted)">${counts[g]}</span></span>`).join("");
+	groupChips.querySelectorAll(".chip").forEach((chip) => {
+		const toggle = () => {
+			const g = chip.dataset.group;
+			if (state.groups.has(g)) state.groups.delete(g); else state.groups.add(g);
+			renderAll();
+		};
+		chip.addEventListener("click", toggle);
+		chip.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+	});
+}
+
+// ------------------------------------------------------------------------------------------------
+// Markers
+
+function markerPath(shape, r) {
+	switch (shape) {
+	case "square": return `M${-r * 0.85},${-r * 0.85}h${r * 1.7}v${r * 1.7}h${-r * 1.7}z`;
+	case "triangle": return `M0,${-r * 1.1}L${r * 1.05},${r * 0.8}L${-r * 1.05},${r * 0.8}z`;
+	case "diamond": return `M0,${-r * 1.15}L${r * 1.15},0L0,${r * 1.15}L${-r * 1.15},0z`;
+	case "cross": {
+		const a = r * 0.38, b = r * 1.05;
+		return `M${-a},${-b}h${2 * a}v${b - a}h${b - a}v${2 * a}h${-(b - a)}v${b - a}h${-2 * a}v${-(b - a)}h${-(b - a)}v${-2 * a}h${b - a}z`;
+	}
+	default: return `M${r},0A${r},${r} 0 1,1 ${-r},0A${r},${r} 0 1,1 ${r},0z`;
+	}
+}
+function markerSvg(backend, size) {
+	const r = size / 2 - 1;
+	return `<svg width="${size}" height="${size}" viewBox="${-size / 2} ${-size / 2} ${size} ${size}" aria-hidden="true">
+		<path d="${markerPath(SHAPES[backend] || "circle", r)}" fill="${backendColor(backend)}"/></svg>`;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Scatter
+
+let lastPoints = { points: [], frontier: [], base: null };
+
+function logTicks(min, max) {
+	const ticks = [];
+	const lo = Math.floor(Math.log10(min)), hi = Math.ceil(Math.log10(max));
+	const steps = hi - lo > 5 ? [1] : hi - lo > 2 ? [1, 3] : [1, 2, 5];
+	for (let e = lo; e <= hi; e++) for (const m of steps) {
+		const v = m * Math.pow(10, e);
+		if (v >= min * 0.999 && v <= max * 1.001) ticks.push(v);
+	}
+	return ticks;
+}
+
+function renderScatter() {
+	const svg = document.getElementById("scatter");
+	const wrap = document.getElementById("scatterWrap");
+	const width = Math.max(320, wrap.clientWidth);
+	const height = Math.round(Math.min(560, Math.max(320, width * 0.55)));
+	svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+	svg.setAttribute("width", width);
+	svg.setAttribute("height", height);
+	const m = { top: 12, right: 16, bottom: 44, left: 72 };
+	const { points, frontier } = lastPoints;
+	const shown = state.frontierOnly ? frontier : points;
+	if (!shown.length) {
+		svg.innerHTML = `<text x="${width / 2}" y="${height / 2}" text-anchor="middle">No configuration succeeded on the selected kernels with the current filters.</text>`;
+		return;
+	}
+	const xs = shown.map((p) => p.x), ys = shown.map((p) => p.y);
+	const pad = (lo, hi) => [lo / Math.pow(hi / lo, 0.05) || lo / 1.5, hi * Math.pow(hi / lo, 0.05) || hi * 1.5];
+	let [x0, x1] = pad(Math.min(...xs), Math.max(...xs));
+	let [y0, y1] = pad(Math.min(...ys), Math.max(...ys));
+	if (x0 === x1) { x0 /= 2; x1 *= 2; }
+	if (y0 === y1) { y0 /= 2; y1 *= 2; }
+	const sx = (v) => m.left + (Math.log(v / x0) / Math.log(x1 / x0)) * (width - m.left - m.right);
+	const sy = (v) => height - m.bottom - (Math.log(v / y0) / Math.log(y1 / y0)) * (height - m.top - m.bottom);
+	const yFmt = state.ymode === "rel" ? (v) => `${v.toPrecision(2)}×` : fmtNs;
+
+	let out = '<g class="grid">';
+	for (const t of logTicks(x0, x1)) out += `<line x1="${sx(t)}" x2="${sx(t)}" y1="${m.top}" y2="${height - m.bottom}"/>`;
+	for (const t of logTicks(y0, y1)) out += `<line x1="${m.left}" x2="${width - m.right}" y1="${sy(t)}" y2="${sy(t)}"/>`;
+	out += "</g>";
+	for (const t of logTicks(x0, x1)) out += `<text x="${sx(t)}" y="${height - m.bottom + 16}" text-anchor="middle">${fmtMs(t)}</text>`;
+	for (const t of logTicks(y0, y1)) out += `<text x="${m.left - 6}" y="${sy(t) + 4}" text-anchor="end">${yFmt(t)}</text>`;
+	const xTitle = state.xmode === "backend" ? "Backend compile time (log)" : "Compile time, trace to executable (log)";
+	const yTitle = state.ymode === "rel" ? `Runtime relative to ${baselineConfig ? baselineConfig.label : "baseline"} (log)` : "Runtime per call (log)";
+	out += `<text class="axis-title" x="${(m.left + width - m.right) / 2}" y="${height - 6}" text-anchor="middle">${esc(xTitle)} →</text>`;
+	out += `<text class="axis-title" transform="translate(14 ${(m.top + height - m.bottom) / 2}) rotate(-90)" text-anchor="middle">← ${esc(yTitle)}</text>`;
+
+	// Iso-cost curve for the expected number of executions: every (x, y) with the same total as the cheapest config.
+	const n = Math.pow(10, state.executionsLog);
+	const best = cheapest(frontier, n);
+	if (best) {
+		const total = best.x * 1e6 + n * best.runNs;
+		const scale = state.ymode === "rel" && lastPoints.base ? 1 / lastPoints.base.y : 1;
+		let d = "";
+		for (let i = 0; i <= 120; i++) {
+			const x = x0 * Math.pow(x1 / x0, i / 120);
+			const run = (total - x * 1e6) / n;
+			if (run <= 0) break;
+			const y = run * scale;
+			if (y < y0 * 0.5 || y > y1 * 2) continue;
+			d += `${d ? "L" : "M"}${sx(x).toFixed(1)},${Math.min(height - m.bottom, Math.max(m.top, sy(y))).toFixed(1)}`;
+		}
+		if (d) out += `<path d="${d}" fill="none" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+	}
+
+	// Greedy path overlay.
+	const greedyPath = shown.filter((p) => p.config.group === "llvm-greedy" && p.config.meta && p.config.meta.selected)
+		.sort((a, b) => a.config.meta.step - b.config.meta.step);
+	if (greedyPath.length > 1) {
+		out += `<path d="${greedyPath.map((p, i) => `${i ? "L" : "M"}${sx(p.x)},${sy(p.y)}`).join("")}" fill="none" stroke="var(--series-7)" stroke-width="1.5" stroke-opacity=".6"/>`;
+	}
+
+	// Frontier staircase.
+	if (frontier.length) {
+		let d = "";
+		frontier.forEach((p, i) => {
+			if (i === 0) d += `M${sx(p.x)},${sy(p.y)}`;
+			else d += `H${sx(p.x)}V${sy(p.y)}`;
+		});
+		out += `<path d="${d}" fill="none" stroke="var(--frontier)" stroke-width="2" stroke-opacity=".55"/>`;
+	}
+
+	const ordered = [...shown].sort((a, b) => (a.frontier - b.frontier));
+	for (const p of ordered) {
+		const isSel = state.selected && p.config.id === state.selected;
+		const isBest = best && p.config.id === best.config.id;
+		const r = p.frontier ? 5.5 : 4;
+		out += `<path class="pt" data-id="${esc(p.config.id)}" transform="translate(${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)})"
+			d="${markerPath(SHAPES[p.config.backend] || "circle", isSel || isBest ? r + 2 : r)}"
+			fill="${backendColor(p.config.backend)}" fill-opacity="${p.frontier ? 1 : 0.55}"
+			stroke="${isSel ? "var(--text-primary)" : "var(--surface-1)"}" stroke-width="${isSel ? 2.5 : 1.5}"/>`;
+		if (isBest) {
+			out += `<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="${r + 7}" fill="none" stroke="var(--text-primary)" stroke-width="1.5" stroke-dasharray="2 2"/>`;
+		}
+	}
+	// Direct labels for the frontier ends and the selection.
+	const labelled = new Set();
+	const label = (p, text) => {
+		if (!p || labelled.has(p.config.id)) return;
+		labelled.add(p.config.id);
+		const x = sx(p.x), y = sy(p.y);
+		const anchor = x > width * 0.7 ? "end" : "start";
+		out += `<text x="${x + (anchor === "end" ? -10 : 10)}" y="${y - 8}" text-anchor="${anchor}" style="fill:var(--text-primary);font-weight:500">${esc(text)}</text>`;
+	};
+	// The MLIR backend's default optimization levels are the reference points everything else is compared with.
+	for (const p of shown) {
+		if (p.config.meta && p.config.meta.defaultLevel) label(p, `${p.config.backend} O${p.config.meta.optLevel}`);
+	}
+	if (frontier.length) {
+		label(frontier[0], frontier[0].config.label);
+		label(frontier[frontier.length - 1], frontier[frontier.length - 1].config.label);
+	}
+	if (state.selected) label(shown.find((p) => p.config.id === state.selected), shown.find((p) => p.config.id === state.selected)?.config.label);
+	svg.innerHTML = out;
+	svg._scale = { sx, sy, shown, yFmt };
+}
+
+function cheapest(frontier, n) {
+	let best = null, bestCost = Infinity;
+	for (const p of frontier) {
+		const cost = p.x * 1e6 + n * p.runNs;
+		if (cost < bestCost) { best = p; bestCost = cost; }
+	}
+	return best;
+}
+
+function setupScatterHover() {
+	const svg = document.getElementById("scatter");
+	const tooltip = document.getElementById("tooltip");
+	const wrap = document.getElementById("scatterWrap");
+	const nearest = (evt) => {
+		const s = svg._scale;
+		if (!s) return null;
+		const rect = svg.getBoundingClientRect();
+		const mx = evt.clientX - rect.left, my = evt.clientY - rect.top;
+		let best = null, bestD = 14 * 14;
+		for (const p of state.frontierOnly ? lastPoints.frontier : s.shown) {
+			const dx = s.sx(p.x) - mx, dy = s.sy(p.y) - my;
+			const d = dx * dx + dy * dy;
+			if (d < bestD) { best = p; bestD = d; }
+		}
+		return best;
+	};
+	svg.addEventListener("mousemove", (evt) => {
+		const p = nearest(evt);
+		if (!p) { tooltip.style.display = "none"; svg.style.cursor = "default"; return; }
+		svg.style.cursor = "pointer";
+		const s = svg._scale;
+		const n = Math.pow(10, state.executionsLog);
+		tooltip.innerHTML = `<div class="t-title">${markerSvg(p.config.backend, 10)} ${esc(p.config.label)}</div>
+			<div class="t-row"><span>sweep</span><b>${esc(p.config.group)}</b></div>
+			<div class="t-row"><span>compile</span><b>${fmtMs(p.x)}</b></div>
+			<div class="t-row"><span>runtime</span><b>${s.yFmt(p.y)}${state.ymode === "rel" ? ` (${fmtNs(p.runNs)})` : ""}</b></div>
+			<div class="t-row"><span>code size</span><b>${fmtBytes(p.codeBytes)}</b></div>
+			<div class="t-row"><span>total for ${fmtCount(n)} runs</span><b>${fmtNs(p.x * 1e6 + n * p.runNs)}</b></div>
+			${p.frontier ? '<div class="t-row"><span>on the Pareto frontier</span><b>✓</b></div>' : ""}`;
+		tooltip.style.display = "block";
+		const rect = wrap.getBoundingClientRect();
+		let left = evt.clientX - rect.left + 14, top = evt.clientY - rect.top + 14;
+		if (left + 300 > rect.width) left = evt.clientX - rect.left - 314;
+		tooltip.style.left = `${Math.max(0, left)}px`;
+		tooltip.style.top = `${top}px`;
+	});
+	svg.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
+	svg.addEventListener("click", (evt) => {
+		const p = nearest(evt);
+		if (p) select(p.config.id);
+	});
+}
+
+function select(id) {
+	state.selected = id;
+	renderScatter();
+	renderDetails();
+	renderBreakdown();
+	renderTable();
+}
+
+// ------------------------------------------------------------------------------------------------
+// Expected-executions picker
+
+function renderPick() {
+	const n = Math.pow(10, state.executionsLog);
+	document.getElementById("executionsOut").textContent = `${fmtCount(n)} runs`;
+	const { frontier } = lastPoints;
+	const pick = document.getElementById("pick");
+	const env = document.getElementById("envelope");
+	const axis = document.getElementById("envelopeAxis");
+	if (!frontier.length) { pick.innerHTML = ""; env.innerHTML = ""; axis.innerHTML = ""; return; }
+	const best = cheapest(frontier, n);
+	const fastestCompile = frontier[0];
+	const fastestCode = frontier[frontier.length - 1];
+	const total = (p) => p.x * 1e6 + n * p.runNs;
+	pick.innerHTML = `For <b>${fmtCount(n)}</b> executions per compilation, the cheapest configuration in total is
+		<b>${esc(best.config.label)}</b>: ${fmtMs(best.x)} to compile + ${fmtCount(n)} × ${fmtNs(best.runNs)} = <b>${fmtNs(total(best))}</b>.
+		${best !== fastestCompile ? `The fastest-compiling frontier configuration (${esc(fastestCompile.config.label)}) would take ${fmtNs(total(fastestCompile))}.` : ""}
+		${best !== fastestCode ? `The fastest code (${esc(fastestCode.config.label)}) would take ${fmtNs(total(fastestCode))}.` : ""}
+		<button type="button" id="pickSelect" style="margin-left:6px">Inspect</button>`;
+	document.getElementById("pickSelect").addEventListener("click", () => select(best.config.id));
+
+	// Which configuration wins over 10^0 .. 10^10 executions.
+	const segs = envelope(frontier);
+	const lo = 0, hi = 10;
+	env.innerHTML = segs.map((s) => {
+		const a = Math.max(lo, s.from <= 0 ? lo : Math.log10(s.from));
+		const b = Math.min(hi, s.to === Infinity ? hi : Math.log10(s.to));
+		if (b <= a) return "";
+		const width = ((b - a) / (hi - lo)) * 100;
+		return `<div style="width:${width}%;background:${backendColor(s.point.config.backend)}" data-id="${esc(s.point.config.id)}"
+			title="${esc(s.point.config.label)}: cheapest from ${fmtCount(Math.max(1, s.from))} to ${s.to === Infinity ? "∞" : fmtCount(s.to)} executions">${esc(s.point.config.label)}</div>`;
+	}).join("");
+	env.querySelectorAll("div[data-id]").forEach((d) => d.addEventListener("click", () => select(d.dataset.id)));
+	axis.innerHTML = [0, 2, 4, 6, 8, 10].map((e) => `<span>${fmtCount(Math.pow(10, e))}</span>`).join("");
+}
+
+// ------------------------------------------------------------------------------------------------
+// Details
+
+let pinned = null;
+
+function renderDetails() {
+	const el = document.getElementById("details");
+	const config = configs.find((c) => c.id === state.selected);
+	if (!config) { el.innerHTML = '<p class="empty">Select a configuration in the chart or the table.</p>'; return; }
+	const compare = pinned && pinned !== config.id ? configs.find((c) => c.id === pinned) : null;
+	const opts = Object.entries(config.options || {});
+	const optHtml = opts.length
+		? opts.map(([k, v]) => {
+			const text = String(v);
+			const shown = text.length > 160 ? `${text.slice(0, 160)}… (${text.length} chars)` : text;
+			return `<li><code>${esc(k)}=${esc(shown)}</code></li>`;
+		}).join("")
+		: "<li class='empty'>backend defaults</li>";
+	const meta = config.meta || {};
+	const metaBits = [];
+	if (meta.removedPass) metaBits.push(`removes <code>${esc(meta.removedPass)}</code> (${meta.instances}×) from O${meta.baseLevel}`);
+	if (meta.pipeline) metaBits.push(`greedy pipeline: <code>${esc(meta.pipeline.join(", ") || "(empty)")}</code>`);
+	const sel = selectedKernels();
+	const rows = kernels.map((k) => {
+		const r = config.results[k];
+		const fail = failureReason(config, k);
+		const c = compare ? compare.results[k] : null;
+		const ratio = (a, b) => (a && b ? a / b : null);
+		const inSel = sel.includes(k);
+		if (fail) return `<tr${inSel ? "" : ' style="opacity:.5"'}><td>${esc(k)}</td><td colspan="${compare ? 5 : 3}" class="l bad-text" title="${esc(fail)}">${esc(fail.slice(0, 60))}</td></tr>`;
+		const cOk = c && c.status === "ok";
+		return `<tr${inSel ? "" : ' style="opacity:.5"'}><td>${esc(k)}</td><td class="num">${fmtMs(compileMetric(r, "wall"))}</td>
+			${compare ? `<td class="num">${fmtPct(cOk ? ratio(compileMetric(r, "wall"), compileMetric(c, "wall")) : null)}</td>` : ""}
+			<td class="num">${fmtNs(runMetric(r))}</td>
+			${compare ? `<td class="num">${fmtPct(cOk ? ratio(runMetric(r), runMetric(c)) : null)}</td>` : ""}
+			<td class="num">${fmtBytes(r.codeBytes)}</td></tr>`;
+	}).join("");
+	el.innerHTML = `<h3>${markerSvg(config.backend, 12)} ${esc(config.label)}</h3>
+		<div class="sub">${esc(config.backend)} · sweep <i>${esc(config.group)}</i></div>
+		${metaBits.length ? `<div class="sub">${metaBits.join("<br>")}</div>` : ""}
+		<ul class="opt-list">${optHtml}</ul>
+		<div class="controls">
+			<button type="button" id="pinBtn">${pinned === config.id ? "Unpin comparison" : "Pin for comparison"}</button>
+			${compare ? `<span class="legend-inline">Δ vs ${esc(compare.label)}</span>` : ""}
+		</div>
+		<div class="scroll" style="max-height:440px"><table>
+			<thead><tr><th>kernel</th><th>compile</th>${compare ? "<th>Δ</th>" : ""}<th>run</th>${compare ? "<th>Δ</th>" : ""}<th>code</th></tr></thead>
+			<tbody>${rows}</tbody></table></div>`;
+	document.getElementById("pinBtn").addEventListener("click", () => {
+		pinned = pinned === config.id ? null : config.id;
+		renderDetails();
+	});
+}
+
+// ------------------------------------------------------------------------------------------------
+// Compile breakdown
+
+const PHASES = [
+	{ key: "frontend", label: "tracing + SSA + IR", value: (s) => sum(s, ["tracing.ms", "ssaCreation.ms", "irGeneration.ms"]) },
+	{ key: "irPasses", label: "Nautilus IR passes", value: (s) => s["irPasses.totalMs"] || 0 },
+	{ key: "lowering", label: "lowering to MLIR / C / bytecode", value: (s) => sum(s, ["mlir.loweringFromIR.ms", "cpp.loweringFromIR.ms"]) },
+	{ key: "mlirPasses", label: "MLIR passes", value: (s) => s["mlir.pipeline.ms"] || 0 },
+	{ key: "llvmOpt", label: "LLVM IR optimization", value: (s) => s["llvm.optimize.ms"] || 0 },
+	{ key: "codegen", label: "machine-code generation", value: (s) => (s["jit.codegen.ms"] || 0) + (s["cpp.compile.ms"] || 0) + (s["asmjit.compile.ms"] || 0) },
+	{ key: "backendOther", label: "other backend work", value: (s, r, prior) => Math.max(0, (s["backend.totalMs"] || 0) - prior.backend) },
+	{ key: "other", label: "engine overhead", value: (s, r, prior) => Math.max(0, r.compileMs - prior.all) },
+];
+function sum(s, keys) { return keys.reduce((a, k) => a + (s[k] || 0), 0); }
+
+function phaseValues(config, sel) {
+	const totals = Object.fromEntries(PHASES.map((p) => [p.key, 0]));
+	let count = 0;
+	for (const k of sel) {
+		if (!kernelOk(config, k)) return null;
+		const r = config.results[k];
+		const s = r.stats || {};
+		const prior = { backend: 0, all: 0 };
+		for (const p of PHASES) {
+			const v = p.value(s, r, prior);
+			totals[p.key] += v;
+			if (["lowering", "mlirPasses", "llvmOpt", "codegen"].includes(p.key)) prior.backend += v;
+			prior.all += v;
+		}
+		count++;
+	}
+	for (const key in totals) totals[key] /= count;
+	return totals;
+}
+
+function renderBreakdown() {
+	const el = document.getElementById("breakdown");
+	const sel = selectedKernels();
+	const rows = [];
+	const seen = new Set();
+	const add = (config, why) => {
+		if (!config || seen.has(config.id)) return;
+		const v = phaseValues(config, sel);
+		if (!v) return;
+		seen.add(config.id);
+		rows.push({ config, v, why });
+	};
+	add(configs.find((c) => c.id === state.selected), "selected");
+	for (const p of lastPoints.frontier) add(p.config, "frontier");
+	if (!rows.length) { el.innerHTML = '<p class="empty">Nothing to show for the current selection.</p>'; return; }
+	const maxTotal = Math.max(...rows.map((r) => Object.values(r.v).reduce((a, b) => a + b, 0)));
+	const colors = PHASES.map((_, i) => `var(--series-${i + 1})`);
+	el.innerHTML = `<div class="legend-inline" style="margin-bottom:8px">${PHASES.map((p, i) => `<span><i class="swatch" style="background:${colors[i]}"></i>${esc(p.label)}</span>`).join("")}</div>
+		<table><thead><tr><th class="l">configuration</th><th class="l" style="width:55%">phases (scaled to the slowest)</th><th>total</th></tr></thead><tbody>
+		${rows.map((r) => {
+			const total = Object.values(r.v).reduce((a, b) => a + b, 0);
+			const segs = PHASES.map((p, i) => {
+				const v = r.v[p.key];
+				if (v <= 0) return "";
+				return `<div title="${esc(p.label)}: ${fmtMs(v)} (${((v / total) * 100).toFixed(0)}%)" style="width:${(v / maxTotal) * 100}%;background:${colors[i]}"></div>`;
+			}).join("");
+			return `<tr class="${r.config.id === state.selected ? "selected" : ""}" data-id="${esc(r.config.id)}" style="cursor:pointer">
+				<td class="l">${markerSvg(r.config.backend, 10)} ${esc(r.config.label)} <span style="color:var(--text-muted)">${r.why}</span></td>
+				<td class="l"><div class="stack">${segs}</div></td><td class="num">${fmtMs(total)}</td></tr>`;
+		}).join("")}</tbody></table>`;
+	el.querySelectorAll("tr[data-id]").forEach((tr) => tr.addEventListener("click", () => select(tr.dataset.id)));
+}
+
+// ------------------------------------------------------------------------------------------------
+// Ablation
+
+function setupAblation() {
+	const bases = configs.filter((c) => c.group === "llvm-ablation" && c.meta && c.meta.removedPass == null);
+	const section = document.getElementById("ablationSection");
+	if (!bases.length) { section.style.display = "none"; return; }
+	const select = document.getElementById("ablationBase");
+	select.innerHTML = bases.map((b) => `<option value="${esc(b.id)}">${esc(b.label)}</option>`).join("");
+	const o3 = bases.find((b) => b.meta.baseLevel === 3);
+	if (o3) select.value = o3.id;
+}
+
+function renderAblation() {
+	const baseId = document.getElementById("ablationBase").value;
+	const base = configs.find((c) => c.id === baseId);
+	const table = document.getElementById("ablation");
+	if (!base) return;
+	const metric = document.getElementById("ablationMetric").value;
+	const sel = selectedKernels();
+	const compileOf = (r) => (metric === "opt" ? optimizeMetric(r) : compileMetric(r, "wall"));
+	// The pass's own (exclusive) time in the profile of the same default level, as a share of the same metric.
+	const levelProfile = configs.find((c) => c.group === "llvm-profile" && c.meta && c.meta.profileOf === `O${base.meta.baseLevel}`);
+	const prof = levelProfile ? profileOf(levelProfile, sel) : null;
+	const ownShare = (pass) => {
+		if (!prof || !prof.passes[pass]) return prof ? 0 : null;
+		const denominator = metric === "opt" ? prof.totals.optimize : prof.totals.compile;
+		return denominator > 0 ? prof.passes[pass].ms / denominator : null;
+	};
+	const rows = [];
+	for (const c of configs) {
+		if (c.group !== "llvm-ablation" || !c.meta || c.meta.removedPass == null || c.meta.baseLevel !== base.meta.baseLevel) continue;
+		const compileRatios = [], runRatios = [];
+		let worst = null, failures = [], baseTotal = 0, ablatedTotal = 0;
+		for (const k of sel) {
+			if (!kernelOk(base, k)) continue;
+			if (!kernelOk(c, k)) { failures.push(`${k}: ${failureReason(c, k)}`); continue; }
+			const rb = base.results[k], rc = c.results[k];
+			compileRatios.push(compileOf(rc) / compileOf(rb));
+			baseTotal += compileOf(rb);
+			ablatedTotal += compileOf(rc);
+			const rr = runMetric(rc) / runMetric(rb);
+			runRatios.push(rr);
+			if (!worst || rr > worst.ratio) worst = { kernel: k, ratio: rr };
+		}
+		// Own time and indirect cost are shares of the suite's total compile time (sums over the selected kernels),
+		// so one slow kernel weighs as much as it costs; the Δ column is the usual geometric mean of ratios.
+		const own = ownShare(c.meta.removedPass);
+		const saving = baseTotal > 0 ? 1 - ablatedTotal / baseTotal : null;
+		// Removing the pass left the machine code of every selected kernel byte-identical: it did nothing here,
+		// so any runtime difference measured for it is noise -- which is how the table estimates the noise floor.
+		const sameCode = failures.length === 0 && sel.every((k) => !kernelOk(base, k) || (c.results[k].codeBytes != null && c.results[k].codeBytes === base.results[k].codeBytes));
+		rows.push({
+			config: c, pass: c.meta.removedPass, instances: c.meta.instances,
+			compile: geomean(compileRatios), run: geomean(runRatios), worst, failures, own, sameCode,
+			indirect: own != null && saving != null ? saving - own : null,
+		});
+	}
+	// Noise floor: the spread of the runtime ratios of passes whose removal changed no machine code.
+	const stdev = (v) => {
+		if (v.length < 3) return null;
+		const mean = v.reduce((a, b) => a + b, 0) / v.length;
+		return Math.sqrt(v.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (v.length - 1));
+	};
+	const noiseRows = rows.filter((r) => r.sameCode && r.run && r.compile);
+	const runNoise = stdev(noiseRows.map((r) => Math.log(r.run)));
+	const compileNoise = stdev(noiseRows.map((r) => Math.log(r.compile)));
+	const withinNoise = (ratio, sigma) => ratio != null && sigma != null && Math.abs(Math.log(ratio)) < 2 * sigma;
+	document.getElementById("ablationNoise").innerHTML = runNoise != null
+		? `Noise floor: removing any of the ${noiseRows.length} passes marked <i>same code</i> leaves every kernel's machine code byte-identical, so their measured differences are pure noise: ±${(runNoise * 100).toFixed(1)}% runtime and ±${(compileNoise * 100).toFixed(1)}% ${metric === "opt" ? "optimizer time" : "compile time"} (1σ). Changes within 2σ are greyed out.`
+		: "";
+	const s = state.ablationSort;
+	const keyOf = (r) => ({ pass: r.pass, instances: r.instances, compile: r.compile ?? 9, run: r.run ?? 9, worst: r.worst ? r.worst.ratio : 9, own: r.own ?? -1, indirect: r.indirect ?? -9, same: r.sameCode ? 1 : 0 }[s.key]);
+	const share = (v) => (v == null ? "–" : `${(v * 100).toFixed(Math.abs(v) < 0.1 ? 1 : 0)}%`);
+	rows.sort((a, b) => {
+		const va = keyOf(a), vb = keyOf(b);
+		return (va < vb ? -1 : va > vb ? 1 : 0) * s.dir;
+	});
+	const bar = (ratio, span) => {
+		if (ratio == null) return "";
+		const p = Math.log(ratio) / Math.log(span);
+		const w = Math.min(50, Math.abs(p) * 50);
+		const color = ratio < 1 ? "var(--good)" : "var(--bad)";
+		return `<div class="dbar"><div class="mid"></div><div class="fill" style="${ratio < 1 ? `right:50%` : `left:50%`};width:${w}%;background:${color}"></div></div>`;
+	};
+	const compileSpan = Math.max(1.05, ...rows.map((r) => (r.compile ? Math.max(r.compile, 1 / r.compile) : 1)));
+	const runSpan = Math.max(1.05, ...rows.map((r) => (r.run ? Math.max(r.run, 1 / r.run) : 1)));
+	const th = (key, label, cls = "") => `<th class="${cls}" data-key="${key}">${label}${s.key === key ? (s.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
+	table.innerHTML = `<thead><tr>${th("pass", "removed pass", "l")}${th("instances", "instances")}
+		${th("compile", metric === "opt" ? "Δ LLVM optimizer time" : "Δ compile time")}<th class="bar-cell">← saves · costs →</th>
+		${th("own", "own time")}${th("indirect", "indirect")}
+		${th("run", "Δ runtime")}<th class="bar-cell">← faster · slower →</th>${th("same", "same code")}${th("worst", "worst kernel")}<th class="l">failures</th></tr></thead>
+		<tbody>${rows.map((r) => `<tr data-id="${esc(r.config.id)}" style="cursor:pointer" class="${r.config.id === state.selected ? "selected" : ""}">
+			<td class="mono">${esc(r.pass)}</td><td class="num">${r.instances}</td>
+			<td class="num" style="${withinNoise(r.compile, compileNoise) ? "color:var(--text-muted)" : ""}">${fmtPct(r.compile)}</td><td class="bar-cell">${bar(r.compile, compileSpan)}</td>
+			<td class="num" title="the pass's exclusive time in the O${base.meta.baseLevel} profile">${share(r.own)}</td>
+			<td class="num" title="saving from removing it minus its own time: downstream work it causes">${share(r.indirect)}</td>
+			<td class="num" style="${withinNoise(r.run, runNoise) ? "color:var(--text-muted)" : ""}">${fmtPct(r.run)}</td><td class="bar-cell">${bar(r.run, runSpan)}</td>
+			<td title="removing it leaves every selected kernel's machine code byte-identical">${r.sameCode ? "✓" : ""}</td>
+			<td class="num">${r.worst ? `${esc(r.worst.kernel)} ${fmtPct(r.worst.ratio)}` : "–"}</td>
+			<td class="l ${r.failures.length ? "bad-text" : ""}" title="${esc(r.failures.join("\n"))}">${r.failures.length ? `${r.failures.length} kernel(s)` : ""}</td></tr>`).join("")}</tbody>`;
+	table.querySelectorAll("th[data-key]").forEach((h) => h.addEventListener("click", () => {
+		const key = h.dataset.key;
+		state.ablationSort = { key, dir: state.ablationSort.key === key ? -state.ablationSort.dir : (key === "pass" ? 1 : -1) };
+		renderAblation();
+	}));
+	table.querySelectorAll("tr[data-id]").forEach((tr) => tr.addEventListener("click", () => select(tr.dataset.id)));
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// Pass profiles
+
+const MANAGER_PASS = /PassManager|Adaptor|DevirtSCC|ModuleInlinerWrapper|RequireAnalysis|InvalidateAnalysis|PassInstrumentation|VerifierPass/;
+
+/** Mean per compilation over the selected kernels of every pass, analysis and machine-code generation pass. */
+function profileOf(config, sel) {
+	const ks = sel.filter((k) => kernelOk(config, k));
+	if (!ks.length) return null;
+	const n = ks.length;
+	const passes = {}, analyses = {}, codegen = {};
+	const totals = { optimize: 0, codegen: 0, compile: 0, frontend: 0, mlir: 0, setup: 0, irIn: 0, irOut: 0, bytes: 0, backend: 0 };
+	const field = (map, name, key, v) => {
+		const e = map[name] || (map[name] = { ms: 0, runs: 0, changed: 0, instructions: 0 });
+		e[key] += v / n;
+	};
+	for (const k of ks) {
+		const r = config.results[k];
+		const st = r.stats || {};
+		for (const [key, v] of Object.entries(st)) {
+			if (key.startsWith("llvm.pass.") || key.startsWith("llvm.analysis.")) {
+				const analysis = key.startsWith("llvm.analysis.");
+				const rest = key.slice(analysis ? 14 : 10);
+				const dot = rest.lastIndexOf(".");
+				let name = rest.slice(0, dot);
+				if (analysis) name = name.replace(/^A:/, "");
+				field(analysis ? analyses : passes, name, rest.slice(dot + 1), v);
+			} else if (key.startsWith("llvm.codegen.")) {
+				field(codegen, key.slice(13, -3), "ms", v);
+			}
+		}
+		totals.optimize += (st["llvm.optimize.ms"] || 0) / n;
+		totals.codegen += (st["jit.codegen.ms"] || 0) / n;
+		totals.compile += r.compileMs / n;
+		totals.frontend += (st["frontend.totalMs"] || 0) / n;
+		totals.mlir += ((st["mlir.loweringFromIR.ms"] || 0) + (st["mlir.pipeline.ms"] || 0)) / n;
+		totals.setup += Math.max(0, (st["jit.compile.ms"] || 0) - (st["llvm.optimize.ms"] || 0) - (st["jit.codegen.ms"] || 0)) / n;
+		totals.backend += (st["backend.totalMs"] || 0) / n;
+		totals.irIn += (st["llvm.ir.instructions.before"] || 0) / n;
+		totals.irOut += (st["llvm.ir.instructions.after"] || 0) / n;
+		totals.bytes += (r.codeBytes || 0) / n;
+	}
+	const sum = (map, filter = () => true) => Object.entries(map).filter(([k]) => filter(k)).reduce((a, [, e]) => a + e.ms, 0);
+	totals.passMs = sum(passes, (k) => !MANAGER_PASS.test(k));
+	totals.managerMs = sum(passes, (k) => MANAGER_PASS.test(k));
+	totals.analysisMs = sum(analyses);
+	totals.codegenPassMs = Math.min(sum(codegen), totals.codegen);
+	return { passes, analyses, codegen, totals, kernels: n };
+}
+
+function setupProfile() {
+	const profiles = configs.filter((c) => c.group === "llvm-profile");
+	const section = document.getElementById("profileSection");
+	if (!profiles.length) { section.style.display = "none"; return; }
+	const options = profiles.map((p) => `<option value="${esc(p.id)}">${esc(p.label.replace(/^profile: /, ""))}</option>`).join("");
+	const select = document.getElementById("profileSelect");
+	select.innerHTML = options;
+	const o3 = profiles.find((p) => p.meta && p.meta.profileOf === "O3");
+	if (o3) select.value = o3.id;
+	document.getElementById("profileCompare").innerHTML = `<option value="">(none)</option>` + options;
+	for (const id of ["profileSelect", "profileCompare", "profileAll"]) document.getElementById(id).addEventListener("change", renderProfile);
+}
+
+function renderProfile() {
+	const select = document.getElementById("profileSelect");
+	if (!select.value) return;
+	const sel = selectedKernels();
+	const config = configs.find((c) => c.id === select.value);
+	const cmpConfig = configs.find((c) => c.id === document.getElementById("profileCompare").value);
+	const prof = profileOf(config, sel);
+	const cmp = cmpConfig && cmpConfig !== config ? profileOf(cmpConfig, sel) : null;
+	const showAll = document.getElementById("profileAll").checked;
+	if (!prof) { document.getElementById("profileBreakdown").innerHTML = '<p class="empty">No successful profile for the selected kernels.</p>'; return; }
+	const t = prof.totals;
+
+	// Where one compilation's time goes.
+	const segments = [
+		["Nautilus frontend (trace, SSA, IR, IR passes)", t.frontend],
+		["MLIR lowering + MLIR passes", t.mlir],
+		["LLVM translation, target machine, JIT setup", t.setup],
+		["LLVM IR passes (exclusive)", t.passMs],
+		["LLVM analyses", t.analysisMs],
+		["pass managers + profiling overhead", Math.max(0, t.optimize - t.passMs - t.analysisMs)],
+		["machine-code generation passes", t.codegenPassMs],
+		["object emission + JIT linking", Math.max(0, t.codegen - t.codegenPassMs)],
+		["engine overhead", Math.max(0, t.compile - t.frontend - t.backend)],
+	];
+	const total = segments.reduce((a, [, v]) => a + v, 0);
+	const colors = segments.map((_, i) => `var(--series-${(i % 8) + 1})`);
+	const irGrowth = t.irIn > 0 ? t.irOut / t.irIn : null;
+	document.getElementById("profileBreakdown").innerHTML = `
+		<div class="legend-inline" style="margin:8px 0 4px">${segments.map(([name, v], i) => `<span><i class="swatch" style="background:${colors[i]}"></i>${esc(name)} <b class="num">${fmtMs(v)}</b></span>`).join("")}</div>
+		<div class="stack" style="height:22px">${segments.map(([name, v], i) => v > 0 ? `<div title="${esc(name)}: ${fmtMs(v)} (${((v / total) * 100).toFixed(0)}%)" style="width:${(v / total) * 100}%;background:${colors[i]}"></div>` : "").join("")}</div>
+		<p class="hint" style="margin:6px 0 0">Per compilation: <b>${fmtMs(t.compile)}</b> end to end, of which LLVM optimizer <b>${fmtMs(t.optimize)}</b>
+		and machine-code generation <b>${fmtMs(t.codegen)}</b>. LLVM IR grows from ${Math.round(t.irIn)} to ${Math.round(t.irOut)} instructions${irGrowth ? ` (${irGrowth.toFixed(1)}×)` : ""};
+		${Math.round(t.bytes)} bytes of machine code.${cmp ? ` Compared profile: ${fmtMs(cmp.totals.compile)} end to end, optimizer ${fmtMs(cmp.totals.optimize)}, code generation ${fmtMs(cmp.totals.codegen)}, ${Math.round(cmp.totals.irOut)} instructions out.` : ""}</p>`;
+
+	// Findings derived from the profile.
+	const findings = [];
+	const passRows = Object.entries(prof.passes).filter(([k]) => !MANAGER_PASS.test(k)).sort((a, b) => b[1].ms - a[1].ms);
+	for (const [name, e] of passRows.slice(0, 12)) {
+		const shareOpt = t.optimize > 0 ? e.ms / t.optimize : 0;
+		const changed = e.runs > 0 ? e.changed / e.runs : 0;
+		if (shareOpt >= 0.03 && changed < 0.25) {
+			findings.push(`<b>${esc(name)}</b> takes ${(shareOpt * 100).toFixed(0)}% of the optimizer (${fmtMs(e.ms)}) but changed the IR in ${(changed * 100).toFixed(0)}% of its ${e.runs.toFixed(1)} runs.`);
+		}
+	}
+	if (irGrowth && irGrowth > 2) findings.push(`The pipeline grows the IR ${irGrowth.toFixed(1)}× (unrolling, vectorization, inlining); every later pass and code generation pays for the larger IR.`);
+	const topCodegen = Object.entries(prof.codegen).sort((a, b) => b[1].ms - a[1].ms)[0];
+	if (topCodegen && t.codegen > 0) findings.push(`Code generation is dominated by <b>${esc(topCodegen[0])}</b> (${fmtMs(topCodegen[1].ms)}, ${((topCodegen[1].ms / t.codegen) * 100).toFixed(0)}% of code generation).`);
+	if (cmp) {
+		const deltas = [];
+		for (const [kind, a, b] of [["", prof.passes, cmp.passes], ["codegen ", prof.codegen, cmp.codegen], ["analysis ", prof.analyses, cmp.analyses]]) {
+			for (const name of new Set([...Object.keys(a), ...Object.keys(b)])) deltas.push([kind + name, (a[name]?.ms || 0) - (b[name]?.ms || 0)]);
+		}
+		deltas.sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
+		findings.push(`Largest differences to the compared profile: ${deltas.slice(0, 5).map(([n, d]) => `${esc(n)} ${d > 0 ? "+" : ""}${fmtMs(d)}`).join(", ")}.`);
+	}
+	document.getElementById("profileFindings").innerHTML = findings.length ? `<ul class="hint" style="margin:0 0 8px 18px;padding:0">${findings.map((f) => `<li>${f}</li>`).join("")}</ul>` : "";
+
+	const table = (el, map, opts) => {
+		const rows = Object.entries(map).filter(([k]) => opts.filter ? opts.filter(k) : true).sort((a, b) => b[1].ms - a[1].ms);
+		const shown = showAll ? rows : rows.slice(0, opts.limit);
+		const max = Math.max(...rows.map(([, e]) => e.ms), 1e-9);
+		const cmpMap = cmp ? cmp[opts.kind] : null;
+		document.getElementById(el).innerHTML = `<thead><tr><th class="l">${opts.title}</th>${opts.runs ? "<th>runs</th>" : ""}${opts.changed ? "<th>changed IR</th><th>instructions seen</th>" : ""}
+			<th>ms / compile</th><th class="bar-cell">share of ${opts.of}</th>${opts.changed ? "<th>µs / 100 instr.</th>" : ""}${cmpMap ? "<th>Δ vs compared</th>" : ""}</tr></thead><tbody>
+			${shown.map(([name, e]) => `<tr><td class="l mono">${esc(name)}${MANAGER_PASS.test(name) ? ' <span style="color:var(--text-muted)">(manager)</span>' : ""}</td>
+				${opts.runs ? `<td class="num">${e.runs.toFixed(1)}</td>` : ""}
+				${opts.changed ? `<td class="num ${e.runs > 0 && e.changed / e.runs < 0.1 && e.ms > 0.2 ? "bad-text" : ""}">${e.runs > 0 ? `${((e.changed / e.runs) * 100).toFixed(0)}%` : "–"}</td><td class="num">${fmtCount(e.instructions)}</td>` : ""}
+				<td class="num">${e.ms.toFixed(2)}</td>
+				<td class="bar-cell"><div class="stack" style="height:10px;margin:0"><div style="width:${(e.ms / max) * 100}%;background:var(--series-1)"></div></div></td>
+				${opts.changed ? `<td class="num">${e.instructions > 0 ? ((e.ms * 1e5) / e.instructions).toFixed(1) : "–"}</td>` : ""}
+				${cmpMap ? `<td class="num">${(() => { const d = e.ms - (cmpMap[name]?.ms || 0); return `${d > 0 ? "+" : ""}${d.toFixed(2)}`; })()}</td>` : ""}</tr>`).join("")}
+			${rows.length > shown.length ? `<tr><td class="l" colspan="8" style="color:var(--text-muted)">${rows.length - shown.length} more (tick “all passes”)</td></tr>` : ""}</tbody>`;
+	};
+	table("profilePasses", prof.passes, { title: "pass", runs: true, changed: true, limit: 25, of: `optimizer (${fmtMs(t.optimize)})`, kind: "passes" });
+	table("profileAnalyses", prof.analyses, { title: "analysis", runs: true, limit: 15, of: "analyses", kind: "analyses" });
+	table("profileCodegen", prof.codegen, { title: "pass", limit: 15, of: `code generation (${fmtMs(t.codegen)})`, kind: "codegen" });
+}
+
+// ------------------------------------------------------------------------------------------------
+// Greedy
+
+function renderGreedy() {
+	const steps = configs.filter((c) => c.group === "llvm-greedy");
+	const section = document.getElementById("greedySection");
+	if (!steps.length) { section.style.display = "none"; return; }
+	const sel = selectedKernels();
+	const selected = steps.filter((c) => c.meta && c.meta.selected).sort((a, b) => a.meta.step - b.meta.step);
+	const ref = baselineConfig;
+	const refAgg = ref ? aggregate(ref, sel, state.xmode) : null;
+	const table = document.getElementById("greedy");
+	// The default levels (and O3 without the inliner) as reference rows above the search path.
+	const references = [0, 1, 2, 3].map((level) => configs.find((c) => c.group === "backends" && c.backend === "mlir" && c.meta && c.meta.defaultLevel && c.meta.optLevel === level))
+		.concat([configs.find((c) => c.group === "llvm-ablation" && c.meta && c.meta.removedPass === "inline" && c.meta.baseLevel === 3)])
+		.filter(Boolean);
+	const referenceRows = references.map((c) => {
+		const agg = aggregate(c, sel, state.xmode);
+		return `<tr data-id="${esc(c.id)}" style="cursor:pointer;background:var(--surface-2)" class="${c.id === state.selected ? "selected" : ""}">
+			<td class="l"><i>reference</i></td><td class="l">${esc(c.label)}</td><td></td>
+			<td class="num">${agg ? fmtMs(agg.x) : "–"}</td><td class="num">${agg ? fmtNs(agg.y) : "–"}</td>
+			${refAgg ? `<td class="num">${agg ? `${(agg.y / refAgg.y).toFixed(2)}×` : "–"}</td>` : ""}
+			<td class="l" style="white-space:normal;color:var(--text-secondary)">${c.meta && c.meta.removedPass ? "default O3 pipeline without the LLVM inliner" : "default LLVM pipeline"}</td></tr>`;
+	}).join("");
+	table.innerHTML = `<thead><tr><th class="l">step</th><th class="l">added pass</th><th>candidates</th><th>compile</th><th>runtime</th>
+		${refAgg ? `<th>runtime vs ${esc(ref.label)}</th>` : ""}<th class="l">pipeline</th></tr></thead><tbody>${referenceRows}
+		${selected.map((c) => {
+			const agg = aggregate(c, sel, state.xmode);
+			const candidates = steps.filter((s) => s.meta.step === c.meta.step).length;
+			return `<tr data-id="${esc(c.id)}" style="cursor:pointer" class="${c.id === state.selected ? "selected" : ""}">
+				<td class="l">${c.meta.step}</td><td class="l mono">${esc(c.meta.added || "–")}</td><td class="num">${candidates}</td>
+				<td class="num">${agg ? fmtMs(agg.x) : "–"}</td><td class="num">${agg ? fmtNs(agg.y) : "–"}</td>
+				${refAgg ? `<td class="num">${agg ? `${(agg.y / refAgg.y).toFixed(2)}×` : "–"}</td>` : ""}
+				<td class="l mono" style="white-space:normal">${esc((c.meta.pipeline || []).join(" → ") || "(empty)")}</td></tr>`;
+		}).join("")}</tbody>`;
+	table.querySelectorAll("tr[data-id]").forEach((tr) => tr.addEventListener("click", () => select(tr.dataset.id)));
+}
+
+// ------------------------------------------------------------------------------------------------
+// Table
+
+function renderTable() {
+	const sel = selectedKernels();
+	const frontierIds = new Set(lastPoints.frontier.map((p) => p.config.id));
+	const rows = configs.map((c) => {
+		const agg = aggregate(c, sel, state.xmode);
+		const failures = sel.filter((k) => !kernelOk(c, k)).length;
+		return { c, x: agg ? agg.x : null, y: agg ? agg.y : null, bytes: agg ? agg.codeBytes : null, failures, frontier: frontierIds.has(c.id) };
+	}).filter((r) => {
+		if (!state.tableFilter) return true;
+		return `${r.c.label} ${r.c.backend} ${r.c.group} ${optionsText(r.c)}`.toLowerCase().includes(state.tableFilter);
+	});
+	const s = state.tableSort;
+	const val = (r) => ({ label: r.c.label, group: r.c.group, backend: r.c.backend, x: r.x ?? Infinity, y: r.y ?? Infinity, bytes: r.bytes ?? Infinity, failures: r.failures, frontier: r.frontier ? 0 : 1 }[s.key]);
+	rows.sort((a, b) => {
+		const va = val(a), vb = val(b);
+		return (va < vb ? -1 : va > vb ? 1 : 0) * s.dir;
+	});
+	const th = (key, label, cls = "") => `<th class="${cls}" data-key="${key}">${label}${s.key === key ? (s.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
+	const table = document.getElementById("table");
+	table.innerHTML = `<thead><tr>${th("label", "configuration", "l")}${th("backend", "backend", "l")}${th("group", "sweep", "l")}
+		${th("x", "compile")}${th("y", "runtime")}${th("bytes", "code size")}${th("frontier", "frontier")}${th("failures", "failed kernels")}</tr></thead>
+		<tbody>${rows.map((r) => `<tr data-id="${esc(r.c.id)}" style="cursor:pointer" class="${r.c.id === state.selected ? "selected" : ""}">
+			<td class="l">${esc(r.c.label)}</td><td class="l">${markerSvg(r.c.backend, 10)} ${esc(r.c.backend)}</td><td class="l">${esc(r.c.group)}</td>
+			<td class="num">${fmtMs(r.x)}</td><td class="num">${fmtNs(r.y)}</td><td class="num">${fmtBytes(r.bytes)}</td>
+			<td>${r.frontier ? "✓" : ""}</td><td class="${r.failures ? "bad-text" : ""}">${r.failures || ""}</td></tr>`).join("")}</tbody>`;
+	table.querySelectorAll("th[data-key]").forEach((h) => h.addEventListener("click", () => {
+		const key = h.dataset.key;
+		state.tableSort = { key, dir: state.tableSort.key === key ? -state.tableSort.dir : 1 };
+		renderTable();
+	}));
+	table.querySelectorAll("tr[data-id]").forEach((tr) => tr.addEventListener("click", () => select(tr.dataset.id)));
+}
+
+// ------------------------------------------------------------------------------------------------
+// Header, warnings, settings
+
+function renderHeader() {
+	const m = data.meta || {};
+	document.getElementById("meta").textContent = [
+		m.cpu, m.cores ? `${m.cores} cores` : null, m.governor ? `governor ${m.governor}` : null,
+		m.commit ? `commit ${m.commit}` : null, m.startedAt ? `measured ${m.startedAt.slice(0, 16).replace("T", " ")}` : null,
+		`${configs.length} configurations × ${kernels.length} kernels`,
+	].filter(Boolean).join(" · ");
+	const warnings = [];
+	if (!RESULTS) warnings.push("<b>No results embedded.</b> Generate this page with <code>explore.py report results.json</code>.");
+	if (unreliableKernels.size) {
+		warnings.push(`<b>Unreliable kernel(s): ${esc([...unreliableKernels].join(", "))}.</b> Most configurations disagree with the reference result, so the kernel itself is at fault (e.g. its result depends on an address). It is left out of the aggregates; select it individually to inspect it.`);
+	}
+	const wrong = [];
+	for (const c of configs) for (const k of kernels) {
+		if (unreliableKernels.has(k)) continue;
+		const r = c.results[k];
+		if (r && r.status === "ok" && referenceChecksum[k] != null && r.checksum !== referenceChecksum[k]) wrong.push(`${c.label} / ${k}`);
+	}
+	if (wrong.length) {
+		warnings.push(`<b>${wrong.length} wrong result(s).</b> These configurations returned a different checksum than the reference and are left out of the chart: ${esc(wrong.slice(0, 8).join(", "))}${wrong.length > 8 ? ", …" : ""}`);
+	}
+	const failed = configs.reduce((n, c) => n + kernels.filter((k) => c.results[k] && c.results[k].status !== "ok").length, 0);
+	if (failed) warnings.push(`<b>${failed} failed compilation(s) or run(s).</b> See the "failed kernels" column of the table and the configuration details.`);
+	const timeline = data.driftTimeline || [];
+	if (timeline.length > 1) {
+		const runs = timeline.map((p) => p.run).filter((v) => v), opts = timeline.map((p) => p.optimize).filter((v) => v);
+		const spread = (v) => (Math.max(...v) / Math.min(...v) - 1) * 100;
+		if (Math.max(spread(runs), spread(opts)) > 5) {
+			warnings.push(`<b>The machine's speed drifted during the run.</b> The reference configuration, re-measured ${timeline.length} times, varied by ${spread(runs).toFixed(0)}% in runtime and ${spread(opts).toFixed(0)}% in LLVM optimizer time. Results are corrected for it (“correct for machine drift”); see the timeline under measurement settings.`);
+		}
+	}
+	if (m.governor && m.governor !== "performance") warnings.push(`<b>CPU governor is "${esc(m.governor)}".</b> Frequency scaling adds noise; prefer the performance governor.`);
+	document.getElementById("warnings").innerHTML = warnings.map((w) => `<div class="warn">${w}</div>`).join("");
+	const settings = m.settings || {};
+	document.getElementById("settings").innerHTML = `<p class="hint">Every configuration ran in ${settings.process_reps ?? 1} independent
+		process(es), since code and data placement differ per process. Compile time is the median of ${settings.compile_reps ?? "?"} compilations per process
+		(full trace → executable, wall clock; MLIR generates machine code eagerly so it is included). Runtime is the median of up to
+		${settings.samples ?? "?"} samples per process of ~${settings.sample_ms ?? "?"} ms each, divided by the calls per sample. A kernel
+		whose result differs between processes is reported as nondeterministic. Aggregates are geometric
+		means over the selected kernels. The expected-executions picker minimizes compile + N × runtime over the frontier.</p>
+		<p class="hint">Runner: <code>${esc(m.runner || "?")}</code>${m.extraOptions && m.extraOptions.length ? ` · options on every configuration: <code>${esc(m.extraOptions.join(" "))}</code>` : ""}</p>
+		${driftChart()}
+		${Object.entries(data.pipelines || {}).map(([k, v]) => `<p><b>${esc(k)}</b> (${v.length} chars)</p><pre class="mono" style="white-space:pre-wrap;word-break:break-all;background:var(--surface-2);padding:8px;border-radius:6px">${esc(v)}</pre>`).join("")}`;
+}
+
+function driftChart() {
+	const timeline = (data.driftTimeline || []).filter((p) => p.run && p.optimize);
+	if (timeline.length < 2) return "";
+	const w = 760, h = 180, m = { l: 48, r: 12, t: 12, b: 32 };
+	const t0 = timeline[0].t, t1 = timeline[timeline.length - 1].t;
+	const values = timeline.flatMap((p) => [p.run, p.optimize, p.compile].filter(Boolean));
+	const lo = Math.min(0.9, ...values), hi = Math.max(1.1, ...values);
+	const sx = (t) => m.l + ((t - t0) / Math.max(1, t1 - t0)) * (w - m.l - m.r);
+	const sy = (v) => h - m.b - ((v - lo) / (hi - lo)) * (h - m.t - m.b);
+	const series = [["run", "runtime", "var(--series-1)"], ["optimize", "LLVM optimizer", "var(--series-2)"], ["compile", "end-to-end compile", "var(--series-3)"]];
+	let out = `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px" role="img" aria-label="Reference configuration over time">`;
+	for (const v of [0.9, 1, 1.1].filter((v) => v >= lo && v <= hi)) out += `<line x1="${m.l}" x2="${w - m.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${sy(v) + 4}" text-anchor="end">${v.toFixed(1)}×</text>`;
+	const minutes = (t1 - t0) / 60;
+	for (let i = 0; i <= 4; i++) out += `<text x="${sx(t0 + ((t1 - t0) * i) / 4)}" y="${h - 10}" text-anchor="middle">${((minutes * i) / 4).toFixed(minutes < 20 ? 1 : 0)} min</text>`;
+	for (const [key, name, color] of series) {
+		const pts = timeline.filter((p) => p[key]);
+		out += `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${sx(p.t).toFixed(1)},${sy(p[key]).toFixed(1)}`).join("")}" fill="none" stroke="${color}" stroke-width="2"/>`;
+	}
+	out += "</svg>";
+	return `<p class="hint"><b>Machine drift.</b> The reference configuration (mlir O3) re-measured throughout the run, relative to its median (geometric mean over kernels). Above 1× the machine was slower than usual. With “correct for machine drift” on, every result is divided by this factor, interpolated to the time it was measured.</p>
+		<div class="legend-inline">${series.map(([, name, color]) => `<span><i class="swatch" style="background:${color}"></i>${name}</span>`).join("")}</div>${out}`;
+}
+
+// ------------------------------------------------------------------------------------------------
+
+function renderAll() {
+	lastPoints = computePoints();
+	if (state.selected && !configs.some((c) => c.id === state.selected)) state.selected = null;
+	renderChips();
+	renderScatter();
+	renderPick();
+	renderDetails();
+	renderBreakdown();
+	renderAblation();
+	renderProfile();
+	renderGreedy();
+	renderTable();
+}
+
+setupControls();
+setupAblation();
+setupProfile();
+setupScatterHover();
+renderHeader();
+renderAll();
+// Start with the configuration the expected-executions picker recommends, so the details are never empty.
+{
+	const initial = cheapest(lastPoints.frontier, Math.pow(10, state.executionsLog));
+	if (initial) select(initial.config.id);
+}
+window.addEventListener("resize", () => renderScatter());
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => renderAll());
+</script>
+</body>
+</html>

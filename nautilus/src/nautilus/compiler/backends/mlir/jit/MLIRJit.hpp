@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/compiler/JitSymbolRegistry.hpp"
+#include <atomic>
 #include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/ExecutionEngine/Orc/Core.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
@@ -65,6 +66,12 @@ public:
 		// Requires `perfEmitDebugInfo`; without it there is no scope
 		// information to recover.
 		bool perfRegionSymbols = true;
+
+		// When set, every object the JIT generates adds the size of its
+		// executable sections here, so a caller can compare the machine code
+		// different pipelines produce. Objects are generated on the first
+		// lookup of a symbol they define, not when the JIT is created.
+		std::shared_ptr<std::atomic<int64_t>> codeSizeOut;
 	};
 
 	~MLIRJit();

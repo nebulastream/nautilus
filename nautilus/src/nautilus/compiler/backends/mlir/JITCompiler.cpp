@@ -3,6 +3,7 @@
 #include "fmt/format.h"
 #include "nautilus/compiler/backends/mlir/LLVMBackendHooks.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
@@ -15,7 +16,7 @@ std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(
     const std::vector<std::string>& jitProxyFunctionSymbols, const std::vector<void*>& jitProxyFunctionTargetAddresses,
     llvm::CodeGenOptLevel codeGenOptLevel, bool enableDebuggerSupport, bool enablePerfSupport, bool perfEmitDebugInfo,
     bool perfEmitUnwindInfo, bool perfRegionSymbols, bool enableJitSymbolRegistration,
-    const std::string& compilationUnitId) {
+    const std::string& compilationUnitId, std::shared_ptr<std::atomic<int64_t>> codeSizeOut) {
 
 	// Register the translation from MLIR to LLVM IR, which must happen before we
 	// can JIT-compile.
@@ -32,9 +33,13 @@ std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(
 	jitOptions.perfRegionSymbols = perfRegionSymbols;
 	jitOptions.enableJitSymbolRegistration = enableJitSymbolRegistration;
 	jitOptions.compilationUnitId = compilationUnitId;
+	jitOptions.codeSizeOut = std::move(codeSizeOut);
 
 	auto maybeJit = MLIRJit::create(*mlirModule, jitOptions);
-	assert(maybeJit && "failed to construct an execution engine");
+	if (!maybeJit) {
+		// E.g. an invalid `mlir.llvmPipeline`: report it instead of dereferencing the failed Expected.
+		throw RuntimeException("failed to construct an execution engine: " + llvm::toString(maybeJit.takeError()));
+	}
 
 	// We register all external functions (symbols) that we do not inline.
 	const auto runtimeSymbolMap = [&](llvm::orc::MangleAndInterner interner) {

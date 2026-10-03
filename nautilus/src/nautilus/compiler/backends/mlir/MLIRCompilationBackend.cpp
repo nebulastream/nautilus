@@ -13,9 +13,11 @@
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/IRLocationMap.hpp"
 #include "nautilus/compiler/ir/passes/IRLocationPass.hpp"
+#include <atomic>
 #include <chrono>
 #include <fstream>
 #include <llvm/Support/TargetSelect.h>
+#include <map>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
 #include <mlir/Dialect/Func/Extensions/AllExtensions.h>
@@ -28,6 +30,7 @@
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
 #include <mlir/Transforms/Inliner.h>
+#include <string>
 namespace nautilus::compiler::mlir {
 
 MLIRCompilationBackend::MLIRCompilationBackend() {
@@ -146,7 +149,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// 2.b Take the MLIR module from the MLIRLoweringProvider and apply lowering
 	// and optimization passes.
 	const auto pipelineStart = std::chrono::steady_clock::now();
-	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {}, debugInfo)) {
+	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {}, debugInfo,
+	                                                      options.getOptionOrDefault("mlir.inliner", true))) {
 		throw RuntimeException("Could not lower and optimize MLIR module.");
 	}
 	if (statistics != nullptr) {
@@ -155,7 +159,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 
 	// 3. Lower MLIR module to LLVM IR and create LLVM IR optimization pipeline.
 	const auto optPipelineStart = std::chrono::steady_clock::now();
-	auto optPipeline = LLVMIROptimizer::getLLVMOptimizerPipeline(options, dumpHandler);
+	auto optPipeline = LLVMIROptimizer::getLLVMOptimizerPipeline(options, dumpHandler, statistics);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("llvm.optimizerBuild.ms", optPipelineStart);
 	}
@@ -171,18 +175,38 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// spills every SSA value and confuses LLVM's DWARF asmprinter when
 	// dbg.value operands live on the stack rather than in registers.
 	// Keyed on `enableDebug` alone: perf-only mode keeps the codegen level
-	// the rest of the pipeline chose.
-	const auto jitCodeGenLevel =
-	    debugInfo.enableDebug ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
+	// the rest of the pipeline chose. `mlir.codegenOptLevel` overrides either.
+	const auto jitCodeGenLevel = getCodeGenOptLevel(options);
+	// Machine code is generated lazily on the first lookup, so its size is
+	// only known here for an eager compilation.
+	const bool eagerCompilation = options.getOptionOrDefault("mlir.eager_compilation", false);
+	auto codeSize = (statistics != nullptr && eagerCompilation) ? std::make_shared<std::atomic<int64_t>>(0) : nullptr;
 	auto engine = JITCompiler::jitCompileModule(
 	    mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
 	    loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel, debugInfo.enableDebug, debugInfo.enablePerf,
 	    debugInfo.perfEmitDebugInfo, debugInfo.perfEmitUnwindInfo, debugInfo.perfRegionSymbols,
-	    debugInfo.enableSampleSymbols, ir->getId());
-	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
+	    debugInfo.enableSampleSymbols, ir->getId(), codeSize);
+	if (eagerCompilation) {
+		// `mlir.recordPassTimings` also breaks machine-code generation down by
+		// pass (instruction selection, register allocation, ...).
+		const bool profileCodegen =
+		    statistics != nullptr && options.getOptionOrDefault("mlir.recordPassTimings", false);
+		if (profileCodegen) {
+			resetCodegenPassTimers();
+		}
+		const auto codegenStart = std::chrono::steady_clock::now();
 		auto result = engine->lookupPacked("execute");
 		if (!result) {
 			llvm::errs() << "Could not compile function" << result.takeError() << "\n";
+		}
+		if (statistics != nullptr) {
+			statistics->recordTimingMs("jit.codegen.ms", codegenStart);
+			statistics->set("jit.code.bytes", codeSize->load());
+		}
+		if (profileCodegen) {
+			for (const auto& [pass, ms] : snapshotCodegenPassTimers()) {
+				statistics->set("llvm.codegen." + pass + ".ms", ms);
+			}
 		}
 	}
 	if (statistics != nullptr) {
