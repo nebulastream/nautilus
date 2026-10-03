@@ -18,6 +18,20 @@ O1_EXCERPT = (
 )
 
 
+class AsmjitSweepTest(unittest.TestCase):
+    def test_levels_and_individual_passes(self):
+        configs = explore.sweep_asmjit_passes({"backends": ["asmjit"]})
+        labels = [c.label for c in configs]
+        for level in range(4):
+            self.assertTrue(any(label.startswith(f"asmjit O{level} (") for label in labels))
+        passes = len(explore.ASMJIT_IR_PASSES) + len(explore.ASMJIT_BACKEND_PASSES)
+        self.assertEqual(len(configs), 4 + 2 * passes)
+        self.assertIn("asmjit O3 without licm", labels)
+        self.assertIn("asmjit O0 + licm", labels)
+        self.assertEqual(explore.asmjit_options(2), {})
+        self.assertFalse(explore.asmjit_options(0)["ir.runOptimizationPasses"])
+
+
 class PipelineTest(unittest.TestCase):
     def test_round_trip(self):
         self.assertEqual(explore.render_pipeline(explore.parse_pipeline(O1_EXCERPT)), O1_EXCERPT)
@@ -89,9 +103,9 @@ class ConfigTest(unittest.TestCase):
         labels = [c.label for c in configs]
         self.assertFalse([label for label in labels if "tuned" in label])
         for level in (0, 1, 2):
-            self.assertIn(f"mlir O{level}", labels)
-        self.assertIn("mlir O3 (default)", labels)
-        self.assertIn("asmjit + IR LICM + local CSE", labels)
+            self.assertIn(explore.mlir_label(level), labels)
+        self.assertIn("mlir inliner + llvm O3 + codegen O3 (default)", labels)
+        self.assertIn("asmjit O2 + licm + local-cse", labels)
 
     def test_report_payload_keeps_profile_stats_for_profiles_only(self):
         stats = {"llvm.optimize.ms": 1.0, "llvm.pass.instcombine.ms": 0.5}
