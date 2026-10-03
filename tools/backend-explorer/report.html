@@ -730,7 +730,7 @@ function renderScatter() {
 	};
 	// The MLIR backend's default optimization levels are the reference points everything else is compared with.
 	for (const p of shown) {
-		if (p.config.meta && p.config.meta.defaultLevel) label(p, `O${p.config.meta.optLevel}`);
+		if (p.config.meta && p.config.meta.defaultLevel) label(p, `${p.config.backend} O${p.config.meta.optLevel}`);
 	}
 	if (frontier.length) {
 		label(frontier[0], frontier[0].config.label);
