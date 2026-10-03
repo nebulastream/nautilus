@@ -49,6 +49,9 @@ explore.py         ──► results.json (appended, resumable) ──► explor
   *control-flow* (data-dependent loops, sorting, 100-deep if-chains), and *calls* (internal and external calls). Each
   returns a checksum. A configuration whose checksum differs from the default MLIR backend's is reported as a wrong
   result and left out of the frontier. This matters for pass ablations, which can expose miscompilations.
+- **Warm-up**: before sampling, the runner times batches until three in a row agree within 2% (at most 1 s). Code
+  generated right after a long compile, as the cpp backend's is, runs up to 2.5x slower for its first ~50 ms.
+  Sampling that phase made cpp look twice as slow as MLIR. `warmupMs` is recorded per kernel.
 - **Compile time** is the median wall time of a full compile: trace → SSA → Nautilus IR → IR passes → backend →
   executable. For MLIR, `mlir.eager_compilation` is set so machine code is generated inside the compile. Otherwise
   that would happen lazily on the first call.

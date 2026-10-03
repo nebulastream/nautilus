@@ -42,7 +42,8 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 RUNNER_NAME = "nautilus-backend-explorer"
 
-ALL_SWEEPS = ["backends", "backend-flags", "ir-passes", "mlir-levels", "llvm-ablation", "llvm-profile"]
+ALL_SWEEPS = ["backends", "backend-flags", "ir-passes", "asmjit-passes", "mlir-levels", "llvm-ablation",
+              "llvm-profile"]
 OPTIONAL_SWEEPS = ["llvm-greedy"]
 
 # Stats copied into the results per (config, kernel). Everything else the runner reports is dropped to keep the
@@ -91,6 +92,104 @@ def make_config(group: str, label: str, backend: str, options: dict | None = Non
     return config
 
 
+def mlir_label(llvm_level: int | str, codegen_level: int = 3, inliner: bool = True, flag: str = "") -> str:
+    """Names an MLIR backend configuration by its three knobs: the MLIR inliner, the LLVM IR optimization level
+    (`optimizationLevel`) and the machine-code generation level (`mlir.codegenOptLevel`). The defaults are inliner
+    on, llvm O3, codegen O3. An LLVM pipeline that is not a default level is described by a string, e.g. "O3
+    without inline". @p flag appends one more option, e.g. "ir.enableLICM=True"."""
+    llvm = f"O{llvm_level}" if isinstance(llvm_level, int) else llvm_level
+    label = f"mlir {'inliner' if inliner else 'no inliner'} + llvm {llvm} + codegen O{codegen_level}"
+    return f"{label} + {flag}" if flag else label
+
+
+def flag_label(backend: str, option: str, value) -> str:
+    """The label of @p backend with one option changed from its default."""
+    if backend == "asmjit":
+        if option == "ir.runOptimizationPasses":
+            return asmjit_label(2, note="default") if value else asmjit_label(2, without="all IR passes")
+        name = ASMJIT_PASS_NAMES.get(option)
+        if name is None:
+            return asmjit_label(2, plus=f"{option}={value}")
+        on = next(on for _, o, on in ASMJIT_IR_PASSES + ASMJIT_BACKEND_PASSES if o == option)
+        return asmjit_label(2, plus=name) if value == on else asmjit_label(2, without=name)
+    if backend != "mlir":
+        return f"{backend} {option}={value}"
+    return mlir_label(3, inliner=False) if option == "mlir.inliner" and value is False else \
+        mlir_label(3, flag=f"{option}={value}")
+
+
+# The optimizations the asmjit backend can toggle: (name, option, value that turns the pass on). The first group is
+# Nautilus' IR pipeline, the second is the backend's own. Defaults: every pass is on except local CSE, strength
+# reduction and LICM.
+ASMJIT_IR_PASSES = [
+    ("constant-folding", "ir.disableConstantFolding", False),
+    ("algebraic-simplification", "ir.disableAlgebraicSimplification", False),
+    ("constant-branch-folding", "ir.disableConstantBranchFolding", False),
+    ("empty-block-elimination", "ir.disableEmptyBlockElimination", False),
+    ("block-merging", "ir.disableBlockMerging", False),
+    ("dead-code-elimination", "ir.disableDeadCodeElimination", False),
+    ("block-argument-pruning", "ir.disableBlockArgumentPruning", False),
+    ("attribute-inference", "ir.disableAttributeInference", False),
+    ("local-cse", "ir.enableLocalCSE", True),
+    ("strength-reduction", "ir.enableStrengthReduction", True),
+    ("licm", "ir.enableLICM", True),
+]
+ASMJIT_BACKEND_PASSES = [
+    ("post-ra-peephole", "asmjit.enablePostRAPeephole", True),
+    ("branch-fusion", "asmjit.enableBranchFusion", True),
+    ("backend-constant-folding", "asmjit.enableConstFolding", True),
+    ("select-cmov", "asmjit.enableSelectCmov", True),
+    ("intrinsics", "asmjit.enableIntrinsics", True),
+]
+ASMJIT_PASS_NAMES = {option: name for name, option, _ in ASMJIT_IR_PASSES + ASMJIT_BACKEND_PASSES}
+ASMJIT_LEVELS = {0: "no optimizations", 1: "IR passes", 2: "IR passes + backend passes", 3: "all optimizations"}
+
+
+def asmjit_label(level: int, without: str = "", plus: str = "", note: str = "") -> str:
+    """Names an asmjit configuration by its optimization level and the individual passes changed from it. O0 runs
+    no optimizations, O1 Nautilus' default IR passes, O2 (the default) adds the backend's own passes and O3 also
+    enables local CSE, strength reduction and LICM."""
+    label = f"asmjit O{level}"
+    if without:
+        label += f" without {without}"
+    if plus:
+        label += f" + {plus}"
+    return f"{label} ({note})" if note else label
+
+
+def asmjit_options(level: int) -> dict:
+    """The options of an asmjit optimization level (see asmjit_label). O2 is the backend's default."""
+    if level == 0:
+        return {"ir.runOptimizationPasses": False, **{o: False for _, o, _ in ASMJIT_BACKEND_PASSES}}
+    if level == 1:
+        return {"ir.runOptimizationPasses": True, **{o: False for _, o, _ in ASMJIT_BACKEND_PASSES}}
+    if level == 2:
+        return {}
+    return {"ir.runOptimizationPasses": True, **{o: v for _, o, v in ASMJIT_IR_PASSES + ASMJIT_BACKEND_PASSES}}
+
+
+def sweep_asmjit_passes(info: dict) -> list[Config]:
+    """asmjit at O0-O3, every pass left out of O3 one at a time, and every pass added to O0 one at a time. For the
+    IR passes, "added to O0" runs the IR pipeline with all its passes disabled except the added one."""
+    if "asmjit" not in info["backends"]:
+        return []
+    configs = []
+    for level, description in ASMJIT_LEVELS.items():
+        configs.append(make_config("asmjit-passes", asmjit_label(level, note=description), "asmjit",
+                                   asmjit_options(level), meta={"optLevel": level, "defaultLevel": True}))
+    all_on = asmjit_options(3)
+    for name, option, on in ASMJIT_IR_PASSES + ASMJIT_BACKEND_PASSES:
+        configs.append(make_config("asmjit-passes", asmjit_label(3, without=name), "asmjit",
+                                   {**all_on, option: not on}, meta={"baseLevel": 3, "removedPass": name}))
+    all_off = {"ir.runOptimizationPasses": True, **{o: not on for _, o, on in ASMJIT_IR_PASSES},
+               **{o: not on for _, o, on in ASMJIT_BACKEND_PASSES}}
+    for name, option, on in ASMJIT_IR_PASSES + ASMJIT_BACKEND_PASSES:
+        options = asmjit_options(0) if option.startswith("asmjit.") else all_off
+        configs.append(make_config("asmjit-passes", asmjit_label(0, plus=name), "asmjit", {**options, option: on},
+                                   meta={"baseLevel": 0, "addedPass": name}))
+    return configs
+
+
 def sweep_backends(info: dict) -> list[Config]:
     """Each backend at its defaults, the MLIR backend at each of its default optimization levels, the cpp backend
     at each -O level, and the configurations ExecutionBenchmark.cpp tracks. Labels name every option that differs
@@ -98,9 +197,9 @@ def sweep_backends(info: dict) -> list[Config]:
     backends = set(info["backends"])
     configs = []
     if "mlir" in backends:
-        configs.append(make_config("backends", "mlir O3 (default)", "mlir"))
+        configs.append(make_config("backends", mlir_label(3) + " (default)", "mlir"))
         for level in (0, 1, 2):
-            configs.append(make_config("backends", f"mlir O{level}", "mlir", {"optimizationLevel": level},
+            configs.append(make_config("backends", mlir_label(level), "mlir", {"optimizationLevel": level},
                                        meta={"optLevel": level, "defaultLevel": True}))
         configs[0].meta = {"optLevel": 3, "defaultLevel": True}
     if "cpp" in backends:
@@ -125,9 +224,9 @@ def sweep_backends(info: dict) -> list[Config]:
             configs.append(make_config("backends", "tbc jit + IR LICM + local CSE", "tbc",
                                        {**ir_licm_cse, "tbc.mode": "jit"}))
     if "asmjit" in backends:
-        configs.append(make_config("backends", "asmjit (default)", "asmjit"))
+        configs.append(make_config("backends", asmjit_label(2, note="default"), "asmjit"))
         # Branch fusion, constant folding and cmov are asmjit defaults already; only the IR passes differ.
-        configs.append(make_config("backends", "asmjit + IR LICM + local CSE", "asmjit", ir_licm_cse))
+        configs.append(make_config("backends", asmjit_label(2, plus="licm + local-cse"), "asmjit", ir_licm_cse))
     return configs
 
 
@@ -171,7 +270,8 @@ def sweep_backend_flags(info: dict) -> list[Config]:
             continue
         for option, default, values in flags:
             for value in values:
-                configs.append(make_config("backend-flags", f"{backend} {option}={value}", backend, {option: value},
+                configs.append(make_config("backend-flags", flag_label(backend, option, value), backend,
+                                           {option: value},
                                            meta={"flag": option, "value": value, "default": default}))
     if "tbc" in info["backends"] and info.get("tbcJit"):
         for option, default, values in BACKEND_FLAGS["tbc"]:
@@ -207,18 +307,18 @@ def sweep_ir_passes(info: dict) -> list[Config]:
         if backend not in info["backends"]:
             continue
         for value in (True, False):
-            configs.append(make_config("ir-passes", f"{backend} ir.runOptimizationPasses={value}", backend,
+            configs.append(make_config("ir-passes", flag_label(backend, "ir.runOptimizationPasses", value), backend,
                                        {"ir.runOptimizationPasses": value},
                                        meta={"flag": "ir.runOptimizationPasses", "value": value}))
     for backend in ("asmjit", "bc"):
         if backend not in info["backends"]:
             continue
         for option, value in IR_PASS_TOGGLES:
-            configs.append(make_config("ir-passes", f"{backend} {option}={value}", backend, {option: value},
+            configs.append(make_config("ir-passes", flag_label(backend, option, value), backend, {option: value},
                                        meta={"flag": option, "value": value}))
     if "mlir" in info["backends"]:
         for option in ("ir.enableLocalCSE", "ir.enableLICM", "ir.enableStrengthReduction"):
-            configs.append(make_config("ir-passes", f"mlir full IR pipeline + {option}", "mlir",
+            configs.append(make_config("ir-passes", mlir_label(3, flag=f"ir.runOptimizationPasses=True + {option}=True"), "mlir",
                                        {"ir.runOptimizationPasses": True, option: True},
                                        meta={"flag": option, "value": True}))
     return configs
@@ -231,10 +331,10 @@ def sweep_mlir_levels(info: dict) -> list[Config]:
     configs = []
     for level in (0, 1, 2, 3):
         for codegen in (0, 1, 2, 3):
-            configs.append(make_config("mlir-levels", f"mlir O{level} / codegen {codegen}", "mlir",
+            configs.append(make_config("mlir-levels", mlir_label(level, codegen), "mlir",
                                        {"optimizationLevel": level, "mlir.codegenOptLevel": codegen},
                                        meta={"optLevel": level, "codegenLevel": codegen}))
-        configs.append(make_config("mlir-levels", f"mlir O{level} / codegen 3 / no MLIR inliner", "mlir",
+        configs.append(make_config("mlir-levels", mlir_label(level, 3, inliner=False), "mlir",
                                    {"optimizationLevel": level, "mlir.inliner": False},
                                    meta={"optLevel": level, "codegenLevel": 3, "inliner": False}))
     return configs
@@ -346,12 +446,12 @@ def sweep_llvm_ablation(info: dict, pipelines: dict[str, str], levels: Iterable[
         if not text:
             continue
         nodes = parse_pipeline(text)
-        configs.append(make_config("llvm-ablation", f"O{level} (expanded pipeline)", "mlir",
+        configs.append(make_config("llvm-ablation", mlir_label(f"O{level} (expanded pipeline)"), "mlir",
                                    string_options={"mlir.llvmPipeline": text},
                                    meta={"baseLevel": level, "removedPass": None}))
         for name, count in sorted(leaf_pass_counts(nodes).items()):
             ablated = render_pipeline(remove_pass(nodes, name))
-            configs.append(make_config("llvm-ablation", f"O{level} without {name}", "mlir",
+            configs.append(make_config("llvm-ablation", mlir_label(f"O{level} without {name}"), "mlir",
                                        string_options={"mlir.llvmPipeline": ablated or "verify"},
                                        meta={"baseLevel": level, "removedPass": name, "instances": count}))
     return configs
@@ -366,13 +466,13 @@ def sweep_llvm_profile(info: dict, pipelines: dict[str, str]) -> list[Config]:
     instrumentation itself costs a little compile time."""
     if "mlir" not in info["backends"]:
         return []
-    configs = [make_config("llvm-profile", f"profile: mlir O{level}", "mlir",
+    configs = [make_config("llvm-profile", "profile: " + mlir_label(level), "mlir",
                            {**PROFILE_OPTION, "optimizationLevel": level},
                            meta={"profileOf": f"O{level}", "optLevel": level})
                for level in (0, 1, 2, 3)]
     if pipelines.get("O3"):
         without_inline = render_pipeline(remove_pass(parse_pipeline(pipelines["O3"]), "inline"))
-        configs.append(make_config("llvm-profile", "profile: mlir O3 without inline", "mlir", PROFILE_OPTION,
+        configs.append(make_config("llvm-profile", "profile: " + mlir_label("O3 without inline"), "mlir", PROFILE_OPTION,
                                    string_options={"mlir.llvmPipeline": without_inline},
                                    meta={"profileOf": "O3 without inline", "optLevel": 3}))
     return configs
@@ -858,7 +958,7 @@ def greedy_search(runner: Runner, results: Results, kernels: list[str], steps: i
     happened to run while the machine was fast), otherwise the best repetition of each measurement. Every evaluated candidate is kept as a configuration, so the search also maps the
     neighbourhood of the path it takes."""
     chosen: list[tuple[str, str, str]] = []
-    base = make_config("llvm-greedy", "step 0: no LLVM passes", "mlir",
+    base = make_config("llvm-greedy", mlir_label("no passes (step 0)"), "mlir",
                        string_options={"mlir.llvmPipeline": greedy_pipeline([])},
                        meta={"step": 0, "pipeline": [], "added": None, "selected": True})
     def score(entry: dict) -> tuple[float | None, float | None]:
@@ -875,7 +975,7 @@ def greedy_search(runner: Runner, results: Results, kernels: list[str], steps: i
         candidates = [c for c in GREEDY_CANDIDATES if c not in chosen]
         for candidate in candidates:
             elements = chosen + [candidate]
-            config = make_config("llvm-greedy", f"step {step}: +{candidate[0]}", "mlir",
+            config = make_config("llvm-greedy", mlir_label(f"greedy step {step} +{candidate[0]}"), "mlir",
                                  string_options={"mlir.llvmPipeline": greedy_pipeline(elements)},
                                  meta={"step": step, "pipeline": [e[0] for e in elements], "added": candidate[0],
                                        "selected": False})
@@ -901,7 +1001,7 @@ def greedy_search(runner: Runner, results: Results, kernels: list[str], steps: i
         print(f"greedy: step {step} selects {candidate[0]} (pipeline: {', '.join(c[0] for c in chosen)})",
               file=sys.stderr)
     if chosen:
-        profile = make_config("llvm-profile", "profile: greedy pipeline", "mlir", PROFILE_OPTION,
+        profile = make_config("llvm-profile", "profile: " + mlir_label("greedy"), "mlir", PROFILE_OPTION,
                               string_options={"mlir.llvmPipeline": greedy_pipeline(chosen)},
                               meta={"profileOf": "greedy", "pipeline": [c[0] for c in chosen]})
         measure(runner, results, [profile], kernels, rerun, timeline)
@@ -940,6 +1040,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         "backends": lambda: sweep_backends(info),
         "backend-flags": lambda: sweep_backend_flags(info),
         "ir-passes": lambda: sweep_ir_passes(info),
+        "asmjit-passes": lambda: sweep_asmjit_passes(info),
         "mlir-levels": lambda: sweep_mlir_levels(info),
         "llvm-ablation": lambda: sweep_llvm_ablation(info, results.data["pipelines"], levels),
         "llvm-profile": lambda: sweep_llvm_profile(info, results.data["pipelines"]),

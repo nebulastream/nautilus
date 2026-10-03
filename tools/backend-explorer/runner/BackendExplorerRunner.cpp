@@ -191,11 +191,33 @@ std::string runKernel(const BenchmarkKernel& kernel, const Options& options, con
 		const int64_t checksum = compiled.run();
 		const double firstRunNs = std::chrono::duration<double, std::nano>(Clock::now() - firstStart).count();
 
+		// Code that was generated right after a long compile (the cpp backend waits for the system compiler) runs
+		// up to 2.5x slower for the first ~50 ms: the core is still ramping up or the thread was migrated. Time
+		// batches until three in a row agree within 2%, so the samples measure the code, not the ramp-up.
 		const double sampleNs = settings.sampleMs * 1e6;
-		const int64_t batch = std::max<int64_t>(1, static_cast<int64_t>(sampleNs / std::max(firstRunNs, 1.0)));
+		int64_t batch = std::max<int64_t>(1, static_cast<int64_t>(sampleNs / std::max(firstRunNs, 1.0)));
+		const auto warmupStart = Clock::now();
+		volatile int64_t sink = 0;
+		double recent[3] = {0.0, 0.0, 0.0};
+		for (int chunk = 0;; ++chunk) {
+			const auto start = Clock::now();
+			for (int64_t i = 0; i < batch; ++i) {
+				sink = sink + compiled.run();
+			}
+			const double perCall =
+			    std::chrono::duration<double, std::nano>(Clock::now() - start).count() / static_cast<double>(batch);
+			recent[chunk % 3] = perCall;
+			batch = std::max<int64_t>(1, static_cast<int64_t>(sampleNs / std::max(perCall, 1.0)));
+			const double lowest = std::min({recent[0], recent[1], recent[2]});
+			const double highest = std::max({recent[0], recent[1], recent[2]});
+			const double warmupMs = std::chrono::duration<double, std::milli>(Clock::now() - warmupStart).count();
+			if ((chunk >= 2 && lowest > 0.0 && highest <= lowest * 1.02) || warmupMs > 1000.0) {
+				break;
+			}
+		}
+		const double warmupMs = std::chrono::duration<double, std::milli>(Clock::now() - warmupStart).count();
 		std::vector<double> perCallNs;
 		const auto measureStart = Clock::now();
-		volatile int64_t sink = 0;
 		for (int sample = 0; sample < std::max(1, settings.samples); ++sample) {
 			const auto start = Clock::now();
 			for (int64_t i = 0; i < batch; ++i) {
@@ -212,6 +234,7 @@ std::string runKernel(const BenchmarkKernel& kernel, const Options& options, con
 		out << ",\"status\":\"ok\",\"checksum\":" << jsonString(std::to_string(checksum));
 		out << ",\"compileWallMs\":" << jsonArray(compileWallMs);
 		out << ",\"firstRunNs\":" << jsonNumber(firstRunNs);
+		out << ",\"warmupMs\":" << jsonNumber(warmupMs);
 		out << ",\"batch\":" << batch;
 		out << ",\"runNs\":" << jsonArray(perCallNs);
 		out << ",\"stats\":{";
