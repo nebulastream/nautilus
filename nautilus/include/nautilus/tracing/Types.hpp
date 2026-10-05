@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/common/ConstantOrigin.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <cstdint>
 #include <cstdlib>

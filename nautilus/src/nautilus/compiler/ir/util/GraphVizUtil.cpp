@@ -302,6 +302,7 @@ protected:
 		case Operation::OperationType::ConstBooleanOp:
 		case Operation::OperationType::ConstPtrOp:
 		case Operation::OperationType::ConstFloatOp:
+		case Operation::OperationType::RuntimeBindingOp:
 			return false;
 		default:
 			return true;
@@ -464,6 +465,7 @@ protected:
 		case Operation::OperationType::ConstPtrOp:
 		case Operation::OperationType::ConstFloatOp:
 		case Operation::OperationType::CastOp:
+		case Operation::OperationType::RuntimeBindingOp:
 			return "virtual";
 		case Operation::OperationType::CompareOp:
 		case Operation::OperationType::AddOp:

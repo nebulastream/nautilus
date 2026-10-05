@@ -90,7 +90,8 @@ public:
 	 *              the returned trace and the enclosing TraceModule.
 	 * @return Reference to the newly created ExecutionTrace.
 	 */
-	ExecutionTrace& addNewFunction(std::string_view functionName, Arena& arena);
+	ExecutionTrace& addNewFunction(std::string_view functionName, Arena& arena,
+	                               ConstantOriginTracking tracking = ConstantOriginTracking::Disabled);
 
 	/// Associates generic attributes with a previously added function.
 	void setFunctionAttributes(const std::string& functionName,
@@ -151,7 +152,11 @@ public:
 	 *
 	 * @param arena Non-owning reference to the Arena to allocate from.
 	 */
-	explicit ExecutionTrace(Arena& arena);
+	explicit ExecutionTrace(Arena& arena, ConstantOriginTracking tracking = ConstantOriginTracking::Disabled);
+
+	[[nodiscard]] bool recordsConstantOrigins() const {
+		return constantOriginTracking == ConstantOriginTracking::Enabled;
+	}
 
 	/**
 	 * Destroys the trace, including explicit destruction of all
@@ -181,6 +186,9 @@ public:
 	 */
 	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
 	                                      std::initializer_list<InputVariant> inputs);
+
+	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
+	                                      std::initializer_list<InputVariant> inputs, ConstantOrigin origin);
 
 	/**
 	 * @brief Adds a comparison operation to the trace with branch probability
@@ -444,6 +452,9 @@ public:
 	 * @return operation_identifier The next operation identifier
 	 */
 	operation_identifier getNextOperationIdentifier();
+
+private:
+	const ConstantOriginTracking constantOriginTracking;
 };
 
 // Defined inline (rather than in ExecutionTrace.cpp) so that callers in other

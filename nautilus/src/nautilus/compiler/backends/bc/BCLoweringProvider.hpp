@@ -217,6 +217,7 @@ private:
 		void visitConstFloat(ir::ConstFloatOperation* opt, short block, RegisterFrame& frame);
 		void visitConstBoolean(ir::ConstBooleanOperation* opt, short block, RegisterFrame& frame);
 		void visitConstPtr(ir::ConstPtrOperation* opt, short block, RegisterFrame& frame);
+		void visitRuntimeBinding(ir::RuntimeBindingOperation* opt, short block, RegisterFrame& frame);
 
 		void processDynamicCall(ir::CallOperation* opt, short block, RegisterFrame& frame);
 

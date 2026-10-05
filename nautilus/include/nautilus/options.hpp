@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/RuntimeBindingInfo.hpp"
 #include <iostream>
 #include <optional>
 #include <string>
@@ -52,6 +53,19 @@ public:
 		return defaultValue;
 	}
 
+	void setRuntimeBindings(const RuntimeBindings& bindings) {
+		runtime_bindings_ = bindings;
+	}
+
+	const RuntimeBindings& getRuntimeBindings() const {
+		static const RuntimeBindings empty;
+		return runtime_bindings_ ? *runtime_bindings_ : empty;
+	}
+
+	const std::unordered_map<std::string, OptionValue>& getOptionValues() const {
+		return options;
+	}
+
 	/**
 	 * @brief Apply every option value set in @p other on top of this one;
 	 * values present in @p other win.
@@ -61,6 +75,9 @@ public:
 	void applyOverrides(const EngineOptions& other) {
 		for (const auto& entry : other.options) {
 			options[entry.first] = entry.second;
+		}
+		if (other.runtime_bindings_) {
+			runtime_bindings_ = other.runtime_bindings_;
 		}
 	}
 
@@ -77,6 +94,7 @@ public:
 
 private:
 	std::unordered_map<std::string, OptionValue> options;
+	std::optional<RuntimeBindings> runtime_bindings_;
 };
 
 /**

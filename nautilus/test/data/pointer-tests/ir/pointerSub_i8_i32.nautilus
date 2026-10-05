@@ -1,9 +1,9 @@
 nautilus {
 execute($1:ptr, $2:i32) :i8 {
 Block_0($1:ptr, $2:i32):
-	$3 = 0 :i32
-	$4 = $3 - $2 :i32
-	$5 = $4 cast_to ui64 :ui64
+	$3 = 0 :ui64
+	$4 = $2 cast_to ui64 :ui64
+	$5 = $3 - $4 :ui64
 	$6 = $1 + $5 :ptr
 	$8 = load($6) :i8
 	return ($8) :i8

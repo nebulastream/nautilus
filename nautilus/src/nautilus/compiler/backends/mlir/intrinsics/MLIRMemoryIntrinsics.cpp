@@ -8,8 +8,12 @@
 namespace nautilus::compiler::mlir {
 
 // Compiler intrinsic for memory operations
-class MLIRMemoryIntrinsicPlugin : public MLIRIntrinsicPlugin {
+class MLIRMemoryIntrinsicPlugin final : public MLIRIntrinsicPlugin {
 public:
+	std::optional<std::string> cacheFingerprint() const override {
+		return cacheFingerprintForAddress(reinterpret_cast<const void*>(&RegisterMLIRMemoryIntrinsicPlugin));
+	}
+
 	void registerIntrinsics(MLIRIntrinsicManager& manager) override;
 	~MLIRMemoryIntrinsicPlugin() override = default;
 };

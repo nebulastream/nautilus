@@ -41,8 +41,12 @@ uint64_t byteswap_u64_impl(uint64_t) noexcept;
 namespace nautilus::compiler::mlir {
 
 // Compiler intrinsic for bit manipulation operations
-class MLIRBitIntrinsicPlugin : public MLIRIntrinsicPlugin {
+class MLIRBitIntrinsicPlugin final : public MLIRIntrinsicPlugin {
 public:
+	std::optional<std::string> cacheFingerprint() const override {
+		return cacheFingerprintForAddress(reinterpret_cast<const void*>(&RegisterMLIRBitIntrinsicPlugin));
+	}
+
 	void registerIntrinsics(MLIRIntrinsicManager& manager) override;
 	~MLIRBitIntrinsicPlugin() override = default;
 };

@@ -3,12 +3,33 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <type_traits>
+#include <utility>
 
 namespace nautilus {
 
 // Forward declaration of val template
 template <typename T>
 class val;
+
+template <typename T>
+    requires std::is_arithmetic_v<std::remove_cvref_t<T>>
+val<std::remove_cvref_t<T>> cacheInvariant(T&& value) {
+	using ValueType = std::remove_cvref_t<T>;
+#ifdef ENABLE_TRACING
+	if (tracing::inTracer()) {
+		auto ref = tracing::traceConstant(tracing::TypeResolver<ValueType>::to_type(),
+		                                  tracing::createConstLiteral(value), ConstantOrigin::CacheInvariant);
+		return val<ValueType>(ref);
+	}
+#endif
+	return val<ValueType>(value);
+}
+
+template <auto V>
+    requires std::is_arithmetic_v<decltype(V)>
+auto cacheLiteral() {
+	return cacheInvariant(V);
+}
 
 namespace details {
 

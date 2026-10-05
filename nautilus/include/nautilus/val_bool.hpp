@@ -180,7 +180,7 @@ public:
 	/// val<bool> b;  // b = false, probability = 0.5
 	/// ```
 #ifdef ENABLE_TRACING
-	val() : state(tracing::traceConstant(false)), value(false) {
+	val() : state(tracing::traceConstant(false, ConstantOrigin::CacheInvariant)), value(false) {
 	}
 #else
 	val() {

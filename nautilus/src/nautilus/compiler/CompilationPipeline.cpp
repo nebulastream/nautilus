@@ -181,10 +181,11 @@ void addOptimizationPasses(ir::IRPassManager& passManager, const engine::ModuleO
 
 } // namespace
 
-std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions,
-                                                              const engine::ModuleOptions& moduleOptions,
-                                                              CompilationStatistics* statistics,
-                                                              IROptimizationLevel optimization) const {
+std::shared_ptr<ir::IRGraph>
+CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
+                                 CompilationStatistics* statistics, IROptimizationLevel optimization,
+                                 const std::function<void(ir::IRGraph&)>& beforeOptimization,
+                                 ConstantOriginTracking tracking) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(moduleOptions, compilationId);
 
@@ -211,7 +212,8 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	// finished, so this is safe (the IRGraph owns a separate IR arena).
 	auto traceArenaHandle = traceArenaPool_->acquire();
 	common::Arena& arena = *traceArenaHandle;
-	std::shared_ptr<tracing::TraceModule> traceModule = tracing::TraceContext::Trace(functions, moduleOptions, arena);
+	std::shared_ptr<tracing::TraceModule> traceModule =
+	    tracing::TraceContext::Trace(functions, moduleOptions, arena, tracking);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 	}
@@ -233,6 +235,9 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	const auto irGenStart = std::chrono::steady_clock::now();
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(afterSSAModule, *irArenaPool_, compilationId);
+	if (beforeOptimization) {
+		beforeOptimization(*ir);
+	}
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("irGeneration.ms", irGenStart);
 		const auto snapshot = ir::computeStatistics(*ir);
@@ -323,7 +328,9 @@ std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr
 
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>&,
                                                               const engine::ModuleOptions&, CompilationStatistics*,
-                                                              IROptimizationLevel) const {
+                                                              IROptimizationLevel,
+                                                              const std::function<void(ir::IRGraph&)>&,
+                                                              ConstantOriginTracking) const {
 	throw RuntimeException("Jit not initialised");
 }
 

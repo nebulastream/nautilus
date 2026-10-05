@@ -38,6 +38,15 @@ auto createTraceableArgument() {
 	return val<typename ArgValueType::raw_type>(valueRef);
 }
 
+template <typename R>
+constexpr Type functionReturnType() {
+	if constexpr (std::is_void_v<R>) {
+		return Type::v;
+	} else {
+		return tracing::TypeResolver<typename R::raw_type>::to_type();
+	}
+}
+
 #ifdef ENABLE_TRACING
 
 template <size_t... Indices, typename R, typename... FunctionArguments>
@@ -286,6 +295,10 @@ public:
 		moduleOptions_.setOption(name, value);
 	}
 
+	void setRuntimeBindings(const RuntimeBindings& bindings) {
+		moduleOptions_.setRuntimeBindings(bindings);
+	}
+
 	/// Access this module's effective options (engine defaults + overrides).
 	[[nodiscard]] const ModuleOptions& getOptions() const {
 		return moduleOptions_;
@@ -320,8 +333,11 @@ public:
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			auto wrapper = details::createFunctionWrapper(std::move(func));
+			auto signature = compiler::CompilableFunction::Signature {
+			    details::functionReturnType<R>(),
+			    {tracing::TypeResolver<typename val<FunctionArguments>::raw_type>::to_type()...}};
 			functions_.emplace_back(name, std::move(wrapper), std::unordered_map<std::string, std::string> {}, nullptr,
-			                        SourceLocation::from(location));
+			                        SourceLocation::from(location), std::move(signature));
 		}
 #endif
 	}
@@ -340,8 +356,11 @@ public:
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			auto wrapper = details::createFunctionWrapper(fnptr);
+			auto signature = compiler::CompilableFunction::Signature {
+			    details::functionReturnType<R>(),
+			    {tracing::TypeResolver<typename val<FunctionArguments>::raw_type>::to_type()...}};
 			functions_.emplace_back(name, std::move(wrapper), std::unordered_map<std::string, std::string> {}, nullptr,
-			                        SourceLocation::from(location));
+			                        SourceLocation::from(location), std::move(signature));
 		}
 #endif
 	}
@@ -361,7 +380,8 @@ public:
 			// the version on this state when promotion completes.
 			auto state = std::make_shared<details::ModuleState>();
 			state->interpretedFunctions = std::move(interpretedFunctions_);
-			jit_.compileModule(functions_, moduleOptions_, state);
+			const auto frozenOptions = moduleOptions_;
+			jit_.compileModule(functions_, frozenOptions, state);
 			return CompiledModule(std::move(state));
 		}
 #endif

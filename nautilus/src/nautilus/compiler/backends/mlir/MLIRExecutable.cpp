@@ -3,6 +3,8 @@
 #include "nautilus/compiler/backends/mlir/MLIRExecutable.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
+#include <llvm/Support/Error.h>
 #include <mlir/IR/MLIRContext.h>
 
 namespace nautilus::compiler::mlir {
@@ -26,7 +28,12 @@ MLIRExecutable& MLIRExecutable::operator=(MLIRExecutable&& other) noexcept {
 }
 void* MLIRExecutable::getInvocableFunctionPtr(const std::string& member) {
 	std::scoped_lock lock(llvm_jit_mutex);
-	return jit->lookup(member).get();
+	auto symbol = jit->lookup(member);
+	if (!symbol) {
+		throw RuntimeException("Could not resolve MLIR function '" + member +
+		                       "': " + llvm::toString(symbol.takeError()));
+	}
+	return *symbol;
 }
 bool MLIRExecutable::hasInvocableFunctionPtr() {
 	return true;

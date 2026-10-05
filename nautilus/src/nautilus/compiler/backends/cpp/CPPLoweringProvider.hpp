@@ -91,6 +91,7 @@ private:
 		void visitConstFloat(ir::ConstFloatOperation* opt, short block, RegisterFrame& frame);
 		void visitConstBoolean(ir::ConstBooleanOperation* opt, short block, RegisterFrame& frame);
 		void visitConstPtr(ir::ConstPtrOperation* opt, short block, RegisterFrame& frame);
+		void visitRuntimeBinding(ir::RuntimeBindingOperation* opt, short block, RegisterFrame& frame);
 		void visitReturn(ir::ReturnOperation* opt, short block, RegisterFrame& frame);
 		void visitIf(ir::IfOperation* opt, short block, RegisterFrame& frame);
 		void visitCompare(ir::CompareOperation* opt, short block, RegisterFrame& frame);

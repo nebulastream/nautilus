@@ -27,6 +27,7 @@
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
+#include "nautilus/compiler/ir/operations/RuntimeBindingOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
@@ -140,6 +141,9 @@ public:
 			return;
 		case OT::AllocaOp:
 			d.visitAlloca(as<AllocaOperation>(op), std::forward<Args>(args)...);
+			return;
+		case OT::RuntimeBindingOp:
+			d.visitRuntimeBinding(as<RuntimeBindingOperation>(op), std::forward<Args>(args)...);
 			return;
 
 		// Control flow
@@ -268,6 +272,10 @@ public:
 	template <typename... Args>
 	void visitAlloca(AllocaOperation*, Args&&...) {
 		unhandled("AllocaOp");
+	}
+	template <typename... Args>
+	void visitRuntimeBinding(RuntimeBindingOperation*, Args&&...) {
+		unhandled("RuntimeBindingOp");
 	}
 	template <typename... Args>
 	void visitIf(IfOperation*, Args&&...) {

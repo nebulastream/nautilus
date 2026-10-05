@@ -12,7 +12,10 @@
 
 namespace nautilus {
 class NautilusFunctionDefinition;
+namespace runtime_binding {
+struct Entry;
 }
+} // namespace nautilus
 
 namespace nautilus::tracing {
 
@@ -35,7 +38,13 @@ public:
 	virtual TypedValueRef& registerFunctionArgument(Type type, size_t index) = 0;
 
 	/// Trace a constant value of the given type.
-	virtual TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) = 0;
+	virtual TypedValueRef& traceConstant(Type type, const ConstantLiteral& value,
+	                                     ConstantOrigin origin = ConstantOrigin::Unspecified) = 0;
+
+	virtual void traceFoldedConstant(Type type, const ConstantLiteral& value,
+	                                 ConstantOrigin origin = ConstantOrigin::Unspecified) = 0;
+
+	virtual TypedValueRef& traceRuntimeBinding(const runtime_binding::Entry& binding) = 0;
 
 	/// Trace a stack allocation of @p size bytes with @p align byte alignment.
 	/// Each call appends a fresh entry to the function's alloca table on the

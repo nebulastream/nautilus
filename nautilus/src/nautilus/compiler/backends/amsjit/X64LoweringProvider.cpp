@@ -682,6 +682,13 @@ void AsmJitLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperatio
 	bindResult(op->getIdentifier(), reg, frame);
 }
 
+void AsmJitLoweringProvider::LoweringContext::visitRuntimeBinding(ir::RuntimeBindingOperation* op,
+                                                                  RegisterFrame& frame) {
+	auto reg = allocReg(Type::ptr);
+	cc.mov(toGp(reg), reinterpret_cast<uint64_t>(op->getBinding().address));
+	bindResult(op->getIdentifier(), reg, frame);
+}
+
 // ── Arithmetic ────────────────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, RegisterFrame& frame) {
