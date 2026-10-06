@@ -24,7 +24,7 @@ private:
 	[[nodiscard]] bool dumpToConsole() const;
 	[[nodiscard]] bool dumpToFile() const;
 	const engine::Options& options;
-	const CompilationUnitID& id;
+	const CompilationUnitID id;
 	const std::filesystem::path rootPath;
 	mutable std::map<std::string, std::string> generatedFilesByType;
 };

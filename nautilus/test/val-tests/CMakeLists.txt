@@ -1,5 +1,6 @@
 add_executable(nautilus-value-tests
         IntegerValTypeTest.cpp
+        ScalarConstantOriginTest.cpp
         FloatValTypeTest.cpp
         FunctionPtrValTypeTest.cpp
         PtrValTypeTest.cpp

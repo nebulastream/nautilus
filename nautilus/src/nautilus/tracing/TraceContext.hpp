@@ -224,6 +224,7 @@ struct TraceState {
 	bool normalizeFunctionNames;
 	/// `dump.copySites`: remember where each recorded copy was made (ExecutionTrace::copySites).
 	bool recordCopySites;
+	const bool recordConstantOrigins;
 	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
 	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
 
@@ -252,7 +253,10 @@ public:
 	// --- TracingInterface overrides ---
 
 	TypedValueRef& registerFunctionArgument(Type type, size_t index) override;
-	TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) override;
+	TypedValueRef& traceConstant(Type type, const ConstantLiteral& value,
+	                             ConstantOrigin origin = ConstantOrigin::Unspecified) override;
+	void traceFoldedConstant(Type type, const ConstantLiteral& value,
+	                         ConstantOrigin origin = ConstantOrigin::Unspecified) override;
 	TypedValueRef& traceAlloca(size_t size, size_t align) override;
 	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
 	TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
@@ -321,7 +325,8 @@ public:
 	 * @return unique_ptr to ExecutionTrace containing the complete trace.
 	 */
 	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction, const engine::Options& options,
-	                                             Arena& arena);
+	                                             Arena& arena,
+	                                             ConstantOriginTracking tracking = ConstantOriginTracking::Disabled);
 
 	/**
 	 * @brief Multi-function tracing entry point. Traces all functions in the work-list,
@@ -333,15 +338,18 @@ public:
 	 * @return unique_ptr to TraceModule containing all function traces.
 	 */
 	std::unique_ptr<TraceModule> startTrace(std::list<compiler::CompilableFunction>& functions,
-	                                        const engine::Options& options, Arena& arena);
+	                                        const engine::Options& options, Arena& arena,
+	                                        ConstantOriginTracking tracking = ConstantOriginTracking::Disabled);
 	static std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functions,
-	                                          const engine::Options& options, Arena& arena);
+	                                          const engine::Options& options, Arena& arena,
+	                                          ConstantOriginTracking tracking = ConstantOriginTracking::Disabled);
 
 	TraceContext() = default;
 
 private:
 	bool isFollowing();
 	TypedValueRef& follow(Op op);
+	TypedValueRef& follow(Op op, TraceOperation& currentOperation);
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();

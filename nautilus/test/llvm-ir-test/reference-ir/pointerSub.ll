@@ -5,22 +5,20 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 define signext i32 @execute(ptr readonly %0, i32 %1) local_unnamed_addr #0 {
-  %3 = sub i32 0, %1
-  %4 = sext i32 %3 to i64
-  %5 = shl nsw i64 %4, 2
-  %6 = getelementptr i8, ptr %0, i64 %5
-  %7 = load i32, ptr %6, align 4
-  ret i32 %7
+  %3 = sext i32 %1 to i64
+  %.neg = mul nsw i64 %3, -4
+  %4 = getelementptr i8, ptr %0, i64 %.neg
+  %5 = load i32, ptr %4, align 4
+  ret i32 %5
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 define signext i32 @_mlir_ciface_execute(ptr readonly %0, i32 %1) local_unnamed_addr #0 {
-  %3 = sub i32 0, %1
-  %4 = sext i32 %3 to i64
-  %5 = shl nsw i64 %4, 2
-  %6 = getelementptr i8, ptr %0, i64 %5
-  %7 = load i32, ptr %6, align 4
-  ret i32 %7
+  %3 = sext i32 %1 to i64
+  %.neg.i = mul nsw i64 %3, -4
+  %4 = getelementptr i8, ptr %0, i64 %.neg.i
+  %5 = load i32, ptr %4, align 4
+  ret i32 %5
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
@@ -30,14 +28,13 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %4 = getelementptr i8, ptr %0, i64 8
   %5 = load ptr, ptr %4, align 8
   %6 = load i32, ptr %5, align 4
-  %7 = sub i32 0, %6
-  %8 = sext i32 %7 to i64
-  %9 = shl nsw i64 %8, 2
-  %10 = getelementptr i8, ptr %3, i64 %9
-  %11 = load i32, ptr %10, align 4
-  %12 = getelementptr i8, ptr %0, i64 16
-  %13 = load ptr, ptr %12, align 8
-  store i32 %11, ptr %13, align 4
+  %7 = sext i32 %6 to i64
+  %.neg.i = mul nsw i64 %7, -4
+  %8 = getelementptr i8, ptr %3, i64 %.neg.i
+  %9 = load i32, ptr %8, align 4
+  %10 = getelementptr i8, ptr %0, i64 16
+  %11 = load ptr, ptr %10, align 8
+  store i32 %9, ptr %11, align 4
   ret void
 }
 
@@ -48,14 +45,13 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %4 = getelementptr i8, ptr %0, i64 8
   %5 = load ptr, ptr %4, align 8
   %6 = load i32, ptr %5, align 4
-  %7 = sub i32 0, %6
-  %8 = sext i32 %7 to i64
-  %9 = shl nsw i64 %8, 2
-  %10 = getelementptr i8, ptr %3, i64 %9
-  %11 = load i32, ptr %10, align 4
-  %12 = getelementptr i8, ptr %0, i64 16
-  %13 = load ptr, ptr %12, align 8
-  store i32 %11, ptr %13, align 4
+  %7 = sext i32 %6 to i64
+  %.neg.i.i = mul nsw i64 %7, -4
+  %8 = getelementptr i8, ptr %3, i64 %.neg.i.i
+  %9 = load i32, ptr %8, align 4
+  %10 = getelementptr i8, ptr %0, i64 16
+  %11 = load ptr, ptr %10, align 8
+  store i32 %9, ptr %11, align 4
   ret void
 }
 

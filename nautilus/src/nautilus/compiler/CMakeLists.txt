@@ -1,5 +1,6 @@
 
 add_subdirectory(backends)
+add_subdirectory(artifact)
 
 if (ENABLE_TRACING)
     add_subdirectory(ir)

@@ -31,6 +31,10 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         SelectExecutionTest.cpp
 )
 
+if (ENABLE_TRACING)
+    list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES ArtifactPreflightTest.cpp)
+endif ()
+
 if (ENABLE_BC_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
             backends/bc/CompilationStatisticsTest.cpp)

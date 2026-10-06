@@ -59,11 +59,13 @@ void throwWithoutStruct() {
 	throw std::runtime_error("invoke failed without cleanup");
 }
 
+#ifdef ENABLE_MLIR_BACKEND
 val<int32_t> invokeNoexceptWithStruct() {
 	val<ExceptionResult> result;
 	invoke(writeResult, &result, val<int32_t> {42});
 	return result.get(&ExceptionResult::value);
 }
+#endif
 
 val<int32_t> invokeThrowingWithStruct() {
 	val<ExceptionResult> result;
@@ -423,6 +425,7 @@ val<int32_t> nestedCallInLoopWithBodyStruct(val<int32_t> iterations) {
 	return sum;
 }
 
+#ifdef ENABLE_MLIR_BACKEND
 engine::NautilusEngine makeMlirEngine() {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
@@ -431,6 +434,7 @@ engine::NautilusEngine makeMlirEngine() {
 	options.setOption("mlir.enableMultithreading", false);
 	return engine::NautilusEngine {options};
 }
+#endif
 
 engine::NautilusEngine makeInterpreterEngine() {
 	engine::Options options;
@@ -580,11 +584,15 @@ TEST_CASE("invokes in a loop unwind a struct declared before the loop across bac
 }
 
 TEST_CASE("noexcept MLIR invokes retain the direct call path") {
+#ifdef ENABLE_MLIR_BACKEND
 	auto engine = makeMlirEngine();
 	auto function = engine.registerFunction(invokeNoexceptWithStruct);
 	destructorCalls = 0;
 	REQUIRE(function() == 42);
 	REQUIRE(destructorCalls == 1);
+#else
+	SKIP("MLIR backend is disabled");
+#endif
 }
 
 TEST_CASE("exceptional cleanups run in reverse construction order across backends") {
@@ -631,9 +639,11 @@ TEST_CASE("throwing invokes without live structs retain exception handling") {
 	}
 	REQUIRE(exceptionCalls == 1);
 
+#ifdef ENABLE_MLIR_BACKEND
 	auto engine = makeMlirEngine();
 	auto function = engine.registerFunction(invokeThrowingWithoutStruct);
 	REQUIRE_THROWS_AS(function(), std::runtime_error);
+#endif
 }
 
 TEST_CASE("indirect invokes carry live struct destructors through trace and IR") {

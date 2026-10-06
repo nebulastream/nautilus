@@ -41,6 +41,12 @@ void setFoldStaticConstants(bool fold) {
 // --- Guarded wrappers: may be called from val<T> constructors/destructors
 //     that run outside a tracing context (e.g. copies, assignments, ref-counting).
 
+void traceFoldedConstant(Type type, const ConstantLiteral& value, ConstantOrigin origin) {
+	if (activeTracer) {
+		activeTracer->traceFoldedConstant(type, value, origin);
+	}
+}
+
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
 	if (activeTracer) {
 		activeTracer->traceAssignment(target, source, resultType);
@@ -89,8 +95,8 @@ TypedValueRef& registerFunctionArgument(Type type, size_t index) {
 	return activeTracer->registerFunctionArgument(type, index);
 }
 
-TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
-	return activeTracer->traceConstant(type, value);
+TypedValueRef& traceConstant(Type type, const ConstantLiteral& value, ConstantOrigin origin) {
+	return activeTracer->traceConstant(type, value, origin);
 }
 
 bool traceBool(const TypedValueRef& value, double probability) {

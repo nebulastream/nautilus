@@ -147,6 +147,9 @@ TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrac
                                                                    std::shared_ptr<compiler::ir::IRGraph> ir,
                                                                    const compiler::CompilationUnitID&)
     : trace(trace), ir(std::move(ir)) {
+	if (!trace->recordsConstantOrigins()) {
+		this->ir->invalidateConstantOrigins();
+	}
 }
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
@@ -672,14 +675,14 @@ void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& fra
 	    [&](auto&& value) {
 		    using T = std::decay_t<decltype(value)>;
 		    if constexpr (std::is_same_v<T, bool>) {
-			    constOperation =
-			        currentBlock->addTaggedOperation<ConstBooleanOperation>(provenance, resultIdentifier, value);
+			    constOperation = currentBlock->addTaggedOperation<ConstBooleanOperation>(
+			        provenance, resultIdentifier, value, operation.constantOrigin);
 		    } else if constexpr (std::is_integral_v<T>) {
-			    constOperation = currentBlock->addTaggedOperation<ConstIntOperation>(provenance, resultIdentifier,
-			                                                                         value, resultType);
+			    constOperation = currentBlock->addTaggedOperation<ConstIntOperation>(
+			        provenance, resultIdentifier, value, resultType, operation.constantOrigin);
 		    } else if constexpr (std::is_floating_point_v<T>) {
-			    constOperation = currentBlock->addTaggedOperation<ConstFloatOperation>(provenance, resultIdentifier,
-			                                                                           value, resultType);
+			    constOperation = currentBlock->addTaggedOperation<ConstFloatOperation>(
+			        provenance, resultIdentifier, value, resultType, operation.constantOrigin);
 		    } else if constexpr (std::is_pointer_v<T>) {
 			    constOperation =
 			        currentBlock->addTaggedOperation<ConstPtrOperation>(provenance, resultIdentifier, value);
