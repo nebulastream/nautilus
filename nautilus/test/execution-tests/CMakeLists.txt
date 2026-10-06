@@ -89,10 +89,20 @@ endif ()
 if (ENABLE_MLIR_BACKEND)
     find_package(MLIR REQUIRED CONFIG)
     target_include_directories(nautilus-execution-tests SYSTEM PRIVATE ${MLIR_INCLUDE_DIRS})
-    llvm_map_components_to_libnames(nautilus_binding_native_libs native)
     target_link_libraries(nautilus-execution-tests PRIVATE
-            MLIRParser MLIRBytecodeWriter MLIRLLVMDialect LLVMAnalysis LLVMIRReader LLVMObject
-            LLVMMC LLVMMCDisassembler LLVMTargetParser ${nautilus_binding_native_libs})
+            MLIRParser MLIRBytecodeWriter MLIRLLVMDialect LLVMAnalysis LLVMIRReader LLVMObject)
+    if (NOT "${LLVM_NATIVE_ARCH}" IN_LIST LLVM_TARGETS_TO_BUILD)
+        message(FATAL_ERROR "Runtime binding object inspection requires LLVM's native target: ${LLVM_NATIVE_ARCH}")
+    endif ()
+    llvm_map_components_to_libnames(nautilus_binding_inspection_libs
+            Object MC MCDisassembler TargetParser ${LLVM_NATIVE_ARCH})
+    add_executable(nautilus-binding-object-inspection backends/mlir/RuntimeBindingObjectInspection.cpp)
+    target_include_directories(nautilus-binding-object-inspection SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+    target_compile_options(nautilus-binding-object-inspection PRIVATE -fno-rtti)
+    target_link_libraries(nautilus-binding-object-inspection PRIVATE ${nautilus_binding_inspection_libs})
+    target_compile_definitions(nautilus-execution-tests PRIVATE
+            NAUTILUS_BINDING_OBJECT_INSPECTION_PATH="$<TARGET_FILE:nautilus-binding-object-inspection>")
+    add_dependencies(nautilus-execution-tests nautilus-binding-object-inspection)
 endif ()
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus-execution-tests PRIVATE spdlog::spdlog)

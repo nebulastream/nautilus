@@ -14,9 +14,10 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <llvm/ADT/SmallString.h>
 #include <llvm/Analysis/LoopInfo.h>
 #include <llvm/BinaryFormat/ELF.h>
-#include <llvm/Config/llvm-config.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InlineAsm.h>
@@ -24,16 +25,11 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IRReader/IRReader.h>
-#include <llvm/MC/MCAsmInfo.h>
-#include <llvm/MC/MCContext.h>
-#include <llvm/MC/MCDisassembler/MCDisassembler.h>
-#include <llvm/MC/MCInstrAnalysis.h>
-#include <llvm/MC/MCSubtargetInfo.h>
-#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Object/ELFObjectFile.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/Program.h>
 #include <llvm/Support/SourceMgr.h>
-#include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
@@ -44,8 +40,10 @@
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/Verifier.h>
 #include <mlir/Parser/Parser.h>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -197,6 +195,27 @@ void setBindingObjectSymbolType(std::string& object, const std::string& symbol, 
 	}
 	REQUIRE(matches == 1);
 }
+
+class BindingObjectInspectionDirectory {
+public:
+	BindingObjectInspectionDirectory() {
+		llvm::SmallString<128> directory;
+		if (const auto error = llvm::sys::fs::createUniqueDirectory("nautilus-binding-object-inspection", directory)) {
+			throw std::system_error(error, "Create binding object inspection directory");
+		}
+		path_ = directory.str().str();
+	}
+	~BindingObjectInspectionDirectory() {
+		std::error_code ignored;
+		std::filesystem::remove_all(path_, ignored);
+	}
+	const std::filesystem::path& path() const {
+		return path_;
+	}
+
+private:
+	std::filesystem::path path_;
+};
 
 } // namespace
 
@@ -802,7 +821,6 @@ TEST_CASE("RuntimeBindings hoists invariant binding addresses out of native loop
 	REQUIRE(wrappers > 0);
 	const auto coldWrappers = wrappers;
 	auto executable = artifact::loadBytecode(artifacts, options);
-	const auto id = "runtime-binding-codegen";
 	auto expected = values;
 	uint64_t checksum = 0;
 	for (uint64_t index = 0; index < 97; ++index) {
@@ -857,113 +875,23 @@ TEST_CASE("RuntimeBindings hoists invariant binding addresses out of native loop
 		std::filesystem::remove(path);
 	}
 
-	REQUIRE_FALSE(llvm::InitializeNativeTargetDisassembler());
-	std::string targetError;
-	const auto* target = llvm::TargetRegistry::lookupTarget(host, targetError);
-	INFO(targetError);
-	REQUIRE(target != nullptr);
-#if LLVM_VERSION_MAJOR >= 22
-	const auto& targetTriple = host;
-#else
-	const auto targetTriple = host.str();
-#endif
-	std::unique_ptr<llvm::MCRegisterInfo> registers(target->createMCRegInfo(targetTriple));
-	REQUIRE(registers != nullptr);
-	std::unique_ptr<llvm::MCAsmInfo> assembly(target->createMCAsmInfo(*registers, targetTriple, {}));
-	REQUIRE(assembly != nullptr);
-	std::unique_ptr<llvm::MCSubtargetInfo> subtarget(
-	    target->createMCSubtargetInfo(targetTriple, llvm::sys::getHostCPUName(), ""));
-	REQUIRE(subtarget != nullptr);
-	llvm::MCContext context(host, assembly.get(), registers.get(), subtarget.get());
-	std::unique_ptr<llvm::MCDisassembler> disassembler(target->createMCDisassembler(*subtarget, context));
-	REQUIRE(disassembler != nullptr);
-	std::unique_ptr<llvm::MCInstrInfo> instructions(target->createMCInstrInfo());
-	REQUIRE(instructions != nullptr);
-	std::unique_ptr<llvm::MCInstrAnalysis> analysis(target->createMCInstrAnalysis(instructions.get()));
-	REQUIRE(analysis != nullptr);
-
-	auto object = llvm::object::ObjectFile::createObjectFile(llvm::MemoryBufferRef(artifacts.object, id));
-	REQUIRE(static_cast<bool>(object));
-	REQUIRE((*object)->isELF());
-	REQUIRE((*object)->getArch() == llvm::Triple::x86_64);
-	const auto symbols = (*object)->symbols();
-	auto functionSymbol = symbols.end();
-	for (auto current = symbols.begin(); current != symbols.end(); ++current) {
-		auto name = current->getName();
-		REQUIRE(static_cast<bool>(name));
-		if (*name == "execute") {
-			functionSymbol = current;
-			break;
-		}
-	}
-	REQUIRE(functionSymbol != symbols.end());
-	auto functionSection = functionSymbol->getSection();
-	REQUIRE(static_cast<bool>(functionSection));
-	REQUIRE(*functionSection != (*object)->section_end());
-	REQUIRE((*functionSection)->isText());
-	auto functionAddress = functionSymbol->getAddress();
-	REQUIRE(static_cast<bool>(functionAddress));
-	REQUIRE(*functionAddress >= (*functionSection)->getAddress());
-	const auto functionStart = *functionAddress - (*functionSection)->getAddress();
-	const auto functionSize = llvm::object::ELFSymbolRef(*functionSymbol).getSize();
-	REQUIRE(functionSize > 0);
-	auto contents = (*functionSection)->getContents();
-	REQUIRE(static_cast<bool>(contents));
-	REQUIRE(functionStart <= contents->size());
-	REQUIRE(functionSize <= contents->size() - functionStart);
-	const auto functionEnd = functionStart + functionSize;
-	const llvm::ArrayRef<uint8_t> bytes(contents->bytes_begin() + functionStart, functionSize);
-	std::vector<std::pair<uint64_t, uint64_t>> nativeLoops;
-	for (auto offset = functionStart; offset < functionEnd;) {
-		llvm::MCInst instruction;
-		uint64_t size = 0;
-		CAPTURE(offset);
-		REQUIRE(disassembler->getInstruction(instruction, size, bytes.drop_front(offset - functionStart), offset,
-		                                     llvm::nulls()) == llvm::MCDisassembler::Success);
-		REQUIRE(size > 0);
-		if (analysis->isBranch(instruction)) {
-			REQUIRE_FALSE(analysis->isIndirectBranch(instruction));
-			uint64_t destination = 0;
-			REQUIRE(analysis->evaluateBranch(instruction, offset, size, destination));
-			if (destination <= offset) {
-				REQUIRE(destination >= functionStart);
-				nativeLoops.emplace_back(destination, offset + size);
-			}
-		}
-		offset += size;
-	}
-	REQUIRE_FALSE(nativeLoops.empty());
-
-	std::size_t bindingRelocations = 0;
-	for (const auto& section : (*object)->sections()) {
-		auto relocatedSection = section.getRelocatedSection();
-		REQUIRE(static_cast<bool>(relocatedSection));
-		if (*relocatedSection != *functionSection) {
-			continue;
-		}
-		for (const auto& relocation : section.relocations()) {
-			const auto offset = relocation.getOffset();
-			if (offset < functionStart || offset >= functionEnd) {
-				continue;
-			}
-			auto relocatedSymbol = relocation.getSymbol();
-			if (relocatedSymbol == (*object)->symbol_end()) {
-				continue;
-			}
-			auto name = relocatedSymbol->getName();
-			REQUIRE(static_cast<bool>(name));
-			if (*name == symbol) {
-				++bindingRelocations;
-				CAPTURE(offset);
-				REQUIRE(relocation.getType() == llvm::ELF::R_X86_64_64);
-				for (const auto& [loopStart, loopEnd] : nativeLoops) {
-					CAPTURE(loopStart, loopEnd);
-					REQUIRE((offset + sizeof(uint64_t) <= loopStart || offset >= loopEnd));
-				}
-			}
-		}
-	}
-	REQUIRE(bindingRelocations == 1);
+	BindingObjectInspectionDirectory temporary;
+	const auto objectPath = (temporary.path() / "runtime-binding-codegen.o").string();
+	std::ofstream objectFile(objectPath, std::ios::binary | std::ios::trunc);
+	REQUIRE(objectFile.is_open());
+	objectFile.write(artifacts.object.data(), static_cast<std::streamsize>(artifacts.object.size()));
+	objectFile.close();
+	REQUIRE_FALSE(objectFile.fail());
+	const std::string helperPath = NAUTILUS_BINDING_OBJECT_INSPECTION_PATH;
+	REQUIRE(std::filesystem::is_regular_file(helperPath));
+	std::string executionError;
+	bool executionFailed = false;
+	const auto exitCode = llvm::sys::ExecuteAndWait(helperPath, {helperPath, objectPath, symbol}, std::nullopt, {}, 60,
+	                                                0, &executionError, &executionFailed);
+	CAPTURE(helperPath, objectPath, symbol, exitCode);
+	INFO(executionError);
+	REQUIRE_FALSE(executionFailed);
+	REQUIRE(exitCode == 0);
 }
 
 } // namespace nautilus::engine

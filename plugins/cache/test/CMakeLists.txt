@@ -5,7 +5,10 @@ include(Catch)
 add_executable(nautilus-cache-tests
         CompilationCacheTest.cpp
         IntrinsicCacheFingerprintTest.cpp
-        CacheSafetyAnalysisTest.cpp)
+        CacheSafetyAnalysisTest.cpp
+        RuntimeBindingCacheTest.cpp
+        RuntimeBindingCleanupTest.cpp
+        RuntimeBindingBenchmark.cpp)
 
 target_link_libraries(nautilus-cache-tests PRIVATE
         nautilus-cache
