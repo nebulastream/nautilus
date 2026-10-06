@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/RuntimeBindingInfo.hpp"
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/tracing/Snapshot.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -146,7 +147,7 @@ struct BlockRef {
  * can simply be reclaimed in bulk with the rest of the Arena.
  */
 using InputVariant = std::variant<TypedValueRef, None, ConstantLiteral, BlockRef*, FunctionCall*, BranchProbability,
-                                  AllocaIndex, IndirectFunctionCall*>;
+                                  AllocaIndex, IndirectFunctionCall*, const runtime_binding::Entry*>;
 
 static_assert(std::is_trivially_destructible_v<InputVariant>,
               "InputVariant must stay trivially destructible so TraceOperation input arrays need no dtor sweep");

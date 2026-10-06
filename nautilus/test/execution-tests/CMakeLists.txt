@@ -28,6 +28,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         TieredCompilationTest.cpp
         PointerExecutionTest.cpp
         RegionTest.cpp
+        RuntimeBindingTest.cpp
         SelectExecutionTest.cpp
 )
 
@@ -56,6 +57,8 @@ if (ENABLE_MLIR_BACKEND)
             backends/mlir/ModuleArtifactTest.cpp
             backends/mlir/ArtifactReviewRegressionTest.cpp
             backends/mlir/ArtifactTransportValidationTest.cpp
+            backends/mlir/RuntimeBindingValidationTest.cpp
+            backends/mlir/RuntimeBindingArtifactTest.cpp
             DebugInfoExecutionTest.cpp
             PerfJitDumpExecutionTest.cpp)
 endif ()
@@ -86,7 +89,10 @@ endif ()
 if (ENABLE_MLIR_BACKEND)
     find_package(MLIR REQUIRED CONFIG)
     target_include_directories(nautilus-execution-tests SYSTEM PRIVATE ${MLIR_INCLUDE_DIRS})
-    target_link_libraries(nautilus-execution-tests PRIVATE MLIRParser MLIRBytecodeWriter MLIRLLVMDialect)
+    llvm_map_components_to_libnames(nautilus_binding_native_libs native)
+    target_link_libraries(nautilus-execution-tests PRIVATE
+            MLIRParser MLIRBytecodeWriter MLIRLLVMDialect LLVMAnalysis LLVMIRReader LLVMObject
+            LLVMMC LLVMMCDisassembler LLVMTargetParser ${nautilus_binding_native_libs})
 endif ()
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus-execution-tests PRIVATE spdlog::spdlog)

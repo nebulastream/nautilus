@@ -54,6 +54,7 @@ enum Op : uint8_t {
 	// lookup at every use site, so allocas no longer need to be hoisted.
 	ALLOCA,
 	FUNC_ADDR,
+	RUNTIME_BINDING,
 };
 
 constexpr const char* toString(Op type) {
@@ -130,6 +131,8 @@ constexpr const char* toString(Op type) {
 		return "ALLOCA";
 	case FUNC_ADDR:
 		return "FUNC_ADDR";
+	case RUNTIME_BINDING:
+		return "RUNTIME_BINDING";
 	default:
 		__builtin_unreachable();
 	}
@@ -187,6 +190,7 @@ constexpr uint8_t inputCountFor(Op op, Type resultType) noexcept {
 	case NEGATE:
 	case ALLOCA:
 	case FUNC_ADDR:
+	case RUNTIME_BINDING:
 		return 1;
 	}
 	__builtin_unreachable();

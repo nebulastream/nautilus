@@ -72,6 +72,9 @@ public:
 	 */
 	std::vector<void*> getJitProxyTargetAddresses();
 
+	std::vector<std::string> getJitRuntimeBindingSymbols();
+	std::vector<void*> getJitRuntimeBindingTargetAddresses();
+
 private:
 	// Allow the CRTP dispatcher to call our private visitXxx hooks.
 	friend class ir::OperationDispatcher<MLIRLoweringProvider>;
@@ -84,6 +87,8 @@ private:
 	NES::ProxyFunctions ProxyFunctions;
 	std::vector<std::string> jitProxyFunctionSymbols;
 	std::vector<void*> jitProxyFunctionTargetAddresses;
+	std::vector<std::string> jitRuntimeBindingSymbols;
+	std::vector<void*> jitRuntimeBindingTargetAddresses;
 	std::unordered_set<ir::OperationIdentifier> inductionVars;
 	// Utility
 	::mlir::RewriterBase::InsertPoint* globalInsertPoint;
@@ -229,6 +234,7 @@ private:
 	void visitConstFloat(ir::ConstFloatOperation* constFloatOp, ValueFrame& frame);
 	void visitConstBoolean(ir::ConstBooleanOperation* constBooleanOp, ValueFrame& frame);
 	void visitConstPtr(ir::ConstPtrOperation* constPtrOperation, ValueFrame& frame);
+	void visitRuntimeBinding(ir::RuntimeBindingOperation* runtimeBindingOperation, ValueFrame& frame);
 
 	void visitAdd(ir::AddOperation* addIntOp, ValueFrame& frame);
 	void visitSub(ir::SubOperation* subIntOp, ValueFrame& frame);

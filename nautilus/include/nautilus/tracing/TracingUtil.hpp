@@ -58,6 +58,7 @@ TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first
 
 TypedValueRef& traceAlloca(size_t size, size_t align);
 TypedValueRef& traceTypedAlloca(const TypedAllocation& allocation);
+TypedValueRef& traceRuntimeBinding(const runtime_binding::Entry& binding);
 
 /// Traces a boolean branch with an associated taken-probability hint.
 bool traceBool(const TypedValueRef& value, double probability);

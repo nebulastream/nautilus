@@ -23,6 +23,7 @@
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Target/TargetMachine.h>
+#include <unordered_map>
 #include <unordered_set>
 #ifdef __linux__
 #include <dlfcn.h>
@@ -190,26 +191,51 @@ void* resolveHelper(const std::string& symbol) {
 
 } // namespace
 
-void createImports(Descriptor& descriptor, const compiler::mlir::MLIRCacheArtifacts& artifacts,
-                   std::string_view object) {
+void createImports(Descriptor& descriptor, const compiler::mlir::MLIRCacheArtifacts& artifacts, std::string_view object,
+                   const engine::Options& options) {
+	if (descriptor.bindingSchema != options.getRuntimeBindings().schemaEntries()) {
+		throw RuntimeException("Artifact runtime binding schema mismatch");
+	}
+	std::unordered_map<std::string, void*> bindings;
+	for (const auto& [identity, entry] : options.getRuntimeBindings().entries()) {
+		bindings.emplace(entry->symbol, entry->address);
+	}
 	if (artifacts.externalSymbols.size() != artifacts.externalAddresses.size()) {
 		throw RuntimeException("Artifact external symbol vector mismatch");
 	}
 	for (std::size_t index = 0; index < artifacts.externalSymbols.size(); ++index) {
-		addImport(descriptor, artifacts.externalSymbols[index], artifacts.externalAddresses[index], true);
+		const auto& symbol = artifacts.externalSymbols[index];
+		if (const auto binding = bindings.find(symbol); binding != bindings.end()) {
+			if (binding->second != artifacts.externalAddresses[index]) {
+				throw RuntimeException("Artifact runtime binding address mismatch");
+			}
+		} else {
+			addImport(descriptor, symbol, artifacts.externalAddresses[index], true);
+		}
 	}
-	const auto symbols = compiler::mlir::inspectArtifactObject(object);
+	const auto symbols = compiler::mlir::inspectArtifactObject(object, options);
 	for (const auto& symbol : symbols.undefinedSymbols) {
-		if (std::ranges::find(descriptor.imports, symbol, &ImportDescriptor::symbol) == descriptor.imports.end()) {
+		if (!bindings.contains(symbol) &&
+		    std::ranges::find(descriptor.imports, symbol, &ImportDescriptor::symbol) == descriptor.imports.end()) {
 			addImport(descriptor, symbol, resolveHelper(symbol), false);
 		}
 	}
 	std::ranges::sort(descriptor.imports, {}, &ImportDescriptor::symbol);
 }
 
-ResolvedImports resolveImports(const Descriptor& descriptor, bool bytecode) {
+ResolvedImports resolveImports(const Descriptor& descriptor, bool bytecode, const engine::Options& options) {
+	if (descriptor.bindingSchema != options.getRuntimeBindings().schemaEntries()) {
+		throw RuntimeException("Artifact runtime binding schema mismatch");
+	}
 	ResolvedImports result;
+	std::unordered_set<std::string> symbols;
+	for (const auto& entry : descriptor.exports) {
+		symbols.insert(entry.name);
+	}
 	for (const auto& entry : descriptor.imports) {
+		if (!symbols.insert(entry.symbol).second) {
+			throw RuntimeException("Artifact import symbol collision: " + entry.symbol);
+		}
 		const common::ExecutableImageLocation image {entry.image.buildId, entry.image.loadOffset};
 		auto* address = common::resolveExecutableAddress(image);
 		if (address == nullptr || imageAt(address) != entry.image) {
@@ -222,6 +248,13 @@ ResolvedImports resolveImports(const Descriptor& descriptor, bool bytecode) {
 			result.auxiliarySymbols.push_back(entry.symbol);
 			result.auxiliaryAddresses.push_back(address);
 		}
+	}
+	for (const auto& [identity, entry] : options.getRuntimeBindings().entries()) {
+		if (!symbols.insert(entry->symbol).second || entry->address == nullptr) {
+			throw RuntimeException("Artifact runtime binding symbol collision: " + entry->symbol);
+		}
+		result.symbols.push_back(entry->symbol);
+		result.addresses.push_back(entry->address);
 	}
 	return result;
 }
@@ -264,6 +297,7 @@ ModuleArtifact emit(std::list<compiler::CompilableFunction>& functions, const en
 	ModuleArtifact result;
 	auto& descriptor = result.descriptor;
 	descriptor.compatibility = detail::currentCompatibility(options);
+	descriptor.bindingSchema = options.getRuntimeBindings().schemaEntries();
 	std::unordered_set<std::string> names;
 	for (const auto& function : functions) {
 		if (function.getName().empty() || function.getName().find('\0') != std::string::npos ||
@@ -303,10 +337,10 @@ ModuleArtifact emit(std::list<compiler::CompilableFunction>& functions, const en
 	compiler::DumpHandler dump(options, ir->getId());
 	compiler::mlir::MLIRCacheArtifacts raw;
 	const auto objectPreflight = [&](std::string_view object) {
-		detail::createImports(descriptor, raw, object);
-		const auto resolved = detail::resolveImports(descriptor, false);
+		detail::createImports(descriptor, raw, object, options);
+		const auto resolved = detail::resolveImports(descriptor, false, options);
 		compiler::mlir::validateArtifactObjectSymbols(object, detail::exportNames(descriptor), resolved.symbols,
-		                                              resolved.addresses);
+		                                              resolved.addresses, options);
 	};
 	auto executable = backend.compileWithCacheArtifacts(ir, detail::exportNames(descriptor), dump, options, nullptr,
 	                                                    raw, &descriptor.exports, objectPreflight);
@@ -317,10 +351,10 @@ ModuleArtifact emit(std::list<compiler::CompilableFunction>& functions, const en
 	for (std::size_t index = 0; index < descriptor.exports.size(); ++index) {
 		descriptor.exports[index].loweredABI = raw.exportABIs[index];
 	}
-	detail::createImports(descriptor, raw, raw.object);
-	const auto resolved = detail::resolveImports(descriptor, false);
+	detail::createImports(descriptor, raw, raw.object, options);
+	const auto resolved = detail::resolveImports(descriptor, false, options);
 	compiler::mlir::validateArtifactObjectSymbols(raw.object, detail::exportNames(descriptor), resolved.symbols,
-	                                              resolved.addresses);
+	                                              resolved.addresses, options);
 	if (detail::currentCompatibility(options) != descriptor.compatibility) {
 		throw RuntimeException("Artifact implementation identity changed during code generation");
 	}
@@ -343,7 +377,7 @@ ModuleArtifact emit(std::list<compiler::CompilableFunction>& functions, const en
 engine::CompiledModule loadNative(const ModuleArtifact& value, const engine::Options& options) {
 #ifdef ENABLE_MLIR_BACKEND
 	validateForLoad(value, options, false);
-	const auto imports = detail::resolveImports(value.descriptor, false);
+	const auto imports = detail::resolveImports(value.descriptor, false, options);
 	compiler::mlir::MLIRCompilationBackend backend;
 	auto executable = backend.compileCachedObject(value.object, imports.symbols, imports.addresses,
 	                                              detail::exportNames(value.descriptor), options, nullptr);
@@ -357,7 +391,7 @@ engine::CompiledModule loadNative(const ModuleArtifact& value, const engine::Opt
 engine::CompiledModule loadBytecode(const ModuleArtifact& value, const engine::Options& options) {
 #ifdef ENABLE_MLIR_BACKEND
 	validateForLoad(value, options, true);
-	const auto imports = detail::resolveImports(value.descriptor, true);
+	const auto imports = detail::resolveImports(value.descriptor, true, options);
 	compiler::DumpHandler dump(options, "artifact-bytecode");
 	compiler::mlir::MLIRCompilationBackend backend;
 	auto allSymbols = imports.symbols;
@@ -365,8 +399,8 @@ engine::CompiledModule loadBytecode(const ModuleArtifact& value, const engine::O
 	allSymbols.insert(allSymbols.end(), imports.auxiliarySymbols.begin(), imports.auxiliarySymbols.end());
 	allAddresses.insert(allAddresses.end(), imports.auxiliaryAddresses.begin(), imports.auxiliaryAddresses.end());
 	const auto objectPreflight = [names = detail::exportNames(value.descriptor), symbols = std::move(allSymbols),
-	                              addresses = std::move(allAddresses)](std::string_view object) {
-		compiler::mlir::validateArtifactObjectSymbols(object, names, symbols, addresses);
+	                              addresses = std::move(allAddresses), options](std::string_view object) {
+		compiler::mlir::validateArtifactObjectSymbols(object, names, symbols, addresses, options);
 	};
 	auto executable = backend.compileCachedBytecode(
 	    value.bytecode, value.descriptor.moduleManifest, imports.symbols, imports.addresses,
