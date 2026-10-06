@@ -31,7 +31,7 @@ jobs:
           - os: 'ubuntu-24.04'
             cc: 'gcc-14'
             cxx: 'g++-14'
-            flags: '-DENABLE_TRACING=OFF -DENABLE_LOGGING=OFF'
+            flags: '-DENABLE_TRACING=OFF -DENABLE_LOGGING=OFF -DENABLE_CACHE_PLUGIN=OFF'
           # Tag identity is derived from a frame-pointer walk, so -O0 vs -O3 is an axis
           # tracing can legitimately behave differently on; every other leg above builds
           # Release, which left a whole class of Debug-only tracing bugs uncaught (#450).
@@ -46,7 +46,23 @@ jobs:
           - os: 'ubuntu-24.04'
             cc: 'clang-21'
             cxx: 'clang++-21'
-            flags: ''
+            flags: '-DENABLE_CACHE_PLUGIN=OFF'
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_CACHE_PLUGIN=ON'
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_CACHE_PLUGIN=ON -DBUILD_SHARED_LIBS=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON'
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_COMPILER=OFF -DENABLE_CACHE_PLUGIN=OFF'
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_MLIR_BACKEND=OFF -DENABLE_CACHE_PLUGIN=OFF'
           - os: 'ubuntu-24.04'
             cc: 'clang-21'
             cxx: 'clang++-21'
@@ -134,6 +150,26 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/nautilus --output-on-failure --timeout 300
+      - name: test cache plugin
+        if: contains(matrix.flags, 'ENABLE_CACHE_PLUGIN=ON')
+        shell: bash
+        run: |
+          ctest --test-dir build/plugins/cache/test --output-on-failure --timeout 300 --no-tests=error
+      - name: test installed cache ON and OFF packages
+        if: contains(matrix.flags, 'ENABLE_CACHE_PLUGIN=')
+        shell: bash
+        run: |
+          cmake --install build --prefix "$PWD/install"
+          expected=OFF
+          if [[ '${{ matrix.flags }}' == *ENABLE_CACHE_PLUGIN=ON* ]]; then expected=ON; fi
+          cmake -S plugins/cache/test/package -B consumer -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PWD/install" \
+            -DNAUTILUS_CACHE_EXPECTED="$expected" \
+            -DMLIR_DIR="$PWD/build/mlir-22.1.8/mlir/lib/cmake/mlir" \
+            -DLLVM_DIR="$PWD/build/mlir-22.1.8/mlir/lib/cmake/llvm"
+          cmake --build consumer
+          ctest --test-dir consumer --show-only=json-v1 --no-tests=error
+          ctest --test-dir consumer --output-on-failure --timeout 300 --no-tests=error
       - name: test std plugin
         shell: bash
         run: |
