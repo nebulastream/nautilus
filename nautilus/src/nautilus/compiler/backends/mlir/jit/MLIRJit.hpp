@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/compiler/JitSymbolRegistry.hpp"
+#include <functional>
 #include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/ExecutionEngine/Orc/Core.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
@@ -10,6 +11,15 @@
 #include <llvm/Support/Error.h>
 #include <memory>
 #include <mlir/IR/BuiltinOps.h>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace llvm {
+class MemoryBuffer;
+}
 
 namespace nautilus::compiler::mlir {
 
@@ -28,9 +38,24 @@ namespace nautilus::compiler::mlir {
  */
 class MLIRJit {
 public:
+	class ObjectCapture {
+	public:
+		explicit ObjectCapture(std::function<void(std::string_view)> objectPreflight = {});
+		llvm::Error validate(llvm::StringRef object) const;
+		void record(llvm::StringRef object);
+		[[nodiscard]] std::optional<std::string> getObject() const;
+
+	private:
+		std::function<void(std::string_view)> objectPreflight_;
+		mutable std::mutex mutex_;
+		std::vector<std::string> objects_;
+	};
+
 	struct Options {
 		llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
 		llvm::function_ref<llvm::Error(llvm::Module*)> transformer = nullptr;
+		std::shared_ptr<ObjectCapture> objectCapture;
+		bool allowCurrentProcessSymbols = true;
 
 		// Register linked objects with the debugger through the GDB JIT
 		// interface so GDB/LLDB (and the IDEs driving them) can resolve the
@@ -75,7 +100,11 @@ public:
 
 	static llvm::Expected<std::unique_ptr<MLIRJit>> create(::mlir::ModuleOp module, const Options& options);
 
-	void registerSymbols(llvm::function_ref<llvm::orc::SymbolMap(llvm::orc::MangleAndInterner)> symbolMapFn);
+	static llvm::Expected<std::unique_ptr<MLIRJit>> createFromObject(std::unique_ptr<llvm::MemoryBuffer> object,
+	                                                                 const Options& options);
+
+	llvm::Error registerSymbols(llvm::function_ref<llvm::orc::SymbolMap(llvm::orc::MangleAndInterner)> symbolMapFn);
+	llvm::Error initialize();
 
 	llvm::Expected<void*> lookup(llvm::StringRef name);
 	llvm::Expected<void (*)(void**)> lookupPacked(llvm::StringRef name);
@@ -90,6 +119,7 @@ public:
 	}
 
 private:
+	static llvm::Expected<std::unique_ptr<MLIRJit>> createJit(const Options& options);
 	MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit, ModuleIndex moduleIndex);
 
 	std::unique_ptr<llvm::orc::LLJIT> jit_;

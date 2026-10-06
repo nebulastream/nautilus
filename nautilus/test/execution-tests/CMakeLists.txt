@@ -53,6 +53,8 @@ endif ()
 if (ENABLE_MLIR_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
             ABIExtensionAttributeTest.cpp
+            backends/mlir/ModuleArtifactTest.cpp
+            backends/mlir/ArtifactTransportValidationTest.cpp
             DebugInfoExecutionTest.cpp
             PerfJitDumpExecutionTest.cpp)
 endif ()
@@ -66,6 +68,25 @@ endif ()
 add_executable(nautilus-execution-tests ${NAUTILUS_EXECUTION_TEST_SOURCES})
 
 target_link_libraries(nautilus-execution-tests PUBLIC nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_options(nautilus-execution-tests PRIVATE -fPIE)
+    target_link_options(nautilus-execution-tests PRIVATE -pie "LINKER:--build-id=sha1")
+endif ()
+if (ENABLE_MLIR_BACKEND AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_library(nautilus-artifact-unidentified-proxy SHARED backends/mlir/ArtifactUnidentifiedProxy.cpp)
+    target_link_options(nautilus-artifact-unidentified-proxy PRIVATE "LINKER:--build-id=none")
+    target_link_libraries(nautilus-execution-tests PRIVATE nautilus-artifact-unidentified-proxy)
+    add_library(nautilus-artifact-identified-proxy SHARED backends/mlir/ArtifactIdentifiedProxy.cpp)
+    target_link_options(nautilus-artifact-identified-proxy PRIVATE "LINKER:--build-id=sha1")
+    target_link_libraries(nautilus-execution-tests PRIVATE nautilus-artifact-identified-proxy)
+    set_source_files_properties(backends/mlir/ModuleArtifactTest.cpp PROPERTIES
+            COMPILE_DEFINITIONS ARTIFACT_IDENTIFIED_PROXY_PATH="$<TARGET_FILE:nautilus-artifact-identified-proxy>")
+endif ()
+if (ENABLE_MLIR_BACKEND)
+    find_package(MLIR REQUIRED CONFIG)
+    target_include_directories(nautilus-execution-tests SYSTEM PRIVATE ${MLIR_INCLUDE_DIRS})
+    target_link_libraries(nautilus-execution-tests PRIVATE MLIRParser MLIRBytecodeWriter MLIRLLVMDialect)
+endif ()
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus-execution-tests PRIVATE spdlog::spdlog)
 endif ()

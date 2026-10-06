@@ -1,3 +1,7 @@
+add_source_files(nautilus Artifact.cpp)
 if (ENABLE_TRACING)
     add_source_files(nautilus ArtifactPreflight.cpp)
+endif ()
+if (ENABLE_MLIR_BACKEND)
+    add_source_files(nautilus ArtifactCodec.cpp)
 endif ()

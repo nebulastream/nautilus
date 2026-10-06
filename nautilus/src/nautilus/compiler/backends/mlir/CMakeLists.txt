@@ -28,6 +28,8 @@ if (ENABLE_MLIR_BACKEND)
             MLIRLLVMToLLVMIRTranslation             # registerLLVMDialectTranslation
             MLIRExecutionEngineUtils                # makeOptimizingTransformer (OptUtils)
             MLIRFuncAllExtensions
+            MLIRBytecodeWriter
+            MLIRParser
             # LLVM libs for our direct LLJIT build.
             LLVMOrcJIT
             LLVMExecutionEngine
@@ -50,6 +52,8 @@ if (ENABLE_MLIR_BACKEND)
     add_source_files(nautilus
             MLIRLoweringProvider.cpp
             MLIRCompilationBackend.cpp
+            MLIRArtifactValidation.cpp
+            ExceptionPersonality.cpp
             MLIRExecutable.cpp
             MLIRPassManager.cpp
             LLVMIROptimizer.cpp

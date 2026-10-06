@@ -21,8 +21,15 @@ namespace nautilus::compiler::mlir {
 //              nautilus's prefetch() only ever targets data)
 // ============================================================================
 
-class MLIRPrefetchIntrinsicPlugin : public MLIRIntrinsicPlugin {
+class MLIRPrefetchIntrinsicPlugin final : public MLIRIntrinsicPlugin {
 public:
+	bool supportsArtifacts() const override {
+		return true;
+	}
+	std::optional<std::string> cacheFingerprint() const override {
+		return cacheFingerprintForAddress(reinterpret_cast<const void*>(&RegisterMLIRPrefetchIntrinsicPlugin));
+	}
+
 	void registerIntrinsics(MLIRIntrinsicManager& manager) override;
 	~MLIRPrefetchIntrinsicPlugin() override = default;
 };

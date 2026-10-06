@@ -12,8 +12,15 @@
 namespace nautilus::compiler::mlir {
 
 // Compiler intrinsic for math operations
-class MLIRMathIntrinsicPlugin : public MLIRIntrinsicPlugin {
+class MLIRMathIntrinsicPlugin final : public MLIRIntrinsicPlugin {
 public:
+	bool supportsArtifacts() const override {
+		return true;
+	}
+	std::optional<std::string> cacheFingerprint() const override {
+		return cacheFingerprintForAddress(reinterpret_cast<const void*>(&RegisterMLIRMathIntrinsicPlugin));
+	}
+
 	void registerIntrinsics(MLIRIntrinsicManager& manager) override;
 	~MLIRMathIntrinsicPlugin() override = default;
 };

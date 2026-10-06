@@ -1,13 +1,16 @@
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
 #include "nautilus/compiler/JitSymbolRegistry.hpp"
 #include "nautilus/compiler/backends/mlir/jit/PackFunctionArguments.hpp"
+#include <exception>
 #include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h>
+#include <llvm/ExecutionEngine/Orc/ObjectTransformLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/TargetParser/Triple.h>
 #include <mlir/Target/LLVMIR/Export.h>
@@ -99,6 +102,34 @@ void installJitSymbolRegistration([[maybe_unused]] llvm::orc::ObjectLinkingLayer
 
 } // namespace
 
+MLIRJit::ObjectCapture::ObjectCapture(std::function<void(std::string_view)> objectPreflight)
+    : objectPreflight_(std::move(objectPreflight)) {
+}
+
+llvm::Error MLIRJit::ObjectCapture::validate(llvm::StringRef object) const {
+	try {
+		if (objectPreflight_) {
+			objectPreflight_(std::string_view(object.data(), object.size()));
+		}
+	} catch (const std::exception& error) {
+		return makeStringError(llvm::Twine("MLIR object preflight failed: ") + error.what());
+	}
+	return llvm::Error::success();
+}
+
+void MLIRJit::ObjectCapture::record(llvm::StringRef object) {
+	std::lock_guard guard(mutex_);
+	objects_.emplace_back(object);
+}
+
+std::optional<std::string> MLIRJit::ObjectCapture::getObject() const {
+	std::lock_guard guard(mutex_);
+	if (objects_.size() != 1) {
+		return std::nullopt;
+	}
+	return objects_.front();
+}
+
 MLIRJit::MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit, ModuleIndex moduleIndex)
     : jit_(std::move(jit)), moduleIndex_(moduleIndex) {
 }
@@ -127,7 +158,7 @@ MLIRJit& MLIRJit::operator=(MLIRJit&& other) noexcept {
 	return *this;
 }
 
-llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module, const Options& options) {
+llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::createJit(const Options& options) {
 	// Interned once here rather than per linked object: the handle is what the
 	// registration plugin stamps on every range, and what this JIT withdraws by
 	// when it is destroyed. NO_MODULE when registration is off, which makes
@@ -136,37 +167,21 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 	                                    ? JitSymbolRegistry::instance().intern(options.compilationUnitId)
 	                                    : NO_MODULE;
 
-	auto ctx = std::make_unique<llvm::LLVMContext>();
-	auto llvmModule = ::mlir::translateModuleToLLVMIR(module, *ctx);
-	if (!llvmModule) {
-		return makeStringError("could not convert to LLVM IR");
-	}
-
 	auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
 	if (!tmBuilderOrError) {
 		return tmBuilderOrError.takeError();
 	}
 	tmBuilderOrError->setCodeGenOptLevel(options.codeGenOptLevel);
 
-	// Build a one-shot TargetMachine only to seed the module's data layout and
-	// triple; LLJIT constructs its own TargetMachines via the builder below.
-	auto tmOrError = tmBuilderOrError->createTargetMachine();
-	if (!tmOrError) {
-		return tmOrError.takeError();
-	}
-	llvmModule->setDataLayout((*tmOrError)->createDataLayout());
-	llvmModule->setTargetTriple((*tmOrError)->getTargetTriple());
-
-	detail::packFunctionArguments(llvmModule.get());
+	const auto targetTriple = tmBuilderOrError->getTargetTriple();
 
 	// Instantiate a JITLink-based object linking layer. Only machine code with
 	// reliable exception-handling unwind info (personality + LSDA) is linked;
 	// the legacy RuntimeDyld layer cannot relocate these and causes crashes or
 	// misordered cleanups when exceptions cross JIT frames.
 	auto objectLinkingLayerCreator =
-	    [&targetTriple = llvmModule->getTargetTriple(), enablePerfSupport = options.enablePerfSupport,
-	     perfEmitDebugInfo = options.perfEmitDebugInfo, perfEmitUnwindInfo = options.perfEmitUnwindInfo,
-	     perfRegionSymbols = options.perfRegionSymbols,
+	    [targetTriple, enablePerfSupport = options.enablePerfSupport, perfEmitDebugInfo = options.perfEmitDebugInfo,
+	     perfEmitUnwindInfo = options.perfEmitUnwindInfo, perfRegionSymbols = options.perfRegionSymbols,
 	     enableJitSymbolRegistration = options.enableJitSymbolRegistration,
 	     moduleIndex](llvm::orc::ExecutionSession& session) -> std::unique_ptr<llvm::orc::ObjectLayer> {
 		auto layer = std::make_unique<llvm::orc::ObjectLinkingLayer>(session);
@@ -212,53 +227,97 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		}
 	}
 
-	llvm::orc::ThreadSafeModule tsm(std::move(llvmModule), std::move(ctx));
-	if (options.transformer) {
-		auto transformErr =
-		    tsm.withModuleDo([&options](llvm::Module& m) -> llvm::Error { return options.transformer(&m); });
-		if (transformErr) {
-			return transformErr;
-		}
-	}
-	if (auto err = jit->addIRModule(std::move(tsm))) {
-		return err;
+	if (options.objectCapture) {
+		jit->getObjTransformLayer().setTransform(
+		    [capture = options.objectCapture](
+		        std::unique_ptr<llvm::MemoryBuffer> object) -> llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> {
+			    if (auto error = capture->validate(object->getBuffer())) {
+				    return error;
+			    }
+			    capture->record(object->getBuffer());
+			    return object;
+		    });
 	}
 
 	// Resolve symbols that are statically linked in the current process.
-	auto& mainJD = jit->getMainJITDylib();
-	// GCC 12+ at -O3 (and with asan) raises a spurious -Wmaybe-uninitialized
-	// inside the inlined move constructor of llvm::unique_function for the
-	// defaulted AddAbsoluteSymbolsFn parameter. The warning is a known
-	// false positive in gcc's inliner; suppress locally.
+	if (options.allowCurrentProcessSymbols) {
+		auto& mainJD = jit->getMainJITDylib();
+		// GCC 12+ at -O3 (and with asan) raises a spurious -Wmaybe-uninitialized
+		// inside the inlined move constructor of llvm::unique_function for the
+		// defaulted AddAbsoluteSymbolsFn parameter. The warning is a known
+		// false positive in gcc's inliner; suppress locally.
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #endif
-	auto generatorOrErr =
-	    llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(jit->getDataLayout().getGlobalPrefix());
+		auto generatorOrErr =
+		    llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(jit->getDataLayout().getGlobalPrefix());
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
-	if (!generatorOrErr) {
-		return generatorOrErr.takeError();
-	}
-	mainJD.addGenerator(std::move(*generatorOrErr));
-
-	// Execute the module's global constructors. Upstream skips this on AArch64
-	// due to a known LLVM bug (llvm/llvm-project#71963); mirror that.
-	if (!jit->getTargetTriple().isAArch64()) {
-		if (auto err = jit->initialize(mainJD)) {
-			return err;
+		if (!generatorOrErr) {
+			return generatorOrErr.takeError();
 		}
+		mainJD.addGenerator(std::move(*generatorOrErr));
 	}
 
 	return std::unique_ptr<MLIRJit>(new MLIRJit(std::move(jit), moduleIndex));
 }
 
-void MLIRJit::registerSymbols(llvm::function_ref<llvm::orc::SymbolMap(llvm::orc::MangleAndInterner)> symbolMapFn) {
+llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module, const Options& options) {
+	auto ctx = std::make_unique<llvm::LLVMContext>();
+	auto llvmModule = ::mlir::translateModuleToLLVMIR(module, *ctx);
+	if (!llvmModule) {
+		return makeStringError("could not convert to LLVM IR");
+	}
+	auto result = createJit(options);
+	if (!result) {
+		return result.takeError();
+	}
+	auto& jit = (*result)->getLLJIT();
+	llvmModule->setDataLayout(jit.getDataLayout());
+	llvmModule->setTargetTriple(jit.getTargetTriple());
+	detail::packFunctionArguments(llvmModule.get());
+
+	llvm::orc::ThreadSafeModule tsm(std::move(llvmModule), std::move(ctx));
+	if (options.transformer) {
+		if (auto error = tsm.withModuleDo([&options](llvm::Module& m) { return options.transformer(&m); })) {
+			return error;
+		}
+	}
+	if (auto error = jit.addIRModule(std::move(tsm))) {
+		return error;
+	}
+	return result;
+}
+
+llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::createFromObject(std::unique_ptr<llvm::MemoryBuffer> object,
+                                                                   const Options& options) {
+	if (!object || object->getBuffer().empty()) {
+		return makeStringError("artifact object is empty");
+	}
+	auto result = createJit(options);
+	if (!result) {
+		return result.takeError();
+	}
+	if (auto error = (*result)->getLLJIT().addObjectFile(std::move(object))) {
+		return error;
+	}
+	return result;
+}
+
+llvm::Error
+MLIRJit::registerSymbols(llvm::function_ref<llvm::orc::SymbolMap(llvm::orc::MangleAndInterner)> symbolMapFn) {
 	auto& mainJD = jit_->getMainJITDylib();
-	llvm::cantFail(mainJD.define(llvm::orc::absoluteSymbols(
-	    symbolMapFn(llvm::orc::MangleAndInterner(mainJD.getExecutionSession(), jit_->getDataLayout())))));
+	return mainJD.define(llvm::orc::absoluteSymbols(
+	    symbolMapFn(llvm::orc::MangleAndInterner(mainJD.getExecutionSession(), jit_->getDataLayout()))));
+}
+
+llvm::Error MLIRJit::initialize() {
+	if (!jit_->getTargetTriple().isAArch64()) {
+		return jit_->initialize(jit_->getMainJITDylib());
+	}
+	return llvm::Error::success();
 }
 
 llvm::Expected<void*> MLIRJit::lookup(llvm::StringRef name) {

@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/Artifact.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/Module.hpp"
@@ -366,6 +367,16 @@ public:
 	 * When compilation is disabled, returns a module that interprets functions directly.
 	 * @return CompiledModule with all functions accessible by name
 	 */
+#ifdef ENABLE_TRACING
+	artifact::ModuleArtifact createArtifact() {
+		if (!compiled_) {
+			throw std::runtime_error("Artifact emission requires compiled tracing");
+		}
+		const auto frozenOptions = moduleOptions_;
+		return artifact::emit(functions_, frozenOptions);
+	}
+#endif
+
 	CompiledModule compile() {
 #ifdef ENABLE_TRACING
 		if (compiled_) {
