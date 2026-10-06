@@ -75,6 +75,8 @@ Sampler::Sampler(Options options)
 
 	try {
 		pc::SampleConfig config;
+		config.include_kernel(false);
+		config.include_hypervisor(false);
 		config.buffer_pages(static_cast<uint16_t>(options.bufferPages));
 		impl_->sampler.emplace(impl_->slots.capacity(), config);
 
