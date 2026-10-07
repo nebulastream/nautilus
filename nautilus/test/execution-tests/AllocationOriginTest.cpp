@@ -11,6 +11,7 @@
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/val_std.hpp"
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <iostream>
@@ -143,6 +144,9 @@ TEST_CASE("Allocation origin disagreement at a repeated RECORD tag cannot surviv
 		REQUIRE(symbolic.getCurrentMode() == tracing::SymbolicExecutionContext::MODE::RECORD);
 		auto recorder = tracing::TagRecorder::createTagRecorder(arena);
 		Options options;
+		const std::array origins {TypedAllocation::forType<int64_t>(),
+		                          disagree ? TypedAllocation::forType<SameAllocationLayout>()
+		                                   : TypedAllocation::forType<int64_t>()};
 		{
 			tracing::ActiveTracerGuard guard;
 			auto* context = tracing::TraceContext::initialize(recorder, trace, symbolic, options);
@@ -150,9 +154,7 @@ TEST_CASE("Allocation origin disagreement at a repeated RECORD tag cannot surviv
 			volatile int iteration = 0;
 			while (iteration < 2) {
 				const int current = iteration;
-				const auto origin = disagree && current == 1 ? TypedAllocation::forType<SameAllocationLayout>()
-				                                             : TypedAllocation::forType<int64_t>();
-				tracing::traceTypedAlloca(origin);
+				tracing::traceTypedAlloca(origins[current]);
 				if (current == 0) {
 					trace.setCurrentBlock(trace.createBlock());
 				}
@@ -160,6 +162,11 @@ TEST_CASE("Allocation origin disagreement at a repeated RECORD tag cannot surviv
 			}
 		}
 		REQUIRE(trace.getBlocks().size() == 3);
+		const auto& merge = trace.getBlock(2);
+		REQUIRE(merge.type == tracing::Block::Type::ControlFlowMerge);
+		REQUIRE(merge.operations.size() == 1);
+		REQUIRE(merge.operations.front()->op == tracing::Op::ALLOCA);
+		REQUIRE(std::get<tracing::AllocaIndex>(merge.operations.front()->input[0]) == 0);
 		REQUIRE(trace.allocaSpecs.size() == 1);
 		REQUIRE(trace.allocaSpecs.front().origin.has_value() == !disagree);
 		REQUIRE_FALSE(tracing::inTracer());
