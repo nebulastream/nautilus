@@ -37,7 +37,10 @@ set_target_properties(nautilus PROPERTIES
         EXPORT_NAME nautilus
 )
 
-target_link_libraries(nautilus PRIVATE fmt::fmt)
+target_link_libraries(nautilus PRIVATE fmt::fmt ${CMAKE_DL_LIBS})
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(nautilus PRIVATE "LINKER:--build-id=sha1")
+endif ()
 
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus PRIVATE spdlog::spdlog)

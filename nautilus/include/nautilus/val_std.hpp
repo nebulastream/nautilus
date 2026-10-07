@@ -140,7 +140,7 @@ template <typename ValueType>
 val<ValueType*> nautilus_alloca() {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto valueRef = tracing::traceAlloca(sizeof(ValueType), alignof(ValueType));
+		auto valueRef = tracing::traceTypedAlloca(TypedAllocation::forType<ValueType>());
 		return val<ValueType*>(valueRef);
 	}
 #endif

@@ -1,4 +1,6 @@
 
+#pragma once
+
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 
 namespace nautilus::compiler::ir {

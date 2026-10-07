@@ -269,7 +269,7 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunct
 	throw RuntimeException("Jit not initialised");
 }
 std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableFunction>&, const engine::ModuleOptions&,
-                                                           const std::string&, const std::string&,
+                                                           const std::string&, const std::string&, IROptimizationLevel,
                                                            std::shared_ptr<ir::IRGraph>&) const {
 	throw RuntimeException("Jit not initialised");
 }

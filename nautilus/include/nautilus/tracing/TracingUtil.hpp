@@ -57,17 +57,21 @@ TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first
                               const TypedValueRef& third);
 
 TypedValueRef& traceAlloca(size_t size, size_t align);
+TypedValueRef& traceTypedAlloca(const TypedAllocation& allocation);
 
 /// Traces a boolean branch with an associated taken-probability hint.
 bool traceBool(const TypedValueRef& value, double probability);
-TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
+TypedValueRef& traceConstant(Type type, const ConstantLiteral& value,
+                             ConstantOrigin origin = ConstantOrigin::Unspecified);
 template <typename T>
-TypedValueRef traceConstant(T&& value) {
+TypedValueRef traceConstant(T&& value, ConstantOrigin origin = ConstantOrigin::Unspecified) {
 	if (inTracer()) {
-		return traceConstant(TypeResolver<T>::to_type(), createConstLiteral(value));
+		return traceConstant(TypeResolver<T>::to_type(), createConstLiteral(value), origin);
 	}
 	return {0, TypeResolver<T>::to_type()};
 }
+
+void traceFoldedConstant(Type type, const ConstantLiteral& value, ConstantOrigin origin = ConstantOrigin::Unspecified);
 
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
 TypedValueRef traceCopy(const TypedValueRef& ref);

@@ -3,6 +3,7 @@
 
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/common/RegionAttributes.hpp"
+#include "nautilus/common/TypedAllocation.hpp"
 #include "nautilus/tracing/Operations.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
@@ -35,12 +36,20 @@ public:
 	virtual TypedValueRef& registerFunctionArgument(Type type, size_t index) = 0;
 
 	/// Trace a constant value of the given type.
-	virtual TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) = 0;
+	virtual TypedValueRef& traceConstant(Type type, const ConstantLiteral& value,
+	                                     ConstantOrigin origin = ConstantOrigin::Unspecified) = 0;
+
+	virtual void traceFoldedConstant(Type type, const ConstantLiteral& value,
+	                                 ConstantOrigin origin = ConstantOrigin::Unspecified) = 0;
 
 	/// Trace a stack allocation of @p size bytes with @p align byte alignment.
 	/// Each call appends a fresh entry to the function's alloca table on the
 	/// execution trace; the returned ref points to that entry's index.
 	virtual TypedValueRef& traceAlloca(size_t size, size_t align) = 0;
+
+	virtual TypedValueRef& traceTypedAlloca(const TypedAllocation& allocation) {
+		return traceAlloca(allocation.getSize(), allocation.getAlignment());
+	}
 
 	/// Trace a copy of an existing traced value.
 	virtual TypedValueRef& traceCopy(const TypedValueRef& ref) = 0;

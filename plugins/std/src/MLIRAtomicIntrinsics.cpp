@@ -125,8 +125,15 @@ IntrinsicFunction makeFenceLowering(AtomicOrdering ord) {
 	};
 }
 
-class MLIRAtomicIntrinsicPlugin : public MLIRIntrinsicPlugin {
+class MLIRAtomicIntrinsicPlugin final : public MLIRIntrinsicPlugin {
 public:
+	bool supportsArtifacts() const override {
+		return true;
+	}
+	std::optional<std::string> cacheFingerprint() const override {
+		return cacheFingerprintForAddress(reinterpret_cast<const void*>(&RegisterMLIRAtomicIntrinsicPlugin));
+	}
+
 	void registerIntrinsics(MLIRIntrinsicManager& manager) override;
 	~MLIRAtomicIntrinsicPlugin() override = default;
 };

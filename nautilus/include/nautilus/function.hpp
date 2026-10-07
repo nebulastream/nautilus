@@ -61,30 +61,32 @@ public:
 	auto operator()(FunctionArgumentsRaw&&... args) {
 		if constexpr ((details::is_ref_val<FunctionArgumentsRaw> || ...)) {
 			return (*this)(details::loadReference(std::forward<FunctionArgumentsRaw>(args))...);
-		}
+		} else {
 #ifdef ENABLE_TRACING
-		if (tracing::inTracer()) {
-			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			if constexpr (NoUnwind) {
-				auto& resultRef =
-				    tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
-				                       functionArgumentReferences, fnAttrs);
-				return val<R>(resultRef);
-			} else {
-				auto& resultRef =
-				    fnAttrs.noUnwind
-				        ? tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
-				                             functionArgumentReferences, fnAttrs)
-				        : tracing::traceCallWithExceptionHandling(
-				              reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
-				              functionArgumentReferences, fnAttrs,
-				              reinterpret_cast<void*>(&compiler::captureThrowingCall<R, FunctionArguments...>));
-				return val<R>(resultRef);
+			if (tracing::inTracer()) {
+				auto functionArgumentReferences =
+				    getTypedArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
+				if constexpr (NoUnwind) {
+					auto& resultRef =
+					    tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
+					                       functionArgumentReferences, fnAttrs);
+					return val<R>(resultRef);
+				} else {
+					auto& resultRef =
+					    fnAttrs.noUnwind
+					        ? tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
+					                             functionArgumentReferences, fnAttrs)
+					        : tracing::traceCallWithExceptionHandling(
+					              reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
+					              functionArgumentReferences, fnAttrs,
+					              reinterpret_cast<void*>(&compiler::captureThrowingCall<R, FunctionArguments...>));
+					return val<R>(resultRef);
+				}
 			}
-		}
 #endif
-		return val<R>(fnptr(
-		    details::RawValueResolver<FunctionArguments>::getRawValue(std::forward<FunctionArgumentsRaw>(args))...));
+			return val<R>(fnptr(details::RawValueResolver<FunctionArguments>::getRawValue(
+			    std::forward<FunctionArgumentsRaw>(args))...));
+		}
 	}
 
 	template <typename... FunctionArgumentsRaw>
@@ -92,25 +94,29 @@ public:
 	void operator()(FunctionArgumentsRaw&&... args) {
 		if constexpr ((details::is_ref_val<FunctionArgumentsRaw> || ...)) {
 			return (*this)(details::loadReference(std::forward<FunctionArgumentsRaw>(args))...);
-		}
+		} else {
 #ifdef ENABLE_TRACING
-		if (tracing::inTracer()) {
-			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			if constexpr (NoUnwind) {
-				tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs);
-			} else {
-				if (fnAttrs.noUnwind) {
+			if (tracing::inTracer()) {
+				auto functionArgumentReferences =
+				    getTypedArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
+				if constexpr (NoUnwind) {
 					tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs);
 				} else {
-					tracing::traceCallWithExceptionHandling(
-					    reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs,
-					    reinterpret_cast<void*>(&compiler::captureThrowingCall<void, FunctionArguments...>));
+					if (fnAttrs.noUnwind) {
+						tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences,
+						                   fnAttrs);
+					} else {
+						tracing::traceCallWithExceptionHandling(
+						    reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs,
+						    reinterpret_cast<void*>(&compiler::captureThrowingCall<void, FunctionArguments...>));
+					}
 				}
+				return;
 			}
-			return;
-		}
 #endif
-		(fnptr(details::RawValueResolver<FunctionArguments>::getRawValue(std::forward<FunctionArgumentsRaw>(args))...));
+			(fnptr(details::RawValueResolver<FunctionArguments>::getRawValue(
+			    std::forward<FunctionArgumentsRaw>(args))...));
+		}
 	}
 
 	template <is_integral... FunctionArgumentsRaw>
@@ -119,6 +125,12 @@ public:
 	}
 
 private:
+#ifdef ENABLE_TRACING
+	static auto getTypedArgumentReferences(const val<FunctionArguments>&... arguments) {
+		return getArgumentReferences(arguments...);
+	}
+#endif
+
 	FunctionAttributes fnAttrs;
 	R (*fnptr)(FunctionArguments...);
 };

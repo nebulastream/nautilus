@@ -11,6 +11,6 @@ B2()
 	ASSIGN	$4	$11	:ptr
 	JMP	$0	B3()	:void
 B3() ControlFlowMerge
-	INDIRECT_CALL	$7	:i32
+	INDIRECT_CALL_WITH_EXCEPTION_HANDLING	$7	:i32
 	RETURN	$0	$7	:i32
 

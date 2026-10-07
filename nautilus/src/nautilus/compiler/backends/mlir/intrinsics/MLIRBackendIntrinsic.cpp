@@ -1,4 +1,5 @@
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
+#include "nautilus/common/ExecutableImage.hpp"
 
 namespace nautilus::compiler::mlir {
 
@@ -28,21 +29,85 @@ void MLIRIntrinsicManager::merge(const MLIRIntrinsicManager& other) {
 	}
 }
 
+std::optional<std::string> MLIRIntrinsicPlugin::cacheFingerprint() const {
+	return std::nullopt;
+}
+
+bool MLIRIntrinsicPlugin::supportsArtifacts() const {
+	return false;
+}
+
+std::optional<std::string> MLIRIntrinsicPlugin::cacheFingerprintForAddress(const void* address) {
+	const auto image = common::locateExecutableAddress(address);
+	if (!image) {
+		return std::nullopt;
+	}
+	return image->buildId + ":" + std::to_string(image->loadOffset);
+}
+
 void MLIRIntrinsicPluginRegistry::addPlugin(std::shared_ptr<MLIRIntrinsicPlugin> plugin) {
 	std::lock_guard lock(mutex_);
-	if (plugin) {
-		// Harvest now rather than at compile time. Interning an intrinsic is
-		// what makes a call to it read as Intrinsic in the IR, and that
-		// happens during trace-to-IR conversion -- so the identities have to
-		// exist by then, not merely by the time a backend lowers.
-		plugin->registerIntrinsics(harvested_);
+	try {
+		if (plugin) {
+			plugin->registerIntrinsics(harvested_);
+		}
+		plugins_.push_back(std::move(plugin));
+	} catch (...) {
+		registrationFailed_ = true;
+		throw;
 	}
-	plugins_.push_back(std::move(plugin));
 }
 
 void MLIRIntrinsicPluginRegistry::registerAllIntrinsics(MLIRIntrinsicManager& manager) const {
 	std::lock_guard lock(mutex_);
 	manager.merge(harvested_);
+}
+
+std::optional<std::string> MLIRIntrinsicPluginRegistry::cacheFingerprint() const {
+	std::lock_guard lock(mutex_);
+	if (registrationFailed_) {
+		return std::nullopt;
+	}
+	std::string fingerprint;
+	for (const auto& plugin : plugins_) {
+		if (!plugin) {
+			continue;
+		}
+		std::optional<std::string> identity;
+		try {
+			identity = plugin->cacheFingerprint();
+		} catch (...) {
+			return std::nullopt;
+		}
+		if (!identity || identity->empty()) {
+			return std::nullopt;
+		}
+		fingerprint += std::to_string(identity->size()) + ":" + *identity;
+	}
+	return fingerprint;
+}
+
+std::optional<std::string> MLIRIntrinsicPluginRegistry::artifactFingerprint() const {
+	std::lock_guard lock(mutex_);
+	if (registrationFailed_) {
+		return std::nullopt;
+	}
+	std::string fingerprint;
+	for (const auto& plugin : plugins_) {
+		if (!plugin) {
+			continue;
+		}
+		try {
+			const auto identity = plugin->cacheFingerprint();
+			if (!plugin->supportsArtifacts() || !identity || identity->empty()) {
+				return std::nullopt;
+			}
+			fingerprint += std::to_string(identity->size()) + ":" + *identity;
+		} catch (...) {
+			return std::nullopt;
+		}
+	}
+	return fingerprint;
 }
 
 MLIRIntrinsicPluginRegistry& MLIRIntrinsicPluginRegistry::instance() {

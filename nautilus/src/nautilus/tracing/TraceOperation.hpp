@@ -13,6 +13,7 @@
 #include <limits>
 #include <nautilus/common/FunctionAttributes.hpp>
 #include <new>
+#include <optional>
 #include <span>
 #include <type_traits>
 #include <utility>
@@ -41,6 +42,7 @@ using AllocaIndex = uint32_t;
 struct AllocaSpec {
 	size_t size;
 	size_t align;
+	std::optional<TypedAllocation> origin = std::nullopt;
 };
 
 /**
@@ -258,6 +260,7 @@ public:
 	/// on the operation rather than on its block: the block that bounds a region
 	/// is collapsed by the block-cleanup passes, the operations are not.
 	RegionIndex regionIndex = NO_REGION;
+	ConstantOrigin constantOrigin = ConstantOrigin::Unspecified;
 };
 
 namespace detail {

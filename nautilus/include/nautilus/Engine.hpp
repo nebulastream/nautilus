@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/Artifact.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/Module.hpp"
@@ -36,6 +37,15 @@ auto createTraceableArgument() {
 	auto type = tracing::TypeResolver<typename ArgValueType::raw_type>::to_type();
 	auto valueRef = tracing::registerFunctionArgument(type, I);
 	return val<typename ArgValueType::raw_type>(valueRef);
+}
+
+template <typename R>
+constexpr Type functionReturnType() {
+	if constexpr (std::is_void_v<R>) {
+		return Type::v;
+	} else {
+		return tracing::TypeResolver<typename R::raw_type>::to_type();
+	}
 }
 
 #ifdef ENABLE_TRACING
@@ -320,8 +330,11 @@ public:
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			auto wrapper = details::createFunctionWrapper(std::move(func));
+			auto signature = compiler::CompilableFunction::Signature {
+			    details::functionReturnType<R>(),
+			    {tracing::TypeResolver<typename val<FunctionArguments>::raw_type>::to_type()...}};
 			functions_.emplace_back(name, std::move(wrapper), std::unordered_map<std::string, std::string> {}, nullptr,
-			                        SourceLocation::from(location));
+			                        SourceLocation::from(location), std::move(signature));
 		}
 #endif
 	}
@@ -340,8 +353,11 @@ public:
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			auto wrapper = details::createFunctionWrapper(fnptr);
+			auto signature = compiler::CompilableFunction::Signature {
+			    details::functionReturnType<R>(),
+			    {tracing::TypeResolver<typename val<FunctionArguments>::raw_type>::to_type()...}};
 			functions_.emplace_back(name, std::move(wrapper), std::unordered_map<std::string, std::string> {}, nullptr,
-			                        SourceLocation::from(location));
+			                        SourceLocation::from(location), std::move(signature));
 		}
 #endif
 	}
@@ -351,6 +367,16 @@ public:
 	 * When compilation is disabled, returns a module that interprets functions directly.
 	 * @return CompiledModule with all functions accessible by name
 	 */
+#ifdef ENABLE_TRACING
+	artifact::ModuleArtifact createArtifact() {
+		if (!compiled_) {
+			throw std::runtime_error("Artifact emission requires compiled tracing");
+		}
+		const auto frozenOptions = moduleOptions_;
+		return artifact::emit(functions_, frozenOptions);
+	}
+#endif
+
 	CompiledModule compile() {
 #ifdef ENABLE_TRACING
 		if (compiled_) {
@@ -361,7 +387,8 @@ public:
 			// the version on this state when promotion completes.
 			auto state = std::make_shared<details::ModuleState>();
 			state->interpretedFunctions = std::move(interpretedFunctions_);
-			jit_.compileModule(functions_, moduleOptions_, state);
+			const auto frozenOptions = moduleOptions_;
+			jit_.compileModule(functions_, frozenOptions, state);
 			return CompiledModule(std::move(state));
 		}
 #endif

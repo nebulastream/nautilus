@@ -29,7 +29,8 @@ static thread_local TraceContext traceContext;
 TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
     : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts),
       normalizeFunctionNames(opts.getOptionOrDefault("engine.normalizeFunctionNames", false)),
-      recordCopySites(opts.getOptionOrDefault("dump.copySites", false)) {
+      recordCopySites(opts.getOptionOrDefault("dump.copySites", false)),
+      recordConstantOrigins(et.recordsConstantOrigins()) {
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
 	// The val<T> layer asks for this on every pointer offset, so it is kept in a thread-local, not looked up here.
 	setFoldStaticConstants(opts.getOptionOrDefault("engine.foldStaticConstants", true));
@@ -110,8 +111,11 @@ bool TraceContext::isFollowing() {
 	return state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
 
-TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
-	auto& currentOperation = state->executionTrace.getCurrentOperation();
+TypedValueRef& TraceContext::follow(Op op) {
+	return follow(op, state->executionTrace.getCurrentOperation());
+}
+
+TypedValueRef& TraceContext::follow([[maybe_unused]] Op op, TraceOperation& currentOperation) {
 	auto consumedTag = currentOperation.tag;
 	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
@@ -139,25 +143,43 @@ TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
 	return currentOperation.resultRef;
 }
 
-TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
+TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& constValue, ConstantOrigin origin) {
 	if (paused_) {
 		return dummyRef_;
 	}
 	log::debug("Trace Constant");
 	auto op = Op::CONST;
 	if (isFollowing()) {
-		return follow(op);
+		auto& currentOperation = state->executionTrace.getCurrentOperation();
+		if (state->recordConstantOrigins && currentOperation.constantOrigin != origin) {
+			currentOperation.constantOrigin = ConstantOrigin::Unspecified;
+		}
+		return follow(op, currentOperation);
 	}
 	auto tag = recordSnapshot();
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
 		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
-		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		if (state->recordConstantOrigins && originalRef->op == op && originalRef->constantOrigin != origin) {
+			originalRef->constantOrigin = ConstantOrigin::Unspecified;
+			origin = ConstantOrigin::Unspecified;
+		}
+		auto resultRef = state->recordConstantOrigins
+		                     ? state->executionTrace.addOperationWithResult(tag, op, type, {constValue}, origin)
+		                     : state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
 		return originalRef->resultRef;
 	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		return state->recordConstantOrigins
+		           ? state->executionTrace.addOperationWithResult(tag, op, type, {constValue}, origin)
+		           : state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+	}
+}
+
+void TraceContext::traceFoldedConstant(Type type, const ConstantLiteral& value, ConstantOrigin origin) {
+	if (state->recordConstantOrigins) {
+		traceConstant(type, value, origin);
 	}
 }
 
@@ -181,12 +203,48 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 }
 
 TypedValueRef& TraceContext::traceAlloca(size_t size, size_t align) {
+	if (state->recordConstantOrigins) {
+		return traceAllocation(size, align, std::nullopt);
+	}
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
 	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
 		auto index = state->executionTrace.addAllocaSpec(size, align);
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
 	});
+}
+
+TypedValueRef& TraceContext::traceTypedAlloca(const TypedAllocation& allocation) {
+	if (!state->recordConstantOrigins) {
+		return traceAlloca(allocation.getSize(), allocation.getAlignment());
+	}
+	return traceAllocation(allocation.getSize(), allocation.getAlignment(), allocation);
+}
+
+TypedValueRef& TraceContext::traceAllocation(size_t size, size_t align, std::optional<TypedAllocation> origin) {
+	if (paused_) {
+		return dummyRef_;
+	}
+	auto& trace = state->executionTrace;
+	auto op = Op::ALLOCA;
+	if (isFollowing()) {
+		auto& operation = trace.getCurrentOperation();
+		trace.reconcileAllocaSpec(std::get<AllocaIndex>(operation.input[0]), size, align, origin);
+		return follow(op, operation);
+	}
+	auto tag = recordSnapshot();
+	if (auto existing = trace.globalTagMap.find(tag); existing != trace.globalTagMap.end()) {
+		const auto ref = existing->second;
+		const auto* operation = trace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
+		trace.reconcileAllocaSpec(std::get<AllocaIndex>(operation->input[0]), size, align, origin);
+	}
+	if (!trace.checkTag(tag)) {
+		paused_ = true;
+		return dummyRef_;
+	}
+	auto index = trace.addAllocaSpec(size, align, origin);
+	auto resultType = Type::ptr;
+	return trace.addOperationWithResult(tag, op, resultType, {index});
 }
 
 TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
@@ -751,14 +809,15 @@ void TraceContext::traceRegion(std::function<void()>& regionFunction, const Regi
 }
 
 std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction,
-                                                    const engine::Options& options, Arena& arena) {
+                                                    const engine::Options& options, Arena& arena,
+                                                    ConstantOriginTracking tracking) {
 	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress, arena);
 
 	// The ExecutionTrace borrows the caller-provided arena for all
 	// allocations; the arena must outlive the returned trace.
-	auto executionTrace = std::make_unique<ExecutionTrace>(arena);
+	auto executionTrace = std::make_unique<ExecutionTrace>(arena, tracking);
 	SymbolicExecutionContext symbolicExecutionContext;
 
 	// Initialize TraceContext with references to our objects
@@ -791,17 +850,28 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 }
 
 std::unique_ptr<TraceModule> TraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
-                                                 const engine::Options& options, Arena& arena) {
-	return traceContext.startTrace(functions, options, arena);
+                                                 const engine::Options& options, Arena& arena,
+                                                 ConstantOriginTracking tracking) {
+	return traceContext.startTrace(functions, options, arena, tracking);
 }
 
 std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
-                                                      const engine::Options& options, Arena& arena) {
+                                                      const engine::Options& options, Arena& arena,
+                                                      ConstantOriginTracking tracking) {
 	log::debug("Initialize Tracing");
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
 	registeredFunctions.clear();
 	usedFunctionNames.clear();
+	for (const auto& function : functions) {
+		if (!usedFunctionNames.insert(function.getName()).second) {
+			throw RuntimeException("Duplicate registered function name: " + function.getName());
+		}
+		if (const auto* definition = function.getDefinition();
+		    definition != nullptr && !registeredFunctions.emplace(definition, function.getName()).second) {
+			throw RuntimeException("Duplicate registered function definition: " + function.getName());
+		}
+	}
 	setActiveTracer(this);
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// escapes the per-function loop below.
@@ -812,17 +882,10 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 		auto currentFunction = functionsToTrace.front();
 		functionsToTrace.pop_front();
 		if (traceModule->hasFunction(currentFunction.getName())) {
-			// Already traced under this name -- typically a NautilusFunction
-			// sharing a name with a module-registered entry function. Record
-			// this identity against the existing body anyway: its call sites
-			// mint a function-table entry keyed on it, and that entry has to
-			// resolve to the same function as the body's own.
-			traceModule->addFunctionDefinition(currentFunction.getName(), currentFunction.getDefinition());
-			log::debug("Function '{}' already traced, skipping.", currentFunction.getName());
-			continue;
+			throw RuntimeException("Conflicting traced function name: " + currentFunction.getName());
 		}
 
-		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena);
+		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena, tracking);
 		// Tag the first popped function as the entry point. Everything else in
 		// the queue was `invoke`d by some other traced function; that alone
 		// cannot tell us host-vs-device side (a plain NautilusFunction may be

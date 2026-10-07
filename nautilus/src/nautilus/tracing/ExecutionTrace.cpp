@@ -9,11 +9,12 @@
 
 namespace nautilus::tracing {
 
-ExecutionTrace& TraceModule::addNewFunction(std::string_view functionName, Arena& arena) {
+ExecutionTrace& TraceModule::addNewFunction(std::string_view functionName, Arena& arena,
+                                            ConstantOriginTracking tracking) {
 	auto key = std::string(functionName);
 	auto& def = functions[key];
 	def.name = key;
-	def.trace = std::make_unique<ExecutionTrace>(arena);
+	def.trace = std::make_unique<ExecutionTrace>(arena, tracking);
 	return *def.trace;
 }
 
@@ -106,7 +107,8 @@ std::vector<std::string> TraceModule::getFunctionNames() const {
 	return names;
 }
 
-ExecutionTrace::ExecutionTrace(Arena& arena) : arena(&arena), currentBlockIndex(0), currentOperationIndex(0), blocks() {
+ExecutionTrace::ExecutionTrace(Arena& arena, ConstantOriginTracking tracking)
+    : arena(&arena), currentBlockIndex(0), currentOperationIndex(0), blocks(), constantOriginTracking(tracking) {
 	// A typical short trace has only a handful of blocks; reserving a small
 	// initial capacity eliminates the first few reallocations of the pointer
 	// vector in the tracing hot path.
@@ -230,6 +232,14 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 	return to->resultRef;
+}
+
+TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
+                                                      std::initializer_list<InputVariant> inputs,
+                                                      ConstantOrigin origin) {
+	auto& result = addOperationWithResult(snapshot, operation, resultType, inputs);
+	blocks[currentBlockIndex]->operations.back()->constantOrigin = origin;
+	return result;
 }
 
 // Adds a comparison operation to the execution trace
@@ -535,10 +545,20 @@ void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier
 	globalTagMap[snapshot] = identifier;
 }
 
-AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align) {
+AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align, std::optional<TypedAllocation> origin) {
 	auto index = static_cast<AllocaIndex>(allocaSpecs.size());
-	allocaSpecs.push_back({size, align});
+	allocaSpecs.push_back({size, align, recordsConstantOrigins() ? origin : std::nullopt});
 	return index;
+}
+
+void ExecutionTrace::reconcileAllocaSpec(AllocaIndex index, size_t size, size_t align,
+                                         std::optional<TypedAllocation> origin) {
+	if (recordsConstantOrigins()) {
+		auto& spec = allocaSpecs.at(index);
+		if (spec.size != size || spec.align != align || spec.origin != origin) {
+			spec.origin.reset();
+		}
+	}
 }
 
 } // namespace nautilus::tracing

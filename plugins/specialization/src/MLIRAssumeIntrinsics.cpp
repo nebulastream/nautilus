@@ -7,8 +7,15 @@
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 namespace nautilus::compiler::mlir {
 // Compiler intrinsic for assume
-class NautilusAssumeIntrinsicPlugin : public MLIRIntrinsicPlugin {
+class NautilusAssumeIntrinsicPlugin final : public MLIRIntrinsicPlugin {
 public:
+	bool supportsArtifacts() const override {
+		return true;
+	}
+	std::optional<std::string> cacheFingerprint() const override {
+		return cacheFingerprintForAddress(reinterpret_cast<const void*>(&RegisterMLIRAssumeIntrinsicPlugin));
+	}
+
 	void registerIntrinsics(MLIRIntrinsicManager& manager) override {
 		manager.addIntrinsic(reinterpret_cast<void*>(&nautlis_assume_stub),
 		                     [](std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,

@@ -1,14 +1,13 @@
 nautilus {
 execute($1:ptr, $2:i16) :i32 {
 Block_0($1:ptr, $2:i16):
-	$3 = 0 :i32
-	$4 = $2 cast_to i32 :i32
-	$5 = $3 - $4 :i32
+	$3 = 0 :ui64
+	$4 = $2 cast_to ui64 :ui64
+	$5 = $3 - $4 :ui64
 	$6 = 4 :ui64
-	$7 = $5 cast_to ui64 :ui64
-	$8 = $7 * $6 :ui64
-	$9 = $1 + $8 :ptr
-	$11 = load($9) :i32
-	return ($11) :i32
+	$7 = $5 * $6 :ui64
+	$8 = $1 + $7 :ptr
+	$10 = load($8) :i32
+	return ($10) :i32
 }
 } //nautilus

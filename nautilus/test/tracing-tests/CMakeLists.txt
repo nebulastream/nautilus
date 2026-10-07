@@ -3,6 +3,7 @@ include(Catch)
 
 add_executable(nautilus-tracing-unit-tests
         AliveVariableHashTest.cpp
+        TraceContextTest.cpp
         ArenaTest.cpp
         SSACreationPhaseTest.cpp
         SSAVerifierTest.cpp
