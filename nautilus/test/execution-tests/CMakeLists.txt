@@ -32,7 +32,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
 )
 
 if (ENABLE_TRACING)
-    list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES ArtifactPreflightTest.cpp)
+    list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES ArtifactPreflightTest.cpp AllocationOriginTest.cpp AllocationOriginOther.cpp)
 endif ()
 
 if (ENABLE_BC_BACKEND)
@@ -54,6 +54,7 @@ if (ENABLE_MLIR_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
             ABIExtensionAttributeTest.cpp
             backends/mlir/ModuleArtifactTest.cpp
+            backends/mlir/ArtifactReviewRegressionTest.cpp
             backends/mlir/ArtifactTransportValidationTest.cpp
             DebugInfoExecutionTest.cpp
             PerfJitDumpExecutionTest.cpp)

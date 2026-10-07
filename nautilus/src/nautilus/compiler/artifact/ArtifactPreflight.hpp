@@ -11,6 +11,7 @@ class IRGraph;
 namespace nautilus::compiler::artifact {
 
 bool hasOnlyInvariantScalars(const ir::IRGraph& graph, std::string* reason = nullptr);
+bool hasOnlyTypedAllocations(const ir::IRGraph& graph, std::string* reason = nullptr);
 void validateArtifactRoots(const ir::IRGraph& graph, const std::list<CompilableFunction>& functions);
 void validateArtifactPreflight(const ir::IRGraph& graph, const std::list<CompilableFunction>& functions);
 

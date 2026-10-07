@@ -3,6 +3,7 @@
 // See https://llvm.org/LICENSE.txt (Apache-2.0 with LLVM exception).
 
 #include "nautilus/compiler/backends/mlir/jit/PackFunctionArguments.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/STLExtras.h>
@@ -25,6 +26,15 @@ std::string makePackedFunctionName(llvm::StringRef name) {
 // all the arguments of the original function and all its results into an i8**
 // pointer to provide a unified invocation interface.
 void packFunctionArguments(llvm::Module* module) {
+	for (const auto& function : module->functions()) {
+		if (!function.isDeclaration()) {
+			const auto packedName = makePackedFunctionName(function.getName());
+			if (module->getNamedValue(packedName)) {
+				throw RuntimeException("MLIR packed wrapper symbol conflicts with existing symbol: " + packedName);
+			}
+		}
+	}
+
 	auto& ctx = module->getContext();
 	llvm::IRBuilder<> builder(ctx);
 	llvm::DenseSet<llvm::Function*> interfaceFunctions;

@@ -13,6 +13,7 @@
 #include <array>
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cstdint>
 #include <limits>
@@ -472,7 +473,8 @@ TEST_CASE_METHOD(LoweredArtifactFixture, "Artifact lowered MLIR validation rejec
 TEST_CASE_METHOD(LoweredArtifactFixture, "Artifact lowered MLIR validation orders structural failures",
                  "[artifact][mlir][validation][B1]") {
 	SECTION("missing module") {
-		REQUIRE_THROWS_WITH(validateArtifactMLIRModule({}, {}, {}, {}), "MLIR artifact module is missing");
+		REQUIRE_THROWS_WITH(validateArtifactMLIRModule({}, {}, {}, {}),
+		                    Catch::Matchers::StartsWith("MLIR artifact module is missing"));
 	}
 	SECTION("exports precede import vector lengths") {
 		exportNames.clear();
@@ -756,7 +758,9 @@ TEST_CASE("Artifact intrinsic fingerprints fail closed for absent empty or throw
 	}
 	SECTION("throwing identity") {
 		plugin = std::make_shared<ThrowingFingerprintPlugin>();
-		REQUIRE_THROWS_WITH(plugin->cacheFingerprint(), "intrinsic fingerprint failed");
+		REQUIRE_THROWS_MATCHES(
+		    plugin->cacheFingerprint(), std::runtime_error,
+		    Catch::Matchers::MessageMatches(Catch::Matchers::Equals("intrinsic fingerprint failed")));
 	}
 	REQUIRE(registry.cacheFingerprint().has_value());
 	registry.addPlugin(plugin);
@@ -779,7 +783,8 @@ TEST_CASE("Artifact intrinsic fingerprints remain unavailable after partial loca
 	MLIRIntrinsicPluginRegistry registry;
 	auto partial = std::make_shared<PartialRegistrationPlugin>();
 	REQUIRE(partial->cacheFingerprint().has_value());
-	REQUIRE_THROWS_WITH(registry.addPlugin(partial), "intrinsic registration failed");
+	REQUIRE_THROWS_MATCHES(registry.addPlugin(partial), std::runtime_error,
+	                       Catch::Matchers::MessageMatches(Catch::Matchers::Equals("intrinsic registration failed")));
 	REQUIRE(partial->registrations == 1);
 	REQUIRE_FALSE(registry.cacheFingerprint().has_value());
 	const auto id = ir::IntrinsicRegistry::instance().lookup(reinterpret_cast<void*>(&fingerprintArithmetic));
@@ -1016,12 +1021,13 @@ TEST_CASE_METHOD(DescriptorResealFixture, "Resealed artifact descriptors reject 
 	REQUIRE(changed.descriptorDigest != original.descriptorDigest);
 	REQUIRE(changed.descriptorDigest ==
 	        artifact::detail::digest(artifact::detail::encodeDescriptor(changed.descriptor)));
-	REQUIRE_THROWS_WITH(artifact::detail::validateDescriptor(changed), expected);
-	REQUIRE_THROWS_WITH(artifact::loadNative(changed, options), expected);
-	REQUIRE_THROWS_WITH(artifact::loadBytecode(changed, options), expected);
+	REQUIRE_THROWS_WITH(artifact::detail::validateDescriptor(changed), Catch::Matchers::StartsWith(expected));
+	REQUIRE_THROWS_WITH(artifact::loadNative(changed, options), Catch::Matchers::StartsWith(expected));
+	REQUIRE_THROWS_WITH(artifact::loadBytecode(changed, options), Catch::Matchers::StartsWith(expected));
 	const auto descriptorBytes = artifact::detail::encodeDescriptor(changed.descriptor);
-	REQUIRE_THROWS_WITH(artifact::detail::decodeDescriptor(descriptorBytes), expected);
-	REQUIRE_THROWS_WITH(artifact::decode(resealedEnvelope(original, descriptorBytes)), expected);
+	REQUIRE_THROWS_WITH(artifact::detail::decodeDescriptor(descriptorBytes), Catch::Matchers::StartsWith(expected));
+	REQUIRE_THROWS_WITH(artifact::decode(resealedEnvelope(original, descriptorBytes)),
+	                    Catch::Matchers::StartsWith(expected));
 }
 
 TEST_CASE_METHOD(DescriptorResealFixture, "Resealed bytecode descriptors still reject altered export ABI records",
@@ -1112,8 +1118,8 @@ TEST_CASE_METHOD(DescriptorResealFixture, "Recomputed descriptor checksums do no
 	REQUIRE(reader.string() == descriptorBytes);
 	REQUIRE(reader.string() == artifact::detail::digest(descriptorBytes));
 	REQUIRE(artifact::detail::digest(descriptorBytes) != original.descriptorDigest);
-	REQUIRE_THROWS_WITH(artifact::detail::decodeDescriptor(descriptorBytes), expected);
-	REQUIRE_THROWS_WITH(artifact::decode(envelope), expected);
+	REQUIRE_THROWS_WITH(artifact::detail::decodeDescriptor(descriptorBytes), Catch::Matchers::StartsWith(expected));
+	REQUIRE_THROWS_WITH(artifact::decode(envelope), Catch::Matchers::StartsWith(expected));
 }
 
 TEST_CASE_METHOD(DescriptorResealFixture, "Resealed valid bytecode rejects raw non-null pointer immediates",

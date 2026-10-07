@@ -13,6 +13,7 @@
 #include <limits>
 #include <nautilus/common/FunctionAttributes.hpp>
 #include <new>
+#include <optional>
 #include <span>
 #include <type_traits>
 #include <utility>
@@ -41,6 +42,7 @@ using AllocaIndex = uint32_t;
 struct AllocaSpec {
 	size_t size;
 	size_t align;
+	std::optional<TypedAllocation> origin = std::nullopt;
 };
 
 /**

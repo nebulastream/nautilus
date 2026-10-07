@@ -172,6 +172,10 @@ TypedValueRef& traceAlloca(size_t size, size_t align) {
 	return activeTracer->traceAlloca(size, align);
 }
 
+TypedValueRef& traceTypedAlloca(const TypedAllocation& allocation) {
+	return activeTracer->traceTypedAlloca(allocation);
+}
+
 std::ostream& operator<<(std::ostream& os, const Op& op) {
 	os << toString(op);
 	return os;

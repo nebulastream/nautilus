@@ -4,6 +4,7 @@
 #include <iterator>
 #include <nautilus/Artifact.hpp>
 #include <nautilus/Engine.hpp>
+#include <nautilus/val_std.hpp>
 #include <stdexcept>
 #include <string>
 
@@ -12,9 +13,40 @@ int32_t wrapperCalls = 0;
 int64_t proxy(int64_t value) noexcept {
 	return value * 3;
 }
+struct alignas(64) OwnedValue {
+	int64_t* cleanup;
+	int64_t value;
+	OwnedValue(int64_t* cleanup, int64_t value) noexcept : cleanup(cleanup), value(value) {
+	}
+	~OwnedValue() noexcept {
+		++*cleanup;
+	}
+};
+int64_t useOwned(OwnedValue* value, bool throwing) {
+	if (throwing) {
+		throw std::runtime_error("Owned artifact exception");
+	}
+	return value->value;
+}
 void verify(nautilus::engine::CompiledModule& module) {
 	if (module.getFunction<int64_t(int64_t)>("increment")(7) != 25) {
 		throw std::runtime_error("Artifact consumer result mismatch");
+	}
+	const auto owned = module.getFunction<int64_t(int64_t*, int64_t, bool)>("owned");
+	int64_t cleanup = 0;
+	if (owned(&cleanup, 42, false) != 42 || cleanup != 1) {
+		throw std::runtime_error("Owned artifact result mismatch");
+	}
+	try {
+		owned(&cleanup, -9, true);
+		throw std::runtime_error("Owned artifact did not throw");
+	} catch (const std::runtime_error& error) {
+		if (std::string(error.what()) != "Owned artifact exception" || cleanup != 2) {
+			throw;
+		}
+	}
+	if (owned(&cleanup, 7, false) != 7 || cleanup != 3) {
+		throw std::runtime_error("Owned artifact recovery mismatch");
 	}
 }
 } // namespace
@@ -53,6 +85,12 @@ int main(int argc, char** argv) {
 				++wrapperCalls;
 				return invoke(proxy, value) + cacheLiteral<int64_t {4}>();
 			});
+			builder.registerFunction<val<int64_t>(val<int64_t*>, val<int64_t>, val<bool>)>(
+			    "owned", [](val<int64_t*> cleanup, val<int64_t> value, val<bool> throwing) {
+				    ++wrapperCalls;
+				    val<OwnedValue> object(cleanup, value);
+				    return invoke(useOwned, &object, throwing);
+			    });
 			if (mode == "emit") {
 #ifdef ENABLE_TRACING
 				if (argc != 3 || !artifact::isSupported()) {

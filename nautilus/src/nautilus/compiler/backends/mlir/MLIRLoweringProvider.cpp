@@ -14,6 +14,7 @@
 #include "nautilus/tracing/Types.hpp"
 #include <fmt/format.h>
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Transforms/Utils/Cloning.h>
@@ -492,6 +493,8 @@ void setFuncAttributes(mlir::func::FuncOp funcOp, const FunctionAttributes& fnAt
 	// or you'll end up with two competing ways to describe memory behavior.
 	if (!passthrough.empty())
 		funcOp->setDiscardableAttr("passthrough", mlir::ArrayAttr::get(ctx, passthrough));
+	else
+		funcOp->removeDiscardableAttr("passthrough");
 }
 
 mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::string& name, void* functionPtr,
@@ -533,21 +536,8 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 		functionPtr = ProxyFunctions.getProxyFunctionAddress(functionName);
 	}
 	if (auto existing = theModule.lookupSymbol<mlir::func::FuncOp>(functionName)) {
-		if (!existing.getBody().empty() || existing.getFunctionType() != functionType ||
-		    existing->getAttr("memory_effects") != getMemoryEffectsAttr(fnAttrs, context)) {
-			throw RuntimeException("MLIR native function has a conflicting signature or attributes: " + functionName);
-		}
-		llvm::SmallVector<mlir::Attribute> passthrough;
-		if (fnAttrs.willReturn) {
-			passthrough.push_back(mlir::StringAttr::get(context, "willreturn"));
-		}
-		if (fnAttrs.noUnwind) {
-			passthrough.push_back(mlir::StringAttr::get(context, "nounwind"));
-		}
-		const mlir::Attribute expectedPassthrough =
-		    passthrough.empty() ? mlir::Attribute {} : mlir::ArrayAttr::get(context, passthrough);
-		if (existing->getAttr("passthrough") != expectedPassthrough) {
-			throw RuntimeException("MLIR native function has conflicting attributes: " + functionName);
+		if (!existing.getBody().empty() || existing.getFunctionType() != functionType) {
+			throw RuntimeException("MLIR native function has a conflicting signature: " + functionName);
 		}
 		for (std::size_t index = 0; index < argStamps.size(); ++index) {
 			const auto* extensionAttr = getNarrowIntExtensionAttr(argStamps[index]);
@@ -564,6 +554,23 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 				throw RuntimeException("MLIR native function has conflicting result attributes: " + functionName);
 			}
 		}
+		auto mergedAttrs = fnAttrs;
+		mergedAttrs.modRefInfo = ModRefInfo::ModRef;
+		for (const auto effects : {ModRefInfo::NoModRef, ModRefInfo::Ref, ModRefInfo::Mod, ModRefInfo::ModRef}) {
+			FunctionAttributes previous;
+			previous.modRefInfo = effects;
+			if (existing->getAttr("memory_effects") == getMemoryEffectsAttr(previous, context)) {
+				mergedAttrs.modRefInfo =
+				    static_cast<ModRefInfo>(static_cast<uint8_t>(effects) | static_cast<uint8_t>(fnAttrs.modRefInfo));
+				break;
+			}
+		}
+		const auto passthrough = existing->getAttrOfType<mlir::ArrayAttr>("passthrough");
+		mergedAttrs.willReturn &=
+		    passthrough && llvm::is_contained(passthrough, mlir::StringAttr::get(context, "willreturn"));
+		mergedAttrs.noUnwind &=
+		    passthrough && llvm::is_contained(passthrough, mlir::StringAttr::get(context, "nounwind"));
+		setFuncAttributes(existing, mergedAttrs);
 		for (std::size_t index = 0; index < jitProxyFunctionSymbols.size(); ++index) {
 			if (jitProxyFunctionSymbols[index] == functionName) {
 				if (jitProxyFunctionTargetAddresses[index] != functionPtr) {
@@ -1187,6 +1194,20 @@ void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirect
 	}
 	auto resultMLIRType = getMLIRType(indirectCallOp->getStamp());
 	auto fnType = mlir::LLVM::LLVMFunctionType::get(resultMLIRType, argTypes);
+	const auto abiAttributes = [&](Type stamp) {
+		llvm::SmallVector<mlir::NamedAttribute> attributes;
+		if (const auto* extension = getNarrowIntExtensionAttr(stamp)) {
+			attributes.push_back(builder->getNamedAttr(extension, builder->getUnitAttr()));
+		}
+		return builder->getDictionaryAttr(attributes);
+	};
+	llvm::SmallVector<mlir::Attribute> argumentAttributes;
+	for (const auto* argument : indirectCallOp->getInputArguments()) {
+		argumentAttributes.push_back(abiAttributes(argument->getStamp()));
+	}
+	const auto setCallABI = [&](auto call) {
+		call.setArgAttrsAttr(builder->getArrayAttr(argumentAttributes));
+	};
 
 	// See visitCall: only calls with an actual landing pad (live
 	// destructors) need the invoke/landingpad machinery; pad-less calls fall
@@ -1224,6 +1245,7 @@ void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirect
 		                                           /*CConv=*/mlir::LLVM::CConvAttr {},
 		                                           /*op_bundle_operands=*/llvm::ArrayRef<mlir::ValueRange> {},
 		                                           /*op_bundle_tags=*/mlir::ArrayAttr {}, normalBlock, unwindBlock);
+		setCallABI(invoke);
 
 		builder->setInsertionPointToStart(unwindBlock);
 		auto ptrType = mlir::LLVM::LLVMPointerType::get(context);
@@ -1264,11 +1286,10 @@ void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirect
 	allOperands.reserve(callArgs.size() + 1);
 	allOperands.push_back(calleePtr);
 	allOperands.insert(allOperands.end(), callArgs.begin(), callArgs.end());
+	auto call = mlir::LLVM::CallOp::create(*builder, getNameLoc("indirectCall"), fnType, allOperands);
+	setCallABI(call);
 	if (indirectCallOp->getStamp() != Type::v) {
-		auto res = mlir::LLVM::CallOp::create(*builder, getNameLoc("indirectCall"), fnType, allOperands);
-		bind(frame, indirectCallOp, res.getResult());
-	} else {
-		mlir::LLVM::CallOp::create(*builder, builder->getUnknownLoc(), fnType, allOperands);
+		bind(frame, indirectCallOp, call.getResult());
 	}
 }
 

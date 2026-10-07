@@ -545,10 +545,20 @@ void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier
 	globalTagMap[snapshot] = identifier;
 }
 
-AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align) {
+AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align, std::optional<TypedAllocation> origin) {
 	auto index = static_cast<AllocaIndex>(allocaSpecs.size());
-	allocaSpecs.push_back({size, align});
+	allocaSpecs.push_back({size, align, recordsConstantOrigins() ? origin : std::nullopt});
 	return index;
+}
+
+void ExecutionTrace::reconcileAllocaSpec(AllocaIndex index, size_t size, size_t align,
+                                         std::optional<TypedAllocation> origin) {
+	if (recordsConstantOrigins()) {
+		auto& spec = allocaSpecs.at(index);
+		if (spec.size != size || spec.align != align || spec.origin != origin) {
+			spec.origin.reset();
+		}
+	}
 }
 
 } // namespace nautilus::tracing
