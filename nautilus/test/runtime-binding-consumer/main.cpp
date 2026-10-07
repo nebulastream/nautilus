@@ -12,6 +12,8 @@
 #include <nautilus/RuntimeBinding.hpp>
 #include <nautilus/config.hpp>
 #include <nautilus/nautilus_function.hpp>
+#include <nautilus/val_func.hpp>
+#include <nautilus/val_std.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -34,7 +36,12 @@ using namespace nautilus;
 using namespace nautilus::engine;
 using Counter = std::shared_ptr<int>;
 using Survivor = ModuleFunction<int64_t(int64_t)>;
-using Addresses = std::array<uintptr_t, 4>;
+using Addresses = std::array<uintptr_t, 5>;
+
+struct Survivors {
+	Survivor nested;
+	Survivor owned;
+};
 
 static_assert(
     std::is_same_v<decltype(artifact::Descriptor {}.bindingSchema), std::vector<runtime_binding::SchemaEntry>>);
@@ -56,9 +63,64 @@ void requireRejected(F&& action, std::string_view reason) {
 	throw std::runtime_error("Invalid artifact was accepted");
 }
 
+struct ResourceState {
+	int64_t constructed = 0;
+	int64_t copies = 0;
+	int64_t destroyed = 0;
+	int64_t live = 0;
+	int64_t calls = 0;
+	int64_t cleanupOrder = 0;
+	int64_t total = 0;
+	int64_t misaligned = 0;
+	bool operator==(const ResourceState&) const = default;
+};
+
+struct NativeResource {
+	ResourceState* state = nullptr;
+	int64_t id = 0;
+	std::unique_ptr<int64_t> payload;
+
+	NativeResource() noexcept = default;
+	NativeResource(ResourceState* state, int64_t id, int64_t value) noexcept
+	    : state(state), id(id), payload(std::make_unique<int64_t>(value)) {
+		++state->constructed;
+		++state->live;
+		state->misaligned += reinterpret_cast<uintptr_t>(this) % alignof(NativeResource) != 0;
+	}
+	NativeResource(const NativeResource& other) noexcept : NativeResource(other.state, other.id + 1, *other.payload) {
+		++state->copies;
+	}
+	~NativeResource() noexcept {
+		if (state) {
+			state->cleanupOrder = state->cleanupOrder * 10 + id;
+			++state->destroyed;
+			--state->live;
+		}
+	}
+};
+
+int64_t consumeNativeResourceNoexcept(NativeResource* resource) noexcept {
+	++resource->state->calls;
+	resource->state->total += *resource->payload;
+	return resource->state->total + resource->id;
+}
+
+int64_t consumeNativeResource(NativeResource* resource, bool fail) {
+	if (fail) {
+		++resource->state->calls;
+		throw std::runtime_error("owned runtime binding failure");
+	}
+	return consumeNativeResourceNoexcept(resource);
+}
+
+void consumeNativeResourceVoid(NativeResource* resource, bool fail) {
+	consumeNativeResource(resource, fail);
+}
+
 struct Storage {
 	std::array<int64_t, 64> values {};
 	uint32_t unused = 17;
+	ResourceState owned;
 	bool operator==(const Storage&) const = default;
 };
 
@@ -78,18 +140,21 @@ Storage makeStorage(int64_t initial) {
 Addresses addresses(Storage& storage, Slots slots) {
 	return {reinterpret_cast<uintptr_t>(&storage.values[slots.left]),
 	        reinterpret_cast<uintptr_t>(&storage.values[slots.alias]),
-	        reinterpret_cast<uintptr_t>(&storage.values[slots.left]), reinterpret_cast<uintptr_t>(&storage.unused)};
+	        reinterpret_cast<uintptr_t>(&storage.values[slots.left]), reinterpret_cast<uintptr_t>(&storage.unused),
+	        reinterpret_cast<uintptr_t>(&storage.owned)};
 }
 
 struct Handles {
 	RuntimeBinding<int64_t> left;
 	RuntimeBinding<int64_t> alias;
 	RuntimeBinding<const int64_t> observed;
+	RuntimeBinding<ResourceState> owned;
 };
 
 Handles bind(RuntimeBindings& bindings, Storage& storage, Slots slots, bool reverse = false) {
 	Handles handles;
 	if (reverse) {
+		handles.owned = bindings.bind<ResourceState>("operator/17/owned", &storage.owned);
 		handles.observed = bindings.bind<const int64_t>("operator/17/observed", &storage.values[slots.left]);
 		handles.alias = bindings.bind<int64_t>("operator/17/alias", &storage.values[slots.alias]);
 		handles.left = bindings.bind<int64_t>("operator/17/left", &storage.values[slots.left]);
@@ -97,6 +162,7 @@ Handles bind(RuntimeBindings& bindings, Storage& storage, Slots slots, bool reve
 		handles.left = bindings.bind<int64_t>("operator/17/left", &storage.values[slots.left]);
 		handles.alias = bindings.bind<int64_t>("operator/17/alias", &storage.values[slots.alias]);
 		handles.observed = bindings.bind<const int64_t>("operator/17/observed", &storage.values[slots.left]);
+		handles.owned = bindings.bind<ResourceState>("operator/17/owned", &storage.owned);
 	}
 	(void) bindings.bind<uint32_t>("operator/17/unused", &storage.unused);
 	return handles;
@@ -158,7 +224,104 @@ void registerProgram(NautilusModule& module, Handles handles, const Counter& wra
 	});
 }
 
-Survivor exercise(CompiledModule module, Storage& storage, Slots slots) {
+template <typename F>
+decltype(auto) withNativeResource(Handles handles, val<int64_t> delta, F&& action) {
+	val<NativeResource> empty;
+	val<NativeResource> first(handles.owned.get(), cacheLiteral<int64_t {1}>(),
+	                          val<int64_t>(*handles.observed.get()) + delta);
+	val<NativeResource> copy(first);
+	val<NativeResource> moved(std::move(copy));
+	return std::forward<F>(action)(&moved);
+}
+
+void registerOwnedProgram(NautilusModule& module, Handles handles, const Counter& wrappers, bool exceptions) {
+	module.registerFunction<val<int64_t>(val<int64_t>)>("owned", [handles, wrappers](val<int64_t> delta) {
+		++*wrappers;
+		return withNativeResource(handles, delta, [](val<NativeResource*> resource) {
+			return invoke(consumeNativeResourceNoexcept, resource);
+		});
+	});
+	if (!exceptions) {
+		return;
+	}
+	module.registerFunction<val<int64_t>(val<int64_t>, val<bool>)>(
+	    "owned_throw", [handles, wrappers](val<int64_t> delta, val<bool> fail) {
+		    ++*wrappers;
+		    return withNativeResource(handles, delta, [fail](val<NativeResource*> resource) {
+			    return invoke(consumeNativeResource, resource, fail);
+		    });
+	    });
+	module.registerFunction<val<int64_t>(val<int64_t>, val<bool>, val<int64_t (*)(NativeResource*, bool)>)>(
+	    "owned_callback",
+	    [handles, wrappers](val<int64_t> delta, val<bool> fail, val<int64_t (*)(NativeResource*, bool)> callback) {
+		    ++*wrappers;
+		    return withNativeResource(handles, delta, [fail, callback](val<NativeResource*> resource) mutable {
+			    return callback(resource, fail);
+		    });
+	    });
+	module.registerFunction<void(val<int64_t>, val<bool>, val<void (*)(NativeResource*, bool)>)>(
+	    "owned_callback_void",
+	    [handles, wrappers](val<int64_t> delta, val<bool> fail, val<void (*)(NativeResource*, bool)> callback) {
+		    ++*wrappers;
+		    withNativeResource(handles, delta,
+		                       [fail, callback](val<NativeResource*> resource) mutable { callback(resource, fail); });
+	    });
+}
+
+template <typename F>
+void checkOwnedCall(F&& execute, Storage& storage, Slots slots, int64_t delta, bool fail) {
+	auto expected = storage;
+	require(expected.owned.live == 0 && expected.owned.misaligned == 0,
+	        "Invalid owned resource state before execution");
+	storage.owned.cleanupOrder = 0;
+	expected.owned.cleanupOrder = 21;
+	expected.owned.constructed += 2;
+	++expected.owned.copies;
+	expected.owned.destroyed += 2;
+	++expected.owned.calls;
+	if (fail) {
+		try {
+			execute();
+			throw std::logic_error("Owned binding exception was swallowed");
+		} catch (const std::runtime_error& error) {
+			require(std::string_view(error.what()) == "owned runtime binding failure", "Wrong owned binding exception");
+		}
+	} else {
+		expected.owned.total += expected.values[slots.left] + delta;
+		if constexpr (std::is_void_v<decltype(execute())>) {
+			execute();
+		} else {
+			require(execute() == expected.owned.total + 2, "Owned binding result mismatch");
+		}
+	}
+	require(storage == expected, "Owned constructor/copy/move/reverse cleanup or bound-state isolation mismatch");
+}
+
+void exerciseOwned(CompiledModule& module, Storage& storage, Slots slots, bool exceptions) {
+	const auto owned = module.getFunction<int64_t(int64_t)>("owned");
+	for (const int64_t delta : {4, -7}) {
+		checkOwnedCall([&] { return owned(delta); }, storage, slots, delta, false);
+	}
+	if (!exceptions) {
+		return;
+	}
+	const auto direct = module.getFunction<int64_t(int64_t, bool)>("owned_throw");
+	const auto callback =
+	    module.getFunction<int64_t(int64_t, bool, int64_t (*)(NativeResource*, bool))>("owned_callback");
+	const auto callbackVoid =
+	    module.getFunction<void(int64_t, bool, void (*)(NativeResource*, bool))>("owned_callback_void");
+	const auto verify = [&](const auto& execute) {
+		for (const bool fail : {false, true, false}) {
+			const int64_t delta = fail ? -9 : 6;
+			checkOwnedCall([&] { return execute(delta, fail); }, storage, slots, delta, fail);
+		}
+	};
+	verify([&](int64_t delta, bool fail) { return direct(delta, fail); });
+	verify([&](int64_t delta, bool fail) { return callback(delta, fail, consumeNativeResource); });
+	verify([&](int64_t delta, bool fail) { callbackVoid(delta, fail, consumeNativeResourceVoid); });
+}
+
+Survivors exercise(CompiledModule module, Storage& storage, Slots slots, bool ownedExceptions = true) {
 	auto expected = storage;
 	auto survivor = [&] {
 		auto owner = std::move(module);
@@ -193,11 +356,14 @@ Survivor exercise(CompiledModule module, Storage& storage, Slots slots) {
 			require(loop(count, split, 3) == total, "Loop backedge or branch merge binding mismatch");
 			require(storage == expected, "Loop touched unrelated storage");
 		}
-		return nested;
+		exerciseOwned(owner, storage, slots, ownedExceptions);
+		expected = storage;
+		return Survivors {nested, owner.getFunction<int64_t(int64_t)>("owned")};
 	}();
 	expected.values[slots.left] -= 3;
-	require(survivor(-2) == expected.values[slots.left], "Function did not survive module destruction");
+	require(survivor.nested(-2) == expected.values[slots.left], "Function did not survive module destruction");
 	require(storage == expected, "Surviving function touched unrelated storage");
+	checkOwnedCall([&] { return survivor.owned(7); }, storage, slots, 7, false);
 	return survivor;
 }
 
@@ -270,7 +436,8 @@ void requireNoFrontend(const CompiledModule& module, bool native) {
 }
 
 CompiledModule compileSnapshot(Options options, Storage& storage, Slots slots, const Counter& wrappers,
-                               bool fromOptions, bool cached) {
+                               const Counter& ownedWrappers, bool fromOptions, bool cached,
+                               bool ownedExceptions = true) {
 	RuntimeBindings bindings;
 	auto handles = bind(bindings, storage, slots, fromOptions);
 	const auto schema = bindings.schemaEntries();
@@ -293,6 +460,7 @@ CompiledModule compileSnapshot(Options options, Storage& storage, Slots slots, c
 		module.setRuntimeBindings(bindings);
 	}
 	registerProgram(module, handles, wrappers);
+	registerOwnedProgram(module, handles, ownedWrappers, ownedExceptions);
 	(void) bindings.bind<int64_t>("late-registration", &storage.values.back());
 	bindings = RuntimeBindings {};
 	(void) bindings.bind<int64_t>("operator/17/left", &storage.values.back());
@@ -317,21 +485,27 @@ void ordinary(const std::string& requested) {
 				auto storage = makeStorage(10);
 				const Slots slots {0, aliased ? size_t {0} : size_t {1}};
 				auto wrappers = std::make_shared<int>(0);
+				auto ownedWrappers = std::make_shared<int>(0);
+				const bool ownedExceptions =
+				    backend == "interpreter" || backend == "reduced" || backend == "mlir" || backend == "cpp";
 				auto options = baseOptions(backend);
 				const auto directory = std::filesystem::current_path() / "ordinary-cache";
 				const bool existed = std::filesystem::exists(directory);
 				options.setOption("engine.cache.directory", directory.string());
-				options.setOption("engine.cache.key", std::string("installed-runtime-bindings/i64/v1"));
-				auto module = compileSnapshot(options, storage, slots, wrappers, fromOptions, false);
+				options.setOption("engine.cache.key", std::string("installed-runtime-bindings/i64/typed-owned/v2"));
+				auto module = compileSnapshot(options, storage, slots, wrappers, ownedWrappers, fromOptions, false,
+				                              ownedExceptions);
 				const bool interpreted = backend == "interpreter" || backend == "reduced";
 				require((module.getExecutable() == nullptr) == interpreted,
 				        "Backend silently fell back to interpretation");
 				const auto before = *wrappers;
+				const auto ownedBefore = *ownedWrappers;
 				if (interpreted) {
-					require(before == 0, "Interpreter unexpectedly traced");
+					require(before == 0 && ownedBefore == 0, "Interpreter unexpectedly traced");
 					require(module.getStatistics() == nullptr, "Interpreter unexpectedly has compiler statistics");
 				} else {
-					require(before > 0, "Configured backend did not trace");
+					require(before > 0 && ownedBefore > 0,
+					        "Configured backend did not trace both binding and owned wrappers");
 					const auto expectedBackend = backend == "tbc-auto" || backend == "tbc-jit" ? "tbc" : backend;
 					require(statistic<std::string>(module, "backend.name") == expectedBackend,
 					        "Wrong backend selected");
@@ -348,11 +522,15 @@ void ordinary(const std::string& requested) {
 						std::cout << "tbc.mode=" << mode << '\n';
 					}
 				}
-				auto survivor = exercise(std::move(module), storage, slots);
+				auto survivor = exercise(std::move(module), storage, slots, ownedExceptions);
 				require(interpreted ? *wrappers > before : *wrappers == before, "Unexpected wrapper execution");
+				require(interpreted ? *ownedWrappers > ownedBefore : *ownedWrappers == ownedBefore,
+				        "Unexpected independent owned wrapper execution");
 				require(existed || !std::filesystem::exists(directory), "Ordinary engine created a persistent cache");
 				std::cout << "ordinary " << backend << " bindings=" << (fromOptions ? "options" : "module")
-				          << " aliased=" << aliased << " passed; wrappers=" << *wrappers << '\n';
+				          << " aliased=" << aliased << " passed; wrappers=" << *wrappers
+				          << " owned-wrappers=" << *ownedWrappers
+				          << " owned-exceptions=" << (ownedExceptions ? "exercised" : "not_exercised") << '\n';
 			}
 		}
 	}
@@ -439,20 +617,26 @@ void requireRebound(const Addresses& producer, const Addresses& current) {
 void requireArtifact(const artifact::ModuleArtifact& value, const RuntimeBindings& bindings) {
 	require(value.descriptor.version == 2, "Wrong runtime-binding artifact version");
 	require(value.descriptor.bindingSchema == bindings.schemaEntries(), "Wrong complete binding schema");
-	require(value.descriptor.bindingSchema.size() == 4, "Unused binding was omitted from the descriptor");
-	require(value.descriptor.exports.size() == 7, "Runtime bindings changed the exported function set");
+	require(value.descriptor.bindingSchema.size() == 5, "Owned or unused binding was omitted from the descriptor");
+	require(value.descriptor.exports.size() == 11, "Runtime bindings changed the exported function set");
 	for (const auto& entry : value.descriptor.exports) {
 		const bool address =
 		    entry.name == "left_address" || entry.name == "alias_address" || entry.name == "observed_address";
-		const bool update = entry.name == "update" || entry.name == "nested";
-		require(address || update || entry.name == "loop" || entry.name == "same_address", "Unexpected export name");
-		const std::vector<Type> expected = update                 ? std::vector<Type> {Type::i64}
+		const bool update = entry.name == "update" || entry.name == "nested" || entry.name == "owned";
+		const bool callback = entry.name == "owned_callback" || entry.name == "owned_callback_void";
+		require(address || update || callback || entry.name == "owned_throw" || entry.name == "loop" ||
+		            entry.name == "same_address",
+		        "Unexpected export name");
+		const std::vector<Type> expected = update     ? std::vector<Type> {Type::i64}
+		                                   : callback ? std::vector<Type> {Type::i64, Type::b, Type::ptr}
+		                                   : entry.name == "owned_throw" ? std::vector<Type> {Type::i64, Type::b}
 		                                   : entry.name == "loop" ? std::vector<Type> {Type::i64, Type::i64, Type::i64}
 		                                                          : std::vector<Type> {};
 		require(entry.argumentTypes == expected, "Runtime bindings added an ABI argument");
-		require(entry.returnType == (address                        ? Type::ptr
-		                             : entry.name == "same_address" ? Type::b
-		                                                            : Type::i64) &&
+		require(entry.returnType == (address                               ? Type::ptr
+		                             : entry.name == "same_address"        ? Type::b
+		                             : entry.name == "owned_callback_void" ? Type::v
+		                                                                   : Type::i64) &&
 		            entry.callingConvention == 0 && !entry.loweredABI.empty(),
 		        "Runtime bindings changed an export ABI");
 	}
@@ -465,6 +649,7 @@ void emit(const std::filesystem::path& path) {
 	auto storage = std::make_unique<Storage>(makeStorage(10));
 	const Slots slots {0, 0};
 	auto wrappers = std::make_shared<int>(0);
+	auto ownedWrappers = std::make_shared<int>(0);
 	auto value = [&] {
 		RuntimeBindings bindings;
 		auto handles = bind(bindings, *storage, slots);
@@ -473,9 +658,11 @@ void emit(const std::filesystem::path& path) {
 		auto module = engine.createModule();
 		module.setRuntimeBindings(bindings);
 		registerProgram(module, handles, wrappers);
+		registerOwnedProgram(module, handles, ownedWrappers, true);
 		const auto before = *storage;
 		auto transported = module.createArtifact();
-		require(*storage == before && *wrappers > 0, "Artifact emission did not trace without touching pointees");
+		require(*storage == before && *wrappers > 0 && *ownedWrappers > 0,
+		        "Artifact emission did not trace both wrapper families without touching pointees");
 		requireArtifact(transported, bindings);
 		return transported;
 	}();
@@ -483,7 +670,8 @@ void emit(const std::filesystem::path& path) {
 	require(artifact::decode(bytes).descriptor == value.descriptor, "Descriptor did not round trip");
 	requireNoAddresses(bytes, addresses(*storage, slots));
 	writeBytes(path, bytes);
-	writeReport(path.string() + ".producer.report", addresses(*storage, slots), "wrappers=" + std::to_string(*wrappers),
+	writeReport(path.string() + ".producer.report", addresses(*storage, slots),
+	            "wrappers=" + std::to_string(*wrappers) + " owned-wrappers=" + std::to_string(*ownedWrappers),
 	            "standalone");
 #else
 	(void) path;
@@ -508,7 +696,8 @@ void schemaMismatch(const artifact::ModuleArtifact& value, Storage& storage, Slo
 	int32_t wrongSize = 41;
 	int32_t wrongUnused = 17;
 	const auto before = storage;
-	for (const auto* kind : {"missing", "renamed-unused", "unused-type", "same-size-type", "size", "const", "extra"}) {
+	for (const auto* kind : {"missing", "renamed-unused", "unused-type", "same-size-type", "size", "const", "extra",
+	                         "owned-missing", "owned-type"}) {
 		RuntimeBindings bindings;
 		const std::string_view name(kind);
 		if (name != "missing") {
@@ -528,6 +717,11 @@ void schemaMismatch(const artifact::ModuleArtifact& value, Storage& storage, Slo
 			} else {
 				(void) bindings.bind<uint32_t>(name == "renamed-unused" ? "renamed-unused" : "operator/17/unused",
 				                               &storage.unused);
+			}
+			if (name == "owned-type") {
+				(void) bindings.bind<int64_t>("operator/17/owned", &storage.values.back());
+			} else if (name != "owned-missing") {
+				(void) bindings.bind<ResourceState>("operator/17/owned", &storage.owned);
 			}
 			if (name == "extra") {
 				(void) bindings.bind<int64_t>("extra", &storage.values.back());
@@ -569,6 +763,8 @@ void consume(const std::string& mode, const std::filesystem::path& path) {
 		auto thirdStorage = std::make_unique<Storage>(makeStorage(307));
 		const Slots aliased {29, 29};
 		const Slots separate {37, 41};
+		requireRebound(producer.values, addresses(*secondStorage, aliased));
+		requireRebound(producer.values, addresses(*thirdStorage, separate));
 		auto first = exercise(loadSnapshot(value, *storage, slots, true), *storage, slots);
 		const auto firstAfter = *storage;
 		auto second = exercise(loadSnapshot(value, *secondStorage, aliased, true), *secondStorage, aliased);
@@ -576,10 +772,22 @@ void consume(const std::string& mode, const std::filesystem::path& path) {
 		auto third = exercise(loadSnapshot(value, *thirdStorage, separate, false), *thirdStorage, separate);
 		const auto thirdAfter = *thirdStorage;
 		require(*storage == firstAfter && *secondStorage == secondAfter, "A rebound load changed an earlier module");
-		require(first(2) == firstAfter.values[slots.left] + 5, "First native module lost its bindings");
+		require(first.nested(2) == firstAfter.values[slots.left] + 5, "First native module lost its bindings");
 		require(*secondStorage == secondAfter && *thirdStorage == thirdAfter, "Module bindings were globally replaced");
-		require(second(3) == secondAfter.values[aliased.left] + 7, "Second native module lost its bindings");
+		require(second.nested(3) == secondAfter.values[aliased.left] + 7, "Second native module lost its bindings");
+		const auto secondNestedAfter = *secondStorage;
 		require(*thirdStorage == thirdAfter, "Native execution changed the bytecode-loaded module");
+		checkOwnedCall([&] { return first.owned(6); }, *storage, slots, 6, false);
+		const auto firstOwnedAfter = *storage;
+		require(*secondStorage == secondNestedAfter && *thirdStorage == thirdAfter,
+		        "First native owned execution changed another module's state");
+		checkOwnedCall([&] { return second.owned(-4); }, *secondStorage, aliased, -4, false);
+		const auto secondOwnedAfter = *secondStorage;
+		require(*storage == firstOwnedAfter && *thirdStorage == thirdAfter,
+		        "Second native owned execution changed another module's state");
+		checkOwnedCall([&] { return third.owned(9); }, *thirdStorage, separate, 9, false);
+		require(*storage == firstOwnedAfter && *secondStorage == secondOwnedAfter,
+		        "Bytecode-loaded owned execution changed a native module's state");
 		requireNoAddresses(bytes, addresses(*secondStorage, aliased));
 		requireNoAddresses(bytes, addresses(*thirdStorage, separate));
 	} else {
@@ -594,7 +802,8 @@ void consume(const std::string& mode, const std::filesystem::path& path) {
 		}
 		auto survivor = exercise(loadSnapshot(value, *storage, slots, mode != "bytecode"), *storage, slots);
 	}
-	writeReport(path.string() + "." + mode + ".report", current, "frontend-wrapper=not_supplied", "standalone");
+	writeReport(path.string() + "." + mode + ".report", current,
+	            "frontend-wrapper=not_supplied owned-frontend-wrapper=not_supplied", "standalone");
 }
 
 #ifdef NAUTILUS_CACHE_EXPECTED
@@ -614,25 +823,34 @@ void cached(const std::string& mode, const std::filesystem::path& directory) {
 	requireAslr();
 	require(artifact::isSupported(), "Cache artifacts are unsupported by this installed package");
 	const auto coldReport = directory.string() + ".cold.report";
+	const bool native = mode == "warm" || mode == "warmafter";
 	if (mode == "cold") {
 		std::filesystem::remove_all(directory);
-		std::filesystem::remove(coldReport);
+		for (const auto* request : {"cold", "warm", "repair", "warmafter"}) {
+			std::filesystem::remove(directory.string() + "." + request + ".report");
+		}
 	} else if (mode == "repair") {
 		writeBytes(uniqueArtifact(directory, ".o"), "corrupt runtime-binding native object");
 	}
 	auto storage = std::make_unique<Storage>(makeStorage(mode == "cold" ? 10 : 101));
-	const Slots slots = mode == "cold" ? Slots {0, 0} : mode == "warm" ? Slots {17, 23} : Slots {31, 31};
+	const Slots slots = mode == "cold"     ? Slots {0, 0}
+	                    : mode == "warm"   ? Slots {17, 23}
+	                    : mode == "repair" ? Slots {31, 31}
+	                                       : Slots {43, 47};
 	const auto current = addresses(*storage, slots);
 	auto wrappers = std::make_shared<int>(0);
+	auto ownedWrappers = std::make_shared<int>(0);
 	auto options = baseOptions("mlir");
 	options.setOption("engine.cache.directory", directory.string());
-	options.setOption("engine.cache.key", std::string("installed-runtime-bindings/i64/v1"));
-	auto module = compileSnapshot(options, *storage, slots, wrappers, mode != "cold", true);
+	options.setOption("engine.cache.key", std::string("installed-runtime-bindings/i64/typed-owned/v2"));
+	auto module = compileSnapshot(options, *storage, slots, wrappers, ownedWrappers, mode != "cold", true);
 	const auto statistics = module.getStatistics();
 	require(statistics != nullptr, "Cache did not publish statistics");
 	const auto key = statistic<std::string>(module, "cache.key");
 	require(statistic<int64_t>(module, "cache.tracingRan") == (mode == "cold" ? 1 : 0), "Wrong trace telemetry");
 	require(mode == "cold" ? *wrappers > 0 : *wrappers == 0, "Unexpected independent wrapper execution");
+	require(mode == "cold" ? *ownedWrappers > 0 : *ownedWrappers == 0,
+	        "Unexpected independent owned wrapper execution");
 	if (mode == "cold") {
 		require(statistic<std::string>(module, "cache.object") == "written" &&
 		            statistic<std::string>(module, "cache.mlir") == "written" &&
@@ -643,8 +861,13 @@ void cached(const std::string& mode, const std::filesystem::path& directory) {
 		const auto producer = readReport(coldReport);
 		require(key == producer.key, "Current binding addresses changed cache identity");
 		requireRebound(producer.values, current);
-		requireNoFrontend(module, mode == "warm");
-		if (mode == "warm") {
+		requireNoFrontend(module, native);
+		if (mode == "warmafter") {
+			const auto repaired = readReport(directory.string() + ".repair.report");
+			require(key == repaired.key, "Repaired entry changed cache identity");
+			requireRebound(repaired.values, current);
+		}
+		if (native) {
 			require(statistic<std::string>(module, "cache.object") == "hit" &&
 			            statistic<std::string>(module, "cache.mlir") == "not_checked" &&
 			            statistic<std::string>(module, "cache.fallback") == "none" &&
@@ -667,9 +890,11 @@ void cached(const std::string& mode, const std::filesystem::path& directory) {
 		}
 	}
 	const auto traced = *wrappers;
+	const auto ownedTraced = *ownedWrappers;
 	auto survivor = exercise(std::move(module), *storage, slots);
-	require(*wrappers == traced, "Compiled cache execution ran a wrapper");
-	writeReport(directory.string() + "." + mode + ".report", current, "wrappers=" + std::to_string(*wrappers), key,
+	require(*wrappers == traced && *ownedWrappers == ownedTraced, "Compiled cache execution ran a wrapper");
+	writeReport(directory.string() + "." + mode + ".report", current,
+	            "wrappers=" + std::to_string(*wrappers) + " owned-wrappers=" + std::to_string(*ownedWrappers), key,
 	            statistics->toString());
 }
 #endif
@@ -731,10 +956,11 @@ int main(int argc, char** argv) {
 				                            "native-no-bytecode", "native-corrupt-bytecode"}) {
 					child({request, file});
 				}
-			} else if (mode == "cold" || mode == "warm" || mode == "repair" || mode == "cache-roundtrip") {
+			} else if (mode == "cold" || mode == "warm" || mode == "repair" || mode == "warmafter" ||
+			           mode == "cache-roundtrip") {
 #ifdef NAUTILUS_CACHE_EXPECTED
 				if (mode == "cache-roundtrip") {
-					for (const auto* request : {"cold", "warm", "repair", "warm"}) {
+					for (const auto* request : {"cold", "warm", "repair", "warmafter"}) {
 						child({request, path.string()});
 					}
 				} else {

@@ -1598,12 +1598,7 @@ TEST_CASE("RuntimeBindings rejects memory and call laundering of captured addres
 				}
 				auto execute = compiled.getFunction<int64_t(uintptr_t*, uintptr_t (*)(uintptr_t))>("execute");
 				REQUIRE(execute(scratchAddress, nativeIdentity) == *values[iteration]);
-				REQUIRE(bindingStat<std::string>(compiled, "cache.fallback") ==
-				        (kind == "alloca" ? "unsupported_allocation_metadata" : "non_relocatable_pointer"));
-				if (kind == "alloca") {
-					REQUIRE(bindingStat<std::string>(compiled, "cache.rejection") ==
-					        "allocation_metadata_origins_unavailable");
-				}
+				REQUIRE(bindingStat<std::string>(compiled, "cache.fallback") == "non_relocatable_pointer");
 				REQUIRE(bindingStat<int64_t>(compiled, "cache.tracingRan") == 1);
 				REQUIRE(traces > before);
 				for (const auto* extension : {".o", ".mlirbc", ".manifest"}) {
@@ -1660,7 +1655,7 @@ TEST_CASE("RuntimeBindings caches runtime pointer spills", "[runtime-bindings][c
 		CAPTURE(kind);
 		BindingCacheDirectory cache;
 		auto options = bindingCacheOptions(cache.path(), "runtime-pointer-spill-module-v1");
-		std::array<std::unique_ptr<std::array<int64_t, 3>>, 2> values;
+		std::array<std::unique_ptr<std::array<int64_t, 3>>, 3> values;
 		int traces = 0;
 		for (std::size_t iteration = 0; iteration < values.size(); ++iteration) {
 			CAPTURE(iteration);
@@ -1699,25 +1694,26 @@ TEST_CASE("RuntimeBindings caches runtime pointer spills", "[runtime-bindings][c
 			    });
 			const auto before = traces;
 			auto compiled = module.compile();
-			const bool allocationMetadata = kind == "alloca";
-			const bool hit = !allocationMetadata && iteration == 1;
+			const bool hit = iteration != 0;
 			REQUIRE(bindingStat<std::string>(compiled, "cache.fallback") ==
-			        (allocationMetadata ? "unsupported_allocation_metadata" : "none"));
-			REQUIRE(bindingStat<std::string>(compiled, "cache.object") == (allocationMetadata ? "miss"
-			                                                               : hit              ? "hit"
-			                                                                                  : "written"));
+			        (iteration == 2 ? "invalid_object" : "none"));
+			REQUIRE(bindingStat<std::string>(compiled, "cache.object") == (iteration == 0   ? "written"
+			                                                               : iteration == 1 ? "hit"
+			                                                                                : "invalid_rewritten"));
+			REQUIRE(bindingStat<std::string>(compiled, "cache.mlir") == (iteration == 0   ? "written"
+			                                                             : iteration == 1 ? "not_checked"
+			                                                                              : "hit"));
 			REQUIRE(bindingStat<int64_t>(compiled, "cache.tracingRan") == (hit ? 0 : 1));
 			REQUIRE((hit ? traces == before : traces > before));
-			if (allocationMetadata) {
-				REQUIRE(bindingStat<std::string>(compiled, "cache.rejection") ==
-				        "allocation_metadata_origins_unavailable");
-				for (const auto* extension : {".o", ".mlirbc", ".manifest"}) {
-					REQUIRE(bindingArtifact(cache.path(), extension).empty());
-				}
-			}
 			auto execute = compiled.getFunction<int64_t(uintptr_t)>("execute");
 			for (std::size_t index = 0; index < values[iteration]->size(); ++index) {
 				REQUIRE(execute(index) == (*values[iteration])[index]);
+			}
+			if (hit) {
+				REQUIRE(traces == before);
+			}
+			if (iteration == 1) {
+				REQUIRE(std::filesystem::remove(bindingArtifact(cache.path(), ".o")));
 			}
 		}
 	}

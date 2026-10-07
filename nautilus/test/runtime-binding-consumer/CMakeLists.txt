@@ -63,7 +63,7 @@ if (RUNTIME_BINDING_ENABLE_COMPILER AND RUNTIME_BINDING_ENABLE_TRACING AND RUNTI
         add_test(NAME runtime-binding-cache-cold COMMAND runtime-binding-consumer cold "${binding_cache}")
         add_test(NAME runtime-binding-cache-warm COMMAND runtime-binding-consumer warm "${binding_cache}")
         add_test(NAME runtime-binding-cache-repair COMMAND runtime-binding-consumer repair "${binding_cache}")
-        add_test(NAME runtime-binding-cache-warm-after-repair COMMAND runtime-binding-consumer warm "${binding_cache}")
+        add_test(NAME runtime-binding-cache-warm-after-repair COMMAND runtime-binding-consumer warmafter "${binding_cache}")
         set_tests_properties(runtime-binding-cache-cold PROPERTIES FIXTURES_SETUP runtime-binding-cache-cold)
         set_tests_properties(runtime-binding-cache-warm PROPERTIES
                 FIXTURES_REQUIRED runtime-binding-cache-cold FIXTURES_SETUP runtime-binding-cache-warm)

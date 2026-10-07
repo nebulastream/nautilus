@@ -240,16 +240,25 @@ private:
 };
 
 template <int32_t Marker>
-struct BindingArtifactAllocatedResource {
+struct alignas(64) BindingArtifactAllocatedResource {
 	explicit BindingArtifactAllocatedResource(BindingArtifactCleanupState* state) noexcept : state(state) {
 		startBindingArtifactResource(state);
 	}
 
+	BindingArtifactAllocatedResource(const BindingArtifactAllocatedResource& other) noexcept
+	    : state(other.state), marker(other.marker + 1) {
+		startBindingArtifactResource(state);
+	}
+
+	BindingArtifactAllocatedResource(BindingArtifactAllocatedResource&&) = delete;
+
 	~BindingArtifactAllocatedResource() noexcept {
-		finishBindingArtifactResource<Marker>(state);
+		--state->live;
+		state->cleanupOrder = state->cleanupOrder * 10 + marker;
 	}
 
 	BindingArtifactCleanupState* state;
+	int32_t marker = Marker;
 };
 
 int64_t bindingArtifactGuardedProxy(BindingArtifactCleanupState* state, int64_t value) {
@@ -259,6 +268,21 @@ int64_t bindingArtifactGuardedProxy(BindingArtifactCleanupState* state, int64_t 
 	}
 	state->total += value;
 	return state->total;
+}
+
+int64_t bindingArtifactAllocatedProxy(BindingArtifactAllocatedResource<1>* outer,
+                                      BindingArtifactAllocatedResource<1>* copied,
+                                      BindingArtifactAllocatedResource<3>* inner, int64_t value) {
+	if (reinterpret_cast<uintptr_t>(outer) % alignof(BindingArtifactAllocatedResource<1>) != 0 ||
+	    reinterpret_cast<uintptr_t>(copied) % alignof(BindingArtifactAllocatedResource<1>) != 0 ||
+	    reinterpret_cast<uintptr_t>(inner) % alignof(BindingArtifactAllocatedResource<3>) != 0) {
+		throw std::runtime_error("standalone binding resource alignment");
+	}
+	if (outer == copied || outer->state != copied->state || outer->state != inner->state || outer->state->live != 3 ||
+	    outer->marker != 1 || copied->marker != 2 || inner->marker != 3) {
+		throw std::runtime_error("standalone binding resource ownership");
+	}
+	return bindingArtifactGuardedProxy(outer->state, value);
 }
 
 artifact::ModuleArtifact emitBindingCleanupArtifact(BindingArtifactCleanupState& state, int& wrappers,
@@ -288,6 +312,41 @@ ModuleFunction<int64_t(int64_t)> detachedBindingCleanupFunction(const artifact::
 	options.setRuntimeBindings(bindings);
 	auto module = bytecode ? artifact::loadBytecode(value, options) : artifact::loadNative(value, options);
 	return module.getFunction<int64_t(int64_t)>("execute");
+}
+
+artifact::ModuleArtifact emitBindingAllocatedArtifact(BindingArtifactCleanupState& state, bool bound, int& wrappers,
+                                                      const Options& baseOptions) {
+	RuntimeBindings bindings;
+	auto binding = bindings.bind<BindingArtifactCleanupState>("b3/allocated", &state);
+	auto options = baseOptions;
+	options.setRuntimeBindings(bound ? bindings : RuntimeBindings {});
+	NautilusEngine engine(options);
+	auto builder = engine.createModule();
+	builder.registerFunction<val<int64_t>(val<BindingArtifactCleanupState*>, val<int64_t>)>(
+	    "execute", [binding, bound, &wrappers](val<BindingArtifactCleanupState*> argument, val<int64_t> value) {
+		    ++wrappers;
+		    auto address = bound ? binding.get() : argument;
+		    val<BindingArtifactAllocatedResource<1>> outer(address);
+		    val<BindingArtifactAllocatedResource<1>> copy(outer);
+		    val<BindingArtifactAllocatedResource<1>> moved(std::move(copy));
+		    val<BindingArtifactAllocatedResource<3>> inner(address);
+		    return invoke(bindingArtifactAllocatedProxy, &outer, &moved, &inner, value);
+	    });
+	return builder.createArtifact();
+}
+
+ModuleFunction<int64_t(BindingArtifactCleanupState*, int64_t)>
+detachedBindingAllocatedFunction(const artifact::ModuleArtifact& value, BindingArtifactCleanupState& state, bool bound,
+                                 bool bytecode, const Options& baseOptions) {
+	RuntimeBindings bindings;
+	if (bound) {
+		(void) bindings.bind<BindingArtifactCleanupState>("b3/allocated", &state);
+	}
+	auto options = baseOptions;
+	options.setRuntimeBindings(bindings);
+	REQUIRE(bindings.schemaEntries() == value.descriptor.bindingSchema);
+	auto module = bytecode ? artifact::loadBytecode(value, options) : artifact::loadNative(value, options);
+	return module.getFunction<int64_t(BindingArtifactCleanupState*, int64_t)>("execute");
 }
 
 std::string defineBindingInExistingObjectData(std::string_view bytes, const std::string& bindingSymbol) {
@@ -751,36 +810,132 @@ TEST_CASE("Standalone bound cleanup artifacts unwind independently after native 
 	}
 }
 
-TEST_CASE("Standalone bound artifacts preserve the original native-resource alloca guard",
-          "[runtime-bindings][artifact][mlir][B3][preflight][cleanup]") {
-	requireBindingArtifactSupport();
+TEST_CASE("Standalone typed owned binding artifacts unwind independently after native and bytecode rebinds",
+          "[runtime-bindings][artifact][mlir][B3][allocation-origin][cleanup][lifetime]") {
+	requireBindingArtifactUnwindSupport();
 	for (const bool bound : {false, true}) {
 		for (const bool passes : {false, true}) {
 			CAPTURE(bound, passes);
-			BindingArtifactCleanupState state {10};
-			RuntimeBindings bindings;
-			auto binding = bindings.bind<BindingArtifactCleanupState>("b3/guarded", &state);
 			auto options = bindingArtifactOptions();
 			options.setOption("ir.runPasses", passes);
-			if (bound) {
-				options.setRuntimeBindings(bindings);
-			}
-			NautilusEngine engine(options);
-			auto builder = engine.createModule();
+			BindingArtifactCleanupState nativeState {100}, bytecodeState {1000}, argumentState {10000}, decoy {20000};
 			int wrappers = 0;
-			builder.registerFunction<val<int64_t>(val<BindingArtifactCleanupState*>, val<int64_t>)>(
-			    "execute", [binding, bound, &wrappers](val<BindingArtifactCleanupState*> argument, val<int64_t> value) {
-				    ++wrappers;
-				    auto address = bound ? binding.get() : argument;
-				    val<BindingArtifactAllocatedResource<1>> outer(address);
-				    val<BindingArtifactAllocatedResource<2>> inner(address);
-				    return invoke(bindingArtifactGuardedProxy, address, value);
-			    });
-			REQUIRE_THROWS_WITH(builder.createArtifact(),
-			                    "Artifact preflight failed: allocation_metadata_origins_unavailable");
+			const auto original = [&] {
+				BindingArtifactCleanupState producer {10};
+				auto emitted = emitBindingAllocatedArtifact(producer, bound, wrappers, options);
+				REQUIRE(producer == BindingArtifactCleanupState {10});
+				return artifact::decode(artifact::encode(emitted));
+			}();
 			REQUIRE(wrappers > 0);
-			REQUIRE(state == BindingArtifactCleanupState {10});
+			const auto coldWrappers = wrappers;
+			REQUIRE(original.descriptor.bindingSchema.size() == (bound ? 1 : 0));
+			REQUIRE(original.descriptor.exports.size() == 1);
+			REQUIRE(original.descriptor.exports.front().name == "execute");
+			REQUIRE(original.descriptor.exports.front().returnType == Type::i64);
+			REQUIRE((original.descriptor.exports.front().argumentTypes == std::vector<Type> {Type::ptr, Type::i64}));
+			REQUIRE(std::ranges::any_of(original.descriptor.imports,
+			                            [](const auto& entry) { return entry.symbol == "__gxx_personality_v0"; }));
+			::mlir::MLIRContext context;
+			context.disableMultithreading();
+			context.loadDialect<::mlir::LLVM::LLVMDialect>();
+			auto lowered = ::mlir::parseSourceString<::mlir::ModuleOp>(original.bytecode, &context);
+			REQUIRE(static_cast<bool>(lowered));
+			REQUIRE(::mlir::succeeded(::mlir::verify(*lowered)));
+			std::size_t allocations = 0;
+			lowered->walk([&](::mlir::LLVM::AllocaOp operation) {
+				++allocations;
+				REQUIRE(operation.getAlignment() == alignof(BindingArtifactAllocatedResource<1>));
+			});
+			REQUIRE(allocations == 3);
+			std::optional nativeFunction(
+			    detachedBindingAllocatedFunction(original, nativeState, bound, false, options));
+			REQUIRE(wrappers == coldWrappers);
+			auto bytecodeFunction = detachedBindingAllocatedFunction(original, bytecodeState, bound, true, options);
+			REQUIRE(wrappers == coldWrappers);
+			REQUIRE(nativeState == BindingArtifactCleanupState {100});
+			REQUIRE(bytecodeState == BindingArtifactCleanupState {1000});
+			const auto check = [&](auto& execute, BindingArtifactCleanupState& state) {
+				const auto before = state.total;
+				auto* argument = bound ? &decoy : &state;
+				REQUIRE(execute(argument, 7) == before + 7);
+				REQUIRE((state == BindingArtifactCleanupState {before + 7, 0, 1, 321}));
+				REQUIRE(wrappers == coldWrappers);
+				REQUIRE_FALSE(tracing::inTracer());
+				REQUIRE_THROWS_WITH(execute(argument, -1), "standalone binding cleanup");
+				REQUIRE((state == BindingArtifactCleanupState {before + 7, 0, 2, 321321}));
+				REQUIRE(wrappers == coldWrappers);
+				REQUIRE_FALSE(tracing::inTracer());
+				REQUIRE(execute(argument, 3) == before + 10);
+				REQUIRE((state == BindingArtifactCleanupState {before + 10, 0, 3, 321321321}));
+				REQUIRE(wrappers == coldWrappers);
+				REQUIRE_FALSE(tracing::inTracer());
+			};
+			check(*nativeFunction, nativeState);
+			const auto nativeAfter = nativeState;
+			REQUIRE(bytecodeState == BindingArtifactCleanupState {1000});
+			check(bytecodeFunction, bytecodeState);
+			REQUIRE(nativeState == nativeAfter);
+			const auto bytecodeAfter = bytecodeState;
+			if (bound) {
+				REQUIRE((*nativeFunction)(&argumentState, 1) == 111);
+				REQUIRE((nativeState == BindingArtifactCleanupState {111, 0, 4, 321321321321}));
+				REQUIRE(argumentState == BindingArtifactCleanupState {10000});
+			} else {
+				check(*nativeFunction, argumentState);
+				REQUIRE(nativeState == nativeAfter);
+			}
+			REQUIRE(bytecodeState == bytecodeAfter);
+			const auto nativeFinal = nativeState;
+			const auto argumentFinal = argumentState;
+			nativeFunction.reset();
+			REQUIRE(bytecodeFunction(bound ? &argumentState : &bytecodeState, 1) == 1011);
+			REQUIRE((bytecodeState == BindingArtifactCleanupState {1011, 0, 4, 321321321321}));
+			REQUIRE(nativeState == nativeFinal);
+			REQUIRE(argumentState == argumentFinal);
+			REQUIRE(decoy == BindingArtifactCleanupState {20000});
+			REQUIRE(wrappers == coldWrappers);
 			REQUIRE_FALSE(tracing::inTracer());
+		}
+	}
+}
+
+TEST_CASE("Standalone typed owned bindings still reject live and dead raw allocation metadata",
+          "[runtime-bindings][artifact][mlir][B3][allocation-origin][preflight][cleanup]") {
+	requireBindingArtifactSupport();
+	for (const bool bound : {false, true}) {
+		for (const bool passes : {false, true}) {
+			for (const bool dead : {false, true}) {
+				CAPTURE(bound, passes, dead);
+				BindingArtifactCleanupState state {10};
+				RuntimeBindings bindings;
+				auto binding = bindings.bind<BindingArtifactCleanupState>("b3/allocated", &state);
+				auto options = bindingArtifactOptions();
+				options.setOption("ir.runPasses", passes);
+				options.setRuntimeBindings(bound ? bindings : RuntimeBindings {});
+				NautilusEngine engine(options);
+				auto builder = engine.createModule();
+				int wrappers = 0;
+				builder.registerFunction<val<int64_t>(val<BindingArtifactCleanupState*>, val<int64_t>)>(
+				    "unsafe",
+				    [binding, bound, dead, &wrappers](val<BindingArtifactCleanupState*> argument, val<int64_t> value) {
+					    ++wrappers;
+					    auto address = bound ? binding.get() : argument;
+					    val<BindingArtifactAllocatedResource<1>> owned(address);
+					    auto& allocation = tracing::traceAlloca(sizeof(int64_t), alignof(int64_t));
+					    if (dead) {
+						    return invoke(bindingArtifactGuardedProxy, address, value);
+					    }
+					    val<int64_t*> scratch(allocation);
+					    *scratch = value;
+					    return invoke(bindingArtifactGuardedProxy, address, val<int64_t>(*scratch));
+				    });
+				REQUIRE_THROWS_WITH(
+				    builder.createArtifact(),
+				    "Artifact preflight failed: allocation_metadata_origins_unavailable function=unsafe index=1");
+				REQUIRE(wrappers > 0);
+				REQUIRE(state == BindingArtifactCleanupState {10});
+				REQUIRE_FALSE(tracing::inTracer());
+			}
 		}
 	}
 }
