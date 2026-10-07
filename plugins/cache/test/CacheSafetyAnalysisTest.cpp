@@ -28,6 +28,7 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cstdint>
+#include <limits>
 #include <list>
 #include <memory>
 #include <stdexcept>
@@ -41,7 +42,8 @@ namespace {
 
 compiler::ir::FunctionOperation* analysisFunction(compiler::ir::IRGraph& graph,
                                                   std::vector<compiler::ir::BasicBlock*> blocks, Type result = Type::v,
-                                                  const std::string& name = "execute") {
+                                                  const std::string& name = "execute",
+                                                  std::vector<compiler::ir::AllocaSpec> specs = {}) {
 	using namespace compiler::ir;
 	std::vector<Type> types;
 	std::vector<std::string> names;
@@ -49,8 +51,8 @@ compiler::ir::FunctionOperation* analysisFunction(compiler::ir::IRGraph& graph,
 		types.push_back(argument->getStamp());
 		names.push_back(argument->getIdentifier().toString());
 	}
-	auto* function = graph.addFunctionOperation(
-	    graph.getArena().create<FunctionOperation>(name, std::move(blocks), types, std::move(names), result));
+	auto* function = graph.addFunctionOperation(graph.getArena().create<FunctionOperation>(
+	    name, std::move(blocks), types, std::move(names), result, std::move(specs)));
 	const auto definition = graph.internCallee({.kind = CalleeDescriptor::Kind::Internal,
 	                                            .key = function,
 	                                            .mangledName = name,
@@ -876,6 +878,57 @@ TEST_CASE("Legacy arithmetic retains uncertified offset contamination from runti
 				REQUIRE_THAT(result.pointer.rejection, Catch::Matchers::ContainsSubstring("Constant"));
 			}
 		}
+	}
+}
+
+TEST_CASE("Cache allocation validation rejects raw unavailable malformed and unused tables independently",
+          "[cache][safety][allocation-origin]") {
+	using namespace compiler::ir;
+	for (const std::string_view kind :
+	     {"typed", "raw", "size", "alignment", "zero", "oversize", "unavailable", "unused raw"}) {
+		CAPTURE(kind);
+		IRGraph graph("cache-allocation-table");
+		auto& arena = graph.getArena();
+		auto* argument = arena.create<BasicBlockArgument>(OperationIdentifier(0), Type::ptr);
+		auto* block = arena.create<BasicBlock>(arena, BlockIdentifier(0), std::vector {argument});
+		block->addOperation<ReturnOperation>(argument);
+		const auto origin = TypedAllocation::forType<int64_t>();
+		std::vector<AllocaSpec> specs {{origin.getSize(), origin.getAlignment(), origin}};
+		if (kind == "raw") {
+			specs.front().origin.reset();
+		} else if (kind == "size") {
+			++specs.front().size;
+		} else if (kind == "alignment") {
+			specs.front().align = 3;
+		} else if (kind == "zero") {
+			specs.front().size = 0;
+		} else if (kind == "oversize") {
+			specs.front().size = std::numeric_limits<std::size_t>::max();
+		} else if (kind == "unavailable") {
+			graph.invalidateConstantOrigins();
+		} else if (kind == "unused raw") {
+			specs.push_back({sizeof(int64_t), alignof(int64_t)});
+		}
+		const auto* function = analysisFunction(graph, {block}, Type::ptr, "execute", specs);
+		const auto result = analyzeSafety(graph);
+		const bool structurallyValid = kind != "alignment" && kind != "zero" && kind != "oversize";
+		REQUIRE(result.scalar.certified == (kind != "unavailable" && structurallyValid));
+		if (!structurallyValid) {
+			REQUIRE_THAT(result.scalar.rejection, Catch::Matchers::ContainsSubstring("invalid_alloca_spec=0"));
+		}
+		REQUIRE(result.pointer.relocatable);
+		std::string reason = "stale";
+		const bool typed = compiler::artifact::hasOnlyTypedAllocations(graph, &reason);
+		REQUIRE(typed == (kind == "typed"));
+		if (typed) {
+			REQUIRE(reason.empty());
+		} else {
+			const bool missing = kind == "raw" || kind == "unavailable" || kind == "unused raw";
+			REQUIRE(reason == std::string(missing ? "allocation_metadata_origins_unavailable"
+			                                      : "allocation_metadata_layout_mismatch") +
+			                      " function=execute index=" + (kind == "unused raw" ? "1" : "0"));
+		}
+		REQUIRE(function->getAllocaSpecs().size() == specs.size());
 	}
 }
 

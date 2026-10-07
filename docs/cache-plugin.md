@@ -59,11 +59,18 @@ as `nes.numberOfWorkerThreads` remain part of compatibility. Unknown identities 
 fingerprints prevent reuse. Debug/profiling metadata, unsupported target settings and unaccounted LLVM hooks
 retain ordinary compilation rather than loading or publishing incompatible artifacts.
 
-On a cold compilation, export signatures and scalar evidence are checked before optimization. These checks
-are independent of `ir.runPasses`, `ir.runOptimizationPasses` and optimization iteration limits. A failed complete
-scalar certificate still requires the conservative pointer analysis; optimization cannot turn missing provenance
-into a certificate. Captured raw pointers, encoded addresses, unsafe native cleanup/callback inputs and
-unresolved native imports cannot be made persistable merely by supplying a key.
+On a cold compilation, export signatures, typed allocation metadata and scalar evidence are checked before
+optimization. These checks are independent of `ir.runPasses`, `ir.runOptimizationPasses` and optimization
+iteration limits. Every allocation table entry, including unused entries, must retain verified C++ type evidence
+with its actual size and alignment. Raw, unavailable, mismatched or replay-disagreed allocation metadata blocks
+persistence through both the strict scalar and legacy pointer paths. Typed owned construction/copy/move/cleanup
+can persist
+only when its scalar and native-import evidence independently passes; allocation evidence never certifies
+constructor arguments, callbacks or encoded addresses.
+
+A failed complete scalar certificate still requires the conservative pointer analysis; optimization cannot turn
+missing provenance into a certificate. Captured raw pointers, encoded addresses, unsafe native cleanup/callback
+inputs and unresolved native imports cannot be made persistable merely by supplying a key.
 
 Use runtime function arguments for process-local storage. This plugin does not introduce runtime-binding
 handles, registries or schemas. See [module-artifacts.md](module-artifacts.md) for artifact capability,

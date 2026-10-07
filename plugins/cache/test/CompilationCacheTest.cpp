@@ -1,5 +1,6 @@
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/matchers/catch_matchers.hpp"
+#include "catch2/matchers/catch_matchers_string.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Engine.hpp"
@@ -261,6 +262,10 @@ int64_t cacheProxy(int64_t value) noexcept {
 	return value * 3 - 4;
 }
 
+double cacheConvertedProxy(double value) noexcept {
+	return value + 1.0;
+}
+
 uintptr_t cacheProxyAddress() noexcept {
 	return reinterpret_cast<uintptr_t>(&cacheProxy);
 }
@@ -312,7 +317,42 @@ private:
 	void (*cleanup_)(int32_t*) noexcept;
 };
 
-CompiledModule compileRuntimeModule(const Options& options, std::array<int, 4>& wrappers) {
+struct alignas(64) CacheOwnedBuffer {
+	int32_t* state = nullptr;
+	int32_t id = 0;
+
+	CacheOwnedBuffer() noexcept = default;
+	CacheOwnedBuffer(int32_t* state, int32_t id) noexcept : state(state), id(id) {
+		++state[2];
+	}
+	CacheOwnedBuffer(const CacheOwnedBuffer& other) noexcept : CacheOwnedBuffer(other.state, other.id + 1) {
+	}
+	~CacheOwnedBuffer() noexcept {
+		if (state) {
+			state[0] = state[0] * 10 + id;
+			++state[1];
+		}
+	}
+};
+
+int32_t useCacheOwnedBuffer(CacheOwnedBuffer* buffer, bool fail) {
+	if (reinterpret_cast<uintptr_t>(buffer) % alignof(CacheOwnedBuffer) != 0) {
+		throw std::runtime_error("misaligned cached owned buffer");
+	}
+	++buffer->state[3];
+	if (fail) {
+		throw CacheFailure(buffer->state[3]);
+	}
+	return buffer->id;
+}
+
+void useCacheOwnedBufferVoid(CacheOwnedBuffer* buffer, bool fail) {
+	useCacheOwnedBuffer(buffer, fail);
+}
+
+using RuntimeWrappers = std::array<int, 7>;
+
+CompiledModule compileRuntimeModule(const Options& options, RuntimeWrappers& wrappers) {
 	NautilusEngine engine(cache::createCompiler(options), options);
 	auto module = engine.createModule();
 	module.registerFunction<val<int64_t>(val<int64_t>)>("proxy", [&wrappers](val<int64_t> value) {
@@ -336,6 +376,31 @@ CompiledModule compileRuntimeModule(const Options& options, std::array<int, 4>& 
 		                                                                NativeGuard second(state, secondCleanup);
 		                                                                return invoke(cacheMaybeThrow, state, fail);
 	                                                                });
+	module.registerFunction<val<int32_t>(val<int32_t*>, val<bool>)>(
+	    "typed_owned", [&wrappers](val<int32_t*> state, val<bool> fail) {
+		    ++wrappers[4];
+		    val<CacheOwnedBuffer> empty;
+		    val<CacheOwnedBuffer> first(state, cacheLiteral<int32_t {1}>());
+		    val<CacheOwnedBuffer> copy(first);
+		    val<CacheOwnedBuffer> moved(std::move(copy));
+		    return invoke(useCacheOwnedBuffer, &moved, fail);
+	    });
+	module.registerFunction<val<int32_t>(val<int32_t*>, val<bool>, val<int32_t (*)(CacheOwnedBuffer*, bool)>)>(
+	    "typed_callback",
+	    [&wrappers](val<int32_t*> state, val<bool> fail, val<int32_t (*)(CacheOwnedBuffer*, bool)> callback) {
+		    ++wrappers[5];
+		    val<CacheOwnedBuffer> first(state, cacheLiteral<int32_t {1}>());
+		    val<CacheOwnedBuffer> copy(first);
+		    return callback(&copy, fail);
+	    });
+	module.registerFunction<void(val<int32_t*>, val<bool>, val<void (*)(CacheOwnedBuffer*, bool)>)>(
+	    "typed_callback_void",
+	    [&wrappers](val<int32_t*> state, val<bool> fail, val<void (*)(CacheOwnedBuffer*, bool)> callback) {
+		    ++wrappers[6];
+		    val<CacheOwnedBuffer> first(state, cacheLiteral<int32_t {1}>());
+		    val<CacheOwnedBuffer> copy(first);
+		    callback(&copy, fail);
+	    });
 	return module.compile();
 }
 
@@ -373,6 +438,42 @@ void checkRuntimeModule(CompiledModule& module) {
 	REQUIRE(cleanups[0] == 21);
 	REQUIRE(cleanups[1] == 2);
 	REQUIRE(cleanups[2] == 3);
+	const auto owned = module.getFunction<int32_t(int32_t*, bool)>("typed_owned");
+	const auto callback =
+	    module.getFunction<int32_t(int32_t*, bool, int32_t (*)(CacheOwnedBuffer*, bool))>("typed_callback");
+	const auto callbackVoid =
+	    module.getFunction<void(int32_t*, bool, void (*)(CacheOwnedBuffer*, bool))>("typed_callback_void");
+	for (const std::string_view call : {"direct", "callback", "void callback"}) {
+		int32_t counts[4] = {};
+		for (const bool fail : {false, true, false}) {
+			CAPTURE(call, fail);
+			counts[0] = counts[1] = 0;
+			const auto execute = [&] {
+				if (call == "direct") {
+					return owned(counts, fail);
+				}
+				if (call == "callback") {
+					return callback(counts, fail, useCacheOwnedBuffer);
+				}
+				callbackVoid(counts, fail, useCacheOwnedBufferVoid);
+				return int32_t {2};
+			};
+			if (fail) {
+				try {
+					execute();
+					FAIL("Cached owned cleanup did not propagate its native exception");
+				} catch (const CacheFailure& failure) {
+					REQUIRE(failure.call == 2);
+				}
+			} else {
+				REQUIRE(execute() == 2);
+			}
+			REQUIRE(counts[0] == 21);
+			REQUIRE(counts[1] == 2);
+			REQUIRE(counts[2] == 2 * counts[3]);
+		}
+		REQUIRE(counts[3] == 3);
+	}
 }
 
 void rawCleanup(int32_t* value) noexcept {
@@ -729,7 +830,7 @@ TEST_CASE("Runtime pointer arguments proxy imports and exception cleanup survive
 		TemporaryCacheDirectory directory;
 		auto options = cacheOptions(directory.path(), "runtime-pointer-guarded-module");
 		options.setOption("ir.runPasses", passes);
-		std::array<int, 4> coldWrappers {};
+		RuntimeWrappers coldWrappers {};
 		auto cold = compileRuntimeModule(options, coldWrappers);
 		requireWritten(cold);
 		checkRuntimeModule(cold);
@@ -737,19 +838,19 @@ TEST_CASE("Runtime pointer arguments proxy imports and exception cleanup survive
 			REQUIRE(calls > 0);
 		}
 		const auto originalCalls = coldWrappers;
-		std::array<int, 4> warmWrappers {};
+		RuntimeWrappers warmWrappers {};
 		auto warm = compileRuntimeModule(options, warmWrappers);
 		requireNativeHit(warm);
 		checkRuntimeModule(warm);
-		REQUIRE((warmWrappers == std::array<int, 4> {}));
+		REQUIRE((warmWrappers == RuntimeWrappers {}));
 		writeFile(artifactPath(cold, directory.path(), ".o"), "corrupt guarded object");
-		std::array<int, 4> repairWrappers {};
+		RuntimeWrappers repairWrappers {};
 		auto repaired = compileRuntimeModule(options, repairWrappers);
 		REQUIRE(cacheStat<std::string>(repaired, "cache.object") != "hit");
 		REQUIRE(cacheStat<std::string>(repaired, "cache.mlir") == "hit");
 		REQUIRE(cacheStat<int64_t>(repaired, "cache.tracingRan") == 0);
 		checkRuntimeModule(repaired);
-		REQUIRE((repairWrappers == std::array<int, 4> {}));
+		REQUIRE((repairWrappers == RuntimeWrappers {}));
 		REQUIRE(coldWrappers == originalCalls);
 		checkRuntimeModule(cold);
 		checkRuntimeModule(warm);
@@ -1813,14 +1914,7 @@ TEST_CASE("Legacy cache rejects memory and native callback laundering with runti
 					    });
 					auto module = builder.compile();
 					REQUIRE(wrappers[iteration] > 0);
-					if (kind == "alloca") {
-						requireFallback(module);
-						REQUIRE(cacheStat<int64_t>(module, "cache.scalarCertificate") == 0);
-						REQUIRE_FALSE(cacheStat<std::string>(module, "cache.rejection").empty());
-						REQUIRE(readArtifacts(directory.path()).empty());
-					} else {
-						requireUnsafeFallback(module, directory.path());
-					}
+					requireUnsafeFallback(module, directory.path());
 					REQUIRE(scratch[0] == 0);
 					REQUIRE(scratch[1] == 0);
 					REQUIRE(observed == 0);
@@ -2035,10 +2129,10 @@ TEST_CASE("Native and bytecode cache loads relocate proxies and exceptions acros
 		const bool repair = std::string_view(mode) == "repair";
 		REQUIRE((repair || std::string_view(mode) == "native" || std::string_view(mode) == "repaired native"));
 		const auto options = cacheOptions(directory, "fresh-exec-runtime-guarded");
-		std::array<int, 4> wrappers {};
+		RuntimeWrappers wrappers {};
 		auto module = compileRuntimeModule(options, wrappers);
 		checkRuntimeModule(module);
-		REQUIRE((wrappers == std::array<int, 4> {}));
+		REQUIRE((wrappers == RuntimeWrappers {}));
 		REQUIRE(cacheStat<int64_t>(module, "cache.tracingRan") == 0);
 		if (repair) {
 			REQUIRE(cacheStat<std::string>(module, "cache.object") != "hit");
@@ -2066,7 +2160,7 @@ TEST_CASE("Native and bytecode cache loads relocate proxies and exceptions acros
 	}
 	TemporaryCacheDirectory directory;
 	const auto options = cacheOptions(directory.path(), "fresh-exec-runtime-guarded");
-	std::array<int, 4> coldWrappers {};
+	RuntimeWrappers coldWrappers {};
 	auto cold = compileRuntimeModule(options, coldWrappers);
 	requireWritten(cold);
 	checkRuntimeModule(cold);
@@ -2469,6 +2563,262 @@ TEST_CASE("Legacy pointer offsets require their own recorded invariant evidence"
 		} else {
 			requireNativeHit(compiled);
 			REQUIRE(wrappers == 0);
+		}
+	}
+}
+
+TEST_CASE("Cache transport preserves native conversions root names and conservative call attributes",
+          "[cache][imports][review3]") {
+	requireCachePlatform();
+	for (const bool reverse : {false, true}) {
+		DYNAMIC_SECTION("reverse=" << reverse) {
+			TemporaryCacheDirectory directory;
+			const auto options = cacheOptions(directory.path(), "native-conversion-name-attribute-regressions");
+			NautilusEngine engine(cache::createCompiler(options), options);
+			for (const std::string_view stage : {"cold", "warm", "repair", "repaired warm"}) {
+				CAPTURE(stage);
+				std::array<int, 5> wrappers {};
+				NautilusFunction helper("helper",
+				                        [](val<int32_t> value) { return value + cacheLiteral<int32_t {7}>(); });
+				auto builder = engine.createModule();
+				builder.registerFunction<val<double>(val<int64_t>, val<const int64_t*>, val<double (*)(double)>)>(
+				    "conversion",
+				    [&](val<int64_t> value, val<const int64_t*> element, val<double (*)(double)> callback) {
+					    ++wrappers[0];
+					    return invoke(cacheConvertedProxy, value) + invoke(cacheConvertedProxy, *element) +
+					           callback(value);
+				    });
+				builder.registerFunction<val<int64_t>(val<int64_t>)>("attributes", [&](val<int64_t> value) {
+					++wrappers[1];
+					FunctionAttributes precise {ModRefInfo::NoModRef, true, true};
+					FunctionAttributes conservative {ModRefInfo::ModRef, false, false};
+					int64_t (*pointer)(int64_t) = cacheProxy;
+					return invoke(reverse ? conservative : precise, pointer, value) +
+					       invoke(reverse ? precise : conservative, pointer, value);
+				});
+				const auto registerRoot = [&] {
+					builder.registerFunction<val<int32_t>(val<int32_t>)>("helper", [&](val<int32_t> value) {
+						++wrappers[3];
+						return value + cacheLiteral<int32_t {11}>();
+					});
+				};
+				if (reverse) {
+					registerRoot();
+				}
+				builder.registerFunction<val<int32_t>(val<int32_t>)>("caller", [&](val<int32_t> value) {
+					++wrappers[2];
+					return helper(value);
+				});
+				if (!reverse) {
+					registerRoot();
+				}
+				builder.registerFunction<val<int32_t>(val<int32_t>)>("helper_2", [&](val<int32_t> value) {
+					++wrappers[4];
+					return value + cacheLiteral<int32_t {13}>();
+				});
+				auto compiled = builder.compile();
+				int64_t element = 42;
+				REQUIRE(compiled.getFunction<double(int64_t, const int64_t*, double (*)(double))>("conversion")(
+				            42, &element, cacheConvertedProxy) == 129.0);
+				REQUIRE(compiled.getFunction<int64_t(int64_t)>("attributes")(42) == 2 * cacheProxy(42));
+				REQUIRE(compiled.getFunction<int32_t(int32_t)>("caller")(5) == 12);
+				REQUIRE(compiled.getFunction<int32_t(int32_t)>("helper")(5) == 16);
+				REQUIRE(compiled.getFunction<int32_t(int32_t)>("helper_2")(5) == 18);
+				if (stage == "cold") {
+					requireWritten(compiled);
+					for (const auto calls : wrappers) {
+						REQUIRE(calls > 0);
+					}
+				} else {
+					REQUIRE((wrappers == std::array<int, 5> {}));
+					if (stage == "repair") {
+						REQUIRE(cacheStat<std::string>(compiled, "cache.object") == "invalid_rewritten");
+						REQUIRE(cacheStat<std::string>(compiled, "cache.mlir") == "hit");
+						requireNoFrontendStatistics(compiled);
+					} else {
+						requireNativeHit(compiled);
+					}
+				}
+				if (stage == "warm") {
+					writeFile(artifactPath(compiled, directory.path(), ".o"), "force review regression repair");
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("Cache packed wrapper name collisions fail catchably without publishing entries",
+          "[cache][exports][review3]") {
+	requireCachePlatform();
+	for (const bool reverse : {false, true}) {
+		CAPTURE(reverse);
+		TemporaryCacheDirectory directory;
+		const auto options = cacheOptions(directory.path(), "packed-wrapper-name-collision");
+		NautilusEngine engine(cache::createCompiler(options), options);
+		for (int attempt = 0; attempt < 2; ++attempt) {
+			int wrappers = 0;
+			auto builder = engine.createModule();
+			for (const auto* name : reverse ? std::array {"_mlir_foo", "foo"} : std::array {"foo", "_mlir_foo"}) {
+				builder.registerFunction<val<int32_t>()>(name, [&] {
+					++wrappers;
+					return cacheLiteral<int32_t {7}>();
+				});
+			}
+			REQUIRE_THROWS_WITH(builder.compile(),
+			                    Catch::Matchers::ContainsSubstring("packed wrapper symbol conflicts"));
+			REQUIRE(wrappers > 0);
+			REQUIRE(readArtifacts(directory.path()).empty());
+			REQUIRE_FALSE(tracing::inTracer());
+		}
+	}
+}
+
+TEST_CASE("Typed owned cache modules preserve cleanup with every optional pass setting", "[cache][allocation-origin]") {
+	requireCachePlatform();
+	for (const auto& [mode, overrides] : validationModes()) {
+		DYNAMIC_SECTION(mode) {
+			TemporaryCacheDirectory directory;
+			auto options = cacheOptions(directory.path(), "typed-owned-pass-settings");
+			options.applyOverrides(overrides);
+			RuntimeWrappers coldWrappers {}, warmWrappers {}, repairWrappers {}, repairedWrappers {};
+			auto cold = compileRuntimeModule(options, coldWrappers);
+			requireWritten(cold);
+			REQUIRE(cacheStat<int64_t>(cold, "cache.scalarCertificate") == 1);
+			for (const auto calls : coldWrappers) {
+				REQUIRE(calls > 0);
+			}
+			const auto traced = coldWrappers;
+			checkRuntimeModule(cold);
+			REQUIRE(coldWrappers == traced);
+			const auto bytecode = artifactPath(cold, directory.path(), ".mlirbc");
+			const auto originalBytecode = readFile(bytecode);
+			std::filesystem::remove(bytecode);
+			auto warm = compileRuntimeModule(options, warmWrappers);
+			requireNativeHit(warm);
+			checkRuntimeModule(warm);
+			REQUIRE((warmWrappers == RuntimeWrappers {}));
+			writeFile(bytecode, originalBytecode);
+			std::filesystem::permissions(bytecode,
+			                             std::filesystem::perms::owner_read | std::filesystem::perms::owner_write);
+			writeFile(artifactPath(cold, directory.path(), ".o"), "force owned bytecode repair");
+			auto repaired = compileRuntimeModule(options, repairWrappers);
+			REQUIRE(cacheStat<std::string>(repaired, "cache.object") == "invalid_rewritten");
+			REQUIRE(cacheStat<std::string>(repaired, "cache.mlir") == "hit");
+			REQUIRE(cacheStat<int64_t>(repaired, "cache.tracingRan") == 0);
+			requireNoFrontendStatistics(repaired);
+			checkRuntimeModule(repaired);
+			REQUIRE((repairWrappers == RuntimeWrappers {}));
+			auto repairedWarm = compileRuntimeModule(options, repairedWrappers);
+			requireNativeHit(repairedWarm);
+			checkRuntimeModule(repairedWarm);
+			REQUIRE((repairedWrappers == RuntimeWrappers {}));
+			REQUIRE(coldWrappers == traced);
+		}
+	}
+}
+
+TEST_CASE("Allocation metadata independently gates strict and legacy cache success before optional passes",
+          "[cache][allocation-origin][guard][replay]") {
+	requireCachePlatform();
+	for (const auto& [mode, overrides] : validationModes()) {
+		for (const bool legacy : {false, true}) {
+			for (const std::string_view kind : {"typed dead", "raw dead", "raw to typed", "typed to raw"}) {
+				DYNAMIC_SECTION(mode << ": " << kind << ": legacy=" << legacy) {
+					TemporaryCacheDirectory directory;
+					auto options = cacheOptions(directory.path(), "allocation-table-policy");
+					options.applyOverrides(overrides);
+					NautilusEngine engine(cache::createCompiler(options), options);
+					uint8_t storage = 7;
+					for (int attempt = 0; attempt < 2; ++attempt) {
+						int wrappers = 0;
+						auto builder = engine.createModule();
+						builder.registerFunction<val<uint8_t*>(val<uint8_t*>, val<bool>)>(
+						    "execute", [&, kind, legacy](val<uint8_t*> base, val<bool> flag) {
+							    ++wrappers;
+							    nautilus::details::nautilus_alloca<int64_t>();
+							    const bool typed =
+							        kind == "typed dead" ||
+							        (kind == "typed to raw" ? wrappers == 1 : kind == "raw to typed" && wrappers != 1);
+							    const auto origin = TypedAllocation::forType<int64_t>();
+							    auto& ref = typed ? tracing::traceTypedAlloca(origin)
+							                      : tracing::traceAlloca(origin.getSize(), origin.getAlignment());
+							    val<void*> unused(ref);
+							    if (legacy) {
+								    val<int32_t> unrelated(37);
+								    (void) unrelated;
+							    }
+							    if (flag) {
+								    return base;
+							    }
+							    return base;
+						    });
+						auto compiled = builder.compile();
+						const auto execute = compiled.getFunction<uint8_t*(uint8_t*, bool)>("execute");
+						REQUIRE(execute(&storage, false) == &storage);
+						REQUIRE(execute(&storage, true) == &storage);
+						if (kind == "typed dead") {
+							if (attempt == 0) {
+								requireWritten(compiled);
+								REQUIRE(cacheStat<int64_t>(compiled, "cache.scalarCertificate") == !legacy);
+								REQUIRE(wrappers > 0);
+							} else {
+								requireNativeHit(compiled);
+								REQUIRE(wrappers == 0);
+							}
+						} else {
+							requireFallback(compiled);
+							REQUIRE(wrappers >= 2);
+							REQUIRE(cacheStat<int64_t>(compiled, "cache.scalarCertificate") == !legacy);
+							REQUIRE(cacheStat<std::string>(compiled, "cache.fallback") ==
+							        "unsupported_allocation_metadata");
+							REQUIRE(cacheStat<std::string>(compiled, "cache.rejection") ==
+							        "allocation_metadata_origins_unavailable function=execute index=1");
+							REQUIRE(readArtifacts(directory.path()).empty());
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("Typed owned allocations do not certify constructor scalars or encoded cleanup addresses",
+          "[cache][allocation-origin][guard]") {
+	requireCachePlatform();
+	for (const auto& [mode, overrides] : validationModes()) {
+		for (const std::string_view kind : {"raw constructor", "encoded constructor", "destructor only"}) {
+			DYNAMIC_SECTION(mode << ": " << kind) {
+				TemporaryCacheDirectory directory;
+				auto options = cacheOptions(directory.path(), "typed-owned-uncertified-input");
+				options.applyOverrides(overrides);
+				NautilusEngine engine(cache::createCompiler(options), options);
+				int32_t external[4] = {};
+				for (int attempt = 0; attempt < 2; ++attempt) {
+					int wrappers = 0;
+					auto builder = engine.createModule();
+					builder.registerFunction<val<int32_t>(val<int32_t*>, val<bool>)>(
+					    "execute", [&, kind](val<int32_t*> runtime, val<bool> fail) {
+						    ++wrappers;
+						    val<CacheOwnedBuffer> empty;
+						    if (kind == "raw constructor") {
+							    val<CacheOwnedBuffer> object(runtime, int32_t {1});
+							    return invoke(useCacheOwnedBuffer, &object, fail);
+						    }
+						    val<int32_t*> encoded = val<uintptr_t>(reinterpret_cast<uintptr_t>(external));
+						    if (kind == "encoded constructor") {
+							    val<CacheOwnedBuffer> object(encoded, cacheLiteral<int32_t {1}>());
+							    return invoke(useCacheOwnedBuffer, &object, fail);
+						    }
+						    NativeGuard guard(encoded, rawCleanup);
+						    return invoke(cacheMaybeThrow, runtime, fail);
+					    });
+					auto compiled = builder.compile();
+					REQUIRE(wrappers > 0);
+					requireUnsafeFallback(compiled, directory.path());
+					int32_t runtime[4] = {};
+					REQUIRE(compiled.getFunction<int32_t(int32_t*, bool)>("execute")(runtime, false) == 1);
+				}
+			}
 		}
 	}
 }

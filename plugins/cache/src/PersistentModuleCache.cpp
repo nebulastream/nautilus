@@ -734,6 +734,7 @@ compileWithPersistentModuleCache(const compiler::CompilationPipeline& pipeline,
 	compiler::ir::PointerRelocatabilityPass pointerValidation(exports);
 	std::string rootRejection;
 	std::string metadataRejection;
+	bool typedAllocations = false;
 	std::string scalarFailure;
 	std::string pointerFailure;
 	markCacheState(statistics, objectState, bytecodeState, true, fallback);
@@ -745,18 +746,13 @@ compileWithPersistentModuleCache(const compiler::CompilationPipeline& pipeline,
 		    } catch (const std::exception& error) {
 			    rootRejection = error.what();
 		    }
-		    for (const auto* function : graph.getFunctionOperations()) {
-			    if (!function->getAllocaSpecs().empty()) {
-				    metadataRejection = "allocation_metadata_origins_unavailable";
-				    break;
-			    }
-		    }
+		    typedAllocations = compiler::artifact::hasOnlyTypedAllocations(graph, &metadataRejection);
 		    try {
 			    scalarValidation.apply(graph);
 		    } catch (const std::exception& error) {
 			    scalarFailure = error.what();
 		    }
-		    if (!scalarFailure.empty() || !scalarValidation.getResult().certified || !metadataRejection.empty()) {
+		    if (!scalarFailure.empty() || !scalarValidation.getResult().certified || !typedAllocations) {
 			    try {
 				    pointerValidation.apply(graph);
 			    } catch (const std::exception& error) {
@@ -784,7 +780,7 @@ compileWithPersistentModuleCache(const compiler::CompilationPipeline& pipeline,
 	if (!rootRejection.empty()) {
 		return ordinaryCompile("invalid_export_signature", rootRejection);
 	}
-	if (!metadataRejection.empty()) {
+	if (!typedAllocations) {
 		return ordinaryCompile("unsupported_allocation_metadata", metadataRejection);
 	}
 	if ((!scalarFailure.empty() || !scalarResult.certified) &&
