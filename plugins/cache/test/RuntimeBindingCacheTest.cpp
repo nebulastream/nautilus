@@ -2067,6 +2067,9 @@ TEST_CASE("RuntimeBindings caches runtime-derived integer pointer arithmetic", "
 
 #ifdef __linux__
 TEST_CASE("RuntimeBindings cache rebinds ASLR addresses across fresh exec processes", "[runtime-bindings][cache]") {
+#if !defined(__x86_64__)
+	SKIP("Persistent native caching requires the supported Linux x86-64 ELF producer");
+#endif
 	static constexpr auto CHILD_DIRECTORY = "NAUTILUS_BINDING_CHILD_DIRECTORY";
 	static constexpr auto CHILD_MODE = "NAUTILUS_BINDING_CHILD_MODE";
 	if (const auto* directory = std::getenv(CHILD_DIRECTORY)) {
