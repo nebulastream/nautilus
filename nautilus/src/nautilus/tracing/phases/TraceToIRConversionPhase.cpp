@@ -243,7 +243,7 @@ std::vector<compiler::ir::AllocaSpec> TraceToIRConversionPhase::IRConversionCont
 	std::vector<compiler::ir::AllocaSpec> specs;
 	specs.reserve(trace->allocaSpecs.size());
 	for (const auto& spec : trace->allocaSpecs) {
-		specs.push_back({spec.size, spec.align});
+		specs.push_back({spec.size, spec.align, spec.origin});
 	}
 	return specs;
 }

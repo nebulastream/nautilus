@@ -445,7 +445,8 @@ public:
 	/// only fires for genuinely new alloca sites — re-traces that hit an
 	/// existing tag short-circuit through control-flow merging and never
 	/// invoke the lambda.
-	AllocaIndex addAllocaSpec(size_t size, size_t align);
+	AllocaIndex addAllocaSpec(size_t size, size_t align, std::optional<TypedAllocation> origin = std::nullopt);
+	void reconcileAllocaSpec(AllocaIndex index, size_t size, size_t align, std::optional<TypedAllocation> origin);
 
 	/**
 	 * @brief Gets the next available operation identifier

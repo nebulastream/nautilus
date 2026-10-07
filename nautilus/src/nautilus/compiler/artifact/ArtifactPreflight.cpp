@@ -496,15 +496,44 @@ void validateArtifactRoots(const ir::IRGraph& graph, const std::list<CompilableF
 	}
 }
 
-void validateArtifactPreflight(const ir::IRGraph& graph, const std::list<CompilableFunction>& functions) {
-	validateArtifactRoots(graph, functions);
+bool hasOnlyTypedAllocations(const ir::IRGraph& graph, std::string* reason) {
+	if (reason) {
+		reason->clear();
+	}
 	for (const auto* function : graph.getFunctionOperations()) {
-		if (!function->getAllocaSpecs().empty()) {
-			throw RuntimeException("Artifact preflight failed: allocation_metadata_origins_unavailable");
+		if (!function) {
+			if (reason) {
+				*reason = "allocation_metadata_missing_function";
+			}
+			return false;
+		}
+		const auto& specs = function->getAllocaSpecs();
+		for (std::size_t index = 0; index < specs.size(); ++index) {
+			const auto& spec = specs[index];
+			std::string cause;
+			if (!graph.hasRecordedConstantOrigins() || !spec.origin) {
+				cause = "allocation_metadata_origins_unavailable";
+			} else if (spec.size == 0 || spec.size > static_cast<std::size_t>(std::numeric_limits<int64_t>::max()) ||
+			           !std::has_single_bit(spec.align) || spec.align > std::numeric_limits<uint32_t>::max() ||
+			           spec.origin->getSize() != spec.size || spec.origin->getAlignment() != spec.align ||
+			           spec.origin->getType().empty()) {
+				cause = "allocation_metadata_layout_mismatch";
+			}
+			if (!cause.empty()) {
+				if (reason) {
+					*reason = cause + " function=" + function->getName() + " index=" + std::to_string(index);
+				}
+				return false;
+			}
 		}
 	}
+	return true;
+}
+
+void validateArtifactPreflight(const ir::IRGraph& graph, const std::list<CompilableFunction>& functions) {
+	validateArtifactRoots(graph, functions);
 	std::string reason;
-	if (!hasOnlyInvariantScalars(graph, &reason)) {
+	if (!hasOnlyTypedAllocations(graph, &reason) || !hasOnlyInvariantScalars(graph, &reason)) {
 		throw RuntimeException("Artifact preflight failed: " + reason);
 	}
 }

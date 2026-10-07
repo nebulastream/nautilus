@@ -7,6 +7,8 @@
 #include "nautilus/function.hpp"
 #include "nautilus/select.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
+#include "nautilus/val_func.hpp"
+#include "nautilus/val_std.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -89,6 +91,36 @@ void artifactFirstCleanup(int32_t* state) noexcept {
 void artifactSecondCleanup(int32_t* state) noexcept {
 	state[0] = state[0] * 10 + 2;
 	++state[1];
+}
+
+struct alignas(64) ArtifactTypedBuffer {
+	int32_t* state = nullptr;
+	int32_t id = 0;
+
+	ArtifactTypedBuffer() noexcept = default;
+	ArtifactTypedBuffer(int32_t* state, int32_t id) noexcept : state(state), id(id) {
+		++state[2];
+	}
+	ArtifactTypedBuffer(const ArtifactTypedBuffer& other) noexcept : ArtifactTypedBuffer(other.state, other.id + 1) {
+	}
+	~ArtifactTypedBuffer() noexcept {
+		if (state) {
+			state[0] = state[0] * 10 + id;
+			++state[1];
+		}
+	}
+};
+
+int32_t artifactUseTypedBuffer(ArtifactTypedBuffer* buffer, bool shouldThrow) {
+	++buffer->state[3];
+	if (shouldThrow) {
+		throw ArtifactFailure(buffer->state[3]);
+	}
+	return buffer->id;
+}
+
+void artifactUseTypedBufferVoid(ArtifactTypedBuffer* buffer, bool shouldThrow) {
+	artifactUseTypedBuffer(buffer, shouldThrow);
 }
 
 class ArtifactNativeGuard {
@@ -224,6 +256,31 @@ artifact::ModuleArtifact multiExportArtifact(const Options& options = artifactOp
 		ArtifactNativeGuard second(state, artifactSecondCleanup);
 		return invoke(artifactMaybeThrow, state, flag);
 	});
+	module.registerFunction<val<int32_t>(val<int32_t*>, val<bool>)>(
+	    "typed_owned", [](val<int32_t*> state, val<bool> flag) {
+		    ++artifactWrapperCalls;
+		    val<ArtifactTypedBuffer> empty;
+		    val<ArtifactTypedBuffer> first(state, cacheLiteral<int32_t {1}>());
+		    val<ArtifactTypedBuffer> copy(first);
+		    val<ArtifactTypedBuffer> moved(std::move(copy));
+		    return invoke(artifactUseTypedBuffer, &moved, flag);
+	    });
+	module.registerFunction<val<int32_t>(val<int32_t*>, val<bool>, val<int32_t (*)(ArtifactTypedBuffer*, bool)>)>(
+	    "typed_callback",
+	    [](val<int32_t*> state, val<bool> flag, val<int32_t (*)(ArtifactTypedBuffer*, bool)> callback) {
+		    ++artifactWrapperCalls;
+		    val<ArtifactTypedBuffer> first(state, cacheLiteral<int32_t {1}>());
+		    val<ArtifactTypedBuffer> copy(first);
+		    return callback(&copy, flag);
+	    });
+	module.registerFunction<void(val<int32_t*>, val<bool>, val<void (*)(ArtifactTypedBuffer*, bool)>)>(
+	    "typed_callback_void",
+	    [](val<int32_t*> state, val<bool> flag, val<void (*)(ArtifactTypedBuffer*, bool)> callback) {
+		    ++artifactWrapperCalls;
+		    val<ArtifactTypedBuffer> first(state, cacheLiteral<int32_t {1}>());
+		    val<ArtifactTypedBuffer> copy(first);
+		    callback(&copy, flag);
+	    });
 	return module.createArtifact();
 }
 
@@ -324,6 +381,41 @@ void checkMultiExportModule(CompiledModule& module) {
 	REQUIRE(cleanups[0] == 21);
 	REQUIRE(cleanups[1] == 2);
 	REQUIRE(cleanups[2] == 3);
+	const auto owned = module.getFunction<int32_t(int32_t*, bool)>("typed_owned");
+	const auto callback =
+	    module.getFunction<int32_t(int32_t*, bool, int32_t (*)(ArtifactTypedBuffer*, bool))>("typed_callback");
+	const auto callbackVoid =
+	    module.getFunction<void(int32_t*, bool, void (*)(ArtifactTypedBuffer*, bool))>("typed_callback_void");
+	for (const std::string call : {"direct", "callback", "void callback"}) {
+		for (const bool throwing : {false, true, false}) {
+			CAPTURE(call, throwing);
+			int32_t counts[4] = {};
+			const auto execute = [&] {
+				if (call == "direct") {
+					return owned(counts, throwing);
+				} else if (call == "callback") {
+					return callback(counts, throwing, artifactUseTypedBuffer);
+				} else {
+					callbackVoid(counts, throwing, artifactUseTypedBufferVoid);
+					return 2;
+				}
+			};
+			if (throwing) {
+				try {
+					execute();
+					FAIL("The typed owned artifact did not propagate its exception");
+				} catch (const ArtifactFailure& failure) {
+					REQUIRE(failure.value == 1);
+				}
+			} else {
+				REQUIRE(execute() == 2);
+			}
+			REQUIRE(counts[0] == 21);
+			REQUIRE(counts[1] == 2);
+			REQUIRE(counts[2] == 2);
+			REQUIRE(counts[3] == 1);
+		}
+	}
 	REQUIRE_THROWS(module.getFunction<int32_t(int32_t)>("not_an_export")(1));
 }
 
@@ -424,7 +516,7 @@ TEST_CASE("Module artifacts expose real descriptors and reload every export with
 	requireDigest(original.descriptor.objectDigest);
 	requireDigest(original.descriptor.bytecodeDigest);
 	REQUIRE(original.descriptor.version == 1);
-	REQUIRE(original.descriptor.exports.size() == 15);
+	REQUIRE(original.descriptor.exports.size() == 18);
 	REQUIRE_FALSE(original.descriptor.imports.empty());
 	REQUIRE_FALSE(original.descriptor.moduleManifest.empty());
 	const auto& compatibility = original.descriptor.compatibility;
@@ -781,6 +873,46 @@ TEST_CASE("Module artifact native loading never reads missing or invalid bytecod
 		REQUIRE(loaded.getFunction<int32_t(int32_t)>("increment")(5) == 12);
 		REQUIRE_THROWS(artifact::loadBytecode(detached));
 		REQUIRE(artifactWrapperCalls == wrappers);
+	}
+}
+
+TEST_CASE("Typed allocation evidence never certifies raw scalars callbacks or destructor-only addresses",
+          "[artifact][mlir][B1][allocation-origin]") {
+	requireArtifactSupport();
+	int32_t captured[4] = {};
+	for (const std::string kind : {"raw scalar", "encoded address", "callback", "destructor only", "raw metadata"}) {
+		for (const bool passes : {false, true}) {
+			CAPTURE(kind, passes);
+			Options options = artifactOptions();
+			options.setOption("ir.runPasses", passes);
+			NautilusEngine engine(options);
+			auto builder = engine.createModule();
+			builder.registerFunction<val<int32_t>(val<int32_t*>)>("unsafe", [&](val<int32_t*> runtime) {
+				val<ArtifactTypedBuffer> empty;
+				if (kind == "raw scalar") {
+					val<ArtifactTypedBuffer> object(runtime, int32_t {1});
+				} else if (kind == "raw metadata") {
+					tracing::traceAlloca(sizeof(ArtifactTypedBuffer), alignof(ArtifactTypedBuffer));
+				} else {
+					val<uintptr_t> encoded(reinterpret_cast<uintptr_t>(captured));
+					auto address = static_cast<val<int32_t*>>(encoded);
+					if (kind == "destructor only") {
+						ArtifactNativeGuard guard(address, artifactFirstCleanup);
+						return invoke(artifactMaybeThrow, runtime, cacheLiteral<bool {false}>());
+					} else if (kind == "callback") {
+						invoke(artifactFirstCleanup, address);
+					} else {
+						val<ArtifactTypedBuffer> object(address, cacheLiteral<int32_t {1}>());
+					}
+				}
+				return cacheLiteral<int32_t {0}>();
+			});
+			REQUIRE_THROWS_WITH(builder.createArtifact(),
+			                    Catch::Matchers::ContainsSubstring(kind == "raw metadata"
+			                                                           ? "allocation_metadata_origins_unavailable"
+			                                                           : "uncertified_scalar"));
+			REQUIRE_FALSE(tracing::inTracer());
+		}
 	}
 }
 

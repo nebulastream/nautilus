@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/common/RegionAttributes.hpp"
+#include "nautilus/common/TypedAllocation.hpp"
 #include "nautilus/compiler/ir/ExceptionRegion.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
@@ -17,6 +18,7 @@ namespace nautilus::compiler::ir {
 struct AllocaSpec {
 	size_t size;
 	size_t align;
+	std::optional<TypedAllocation> origin = std::nullopt;
 };
 
 /// Per-function record of one region() call site (docs/region.md) whose body was traced

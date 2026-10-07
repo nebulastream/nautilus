@@ -142,31 +142,38 @@ public:
 	decltype(auto) operator()(ValueArgs&&... args) {
 		if constexpr ((details::is_ref_val<ValueArgs> || ...)) {
 			return (*this)(details::loadReference(std::forward<ValueArgs>(args))...);
-		}
-#ifdef ENABLE_TRACING
-		if (tracing::inTracer()) {
-			auto fnPtrRef = details::StateResolver<const val<void*>&>::getState(ptr);
-			auto argRefs = getArgumentReferences(std::forward<ValueArgs>(args)...);
-			auto captureFunc = reinterpret_cast<void*>(&compiler::captureThrowingCall<R, Args...>);
-			if constexpr (std::is_void_v<R>) {
-				tracing::traceIndirectCall(fnPtrRef, Type::v, argRefs, {}, captureFunc);
-				return;
-			} else {
-				auto& resultRef =
-				    tracing::traceIndirectCall(fnPtrRef, tracing::TypeResolver<R>::to_type(), argRefs, {}, captureFunc);
-				return val<R>(resultRef);
-			}
-		}
-#endif
-		auto rawPtr = reinterpret_cast<raw_type>(details::RawValueResolver<void*>::getRawValue(ptr));
-		if constexpr (std::is_void_v<R>) {
-			rawPtr(details::RawValueResolver<Args>::getRawValue(std::forward<ValueArgs>(args))...);
 		} else {
-			return val<R>(rawPtr(details::RawValueResolver<Args>::getRawValue(std::forward<ValueArgs>(args))...));
+#ifdef ENABLE_TRACING
+			if (tracing::inTracer()) {
+				auto fnPtrRef = details::StateResolver<const val<void*>&>::getState(ptr);
+				auto argRefs = getTypedArgumentReferences(std::forward<ValueArgs>(args)...);
+				auto captureFunc = reinterpret_cast<void*>(&compiler::captureThrowingCall<R, Args...>);
+				if constexpr (std::is_void_v<R>) {
+					tracing::traceIndirectCallWithExceptionHandling(fnPtrRef, Type::v, argRefs, {}, captureFunc);
+					return;
+				} else {
+					auto& resultRef = tracing::traceIndirectCallWithExceptionHandling(
+					    fnPtrRef, tracing::TypeResolver<R>::to_type(), argRefs, {}, captureFunc);
+					return val<R>(resultRef);
+				}
+			}
+#endif
+			auto rawPtr = reinterpret_cast<raw_type>(details::RawValueResolver<void*>::getRawValue(ptr));
+			if constexpr (std::is_void_v<R>) {
+				rawPtr(details::RawValueResolver<Args>::getRawValue(std::forward<ValueArgs>(args))...);
+			} else {
+				return val<R>(rawPtr(details::RawValueResolver<Args>::getRawValue(std::forward<ValueArgs>(args))...));
+			}
 		}
 	}
 
 private:
+#ifdef ENABLE_TRACING
+	static auto getTypedArgumentReferences(const val<Args>&... arguments) {
+		return getArgumentReferences(arguments...);
+	}
+#endif
+
 	val<void*> ptr;
 
 	template <typename>

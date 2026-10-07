@@ -203,12 +203,48 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 }
 
 TypedValueRef& TraceContext::traceAlloca(size_t size, size_t align) {
+	if (state->recordConstantOrigins) {
+		return traceAllocation(size, align, std::nullopt);
+	}
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
 	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
 		auto index = state->executionTrace.addAllocaSpec(size, align);
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
 	});
+}
+
+TypedValueRef& TraceContext::traceTypedAlloca(const TypedAllocation& allocation) {
+	if (!state->recordConstantOrigins) {
+		return traceAlloca(allocation.getSize(), allocation.getAlignment());
+	}
+	return traceAllocation(allocation.getSize(), allocation.getAlignment(), allocation);
+}
+
+TypedValueRef& TraceContext::traceAllocation(size_t size, size_t align, std::optional<TypedAllocation> origin) {
+	if (paused_) {
+		return dummyRef_;
+	}
+	auto& trace = state->executionTrace;
+	auto op = Op::ALLOCA;
+	if (isFollowing()) {
+		auto& operation = trace.getCurrentOperation();
+		trace.reconcileAllocaSpec(std::get<AllocaIndex>(operation.input[0]), size, align, origin);
+		return follow(op, operation);
+	}
+	auto tag = recordSnapshot();
+	if (auto existing = trace.globalTagMap.find(tag); existing != trace.globalTagMap.end()) {
+		const auto ref = existing->second;
+		const auto* operation = trace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
+		trace.reconcileAllocaSpec(std::get<AllocaIndex>(operation->input[0]), size, align, origin);
+	}
+	if (!trace.checkTag(tag)) {
+		paused_ = true;
+		return dummyRef_;
+	}
+	auto index = trace.addAllocaSpec(size, align, origin);
+	auto resultType = Type::ptr;
+	return trace.addOperationWithResult(tag, op, resultType, {index});
 }
 
 TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
@@ -827,6 +863,15 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 	functionsToTrace = functions;
 	registeredFunctions.clear();
 	usedFunctionNames.clear();
+	for (const auto& function : functions) {
+		if (!usedFunctionNames.insert(function.getName()).second) {
+			throw RuntimeException("Duplicate registered function name: " + function.getName());
+		}
+		if (const auto* definition = function.getDefinition();
+		    definition != nullptr && !registeredFunctions.emplace(definition, function.getName()).second) {
+			throw RuntimeException("Duplicate registered function definition: " + function.getName());
+		}
+	}
 	setActiveTracer(this);
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// escapes the per-function loop below.
@@ -837,14 +882,7 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 		auto currentFunction = functionsToTrace.front();
 		functionsToTrace.pop_front();
 		if (traceModule->hasFunction(currentFunction.getName())) {
-			// Already traced under this name -- typically a NautilusFunction
-			// sharing a name with a module-registered entry function. Record
-			// this identity against the existing body anyway: its call sites
-			// mint a function-table entry keyed on it, and that entry has to
-			// resolve to the same function as the body's own.
-			traceModule->addFunctionDefinition(currentFunction.getName(), currentFunction.getDefinition());
-			log::debug("Function '{}' already traced, skipping.", currentFunction.getName());
-			continue;
+			throw RuntimeException("Conflicting traced function name: " + currentFunction.getName());
 		}
 
 		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena, tracking);

@@ -258,6 +258,7 @@ public:
 	void traceFoldedConstant(Type type, const ConstantLiteral& value,
 	                         ConstantOrigin origin = ConstantOrigin::Unspecified) override;
 	TypedValueRef& traceAlloca(size_t size, size_t align) override;
+	TypedValueRef& traceTypedAlloca(const TypedAllocation& allocation) override;
 	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
 	TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
 	                             const TypedValueRef& right) override;
@@ -347,6 +348,7 @@ public:
 	TraceContext() = default;
 
 private:
+	TypedValueRef& traceAllocation(size_t size, size_t align, std::optional<TypedAllocation> origin);
 	bool isFollowing();
 	TypedValueRef& follow(Op op);
 	TypedValueRef& follow(Op op, TraceOperation& currentOperation);

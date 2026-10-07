@@ -3,6 +3,7 @@
 
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/common/RegionAttributes.hpp"
+#include "nautilus/common/TypedAllocation.hpp"
 #include "nautilus/tracing/Operations.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
@@ -45,6 +46,10 @@ public:
 	/// Each call appends a fresh entry to the function's alloca table on the
 	/// execution trace; the returned ref points to that entry's index.
 	virtual TypedValueRef& traceAlloca(size_t size, size_t align) = 0;
+
+	virtual TypedValueRef& traceTypedAlloca(const TypedAllocation& allocation) {
+		return traceAlloca(allocation.getSize(), allocation.getAlignment());
+	}
 
 	/// Trace a copy of an existing traced value.
 	virtual TypedValueRef& traceCopy(const TypedValueRef& ref) = 0;
