@@ -4,6 +4,7 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -74,12 +75,17 @@ namespace nautilus::compiler {
  */
 class TieredJITCompiler : public JITCompiler {
 public:
+	using FinalStatisticsDecorator =
+	    std::function<void(CompilationStatistics&, const engine::ModuleOptions&, const std::string&)>;
+
 	/// Construct a tiered compiler that draws tier-0 trace arenas from
 	/// @p traceArenaPool and IR-graph arenas from @p irArenaPool.  Both pools
 	/// are internally synchronized and must outlive the compiler.
-	TieredJITCompiler(engine::Options options, common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool);
+	TieredJITCompiler(engine::Options options, common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool,
+	                  FinalStatisticsDecorator finalStatisticsDecorator = {});
 	TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config,
-	                  common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool);
+	                  common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool,
+	                  FinalStatisticsDecorator finalStatisticsDecorator = {});
 	~TieredJITCompiler() override;
 
 	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function,
@@ -141,6 +147,7 @@ private:
 
 	CompilationPipeline pipeline_;
 	engine::TieredCompilationConfig config_;
+	[[maybe_unused]] FinalStatisticsDecorator finalStatisticsDecorator_;
 
 	mutable std::vector<std::thread> promotionThreads_;
 	mutable std::mutex threadsMutex_;

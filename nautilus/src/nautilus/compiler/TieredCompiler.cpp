@@ -5,6 +5,7 @@
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/logging.hpp"
+#include <utility>
 
 #ifdef ENABLE_COMPILER
 
@@ -29,8 +30,8 @@ static std::string createPromotionUnitID() {
 // --- TieredJITCompiler ---
 
 TieredJITCompiler::TieredJITCompiler(engine::Options options, common::ArenaPool& traceArenaPool,
-                                     common::ArenaPool& irArenaPool)
-    : pipeline_(options, traceArenaPool, irArenaPool) {
+                                     common::ArenaPool& irArenaPool, FinalStatisticsDecorator finalStatisticsDecorator)
+    : pipeline_(options, traceArenaPool, irArenaPool), finalStatisticsDecorator_(std::move(finalStatisticsDecorator)) {
 	// An explicitly selected backend pins single-tier compilation: the engine
 	// compiles synchronously with exactly this backend and never promotes.
 	// It takes precedence over the tier options.
@@ -77,8 +78,10 @@ TieredJITCompiler::TieredJITCompiler(engine::Options options, common::ArenaPool&
 }
 
 TieredJITCompiler::TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config,
-                                     common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool)
-    : pipeline_(options, traceArenaPool, irArenaPool), config_(std::move(config)) {
+                                     common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool,
+                                     FinalStatisticsDecorator finalStatisticsDecorator)
+    : pipeline_(options, traceArenaPool, irArenaPool), config_(std::move(config)),
+      finalStatisticsDecorator_(std::move(finalStatisticsDecorator)) {
 }
 
 TieredJITCompiler::~TieredJITCompiler() {
@@ -110,6 +113,9 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 
 	statistics->recordTimingMs("compilation.totalMs", compilationStart);
 	statistics->set("tier", tierLabel);
+	if (finalStatisticsDecorator_) {
+		finalStatisticsDecorator_(*statistics, moduleOptions, getName());
+	}
 
 	if (moduleOptions.getOptionOrDefault("engine.logStatistics", false)) {
 		const auto id = statistics->find("compilation.unitId") != nullptr
@@ -180,7 +186,8 @@ void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>
 	// The IR and per-module options are owned per call and moved into the
 	// background thread, so concurrent promotions never share state.
 	promotionThreads_.emplace_back([weakState = std::move(state), ir = std::move(ir), config = config_,
-	                                options = std::move(options), &pendingCount = pendingPromotions_]() {
+	                                options = std::move(options), finalStatisticsDecorator = finalStatisticsDecorator_,
+	                                compilerName = getName(), &pendingCount = pendingPromotions_]() {
 		try {
 			auto* registry = CompilationBackendRegistry::getInstance();
 			auto* backend = registry->getBackend(config.tier1.backend);
@@ -197,6 +204,9 @@ void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>
 			auto tier1Executable = backend->compile(ir, dumpHandler, options, statistics.get());
 			statistics->recordTimingMs("compilation.totalMs", promotionStart);
 			tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
+			if (finalStatisticsDecorator) {
+				finalStatisticsDecorator(*statistics, options, compilerName);
+			}
 
 			if (options.getOptionOrDefault("engine.logStatistics", false)) {
 				log::info("\n{}", statistics->formatReport(compilationId, config.tier1.backend));
@@ -253,12 +263,16 @@ const engine::Options& TieredJITCompiler::getOptions() const {
 
 namespace nautilus::compiler {
 
-TieredJITCompiler::TieredJITCompiler(engine::Options, common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool)
-    : pipeline_(engine::Options(), traceArenaPool, irArenaPool) {
+TieredJITCompiler::TieredJITCompiler(engine::Options, common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool,
+                                     FinalStatisticsDecorator finalStatisticsDecorator)
+    : pipeline_(engine::Options(), traceArenaPool, irArenaPool),
+      finalStatisticsDecorator_(std::move(finalStatisticsDecorator)) {
 }
 TieredJITCompiler::TieredJITCompiler(engine::Options, engine::TieredCompilationConfig,
-                                     common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool)
-    : pipeline_(engine::Options(), traceArenaPool, irArenaPool) {
+                                     common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool,
+                                     FinalStatisticsDecorator finalStatisticsDecorator)
+    : pipeline_(engine::Options(), traceArenaPool, irArenaPool),
+      finalStatisticsDecorator_(std::move(finalStatisticsDecorator)) {
 }
 TieredJITCompiler::~TieredJITCompiler() = default;
 std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function, const engine::ModuleOptions&) const {

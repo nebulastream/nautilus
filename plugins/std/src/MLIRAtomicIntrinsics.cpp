@@ -87,8 +87,7 @@ IntrinsicFunction makeAtomicLoadLowering(AtomicOrdering ord, TypeFactory tyFn) {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto resultTy = tyFn(*b);
 		auto op = ::mlir::LLVM::LoadOp::create(*b, b->getUnknownLoc(), resultTy, ptr,
-		                                       /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
-		                                       /*isInvariant=*/false, /*isInvariantGroup=*/false, ord);
+		                                       resultTy.getIntOrFloatBitWidth() / 8, false, false, false, false, ord);
 		frame.setValue(call->getIdentifier(), op);
 		return true;
 	};
@@ -99,9 +98,8 @@ IntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
 	             MLIRLoweringProvider::ValueFrame& frame) -> bool {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-		::mlir::LLVM::StoreOp::create(*b, b->getUnknownLoc(), value, ptr,
-		                              /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
-		                              /*isInvariantGroup=*/false, ord);
+		::mlir::LLVM::StoreOp::create(*b, b->getUnknownLoc(), value, ptr, value.getType().getIntOrFloatBitWidth() / 8,
+		                              false, false, false, ord);
 		return true;
 	};
 }
@@ -120,7 +118,9 @@ IntrinsicFunction makeAtomicRMWLowering(AtomicBinOp binOp, AtomicOrdering ord) {
 IntrinsicFunction makeFenceLowering(AtomicOrdering ord) {
 	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* /*call*/,
 	             MLIRLoweringProvider::ValueFrame& /*frame*/) -> bool {
-		::mlir::LLVM::FenceOp::create(*b, b->getUnknownLoc(), ord);
+		if (ord != AtomicOrdering::monotonic) {
+			::mlir::LLVM::FenceOp::create(*b, b->getUnknownLoc(), ord);
+		}
 		return true;
 	};
 }
