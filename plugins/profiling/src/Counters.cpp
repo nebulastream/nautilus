@@ -121,7 +121,10 @@ CounterSet::CounterSet(std::vector<std::string> events, uint16_t maxThreads)
 	}
 
 	try {
-		impl_->counter.emplace(impl_->slots.capacity());
+		pc::Config config;
+		config.include_kernel(false);
+		config.include_hypervisor(false);
+		impl_->counter.emplace(impl_->slots.capacity(), config);
 	} catch (const std::exception& error) {
 		impl_->reason = std::string("could not create a perf event counter: ") + error.what();
 		return;

@@ -289,6 +289,10 @@ MLIRCompilationBackend::compileIR(const std::shared_ptr<ir::IRGraph>& ir, const 
 
 	auto externalSymbols = loweringProvider->getJitProxyFunctionSymbols();
 	auto externalAddresses = loweringProvider->getJitProxyTargetAddresses();
+	auto bindingSymbols = loweringProvider->getJitRuntimeBindingSymbols();
+	auto bindingAddresses = loweringProvider->getJitRuntimeBindingTargetAddresses();
+	externalSymbols.insert(externalSymbols.end(), bindingSymbols.begin(), bindingSymbols.end());
+	externalAddresses.insert(externalAddresses.end(), bindingAddresses.begin(), bindingAddresses.end());
 	if (externalSymbols.size() != externalAddresses.size()) {
 		throw RuntimeException("MLIR external symbol vectors differ in size");
 	}
@@ -298,7 +302,7 @@ MLIRCompilationBackend::compileIR(const std::shared_ptr<ir::IRGraph>& ir, const 
 		if (exportNames == nullptr) {
 			throw RuntimeException("Artifact compilation requires an export manifest");
 		}
-		validateArtifactMLIRModule(*mlirModule, *exportNames, externalSymbols, externalAddresses);
+		validateArtifactMLIRModule(*mlirModule, *exportNames, externalSymbols, externalAddresses, options);
 		const auto serializationStart = std::chrono::steady_clock::now();
 		if (exports != nullptr) {
 			artifacts->exportABIs = validateArtifactExportABI(*mlirModule, *exports);
@@ -380,7 +384,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compileCachedBytecode(
 	if (!mlirModule || ::mlir::failed(::mlir::verify(*mlirModule))) {
 		throw RuntimeException("Could not load MLIR artifact bytecode");
 	}
-	validateArtifactMLIRModule(*mlirModule, exportNames, externalSymbols, externalAddresses);
+	validateArtifactMLIRModule(*mlirModule, exportNames, externalSymbols, externalAddresses, options);
 	if (exports != nullptr) {
 		validateArtifactExportABI(*mlirModule, *exports);
 	}
@@ -431,7 +435,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compileCachedBytecode(
 		regeneratedArtifacts->externalSymbols = externalSymbols;
 		regeneratedArtifacts->externalAddresses = externalAddresses;
 		if (auto object = objectCapture->getObject()) {
-			validateArtifactObjectSymbols(*object, exportNames, symbols, addresses);
+			validateArtifactObjectSymbols(*object, exportNames, symbols, addresses, options);
 			regeneratedArtifacts->object = std::move(*object);
 		}
 	}
@@ -447,7 +451,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compileCachedObject(
     const std::vector<void*>& externalAddresses, const std::vector<std::string>& exportNames,
     const engine::Options& options, CompilationStatistics* statistics, const std::string& compilationUnitId) const {
 	const auto backendStart = std::chrono::steady_clock::now();
-	validateArtifactObjectSymbols(object, exportNames, externalSymbols, externalAddresses);
+	validateArtifactObjectSymbols(object, exportNames, externalSymbols, externalAddresses, options);
 	const auto jitStart = std::chrono::steady_clock::now();
 	const auto debugInfo = debugInfoOptionsFromEngineOptions(options);
 	MLIRJit::Options jitOptions;

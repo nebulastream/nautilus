@@ -19,6 +19,7 @@
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
+#include "nautilus/compiler/ir/operations/RuntimeBindingOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
@@ -492,6 +493,12 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	case OpType::ConstPtrOp:
 		fmt::format_to(out, "{} = *", op.getIdentifier());
 		break;
+	case OpType::RuntimeBindingOp: {
+		const auto& binding = nautilus::compiler::ir::cast<RuntimeBindingOperation>(&op)->getBinding();
+		fmt::format_to(out, "{} = runtime_binding {} [{}] @{}", op.getIdentifier(), binding.identity, binding.type,
+		               binding.symbol);
+		break;
+	}
 	case OpType::CallOp:
 		fmt::format_to(out, "{}", *nautilus::compiler::ir::cast<CallOperation>(&op));
 		break;

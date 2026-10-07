@@ -58,7 +58,7 @@ void markCacheState(compiler::CompilationStatistics* statistics, std::string obj
 namespace transport = ::nautilus::artifact::detail;
 namespace artifact = ::nautilus::artifact;
 
-constexpr std::string_view CACHE_MAGIC = "NAUTILUS-MODULE-CACHE-1";
+constexpr std::string_view CACHE_MAGIC = "NAUTILUS-MODULE-CACHE-2";
 constexpr uint64_t MAX_MANIFEST_SIZE = 2 * transport::MAX_DESCRIPTOR_SIZE + 1024;
 
 class CacheFailure final : public std::runtime_error {
@@ -79,6 +79,7 @@ engine::Options artifactOptions(const engine::Options& options) {
 			effective.setOption(name, value);
 		}
 	}
+	effective.setRuntimeBindings(options.getRuntimeBindings());
 	return effective;
 }
 
@@ -133,6 +134,12 @@ std::string createKeyManifest(std::string_view semanticKey, const artifact::Desc
 	writer.string(CACHE_MAGIC);
 	writer.u32(descriptor.version);
 	writer.string(semanticKey);
+	writer.u32(static_cast<uint32_t>(descriptor.bindingSchema.size()));
+	for (const auto& entry : descriptor.bindingSchema) {
+		writer.string(entry.identity);
+		writer.string(entry.type);
+		writer.string(entry.symbol);
+	}
 	const auto& identity = descriptor.compatibility;
 	for (const auto* image : {&identity.compilerImage, &identity.producerImage}) {
 		writer.string(image->buildId);
@@ -228,6 +235,7 @@ artifact::ModuleArtifact decodeManifest(std::string_view bytes, std::string_view
 	reader.finish();
 	transport::validateDescriptor(value);
 	if (value.descriptor.compatibility != expected.compatibility ||
+	    value.descriptor.bindingSchema != expected.bindingSchema ||
 	    !matchingExports(expected.exports, value.descriptor.exports)) {
 		throw CacheFailure("cache descriptor compatibility mismatch");
 	}
@@ -593,6 +601,7 @@ compileWithPersistentModuleCache(const compiler::CompilationPipeline& pipeline,
 		return decline("active_backend_hooks_unsupported");
 	}
 	artifact::Descriptor descriptor;
+	descriptor.bindingSchema = moduleOptions.getRuntimeBindings().schemaEntries();
 	try {
 		descriptor.compatibility.compilerImage =
 		    transport::imageAt(reinterpret_cast<const void*>(&compiler::CompilationBackendRegistry::getInstance));
@@ -661,7 +670,7 @@ compileWithPersistentModuleCache(const compiler::CompilationPipeline& pipeline,
 	if (cached) {
 		std::optional<transport::ResolvedImports> nativeImports;
 		try {
-			nativeImports = transport::resolveImports(cached->descriptor, false);
+			nativeImports = transport::resolveImports(cached->descriptor, false, moduleOptions);
 		} catch (const std::exception&) {
 			fallback = "unresolved_import";
 		}
@@ -688,12 +697,12 @@ compileWithPersistentModuleCache(const compiler::CompilationPipeline& pipeline,
 			}
 			try {
 				cached->bytecode = readCheckedArtifact(*directory, paths.bytecode, cached->descriptor.bytecodeDigest);
-				const auto imports = transport::resolveImports(cached->descriptor, true);
+				const auto imports = transport::resolveImports(cached->descriptor, true, moduleOptions);
 				compiler::DumpHandler dump(moduleOptions, compilationId);
 				compiler::mlir::MLIRCacheArtifacts regenerated;
 				const auto objectPreflight = [&](std::string_view object) {
 					compiler::mlir::validateArtifactObjectSymbols(object, exports, nativeImports->symbols,
-					                                              nativeImports->addresses);
+					                                              nativeImports->addresses, moduleOptions);
 				};
 				auto executable = backend->compileCachedBytecode(
 				    cached->bytecode, cached->descriptor.moduleManifest, imports.symbols, imports.addresses, exports,
@@ -797,9 +806,10 @@ compileWithPersistentModuleCache(const compiler::CompilationPipeline& pipeline,
 	std::unique_ptr<compiler::Executable> executable;
 	try {
 		const auto objectPreflight = [&](std::string_view object) {
-			transport::createImports(descriptor, raw, object);
-			const auto imports = transport::resolveImports(descriptor, false);
-			compiler::mlir::validateArtifactObjectSymbols(object, exports, imports.symbols, imports.addresses);
+			transport::createImports(descriptor, raw, object, moduleOptions);
+			const auto imports = transport::resolveImports(descriptor, false, moduleOptions);
+			compiler::mlir::validateArtifactObjectSymbols(object, exports, imports.symbols, imports.addresses,
+			                                              moduleOptions);
 		};
 		if (statistics != nullptr) {
 			statistics->set("backend.name", std::string("mlir"));
@@ -821,9 +831,10 @@ compileWithPersistentModuleCache(const compiler::CompilationPipeline& pipeline,
 		for (std::size_t index = 0; index < descriptor.exports.size(); ++index) {
 			descriptor.exports[index].loweredABI = raw.exportABIs[index];
 		}
-		transport::createImports(descriptor, raw, raw.object);
-		const auto imports = transport::resolveImports(descriptor, false);
-		compiler::mlir::validateArtifactObjectSymbols(raw.object, exports, imports.symbols, imports.addresses);
+		transport::createImports(descriptor, raw, raw.object, moduleOptions);
+		const auto imports = transport::resolveImports(descriptor, false, moduleOptions);
+		compiler::mlir::validateArtifactObjectSymbols(raw.object, exports, imports.symbols, imports.addresses,
+		                                              moduleOptions);
 		artifact::ModuleArtifact value;
 		descriptor.moduleManifest = std::move(raw.moduleManifest);
 		descriptor.objectDigest = transport::digest(raw.object);

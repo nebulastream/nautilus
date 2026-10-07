@@ -72,8 +72,9 @@ A failed complete scalar certificate still requires the conservative pointer ana
 missing provenance into a certificate. Captured raw pointers, encoded addresses, unsafe native cleanup/callback
 inputs and unresolved native imports cannot be made persistable merely by supplying a key.
 
-Use runtime function arguments for process-local storage. This plugin does not introduce runtime-binding
-handles, registries or schemas. See [module-artifacts.md](module-artifacts.md) for artifact capability,
+Use runtime function arguments or core [runtime bindings](runtime-bindings.md) for process-local storage.
+The full binding schema participates in keys and descriptors; addresses resolve afresh for each module load.
+Binding transport is available independently of this plugin. See [module-artifacts.md](module-artifacts.md) for artifact capability,
 scalar-certification and native-import lifetime contracts.
 
 ## Native hits, repair and statistics

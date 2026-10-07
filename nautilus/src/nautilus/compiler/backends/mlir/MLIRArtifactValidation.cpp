@@ -8,6 +8,7 @@
 #include <llvm/Support/MemoryBufferRef.h>
 #include <llvm/Support/raw_ostream.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace nautilus::compiler::mlir {
@@ -44,11 +45,59 @@ std::unordered_set<std::string> validateExternalNames(const std::vector<std::str
 	return names;
 }
 
+std::unordered_map<std::string, const runtime_binding::Entry*> bindingEnvironment(const engine::Options& options) {
+	std::unordered_map<std::string, const runtime_binding::Entry*> symbols;
+	for (const auto& [identity, entry] : options.getRuntimeBindings().entries()) {
+		if (!entry || entry->identity != identity || identity.empty() || entry->type.empty() ||
+		    entry->symbol != runtime_binding::symbolName(identity) || entry->address == nullptr ||
+		    !symbols.emplace(entry->symbol, entry.get()).second) {
+			throw RuntimeException("MLIR runtime binding environment is invalid");
+		}
+	}
+	return symbols;
+}
+
+std::unordered_map<std::string, const runtime_binding::Entry*> validateRuntimeBindings(::mlir::ModuleOp module,
+                                                                                       const engine::Options& options) {
+	const auto& bindings = options.getRuntimeBindings();
+	const auto schema = module->getAttrOfType<::mlir::StringAttr>("nautilus.runtime_binding.schema");
+	if ((schema && schema.getValue() != bindings.schema()) || (!schema && !bindings.entries().empty())) {
+		throw RuntimeException("MLIR artifact runtime binding schema mismatch");
+	}
+	const auto symbols = bindingEnvironment(options);
+	for (auto function : module.getOps<::mlir::LLVM::LLVMFuncOp>()) {
+		if (symbols.contains(function.getSymName().str())) {
+			throw RuntimeException("MLIR artifact runtime binding symbol is declared as a function");
+		}
+	}
+	for (auto global : module.getOps<::mlir::LLVM::GlobalOp>()) {
+		const auto identity = global->getAttrOfType<::mlir::StringAttr>("nautilus.runtime_binding.identity");
+		const auto type = global->getAttrOfType<::mlir::StringAttr>("nautilus.runtime_binding.type");
+		const auto binding = symbols.find(global.getSymName().str());
+		if (binding == symbols.end()) {
+			if (identity || type) {
+				throw RuntimeException("MLIR artifact contains an undeclared runtime binding");
+			}
+			continue;
+		}
+		if (!identity || !type || identity.getValue() != binding->second->identity ||
+		    type.getValue() != binding->second->type || !global.getType().isInteger(8) || global.getConstant() ||
+		    global.getLinkage() != ::mlir::LLVM::Linkage::External || global.getValueOrNull() ||
+		    !global.getInitializerRegion().empty() || global.getThreadLocal_() || global.getAddrSpace() != 0 ||
+		    global.getAlignment().value_or(1) != 1 || global.getUnnamedAddrAttr() || global.getDsoLocal() ||
+		    global.getExternallyInitialized() || global.getComdatAttr() || global.getSectionAttr() ||
+		    global.getVisibility_() != ::mlir::LLVM::Visibility::Default) {
+			throw RuntimeException("MLIR artifact runtime binding declaration mismatch");
+		}
+	}
+	return symbols;
+}
+
 } // namespace
 
 void validateArtifactMLIRModule(::mlir::ModuleOp module, const std::vector<std::string>& exportNames,
                                 const std::vector<std::string>& externalSymbols,
-                                const std::vector<void*>& externalAddresses) {
+                                const std::vector<void*>& externalAddresses, const engine::Options& options) {
 	if (!module) {
 		throw RuntimeException("MLIR artifact module is missing");
 	}
@@ -60,7 +109,19 @@ void validateArtifactMLIRModule(::mlir::ModuleOp module, const std::vector<std::
 		}
 	}
 
+	if (externalSymbols.size() != externalAddresses.size()) {
+		throw RuntimeException("MLIR artifact external symbol vectors differ in size");
+	}
+	const auto bindings = validateRuntimeBindings(module, options);
 	auto expectedFunctions = validateExternalNames(externalSymbols, externalAddresses);
+	for (std::size_t index = 0; index < externalSymbols.size(); ++index) {
+		if (const auto binding = bindings.find(externalSymbols[index]); binding != bindings.end()) {
+			if (externalAddresses[index] != binding->second->address) {
+				throw RuntimeException("MLIR artifact runtime binding address does not match the load environment");
+			}
+			expectedFunctions.erase(externalSymbols[index]);
+		}
+	}
 	for (auto function : module.getOps<::mlir::LLVM::LLVMFuncOp>()) {
 		if (function->getRegion(0).empty() && !expectedFunctions.erase(function.getSymName().str())) {
 			throw RuntimeException("MLIR artifact contains an undeclared external function");
@@ -80,7 +141,11 @@ void validateArtifactMLIRModule(::mlir::ModuleOp module, const std::vector<std::
 		     section->starts_with(".fini_array") || section->starts_with(".ctors") || section->starts_with(".dtors"))) {
 			throw RuntimeException("MLIR artifacts do not support module initializers or finalizers");
 		}
-		if (!global.getValueOrNull() && global.getInitializerRegion().empty()) {
+		if (bindings.contains(global.getSymName().str())) {
+			if (std::ranges::find(externalSymbols, global.getSymName().str()) == externalSymbols.end()) {
+				throw RuntimeException("MLIR artifact runtime binding address is missing");
+			}
+		} else if (!global.getValueOrNull() && global.getInitializerRegion().empty()) {
 			throw RuntimeException("MLIR artifacts do not support external globals");
 		}
 	}
@@ -215,7 +280,8 @@ std::vector<std::string> validateArtifactExportABI(::mlir::ModuleOp module,
 	return result;
 }
 
-MLIRObjectSymbols inspectArtifactObject(std::string_view object) {
+MLIRObjectSymbols inspectArtifactObject(std::string_view object, const engine::Options& options) {
+	const auto bindings = bindingEnvironment(options);
 	if (object.empty()) {
 		throw RuntimeException("MLIR artifact object is empty");
 	}
@@ -269,12 +335,19 @@ MLIRObjectSymbols inspectArtifactObject(std::string_view object) {
 			                       llvm::toString(type.takeError()));
 		}
 		if (*flags & llvm::object::SymbolRef::SF_Undefined) {
-			if (*type != llvm::object::SymbolRef::ST_Function && *type != llvm::object::SymbolRef::ST_Unknown) {
+			if (*type != llvm::object::SymbolRef::ST_Function && *type != llvm::object::SymbolRef::ST_Unknown &&
+			    !(*type == llvm::object::SymbolRef::ST_Data && bindings.contains(name->str()))) {
 				throw RuntimeException("MLIR artifacts do not support external globals");
 			}
+			if (*type == llvm::object::SymbolRef::ST_Function && bindings.contains(name->str())) {
+				throw RuntimeException("MLIR artifact runtime binding symbol is declared as a function");
+			}
 			result.undefinedSymbols.push_back(name->str());
-		} else if ((*flags & llvm::object::SymbolRef::SF_Global) && *type == llvm::object::SymbolRef::ST_Function) {
-			result.definedFunctionSymbols.push_back(name->str());
+		} else if (*flags & llvm::object::SymbolRef::SF_Global) {
+			result.definedSymbols.push_back(name->str());
+			if (*type == llvm::object::SymbolRef::ST_Function) {
+				result.definedFunctionSymbols.push_back(name->str());
+			}
 		}
 	}
 	std::ranges::sort(result.undefinedSymbols);
@@ -289,10 +362,17 @@ MLIRObjectSymbols inspectArtifactObject(std::string_view object) {
 
 void validateArtifactObjectSymbols(std::string_view object, const std::vector<std::string>& exportNames,
                                    const std::vector<std::string>& externalSymbols,
-                                   const std::vector<void*>& externalAddresses) {
+                                   const std::vector<void*>& externalAddresses, const engine::Options& options) {
 	validateExportNames(exportNames);
 	const auto imports = validateExternalNames(externalSymbols, externalAddresses);
-	const auto symbols = inspectArtifactObject(object);
+	const auto bindings = bindingEnvironment(options);
+	for (std::size_t index = 0; index < externalSymbols.size(); ++index) {
+		if (const auto binding = bindings.find(externalSymbols[index]);
+		    binding != bindings.end() && externalAddresses[index] != binding->second->address) {
+			throw RuntimeException("MLIR artifact runtime binding address does not match the load environment");
+		}
+	}
+	const auto symbols = inspectArtifactObject(object, options);
 	const std::unordered_set<std::string> functions(symbols.definedFunctionSymbols.begin(),
 	                                                symbols.definedFunctionSymbols.end());
 	for (const auto& name : exportNames) {
@@ -305,9 +385,10 @@ void validateArtifactObjectSymbols(std::string_view object, const std::vector<st
 			throw RuntimeException("MLIR artifact object contains undeclared import '" + name + "'");
 		}
 	}
+	const std::unordered_set<std::string> defined(symbols.definedSymbols.begin(), symbols.definedSymbols.end());
 	for (const auto& name : externalSymbols) {
-		if (functions.contains(name)) {
-			throw RuntimeException("MLIR artifact import conflicts with a defined function '" + name + "'");
+		if (defined.contains(name)) {
+			throw RuntimeException("MLIR artifact import conflicts with a defined symbol '" + name + "'");
 		}
 	}
 }

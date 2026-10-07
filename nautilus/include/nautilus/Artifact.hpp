@@ -50,10 +50,11 @@ struct Compatibility {
 };
 
 struct Descriptor {
-	uint32_t version = 1;
+	uint32_t version = 2;
 	Compatibility compatibility;
 	std::vector<ExportDescriptor> exports;
 	std::vector<ImportDescriptor> imports;
+	std::vector<runtime_binding::SchemaEntry> bindingSchema;
 	std::string moduleManifest;
 	std::string objectDigest;
 	std::string bytecodeDigest;

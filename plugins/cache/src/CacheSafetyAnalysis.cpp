@@ -97,6 +97,8 @@ std::string operationTypeName(ir::Operation::OperationType type) {
 		return "AllocaOp";
 	case Op::FunctionAddressOfOp:
 		return "FunctionAddressOfOp";
+	case Op::RuntimeBindingOp:
+		return "RuntimeBindingOp";
 	}
 	return "Unknown(" + std::to_string(static_cast<unsigned>(type)) + ")";
 }
@@ -263,6 +265,7 @@ uint8_t addressSources(const ir::Operation& operation, const AddressSources& sou
 	case Op::LoadOp:
 		return (operation.getStamp() == Type::ptr ? RuntimePointer : RuntimeInteger) | memory;
 	case Op::AllocaOp:
+	case Op::RuntimeBindingOp:
 		return RuntimePointer;
 	case Op::FunctionAddressOfOp: {
 		uint8_t result = RuntimePointer;

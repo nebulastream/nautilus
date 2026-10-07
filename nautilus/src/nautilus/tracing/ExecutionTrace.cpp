@@ -721,6 +721,8 @@ auto formatter<nautilus::tracing::TraceOperation>::format(const nautilus::tracin
 			fmt::format_to(out, "{}\t", **blockRefPtr);
 		} else if (auto fCallPtr = std::get_if<nautilus::tracing::FunctionCall*>(&opInput)) {
 			fmt::format_to(out, "{}\t", **fCallPtr);
+		} else if (auto binding = std::get_if<const nautilus::runtime_binding::Entry*>(&opInput)) {
+			fmt::format_to(out, "{} [{}] @{}\t", (*binding)->identity, (*binding)->type, (*binding)->symbol);
 		} else if (auto constant = std::get_if<nautilus::ConstantLiteral>(&opInput)) {
 			fmt::format_to(out, "{}", *constant);
 		}

@@ -13,6 +13,7 @@
 #include <cassert>
 #include <cstddef>
 #include <fmt/format.h>
+#include <stdexcept>
 
 namespace fmt {
 template <>
@@ -181,6 +182,40 @@ void TraceContext::traceFoldedConstant(Type type, const ConstantLiteral& value, 
 	if (state->recordConstantOrigins) {
 		traceConstant(type, value, origin);
 	}
+}
+
+void TraceContext::validateRuntimeBinding(const runtime_binding::Entry& binding) const {
+	if (state) {
+		const auto& bindings = state->options.getRuntimeBindings().entries();
+		const auto registered = bindings.find(binding.identity);
+		if (registered != bindings.end() && registered->second.get() == &binding) {
+			return;
+		}
+	}
+	throw std::invalid_argument("Runtime binding handle is not registered in this module: " + binding.identity);
+}
+
+TypedValueRef& TraceContext::traceRuntimeBinding(const runtime_binding::Entry& binding) {
+	validateRuntimeBinding(binding);
+	if (paused_) {
+		return dummyRef_;
+	}
+	auto op = Op::RUNTIME_BINDING;
+	auto type = Type::ptr;
+	if (isFollowing()) {
+		return follow(op);
+	}
+	auto tag = recordSnapshot();
+	auto& trace = state->executionTrace;
+	const auto* payload = trace.getArena().create<runtime_binding::Entry>(binding);
+	if (auto it = trace.globalTagMap.find(tag); it != trace.globalTagMap.end()) {
+		const auto& ref = it->second;
+		auto* original = trace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
+		auto resultRef = trace.addOperationWithResult(tag, op, type, {payload});
+		trace.addAssignmentOperation(tag, original->resultRef, resultRef, resultRef.type);
+		return original->resultRef;
+	}
+	return trace.addOperationWithResult(tag, op, type, {payload});
 }
 
 template <typename OnCreation>

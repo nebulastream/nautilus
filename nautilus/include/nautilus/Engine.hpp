@@ -296,6 +296,10 @@ public:
 		moduleOptions_.setOption(name, value);
 	}
 
+	void setRuntimeBindings(const RuntimeBindings& bindings) {
+		moduleOptions_.setRuntimeBindings(bindings);
+	}
+
 	/// Access this module's effective options (engine defaults + overrides).
 	[[nodiscard]] const ModuleOptions& getOptions() const {
 		return moduleOptions_;

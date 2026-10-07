@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <fmt/format.h>
 #include <iostream>
+#include <stdexcept>
 
 namespace nautilus::tracing {
 
@@ -97,6 +98,13 @@ TypedValueRef& registerFunctionArgument(Type type, size_t index) {
 
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value, ConstantOrigin origin) {
 	return activeTracer->traceConstant(type, value, origin);
+}
+
+TypedValueRef& traceRuntimeBinding(const runtime_binding::Entry& binding) {
+	if (!activeTracer) {
+		throw std::invalid_argument("Runtime binding requires an active trace");
+	}
+	return activeTracer->traceRuntimeBinding(binding);
 }
 
 bool traceBool(const TypedValueRef& value, double probability) {

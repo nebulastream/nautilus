@@ -26,6 +26,7 @@ engine::ModuleOptions normalizeOptions(const engine::Options& options) {
 	constexpr std::array<std::pair<const char*, const char*>, 2> aliases {
 	    {{"engine.cache.directory", "engine.Blob.CacheDir"}, {"engine.cache.key", "engine.Blob.CacheKey"}}};
 	engine::ModuleOptions normalized;
+	normalized.setRuntimeBindings(options.getRuntimeBindings());
 	for (const auto& [name, value] : options.getOptionValues()) {
 		if (name != "engine.Blob.CacheDir" && name != "engine.Blob.CacheKey") {
 			normalized.setOption(name, value);

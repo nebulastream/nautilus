@@ -155,7 +155,7 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/plugins/cache/test --output-on-failure --timeout 300 --no-tests=error
-      - name: test installed cache ON and OFF packages
+      - name: test installed cache and runtime-binding packages
         if: contains(matrix.flags, 'ENABLE_CACHE_PLUGIN=')
         shell: bash
         run: |
@@ -170,6 +170,14 @@ jobs:
           cmake --build consumer
           ctest --test-dir consumer --show-only=json-v1 --no-tests=error
           ctest --test-dir consumer --output-on-failure --timeout 300 --no-tests=error
+          cmake -S nautilus/test/runtime-binding-consumer -B runtime-binding-consumer -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PWD/install" \
+            -DNAUTILUS_CACHE_EXPECTED="$expected" \
+            -DMLIR_DIR="$PWD/build/mlir-22.1.8/mlir/lib/cmake/mlir" \
+            -DLLVM_DIR="$PWD/build/mlir-22.1.8/mlir/lib/cmake/llvm"
+          cmake --build runtime-binding-consumer
+          ctest --test-dir runtime-binding-consumer --show-only=json-v1 --no-tests=error
+          ctest --test-dir runtime-binding-consumer --output-on-failure --timeout 300 --no-tests=error
       - name: test std plugin
         shell: bash
         run: |

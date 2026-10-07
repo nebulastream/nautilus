@@ -12,6 +12,7 @@
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/RuntimeBindingOperation.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <algorithm>
 #include <bit>
@@ -96,6 +97,8 @@ std::string operationTypeName(ir::Operation::OperationType type) {
 		return "AllocaOp";
 	case Op::FunctionAddressOfOp:
 		return "FunctionAddressOfOp";
+	case Op::RuntimeBindingOp:
+		return "RuntimeBindingOp";
 	}
 	return "Unknown(" + std::to_string(static_cast<unsigned>(type)) + ")";
 }
@@ -301,6 +304,15 @@ bool hasOnlyInvariantScalars(const ir::IRGraph& graph, std::string* reason) {
 			}
 			arity = 0;
 			break;
+		case Op::RuntimeBindingOp: {
+			const auto& binding = operation->dynCast<ir::RuntimeBindingOperation>()->getBinding();
+			if (operation->getStamp() != Type::ptr || binding.identity.empty() || binding.type.empty() ||
+			    binding.symbol != runtime_binding::symbolName(binding.identity) || binding.address == nullptr) {
+				return reject(operation, location, "invalid_runtime_binding");
+			}
+			arity = 0;
+			break;
+		}
 		case Op::BasicBlockArgument:
 			if (!arguments.contains(operation)) {
 				return reject(operation, location, "block_argument_outside_graph");

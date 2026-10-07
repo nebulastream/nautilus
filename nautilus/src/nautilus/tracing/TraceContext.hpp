@@ -257,6 +257,7 @@ public:
 	                             ConstantOrigin origin = ConstantOrigin::Unspecified) override;
 	void traceFoldedConstant(Type type, const ConstantLiteral& value,
 	                         ConstantOrigin origin = ConstantOrigin::Unspecified) override;
+	TypedValueRef& traceRuntimeBinding(const runtime_binding::Entry& binding) override;
 	TypedValueRef& traceAlloca(size_t size, size_t align) override;
 	TypedValueRef& traceTypedAlloca(const TypedAllocation& allocation) override;
 	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
@@ -349,6 +350,7 @@ public:
 
 private:
 	TypedValueRef& traceAllocation(size_t size, size_t align, std::optional<TypedAllocation> origin);
+	void validateRuntimeBinding(const runtime_binding::Entry& binding) const;
 	bool isFollowing();
 	TypedValueRef& follow(Op op);
 	TypedValueRef& follow(Op op, TraceOperation& currentOperation);

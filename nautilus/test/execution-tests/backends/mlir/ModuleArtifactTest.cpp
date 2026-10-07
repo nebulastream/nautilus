@@ -515,7 +515,7 @@ TEST_CASE("Module artifacts expose real descriptors and reload every export with
 	requireDigest(original.descriptorDigest);
 	requireDigest(original.descriptor.objectDigest);
 	requireDigest(original.descriptor.bytecodeDigest);
-	REQUIRE(original.descriptor.version == 1);
+	REQUIRE(original.descriptor.version == 2);
 	REQUIRE(original.descriptor.exports.size() == 18);
 	REQUIRE_FALSE(original.descriptor.imports.empty());
 	REQUIRE_FALSE(original.descriptor.moduleManifest.empty());

@@ -140,10 +140,10 @@ bool validImage(const NativeImage& image) {
 }
 void validateStructure(const Descriptor& value) {
 	const auto& compatibility = value.compatibility;
-	if (value.version != 1 || value.exports.empty() || value.exports.size() > MAX_RECORD_COUNT ||
-	    value.imports.size() > MAX_RECORD_COUNT || value.moduleManifest.empty() ||
-	    value.moduleManifest.size() > MAX_DESCRIPTOR_SIZE || !isDigest(value.bytecodeDigest) ||
-	    !isDigest(value.objectDigest) || !validImage(compatibility.compilerImage) ||
+	if (value.version != 2 || value.exports.empty() || value.exports.size() > MAX_RECORD_COUNT ||
+	    value.imports.size() > MAX_RECORD_COUNT || value.bindingSchema.size() > MAX_RECORD_COUNT ||
+	    value.moduleManifest.empty() || value.moduleManifest.size() > MAX_DESCRIPTOR_SIZE ||
+	    !isDigest(value.bytecodeDigest) || !isDigest(value.objectDigest) || !validImage(compatibility.compilerImage) ||
 	    !validImage(compatibility.producerImage) || compatibility.llvmVersion.empty() ||
 	    compatibility.targetTriple.empty() || compatibility.cpu.empty() || compatibility.dataLayout.empty() ||
 	    !isDigest(compatibility.optionsDigest) || compatibility.pointerSize == 0) {
@@ -168,10 +168,20 @@ void validateStructure(const Descriptor& value) {
 			}
 		}
 	}
+	std::unordered_set<std::string> bindingSymbols;
+	std::string previousIdentity;
+	for (const auto& entry : value.bindingSchema) {
+		if (entry.identity.empty() || (!previousIdentity.empty() && entry.identity <= previousIdentity) ||
+		    !validName(entry.type) || entry.symbol != runtime_binding::symbolName(entry.identity) ||
+		    !bindingSymbols.insert(entry.symbol).second || exports.contains(entry.symbol)) {
+			throw RuntimeException("Invalid artifact runtime binding schema");
+		}
+		previousIdentity = entry.identity;
+	}
 	std::unordered_set<std::string> imports;
 	for (const auto& entry : value.imports) {
 		if (!validName(entry.symbol) || !validImage(entry.image) || !imports.insert(entry.symbol).second ||
-		    exports.contains(entry.symbol)) {
+		    exports.contains(entry.symbol) || bindingSymbols.contains(entry.symbol)) {
 			throw RuntimeException("Invalid artifact import descriptor");
 		}
 	}
@@ -214,6 +224,12 @@ std::string encodeDescriptor(const Descriptor& value) {
 		writeImage(writer, entry.image);
 		writer.u8(entry.bytecodeImport);
 	}
+	writer.u32(static_cast<uint32_t>(value.bindingSchema.size()));
+	for (const auto& entry : value.bindingSchema) {
+		writer.string(entry.identity);
+		writer.string(entry.type);
+		writer.string(entry.symbol);
+	}
 	writer.string(value.moduleManifest);
 	writer.string(value.objectDigest);
 	writer.string(value.bytecodeDigest);
@@ -231,6 +247,9 @@ Descriptor decodeDescriptor(std::string_view bytes) {
 	Reader reader(bytes);
 	Descriptor value;
 	value.version = reader.u32();
+	if (value.version != 2) {
+		throw RuntimeException("Unsupported artifact descriptor version");
+	}
 	auto& compatibility = value.compatibility;
 	compatibility.compilerImage = readImage(reader);
 	compatibility.producerImage = readImage(reader);
@@ -275,6 +294,14 @@ Descriptor decodeDescriptor(std::string_view bytes) {
 		}
 		entry.bytecodeImport = bytecodeImport;
 		value.imports.push_back(std::move(entry));
+	}
+	const auto bindingCount = reader.count();
+	for (uint32_t index = 0; index < bindingCount; ++index) {
+		runtime_binding::SchemaEntry entry;
+		entry.identity = reader.string();
+		entry.type = reader.string();
+		entry.symbol = reader.string();
+		value.bindingSchema.push_back(std::move(entry));
 	}
 	value.moduleManifest = reader.string();
 	value.objectDigest = reader.string();
@@ -335,7 +362,7 @@ std::string optionsDigest(const engine::Options& options) {
 
 namespace nautilus::artifact {
 namespace {
-constexpr std::string_view MAGIC = "NAUTILUS-ARTIFACT-1";
+constexpr std::string_view MAGIC = "NAUTILUS-ARTIFACT-2";
 }
 std::string encode(const ModuleArtifact& value) {
 	detail::validateDescriptor(value);
