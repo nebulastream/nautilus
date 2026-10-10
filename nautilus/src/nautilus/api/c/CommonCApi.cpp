@@ -112,7 +112,7 @@ NautilusStatus nautilus_executable_get_function(NautilusExecutableRef executable
                                                 NautilusFunctionPointer* out) {
 	return status([&] {
 		require(executable != nullptr, "executable is NULL");
-		outParam(out);
+		requireOut(out);
 		const auto member = toString(name);
 		void* function = nullptr;
 		try {

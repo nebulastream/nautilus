@@ -140,10 +140,12 @@ auto compiling(F&& body) {
 	}
 }
 
+/// Rejects a NULL out-parameter. Call it before doing any work: it returns
+/// nothing, so it cannot be folded into the assignment of a result, where the
+/// result would be computed (and possibly allocated) before the check.
 template <typename T>
-T* outParam(T* out) {
+void requireOut(const T* out) {
 	require(out != nullptr, "out-parameter is NULL");
-	return out;
 }
 
 inline std::string_view view(NautilusStringRef str) {

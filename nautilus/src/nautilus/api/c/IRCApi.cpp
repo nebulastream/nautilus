@@ -428,7 +428,7 @@ template <typename T, typename Out, typename F>
 NautilusStatus detail(NautilusIRValueRef value, Out* out, F&& read) noexcept {
 	return status([&] {
 		require(value != nullptr, "value is NULL");
-		outParam(out);
+		requireOut(out);
 		const auto* op = ir::dyn_cast<T>(unwrap(value));
 		require(op != nullptr, "value has a different operation kind");
 		*out = read(op);
@@ -481,7 +481,9 @@ void nautilus_ir_graph_dispose(NautilusIRGraphRef graph) {
 NautilusStatus nautilus_ir_graph_to_string(NautilusIRGraphRef graph, NautilusString* out) {
 	return status([&] {
 		require(graph != nullptr, "graph is NULL");
-		*outParam(out) = own(graph->ir->toString());
+		// Validated before rendering, so a missing out-parameter allocates nothing.
+		requireOut(out);
+		*out = own(graph->ir->toString());
 	});
 }
 
@@ -513,7 +515,7 @@ NautilusStatus nautilus_ir_graph_find_function(NautilusIRGraphRef graph, Nautilu
                                                NautilusIRFunctionRef* out) {
 	return status([&] {
 		require(graph != nullptr, "graph is NULL");
-		outParam(out);
+		requireOut(out);
 		const auto* function = graph->ir->getFunctionOperation(toString(name));
 		check(function != nullptr, NAUTILUS_ERROR_NOT_FOUND, "no finished function with this name");
 		*out = wrap(function);
@@ -530,7 +532,7 @@ NautilusStatus nautilus_ir_graph_declare_external_function(NautilusIRGraphRef gr
 		require(graph != nullptr, "graph is NULL");
 		require(address != nullptr, "address is NULL");
 		require(param_count == 0 || param_types != nullptr, "param_types is NULL");
-		outParam(out);
+		requireOut(out);
 		ir::CalleeDescriptor descriptor;
 		descriptor.kind = ir::CalleeDescriptor::Kind::External;
 		descriptor.key = reinterpret_cast<void*>(address);
@@ -559,7 +561,7 @@ NautilusStatus nautilus_ir_graph_get_callee_info(NautilusIRGraphRef graph, Nauti
                                                  NautilusIRCalleeInfo* out) {
 	return status([&] {
 		require(graph != nullptr, "graph is NULL");
-		outParam(out);
+		requireOut(out);
 		const auto& table = graph->ir->getFunctionTable();
 		check(table.contains(callee), NAUTILUS_ERROR_NOT_FOUND, "unknown callee id");
 		const auto& target = table.get(callee);
@@ -607,7 +609,9 @@ void nautilus_ir_function_builder_dispose(NautilusIRFunctionBuilderRef builder) 
 NautilusStatus nautilus_ir_function_builder_get_callee(NautilusIRFunctionBuilderRef builder, NautilusIRCalleeId* out) {
 	return status([&] {
 		require(builder != nullptr, "builder is NULL");
-		*outParam(out) = calleeOf(builder);
+		// Validated first: minting the callee id is a side effect.
+		requireOut(out);
+		*out = calleeOf(builder);
 	});
 }
 
@@ -650,7 +654,7 @@ NautilusStatus nautilus_ir_function_builder_add_stack_slot(NautilusIRFunctionBui
                                                            size_t align, uint32_t* out_slot) {
 	return status([&] {
 		require(builder != nullptr, "builder is NULL");
-		outParam(out_slot);
+		requireOut(out_slot);
 		require(size > 0, "stack slot size must be positive");
 		require(align > 0 && (align & (align - 1)) == 0, "stack slot alignment must be a power of two");
 		builder->allocaSpecs.push_back(ir::AllocaSpec {size, align});
@@ -999,7 +1003,7 @@ NautilusStatus nautilus_ir_function_get_attribute(NautilusIRFunctionRef function
                                                   NautilusString* out) {
 	return status([&] {
 		require(function != nullptr, "function is NULL");
-		outParam(out);
+		requireOut(out);
 		const auto value = unwrap(function)->getAttribute(toString(key));
 		check(value.has_value(), NAUTILUS_ERROR_NOT_FOUND, "attribute is not set");
 		*out = own(*value);
@@ -1159,7 +1163,7 @@ NautilusStatus nautilus_ir_value_get_stack_slot(NautilusIRValueRef value, uint32
 NautilusStatus nautilus_ir_value_get_callee(NautilusIRValueRef value, NautilusIRCalleeId* out) {
 	return status([&] {
 		require(value != nullptr, "value is NULL");
-		outParam(out);
+		requireOut(out);
 		const auto* op = unwrap(value);
 		if (const auto* call = ir::dyn_cast<ir::CallOperation>(op)) {
 			*out = call->getCalleeId();
