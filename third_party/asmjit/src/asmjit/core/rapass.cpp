@@ -967,6 +967,14 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::buildLiveness() noexcept {
   // Assign block and instruction positions, build LiveCount and LiveSpans
   // ---------------------------------------------------------------------
 
+  // Positions (and clobbered registers) of every instruction that clobbers registers, i.e. every function call.
+  // Collected in position order and used below to find work registers whose live range spans a call.
+  // [Nautilus] Upstream only records the clobber mask for registers tied to the call instruction itself, so a
+  // value that is merely live across a call (a loop counter around an invoke, say) was packed into a caller-saved
+  // register and then spilled and reloaded around every call by the local allocator.
+  ZoneVector<uint32_t> callPositions;
+  ZoneVector<RARegMask> callClobbers;
+
   uint32_t position = 2;
   for (i = 0; i < numAllBlocks; i++) {
     RABlock* block = _blocks[i];
@@ -1002,6 +1010,21 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::buildLiveness() noexcept {
 
         inst->setPosition(position);
         raInst->_liveCount = curLiveCount;
+
+        // [Nautilus] Record copy partners for the global allocator (see RAWorkReg::addCopyPartner).
+        if (raInst->hasInstRWFlag(InstRWFlags::kMovOp) && count == 2) {
+          RAWorkReg* a = workRegById(tiedRegs[0].workId());
+          RAWorkReg* b = workRegById(tiedRegs[1].workId());
+          if (a != b && a->group() == b->group()) {
+            a->addCopyPartner(b->workId());
+            b->addCopyPartner(a->workId());
+          }
+        }
+
+        if (raInst->_clobberedRegs[RegGroup::kGp] || raInst->_clobberedRegs[RegGroup::kVec]) {
+          ASMJIT_PROPAGATE(callPositions.append(allocator(), position));
+          ASMJIT_PROPAGATE(callClobbers.append(allocator(), raInst->_clobberedRegs));
+        }
 
         for (uint32_t j = 0; j < count; j++) {
           RATiedReg* tiedReg = &tiedRegs[j];
@@ -1083,6 +1106,22 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::buildLiveness() noexcept {
     RAWorkReg* workReg = _workRegs[i];
 
     LiveRegSpans& spans = workReg->liveSpans();
+
+    // [Nautilus] A register live both before (reading at or before the call's position) and after the call
+    // (beyond its output slot) survives that call, so it should live in a register the call preserves.
+    if (!callPositions.empty()) {
+      RegGroup group = workReg->group();
+      size_t callIndex = 0;
+      for (uint32_t spanIndex = 0; spanIndex < spans.size(); spanIndex++) {
+        const LiveRegSpan& span = spans[spanIndex];
+        // Skip calls located before this span (both lists are sorted by position).
+        while (callIndex < callPositions.size() && callPositions[callIndex] < span.a)
+          callIndex++;
+        for (size_t k = callIndex; k < callPositions.size() && callPositions[k] + 1 < span.b; k++)
+          workReg->addClobberSurvivalMask(callClobbers[k][group]);
+      }
+    }
+
     uint32_t width = spans.width();
     float freq = width ? float(double(workReg->_refs.size()) / double(width)) : float(0);
 
@@ -1101,6 +1140,8 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::buildLiveness() noexcept {
   nUsesPerWorkReg.release(allocator());
   nOutsPerWorkReg.release(allocator());
   nInstsPerBlock.release(allocator());
+  callPositions.release(allocator());
+  callClobbers.release(allocator());
 
   return kErrorOk;
 }
@@ -1189,6 +1230,20 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::initGlobalLiveSpans() noexcept {
   return kErrorOk;
 }
 
+// [Nautilus] Whether two sorted span lists share a position.
+static bool RAPass_spansOverlap(const LiveRegSpans& x, const LiveRegSpans& y) noexcept {
+  uint32_t i = 0, j = 0;
+  while (i < x.size() && j < y.size()) {
+    if (x[i].b <= y[j].a)
+      i++;
+    else if (y[j].b <= x[i].a)
+      j++;
+    else
+      return true;
+  }
+  return false;
+}
+
 struct RAConsecutiveReg {
   RAWorkReg* workReg;
   RAWorkReg* parentReg;
@@ -1249,6 +1304,17 @@ public:
 
     memset(_bits, 0, size);
     return kErrorOk;
+  }
+
+  //! [Nautilus] Tests whether `spans` could be packed into `physId` (none of its positions is occupied yet).
+  bool canPack(uint32_t physId, const LiveRegSpans& spans) const noexcept {
+    const uint64_t* bits = _bits + size_t(physId) * _wordsPerReg;
+    uint32_t count = spans.size();
+
+    for (uint32_t i = 0; i < count; i++)
+      if (anySet(bits, spans[i].a, spanEnd(spans[i])))
+        return false;
+    return true;
   }
 
   //! Packs `spans` into `physId` if none of its positions is occupied yet, returns whether it was packed.
@@ -1496,6 +1562,7 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::binPack(RegGroup group) noexcept {
 
       RegMask physRegs = remainingPhysRegs & ~preservedRegs;
       remainingPhysRegs &= preservedRegs;
+      RAWorkReg* coalescePartner = nullptr;
 
       for (;;) {
         if (!physRegs) {
@@ -1507,13 +1574,75 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::binPack(RegGroup group) noexcept {
 
         uint32_t physId = Support::ctz(physRegs);
 
-        if (workReg->clobberSurvivalMask()) {
-          RegMask preferredMask = (physRegs | remainingPhysRegs) & workReg->clobberSurvivalMask();
-          if (preferredMask) {
-            if (preferredMask & ~remainingPhysRegs)
-              preferredMask &= ~remainingPhysRegs;
-            physId = Support::ctz(preferredMask);
+        // [Nautilus] Register preferences, strongest first:
+        //   1. the home register of an already allocated copy partner, so the copy between the two needs no
+        //      instruction -- unless that register is clobbered by a call this register is live across;
+        //   2. registers preserved by every call this register (or, softly, an unallocated copy partner, which
+        //      would like to share its register later) is live across -- upstream preferred the *clobbered* ones,
+        //      which forced a spill/reload pair around every such call;
+        //   3. registers preserved by the calls this register itself is live across.
+        // Within each class caller-saved registers come first (they need no save/restore in the prologue).
+        {
+          RegMask candidates = physRegs | remainingPhysRegs;
+          auto prefer = [&](RegMask mask) noexcept {
+            mask &= candidates;
+            if (mask & physRegs)
+              mask &= physRegs;
+            return mask;
+          };
+
+          RegMask hardAvoid = workReg->clobberSurvivalMask();
+          RegMask softAvoid = hardAvoid;
+          RegMask partnerHomes = 0;
+          for (uint32_t p = 0; p < 2; p++) {
+            uint32_t partnerId = workReg->copyPartner(p);
+            if (partnerId == Globals::kInvalidId)
+              continue;
+            RAWorkReg* partner = workRegById(partnerId);
+            if (partner->isAllocated() && partner->hasHomeRegId())
+              partnerHomes |= Support::bitMask(partner->homeRegId());
+            else
+              softAvoid |= partner->clobberSurvivalMask();
           }
+
+          RegMask choice = prefer(partnerHomes & ~hardAvoid);
+
+          // No partner allocated yet: pick a register the (non-conflicting) partner fits into as well, and pack the
+          // partner there right away, before shorter-lived registers allocated in between could take it.
+          if (!choice) {
+            for (uint32_t p = 0; p < 2 && !coalescePartner; p++) {
+              uint32_t partnerId = workReg->copyPartner(p);
+              if (partnerId == Globals::kInvalidId)
+                continue;
+              RAWorkReg* partner = workRegById(partnerId);
+              if (partner->isAllocated() || partner->hasHintRegId() || partner->isLeadConsecutive() ||
+                  partner->isProcessedConsecutive() || RAPass_spansOverlap(workReg->liveSpans(), partner->liveSpans()))
+                continue;
+
+              RegMask joint = 0;
+              RegMask partnerAllowed = availableRegs & partner->preferredMask() ? partner->preferredMask() : availableRegs;
+              Support::BitWordIterator<RegMask> it(candidates & partnerAllowed);
+              while (it.hasNext()) {
+                uint32_t candidate = it.next();
+                if (occupancy.canPack(candidate, workReg->liveSpans()) && occupancy.canPack(candidate, partner->liveSpans()))
+                  joint |= Support::bitMask(candidate);
+              }
+              RegMask jointChoice = prefer(joint & ~softAvoid);
+              if (!jointChoice)
+                jointChoice = prefer(joint & ~hardAvoid);
+              if (jointChoice) {
+                choice = jointChoice;
+                coalescePartner = partner;
+              }
+            }
+          }
+
+          if (!choice && softAvoid)
+            choice = prefer(~softAvoid);
+          if (!choice && hardAvoid)
+            choice = prefer(~hardAvoid);
+          if (choice)
+            physId = Support::ctz(choice);
         }
 
         bool packed;
@@ -1522,8 +1651,17 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::binPack(RegGroup group) noexcept {
         if (packed) {
           workReg->setHomeRegId(physId);
           workReg->markAllocated();
+          if (coalescePartner) {
+            bool partnerPacked;
+            ASMJIT_PROPAGATE(tryPack(physId, coalescePartner, partnerPacked));
+            if (partnerPacked) {
+              coalescePartner->setHomeRegId(physId);
+              coalescePartner->markAllocated();
+            }
+          }
           break;
         }
+        coalescePartner = nullptr;
 
         physRegs &= ~Support::bitMask(physId);
         remainingPhysRegs &= ~Support::bitMask(physId);

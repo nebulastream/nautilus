@@ -120,7 +120,19 @@ inline std::vector<Config> configs() {
 	}
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
-	addCompiling("asmjit");
+	// AsmJit-specific: each default-ON instruction-selection optimization
+	// flipped OFF, so the optimized lowering is differentially tested against
+	// the plain one (and LICM/local CSE ON, as the benchmarks configure it).
+	addCompiling(
+	    "asmjit",
+	    {{"asmjit", "no-lazy-narrowing", [](engine::Options& o) { o.setOption("asmjit.enableLazyNarrowing", false); }},
+	     {"asmjit", "no-address-fusion", [](engine::Options& o) { o.setOption("asmjit.enableAddressFusion", false); }},
+	     {"asmjit", "no-inlining", [](engine::Options& o) { o.setOption("asmjit.enableInlining", false); }},
+	     {"asmjit", "no-loop-rotation", [](engine::Options& o) { o.setOption("asmjit.enableLoopRotation", false); }},
+	     {"asmjit", "licm-cse", [](engine::Options& o) {
+		      o.setOption("ir.enableLICM", true);
+		      o.setOption("ir.enableLocalCSE", true);
+	      }}});
 #endif
 	// Triage aid: NAUTILUS_FUZZ_BACKENDS=<comma-list> restricts the peers
 	// (e.g. "interpreter,tbc,tbc-jit" to bisect a finding to one backend).
