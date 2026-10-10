@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <span>
 
-namespace nautilus::compiler::ir::serialization {
+namespace nautilus::serialization {
 
 /// CRC-32C (Castagnoli), the checksum iSCSI, ext4 and SCTP use. A table-driven
 /// software implementation: the checksum covers each buffer once, so it is not
@@ -29,4 +29,4 @@ inline uint32_t crc32c(std::span<const std::byte> data) {
 	return crc ^ 0xFFFFFFFFu;
 }
 
-} // namespace nautilus::compiler::ir::serialization
+} // namespace nautilus::serialization

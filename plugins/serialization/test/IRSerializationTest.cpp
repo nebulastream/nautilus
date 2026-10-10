@@ -1,3 +1,4 @@
+#include "Crc32c.hpp"
 #include "IRRoundTrip.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/Engine.hpp"
@@ -5,11 +6,10 @@
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
-#include "nautilus/compiler/ir/serialization/Crc32c.hpp"
-#include "nautilus/compiler/ir/serialization/IRBinaryFormat.hpp"
-#include "nautilus/compiler/ir/serialization/IRSerialization.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/nautilus_function.hpp"
+#include "nautilus/serialization/IRBinaryFormat.hpp"
+#include "nautilus/serialization/IRSerialization.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -21,11 +21,7 @@
 
 namespace nautilus::engine {
 
-// The IR -- and with it the serializer -- is only compiled when tracing is
-// enabled, so a TRACING=OFF build has nothing here to test.
-#ifdef ENABLE_TRACING
-
-namespace ser = compiler::ir::serialization;
+namespace ser = nautilus::serialization;
 
 namespace {
 
@@ -476,7 +472,5 @@ TEST_CASE("Pointer handling") {
 		REQUIRE_FALSE(linker.nameOf(static_cast<const char*>(address) + 1).has_value());
 	}
 }
-
-#endif // ENABLE_TRACING
 
 } // namespace nautilus::engine

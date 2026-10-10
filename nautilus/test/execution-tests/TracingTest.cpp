@@ -5,7 +5,6 @@
 #include "ExceptionFunctions.hpp"
 #include "ExpressionFunctions.hpp"
 #include "FunctionPtrFunctions.hpp"
-#include "IRRoundTrip.hpp"
 #include "LoopFunctions.hpp"
 #include "NautilusFunction.hpp"
 #include "NestedIfBenchmarks.hpp"
@@ -38,6 +37,16 @@
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
+
+// The IR serialization plugin compiles this file a second time with this macro
+// set, so every golden IR below is also round-tripped through the binary
+// format (plugins/serialization/test). Core itself does not depend on it.
+#ifdef NAUTILUS_TEST_IR_SERIALIZATION_ROUNDTRIP
+#include "IRRoundTrip.hpp"
+#define CHECK_IR_ROUNDTRIP(graph) ::nautilus::testing::requireSerializationRoundTrip(graph)
+#else
+#define CHECK_IR_ROUNDTRIP(graph)
+#endif
 
 namespace nautilus::log::options {
 
@@ -103,7 +112,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 				auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 				[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
 				REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name, ".nautilus"));
-				testing::requireSerializationRoundTrip(*ir);
+				CHECK_IR_ROUNDTRIP(*ir);
 			}
 			DYNAMIC_SECTION("after_constant_folding") {
 				// Re-run the tracing pipeline for this section since
@@ -123,7 +132,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 				passManager.addPass(std::make_unique<compiler::ir::ConstantFoldingAndCopyPropagationPass>());
 				passManager.run(*ir3);
 				REQUIRE(checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name, ".nautilus"));
-				testing::requireSerializationRoundTrip(*ir3);
+				CHECK_IR_ROUNDTRIP(*ir3);
 			}
 			DYNAMIC_SECTION("after_empty_block_elim") {
 				// Re-run the tracing pipeline: the previous section
@@ -144,7 +153,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 				passManager.addPass(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
 				passManager.run(*ir2);
 				REQUIRE(checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name, ".nautilus"));
-				testing::requireSerializationRoundTrip(*ir2);
+				CHECK_IR_ROUNDTRIP(*ir2);
 			}
 		}
 	}
@@ -186,7 +195,7 @@ TEST_CASE("Exception handling call trace golden") {
 				passManager.addPass(std::make_unique<compiler::ir::ExceptionRegionPreparationPass>());
 				passManager.run(*ir);
 				REQUIRE(checkTestFile(ir->toString(), "exception-tests", "after_region_pass", name, ".nautilus"));
-				testing::requireSerializationRoundTrip(*ir);
+				CHECK_IR_ROUNDTRIP(*ir);
 			}
 		}
 	}

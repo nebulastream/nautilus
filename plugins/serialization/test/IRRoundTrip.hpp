@@ -2,8 +2,8 @@
 
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
-#include "nautilus/compiler/ir/serialization/IRSerialization.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
+#include "nautilus/serialization/IRSerialization.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <string>
 #include <unordered_map>
@@ -15,8 +15,7 @@ namespace nautilus::testing {
  * order) and resolves those names back. Stands in for a real symbol scheme so
  * tests can drive the portable path on IR whose callees are not exported.
  */
-class SyntheticSymbols final : public compiler::ir::serialization::SymbolNamer,
-                               public compiler::ir::serialization::SymbolResolver {
+class SyntheticSymbols final : public serialization::SymbolNamer, public serialization::SymbolResolver {
 public:
 	[[nodiscard]] std::optional<std::string> nameOf(const void* address) const override {
 		auto [it, inserted] = names.try_emplace(address, "sym" + std::to_string(names.size()));
@@ -42,7 +41,7 @@ private:
  * re-serializes to the very same bytes.
  */
 inline void requireSerializationRoundTrip(compiler::ir::IRGraph& graph) {
-	namespace ser = compiler::ir::serialization;
+	namespace ser = nautilus::serialization;
 	const auto expected = graph.toString();
 	// The verifier relies on predecessor lists, which a graph straight out of
 	// trace-to-IR conversion does not carry yet; the pass manager would build

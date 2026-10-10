@@ -1,12 +1,12 @@
 #pragma once
 
-#include "nautilus/compiler/ir/IRGraph.hpp"
-#include "nautilus/exceptions/RuntimeException.hpp"
+#include "nautilus/JITCompiler.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -29,10 +29,20 @@
  * Deserialization never trusts its input: every offset, index and count is
  * bounds-checked and a malformed buffer is reported as a
  * `SerializationException`, never as undefined behaviour.
+ *
+ * The API names IRGraph and ArenaPool only by declaration, so this header
+ * stays usable from code that does not see nautilus's internal headers.
  */
-namespace nautilus::compiler::ir::serialization {
+namespace nautilus::common {
+class ArenaPool;
+} // namespace nautilus::common
 
-class SerializationException : public RuntimeException {
+namespace nautilus::serialization {
+
+using compiler::CompilationUnitID;
+using compiler::ir::IRGraph;
+
+class SerializationException : public std::runtime_error {
 public:
 	explicit SerializationException(std::string message);
 };
@@ -142,4 +152,4 @@ struct DeserializeOptions {
 /// Identity of this process as recorded in a ProcessLocal buffer.
 [[nodiscard]] uint64_t currentProcessToken();
 
-} // namespace nautilus::compiler::ir::serialization
+} // namespace nautilus::serialization

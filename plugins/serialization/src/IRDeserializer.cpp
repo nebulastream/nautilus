@@ -1,3 +1,6 @@
+#include "Crc32c.hpp"
+#include "nautilus/common/Arena.hpp"
+#include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/IntrinsicRegistry.hpp"
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
@@ -28,10 +31,9 @@
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
-#include "nautilus/compiler/ir/serialization/Crc32c.hpp"
-#include "nautilus/compiler/ir/serialization/IRBinaryFormat.hpp"
-#include "nautilus/compiler/ir/serialization/IRSerialization.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
+#include "nautilus/serialization/IRBinaryFormat.hpp"
+#include "nautilus/serialization/IRSerialization.hpp"
 #include <bit>
 #include <cstring>
 #include <fmt/format.h>
@@ -40,7 +42,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace nautilus::compiler::ir::serialization {
+namespace nautilus::serialization {
+
+using namespace compiler::ir;
 
 namespace {
 
@@ -867,4 +871,4 @@ std::shared_ptr<IRGraph> deserialize(std::span<const std::byte> buffer, common::
 	return deserializeInto(view, std::make_shared<IRGraph>(pool.acquire(), unitId(view, options)), options);
 }
 
-} // namespace nautilus::compiler::ir::serialization
+} // namespace nautilus::serialization

@@ -29,7 +29,6 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         PointerExecutionTest.cpp
         RegionTest.cpp
         SelectExecutionTest.cpp
-        IRSerializationTest.cpp
 )
 
 if (ENABLE_BC_BACKEND)

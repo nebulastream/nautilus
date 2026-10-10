@@ -11,10 +11,12 @@ Nautilus IR can be written to a compact binary buffer and read back into an `IRG
 
 Both pre-pass IR (straight out of trace-to-IR conversion) and IR after any number of passes round-trip, including region tables and exception landing pads.
 
-```cpp
-#include "nautilus/compiler/ir/serialization/IRSerialization.hpp"
+Serialization ships as a plugin: build it with `-DENABLE_SERIALIZATION_PLUGIN=ON` (the default whenever tracing is enabled) and link `nautilus::nautilus-serialization`.
 
-namespace ser = nautilus::compiler::ir::serialization;
+```cpp
+#include <nautilus/serialization/IRSerialization.hpp>
+
+namespace ser = nautilus::serialization;
 
 // Sender
 ser::SymbolTable symbols;                 // or your own SymbolNamer
@@ -31,7 +33,7 @@ in.verifyIR = true;                       // recommended for untrusted input
 std::shared_ptr<IRGraph> graph = ser::deserialize(bytes, in);
 ```
 
-The serialization API currently lives next to the IR in `src/nautilus/compiler/ir/serialization/`, like the rest of the IR. It is not yet exposed through `Engine`/`Module`.
+The plugin lives in `plugins/serialization/`. Its public headers are `nautilus/serialization/IRSerialization.hpp` (the API) and `nautilus/serialization/IRBinaryFormat.hpp` (the on-wire records, for anyone writing a reader in another language). The API takes and returns `IRGraph`, which nautilus only forward-declares publicly, so producing or consuming a graph still goes through nautilus's internal pipeline; an `Engine`/`Module`-level entry point is future work.
 
 ## Pointers and symbol resolution
 

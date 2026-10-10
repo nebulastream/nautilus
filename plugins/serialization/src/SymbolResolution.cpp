@@ -1,11 +1,11 @@
-#include "nautilus/compiler/ir/serialization/IRSerialization.hpp"
+#include "nautilus/serialization/IRSerialization.hpp"
 #include <dlfcn.h>
 #include <random>
 
-namespace nautilus::compiler::ir::serialization {
+namespace nautilus::serialization {
 
 SerializationException::SerializationException(std::string message)
-    : RuntimeException("IR serialization: " + std::move(message)) {
+    : std::runtime_error("IR serialization: " + std::move(message)) {
 }
 
 std::optional<std::string> DynamicLinkerSymbols::nameOf(const void* address) const {
@@ -67,4 +67,4 @@ uint64_t currentProcessToken() {
 	return token;
 }
 
-} // namespace nautilus::compiler::ir::serialization
+} // namespace nautilus::serialization

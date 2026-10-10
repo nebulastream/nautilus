@@ -1,3 +1,5 @@
+#include "Crc32c.hpp"
+#include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
@@ -12,9 +14,8 @@
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
-#include "nautilus/compiler/ir/serialization/Crc32c.hpp"
-#include "nautilus/compiler/ir/serialization/IRBinaryFormat.hpp"
-#include "nautilus/compiler/ir/serialization/IRSerialization.hpp"
+#include "nautilus/serialization/IRBinaryFormat.hpp"
+#include "nautilus/serialization/IRSerialization.hpp"
 #include <algorithm>
 #include <bit>
 #include <cstring>
@@ -25,7 +26,9 @@
 #include <utility>
 #include <vector>
 
-namespace nautilus::compiler::ir::serialization {
+namespace nautilus::serialization {
+
+using namespace compiler::ir;
 
 namespace {
 
@@ -713,4 +716,4 @@ std::optional<uint64_t> peekTotalSize(std::span<const std::byte> prefix) {
 	return total;
 }
 
-} // namespace nautilus::compiler::ir::serialization
+} // namespace nautilus::serialization

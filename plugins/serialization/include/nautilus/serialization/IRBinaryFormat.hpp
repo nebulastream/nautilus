@@ -17,7 +17,7 @@
  * *wire* spellings, mapped to and from the IR's own enums by the writer and the
  * reader. Reordering an IR enum therefore cannot silently change the format.
  */
-namespace nautilus::compiler::ir::serialization {
+namespace nautilus::serialization {
 
 static_assert(std::endian::native == std::endian::little,
               "the Nautilus IR binary format is little-endian; a big-endian reader needs byte-swapping loads");
@@ -354,4 +354,4 @@ static_assert(sizeof(AttributeRecord) == 16);
 static_assert(sizeof(RegionRecord) == 40);
 static_assert(sizeof(CallSiteRecord) == 8);
 
-} // namespace nautilus::compiler::ir::serialization
+} // namespace nautilus::serialization
