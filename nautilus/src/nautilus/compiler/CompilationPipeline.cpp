@@ -179,6 +179,58 @@ void addOptimizationPasses(ir::IRPassManager& passManager, const engine::ModuleO
 	}
 }
 
+/// The IR pass pipeline every graph runs between IR generation and a backend:
+/// the optimization passes @p optimization asks for (unless the
+/// `ir.runOptimizationPasses` option pins them), then the analyses every
+/// backend lowers from.
+void runPassPipeline(ir::IRGraph& ir, const engine::ModuleOptions& moduleOptions, DumpHandler& dumpHandler,
+                     CompilationStatistics* statistics, const ir::IRPrintOptions& irPrintOptions,
+                     IROptimizationLevel optimization) {
+	ir::IRPassManager passManager(moduleOptions, &dumpHandler, statistics, &irPrintOptions);
+	// The optimization passes are for the backends that execute the IR as
+	// it is; a backend that optimizes on its own (MLIR, through LLVM) gets
+	// the same cleanups from its pipeline, so by default the graph gets
+	// only what the backends compiling it ask for. The option pins it
+	// either way.
+	if (moduleOptions.hasOption("ir.runOptimizationPasses")) {
+		optimization = moduleOptions.getOptionOrDefault("ir.runOptimizationPasses", true) ? IROptimizationLevel::Full
+		                                                                                  : IROptimizationLevel::None;
+	}
+	addOptimizationPasses(passManager, moduleOptions, optimization);
+	// Proves Nautilus-to-Nautilus calls noUnwind via whole-module
+	// call-graph analysis, downgrading calls the trace-time heuristic
+	// pessimistically marked exception-handling; see
+	// NoThrowInferencePass.hpp. Must run before exception-region
+	// preparation so a proven-noThrow function skips landing-pad
+	// construction entirely.
+	passManager.addPass(std::make_unique<ir::NoThrowInferencePass>());
+	// Exception-region preparation: collects cleanup metadata for backends.
+	// Terminal pass -- runs once after all optimisation. Every backend
+	// lowers its landing pads from this side table, so it is not optional.
+	passManager.addPass(std::make_unique<ir::ExceptionRegionPreparationPass>());
+	// Records where every operation lands in a rendering of the final IR,
+	// and publishes it on the graph for the backend. Strictly last: a map
+	// is a snapshot, and any pass that mints or removes an operation after
+	// it invalidates every line.
+	//
+	// Opt-in, because it renders the whole module to a string: only when
+	// the MLIR backend is going to point DWARF line numbers at a
+	// Nautilus-IR dump. `perf` needs this exactly as much as `debug`
+	// does -- both are the MLIR backend's DebugInfoOptions::
+	// emitDebugInfo() axis, mirrored here via raw options since this
+	// file is backend-agnostic and cannot depend on the MLIR backend's
+	// headers. Skipping it when only perf is set would not break
+	// correctness (MLIRCompilationBackend falls back to computing the
+	// map itself for a locationMap-less graph), only duplicate the work
+	// IRLocationPass would otherwise have cached.
+	const bool writesDwarfSource =
+	    moduleOptions.getOptionOrDefault("debug", false) || moduleOptions.getOptionOrDefault("perf", false);
+	if (writesDwarfSource) {
+		passManager.addPass(std::make_unique<ir::IRLocationPass>());
+	}
+	passManager.run(ir);
+}
+
 } // namespace
 
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions,
@@ -246,50 +298,7 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	}
 
 	if (moduleOptions.getOptionOrDefault("ir.runPasses", true)) {
-		ir::IRPassManager passManager(moduleOptions, &dumpHandler, statistics, &irPrintOptions);
-		// The optimization passes are for the backends that execute the IR as
-		// it is; a backend that optimizes on its own (MLIR, through LLVM) gets
-		// the same cleanups from its pipeline, so by default the graph gets
-		// only what the backends compiling it ask for. The option pins it
-		// either way.
-		if (moduleOptions.hasOption("ir.runOptimizationPasses")) {
-			optimization = moduleOptions.getOptionOrDefault("ir.runOptimizationPasses", true)
-			                   ? IROptimizationLevel::Full
-			                   : IROptimizationLevel::None;
-		}
-		addOptimizationPasses(passManager, moduleOptions, optimization);
-		// Proves Nautilus-to-Nautilus calls noUnwind via whole-module
-		// call-graph analysis, downgrading calls the trace-time heuristic
-		// pessimistically marked exception-handling; see
-		// NoThrowInferencePass.hpp. Must run before exception-region
-		// preparation so a proven-noThrow function skips landing-pad
-		// construction entirely.
-		passManager.addPass(std::make_unique<ir::NoThrowInferencePass>());
-		// Exception-region preparation: collects cleanup metadata for backends.
-		// Terminal pass -- runs once after all optimisation. Every backend
-		// lowers its landing pads from this side table, so it is not optional.
-		passManager.addPass(std::make_unique<ir::ExceptionRegionPreparationPass>());
-		// Records where every operation lands in a rendering of the final IR,
-		// and publishes it on the graph for the backend. Strictly last: a map
-		// is a snapshot, and any pass that mints or removes an operation after
-		// it invalidates every line.
-		//
-		// Opt-in, because it renders the whole module to a string: only when
-		// the MLIR backend is going to point DWARF line numbers at a
-		// Nautilus-IR dump. `perf` needs this exactly as much as `debug`
-		// does -- both are the MLIR backend's DebugInfoOptions::
-		// emitDebugInfo() axis, mirrored here via raw options since this
-		// file is backend-agnostic and cannot depend on the MLIR backend's
-		// headers. Skipping it when only perf is set would not break
-		// correctness (MLIRCompilationBackend falls back to computing the
-		// map itself for a locationMap-less graph), only duplicate the work
-		// IRLocationPass would otherwise have cached.
-		const bool writesDwarfSource =
-		    moduleOptions.getOptionOrDefault("debug", false) || moduleOptions.getOptionOrDefault("perf", false);
-		if (writesDwarfSource) {
-			passManager.addPass(std::make_unique<ir::IRLocationPass>());
-		}
-		passManager.run(*ir);
+		runPassPipeline(*ir, moduleOptions, dumpHandler, statistics, irPrintOptions, optimization);
 		dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 	}
 
@@ -297,6 +306,17 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		statistics->recordTimingMs("frontend.totalMs", frontendStart);
 	}
 	return ir;
+}
+
+void CompilationPipeline::runIRPasses(ir::IRGraph& ir, const engine::ModuleOptions& moduleOptions,
+                                      IROptimizationLevel optimization, CompilationStatistics* statistics) {
+	if (!moduleOptions.getOptionOrDefault("ir.runPasses", true)) {
+		return;
+	}
+	auto dumpHandler = DumpHandler(moduleOptions, ir.getId());
+	const ir::IRPrintOptions irPrintOptions;
+	runPassPipeline(ir, moduleOptions, dumpHandler, statistics, irPrintOptions, optimization);
+	dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir.toString(irPrintOptions); });
 }
 
 std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr<ir::IRGraph>& ir,
@@ -324,6 +344,11 @@ std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>&,
                                                               const engine::ModuleOptions&, CompilationStatistics*,
                                                               IROptimizationLevel) const {
+	throw RuntimeException("Jit not initialised");
+}
+
+void CompilationPipeline::runIRPasses(ir::IRGraph&, const engine::ModuleOptions&, IROptimizationLevel,
+                                      CompilationStatistics*) {
 	throw RuntimeException("Jit not initialised");
 }
 
