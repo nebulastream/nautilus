@@ -97,6 +97,12 @@ public:
 	void compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
 	                   std::shared_ptr<engine::details::ModuleState> state) const override;
 
+	/// Always compiles with the tier-1 backend: it is the one a single-tier
+	/// engine compiles with, and a prebuilt graph cannot be promoted.
+	[[nodiscard]] std::unique_ptr<Executable> compileIR(const std::shared_ptr<ir::IRGraph>& ir,
+	                                                    const engine::ModuleOptions& moduleOptions,
+	                                                    bool runPasses = true) const override;
+
 	std::string getName() const override;
 	const engine::Options& getOptions() const override;
 

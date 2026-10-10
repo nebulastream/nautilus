@@ -66,6 +66,18 @@ public:
 	            IROptimizationLevel optimization = IROptimizationLevel::Full) const;
 
 	/**
+	 * @brief Runs the IR pass pipeline `compileToIR` runs after IR generation
+	 * on a graph that did not come out of tracing (e.g. one built through the
+	 * C API), in place.
+	 *
+	 * Honors the same options as `compileToIR` (`ir.runPasses`,
+	 * `ir.runOptimizationPasses`, the per-pass switches and the dump options).
+	 */
+	static void runIRPasses(ir::IRGraph& ir, const engine::ModuleOptions& moduleOptions,
+	                        IROptimizationLevel optimization = IROptimizationLevel::Full,
+	                        CompilationStatistics* statistics = nullptr);
+
+	/**
 	 * @brief The IR optimization level a graph compiled by every backend in
 	 * @p backendNames needs: the highest any of them asks for
 	 * (`CompilationBackend::irOptimizationLevel`). Names that resolve to no

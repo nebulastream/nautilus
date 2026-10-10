@@ -15,6 +15,19 @@
 
 namespace nautilus::compiler {
 
+/// Hands @p statistics to @p executable, logging the report first when
+/// `engine.logStatistics` asks for it.
+static void attachStatistics(Executable& executable, std::shared_ptr<CompilationStatistics> statistics,
+                             const engine::ModuleOptions& moduleOptions, const std::string& backend) {
+	if (moduleOptions.getOptionOrDefault("engine.logStatistics", false)) {
+		const auto id = statistics->find("compilation.unitId") != nullptr
+		                    ? std::get<std::string>(*statistics->find("compilation.unitId"))
+		                    : std::string {};
+		log::info("\n{}", statistics->formatReport(id, backend));
+	}
+	executable.setCompilationStatistics(std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
+}
+
 static std::string createPromotionUnitID() {
 	auto now = std::chrono::system_clock::now();
 	auto time_t = std::chrono::system_clock::to_time_t(now);
@@ -110,18 +123,29 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 
 	statistics->recordTimingMs("compilation.totalMs", compilationStart);
 	statistics->set("tier", tierLabel);
-
-	if (moduleOptions.getOptionOrDefault("engine.logStatistics", false)) {
-		const auto id = statistics->find("compilation.unitId") != nullptr
-		                    ? std::get<std::string>(*statistics->find("compilation.unitId"))
-		                    : std::string {};
-		log::info("\n{}", statistics->formatReport(id, backend));
-	}
-
-	executable->setCompilationStatistics(std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
+	attachStatistics(*executable, std::move(statistics), moduleOptions, backend);
 
 	// Hand the IR back to the caller so it can drive background promotion.
 	outIR = std::move(ir);
+	return executable;
+}
+
+std::unique_ptr<Executable> TieredJITCompiler::compileIR(const std::shared_ptr<ir::IRGraph>& ir,
+                                                         const engine::ModuleOptions& moduleOptions,
+                                                         bool runPasses) const {
+	const auto& backend = config_.tier1.backend;
+	auto statistics = std::make_shared<CompilationStatistics>();
+	const auto compilationStart = std::chrono::steady_clock::now();
+
+	if (runPasses) {
+		CompilationPipeline::runIRPasses(*ir, moduleOptions, pipeline_.irOptimizationLevel({backend}),
+		                                 statistics.get());
+	}
+	auto executable = pipeline_.compileIR(ir, backend, moduleOptions, statistics.get());
+
+	statistics->recordTimingMs("compilation.totalMs", compilationStart);
+	statistics->set("tier", std::string {"tier1"});
+	attachStatistics(*executable, std::move(statistics), moduleOptions, backend);
 	return executable;
 }
 
@@ -284,6 +308,10 @@ void TieredJITCompiler::waitForPendingPromotions() const {
 }
 bool TieredJITCompiler::allPromotionsComplete() const {
 	return true;
+}
+std::unique_ptr<Executable> TieredJITCompiler::compileIR(const std::shared_ptr<ir::IRGraph>&,
+                                                         const engine::ModuleOptions&, bool) const {
+	throw RuntimeException("Jit not initialised");
 }
 std::string TieredJITCompiler::getName() const {
 	return "";

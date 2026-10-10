@@ -209,6 +209,22 @@ public:
 	 */
 	NautilusModule createModule(ModuleOptions overrides) const;
 
+	/**
+	 * @brief Compiles an IR graph that was built directly rather than traced
+	 * (e.g. through the C API), with this engine's backend and options.
+	 *
+	 * Compiles synchronously with the engine's primary backend (the one
+	 * `engine.backend` pins, or the tier-1 backend). @p overrides are layered
+	 * on the engine's options as for createModule(). When @p runPasses is true
+	 * the IR pass pipeline first runs on @p ir, in place.
+	 *
+	 * @throws RuntimeException if compilation is disabled (`engine.Compilation=false`):
+	 * a prebuilt graph cannot be run uncompiled.
+	 */
+	[[nodiscard]] std::unique_ptr<compiler::Executable> compileIR(const std::shared_ptr<compiler::ir::IRGraph>& ir,
+	                                                              const ModuleOptions& overrides = {},
+	                                                              bool runPasses = true) const;
+
 	std::string getNameOfBackend() const {
 		return jit_->getName();
 	}
