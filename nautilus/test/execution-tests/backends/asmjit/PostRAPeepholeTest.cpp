@@ -150,6 +150,20 @@ TEST_CASE("PostRA peephole: pass publishes counters via CompilationStatistics") 
 	}
 }
 
+// The jump rules exist only in the x86-64 peephole pass.
+#if !defined(__aarch64__) && !defined(_M_ARM64)
+TEST_CASE("PostRA peephole: jumps to the next instruction are removed") {
+	// Every loop edge ends in an explicit jmp, and the lowering usually emits
+	// the target block right after it.
+	auto engine = makeAsmJitEngine(true);
+	auto kernel = engine.registerFunction(sumToN);
+	REQUIRE(kernel(10) == 45);
+	auto stats = kernel.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(getCounter(stats, "asmjit.peephole.jumpsRemoved") >= 1);
+}
+#endif
+
 TEST_CASE("PostRA peephole: disabling pass suppresses counter emission") {
 	auto engine = makeAsmJitEngine(false);
 	auto fn = engine.registerFunction(returnZero);
@@ -160,6 +174,7 @@ TEST_CASE("PostRA peephole: disabling pass suppresses counter emission") {
 	// Keys must be absent when the pass is disabled — no one writes them.
 	REQUIRE(stats->find("asmjit.peephole.selfMovesRemoved") == nullptr);
 	REQUIRE(stats->find("asmjit.peephole.zeroIdiomsApplied") == nullptr);
+	REQUIRE(stats->find("asmjit.peephole.jumpsRemoved") == nullptr);
 }
 
 TEST_CASE("PostRA peephole: differential correctness across inputs") {

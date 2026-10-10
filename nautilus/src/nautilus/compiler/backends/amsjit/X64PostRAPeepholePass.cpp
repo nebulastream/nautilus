@@ -260,6 +260,89 @@ bool isMovGpZeroImm(const InstNode* inst) noexcept {
 	return src.as<Imm>().value() == 0;
 }
 
+/// True when @p label is bound at the position directly after @p node, i.e.
+/// among the run of label nodes that follows it before the next instruction.
+/// Only label nodes are skipped: data (constant pools), alignment, or the
+/// sentinel ending a function all sit between @p node and the label in the
+/// emitted code, so a jump across them is not a fallthrough.
+bool isBoundDirectlyAfter(const BaseNode* node, uint32_t labelId) noexcept {
+	for (const BaseNode* next = node->next(); next != nullptr && next->isLabel(); next = next->next()) {
+		if (next->as<LabelNode>()->labelId() == labelId) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/// The label targeted by a single-operand jump, or nullptr when @p inst is not
+/// a direct jump to a label.
+const Label* jumpTarget(const InstNode* inst) noexcept {
+	if (inst->opCount() != 1 || !inst->op(0).isLabel()) {
+		return nullptr;
+	}
+	return &inst->op(0).as<Label>();
+}
+
+/// The condition code of a conditional jump, or kMaxValue+1 when @p id is not
+/// a conditional jump.
+uint32_t jccCondition(InstId id) noexcept {
+	for (uint32_t cond = 0; cond < 16; cond++) {
+		if (Inst::jccFromCond(CondCode(cond)) == id) {
+			return cond;
+		}
+	}
+	return 16;
+}
+
+/// Rules 3 and 4 (jump simplification) over the whole node list, once.
+/// Returns the number of jumps removed.
+int64_t simplifyJumps(BaseBuilder* cb) noexcept {
+	int64_t removed = 0;
+	BaseNode* node = cb->firstNode();
+	while (node != nullptr) {
+		BaseNode* next = node->next();
+		if (!node->isInst()) {
+			node = next;
+			continue;
+		}
+		auto* inst = node->as<InstNode>();
+
+		// Rule 3: a jump to the label bound right after it is a no-op. The
+		// lowering emits one at nearly every block boundary (each
+		// block-argument edge ends in an explicit jmp, and the target is
+		// usually emitted next).
+		if (inst->id() == Inst::kIdJmp) {
+			if (const Label* target = jumpTarget(inst); target != nullptr && isBoundDirectlyAfter(node, target->id())) {
+				cb->removeNode(node);
+				++removed;
+			}
+			node = next;
+			continue;
+		}
+
+		// Rule 4: `jcc A; jmp B; A:` -> `jncc B; A:`. The jmp is not a branch
+		// target itself (it directly follows the jcc), so folding it into the
+		// inverted conditional jump removes one taken branch from the path
+		// that previously went through it.
+		if (const uint32_t cond = jccCondition(inst->id()); cond < 16 && next != nullptr && next->isInst()) {
+			auto* jmp = next->as<InstNode>();
+			const Label* condTarget = jumpTarget(inst);
+			const Label* jmpTarget = jmp->id() == Inst::kIdJmp ? jumpTarget(jmp) : nullptr;
+			if (condTarget != nullptr && jmpTarget != nullptr && isBoundDirectlyAfter(jmp, condTarget->id())) {
+				inst->setId(Inst::jccFromCond(negateCond(CondCode(cond))));
+				inst->setOp(0, *jmpTarget);
+				// The new target may be out of rel8 range; let the assembler pick.
+				inst->clearOptions(InstOptions::kShortForm);
+				next = jmp->next();
+				cb->removeNode(jmp);
+				++removed;
+			}
+		}
+		node = next;
+	}
+	return removed;
+}
+
 } // namespace
 
 Error X64PostRAPeepholePass::run(Zone* /*zone*/, Logger* /*logger*/) {
@@ -273,6 +356,12 @@ Error X64PostRAPeepholePass::run(Zone* /*zone*/, Logger* /*logger*/) {
 
 	int64_t selfMovesRemoved = 0;
 	int64_t zeroIdiomsApplied = 0;
+	// Removing one jump can make another one a fallthrough (`jmp L; M: jmp L;
+	// L:`), so iterate to a fixpoint; each round only removes nodes.
+	int64_t jumpsRemoved = 0;
+	for (int64_t round = simplifyJumps(cb); round != 0; round = simplifyJumps(cb)) {
+		jumpsRemoved += round;
+	}
 
 	BaseNode* node = cb->firstNode();
 	while (node != nullptr) {
@@ -311,6 +400,7 @@ Error X64PostRAPeepholePass::run(Zone* /*zone*/, Logger* /*logger*/) {
 	if (statistics_ != nullptr) {
 		statistics_->add("asmjit.peephole.selfMovesRemoved", selfMovesRemoved);
 		statistics_->add("asmjit.peephole.zeroIdiomsApplied", zeroIdiomsApplied);
+		statistics_->add("asmjit.peephole.jumpsRemoved", jumpsRemoved);
 	}
 	return kErrorOk;
 }

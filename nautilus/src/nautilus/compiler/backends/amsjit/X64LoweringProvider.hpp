@@ -137,6 +137,50 @@ private:
 		/// Gates the branch-free select lowering via cmov (option
 		/// `asmjit.enableSelectCmov`).
 		bool enableSelectCmov_ = true;
+		/// Gates lazy narrowing (option `asmjit.enableLazyNarrowing`). Off, every
+		/// narrow integer result is re-extended to the canonical 64-bit pattern
+		/// right after it is computed (see narrowToStamp). On, the results of
+		/// operations whose low bits do not depend on the upper input bits
+		/// (add/sub/mul/not/shl/and/or/xor/select) and narrow block parameters
+		/// may hold garbage above their stamp's width; consumers that read the
+		/// full register (div/mod, right shifts, int->float casts, 64-bit
+		/// arithmetic, mixed-width compares, calls) extend them on demand. This
+		/// keeps the re-extension out of loop-carried dependency chains.
+		bool enableLazyNarrowing_ = true;
+		/// Indexed by operation id (current function only): non-zero when the
+		/// value's register may hold garbage above its narrow stamp's width.
+		/// Conservative per identifier: an id that doubles as a block parameter
+		/// (issue #321) is dirty if any of its definitions may be.
+		std::vector<uint8_t> mayBeDirty_;
+		/// Gates address-mode fusion (option `asmjit.enableAddressFusion`): a
+		/// pointer/64-bit add of the form `base + (x * 2^k) + disp` is folded
+		/// into the memory operands of the loads/stores that use it (or into
+		/// one `lea` when it is materialised), and the scaling multiply or
+		/// shift is folded into the address instead of being computed.
+		bool enableAddressFusion_ = true;
+		/// Indexed by operation id (current function only). Static use facts:
+		/// bit 0 -- every use is a load/store address in the defining block;
+		/// bit 1 -- every use is the scaled index of an address add (see
+		/// matchAddress) in the defining block.
+		std::vector<uint8_t> fusionUses_;
+		/// Indexed by operation id: non-zero when lowering skipped the value's
+		/// materialisation because every consumer folds it into an address.
+		std::vector<uint8_t> deferredAddressParts_;
+		int64_t fusedAddresses_ = 0;
+		/// Gates inlining of small internal callees (option
+		/// `asmjit.enableInlining`; `asmjit.inliningMaxOperations` bounds the
+		/// callee size). See tryInlineCall.
+		bool enableInlining_ = true;
+		/// Gates loop rotation (option `asmjit.enableLoopRotation`); needs
+		/// branch fusion. See tryRotateLoopBranch.
+		bool enableLoopRotation_ = true;
+		int64_t rotatedLoops_ = 0;
+		size_t inliningMaxOperations_ = 24;
+		int64_t inlinedCalls_ = 0;
+		/// While inlining: callee parameters whose argument is a foldable
+		/// constant, keyed by the parameter operation, so the body folds the
+		/// constant (see foldableConstValue) instead of reading a register.
+		std::unordered_map<const ir::Operation*, int64_t> inlinedConstParams_;
 		/// Statistics sink shared with the rest of the pipeline; may be null.
 		CompilationStatistics* statistics_ = nullptr;
 		int64_t fusedBranches_ = 0;
@@ -183,6 +227,65 @@ private:
 		// restore the invariant afterward so later consumers (comparisons,
 		// casts, ...) that read the full register see the right value.
 		void narrowToStamp(::asmjit::x86::Gp reg, Type stamp);
+
+		// ── Lazy narrowing (see enableLazyNarrowing_) ──────────────────────
+		/// Width in bits of the low part of a register that carries @p t's value
+		/// (64 for i64/ui64/ptr/bool and anything non-integer).
+		static uint32_t stampBits(Type t);
+		/// Fills mayBeDirty_ for @p funcOp (cleared when lazy narrowing is off).
+		void computeDirtyValues(const ir::FunctionOperation* funcOp);
+		/// True when @p in's register may hold garbage above its stamp's width.
+		bool isDirty(const ir::Operation* in) const;
+		/// dst = src's low `stamp`-width bits sign/zero-extended per `stamp`.
+		void extendFromStamp(::asmjit::x86::Gp dst, ::asmjit::x86::Gp src, Type stamp);
+		/// Like gpOperand, but guarantees the low @p width bits of the returned
+		/// register are exact: a dirty operand narrower than @p width is
+		/// extended into a fresh register first.
+		::asmjit::x86::Gp gpOperandAtWidth(const ir::Operation* in, uint32_t width, RegisterFrame& frame);
+		/// gpOperandAtWidth(in, 64): the canonical 64-bit pattern.
+		::asmjit::x86::Gp cleanGpOperand(const ir::Operation* in, RegisterFrame& frame) {
+			return gpOperandAtWidth(in, 64, frame);
+		}
+		/// narrowToStamp(reg, stamp), skipped under lazy narrowing (the value is
+		/// then recorded as dirty by computeDirtyValues instead).
+		void narrowResult(::asmjit::x86::Gp reg, Type stamp);
+
+		// ── Address-mode fusion (see enableAddressFusion_) ─────────────────
+		/// `base + offset + disp`, where offset is either a plain 64-bit value or
+		/// `scaledInput << shift` computed by the operation `offset`.
+		struct AddressParts {
+			const ir::Operation* base = nullptr;        ///< null for `x + x + disp` (offset doubles x)
+			const ir::Operation* offset = nullptr;      ///< null when the address is `base + disp`
+			const ir::Operation* scaledInput = nullptr; ///< x when offset computes `x << shift`
+			uint32_t shift = 0;
+			int32_t disp = 0;
+		};
+		/// Structural match of an add as an x86 address; nullopt when @p op is
+		/// not a ptr/i64/ui64 add that fits.
+		std::optional<AddressParts> matchAddress(const ir::Operation* op);
+		/// Fills fusionUses_ for @p funcOp (cleared when fusion is off).
+		void computeFusionUses(const ir::FunctionOperation* funcOp);
+		bool hasFusionUse(const ir::Operation* op, uint8_t bit) const;
+		bool isDeferredAddressPart(const ir::Operation* op) const;
+		void markDeferredAddressPart(const ir::Operation* op);
+		/// True when @p op (an add matched by matchAddress, or the scaled index
+		/// of one) need not be materialised: its consumers rebuild it from its
+		/// parts. Marks the op deferred when so.
+		bool deferAddressPart(const ir::Operation* op, uint8_t useBit, RegisterFrame& frame);
+		/// The memory operand addressing `parts`.
+		::asmjit::x86::Mem memFromParts(const AddressParts& parts, RegisterFrame& frame);
+		/// The memory operand for a load/store address operand: the fused form
+		/// for a deferred address add, `[reg]` otherwise.
+		::asmjit::x86::Mem memOperand(const ir::Operation* addr, uint32_t size, RegisterFrame& frame);
+
+		// ── Inlining ─────────────────────────────────────────────────────────
+		/// True when @p callee can be lowered in place of a call to it: a single
+		/// block of plain value operations (no control flow, calls or allocas)
+		/// ending in a return.
+		bool isInlinable(const ir::FunctionOperation* callee) const;
+		/// Lowers the body of the internal callee of @p op in place of the
+		/// call; false (nothing emitted) when the callee is not inlinable.
+		bool tryInlineCall(ir::CallOperation* op, RegisterFrame& frame);
 
 		::asmjit::Label getOrCreateLabel(ir::BlockIdentifier blockId);
 		void emitMove(const AsmReg& dst, const AsmReg& src);
@@ -232,7 +335,18 @@ private:
 		bool isFusibleCompare(const ir::CompareOperation* cmp, const ir::Operation* next, RegisterFrame& frame);
 		// Emit the compare and the negated conditional jump to @p falseTarget
 		// in place of the unfused cmp+setcc+movzx / test+jz sequence.
-		void emitFusedCompareBranch(const ir::CompareOperation* cmp, ::asmjit::Label falseTarget, RegisterFrame& frame);
+		/// With @p jumpIfTrue the jump is taken when the condition holds instead.
+		void emitFusedCompareBranch(const ir::CompareOperation* cmp, ::asmjit::Label target, RegisterFrame& frame,
+		                            bool jumpIfTrue = false);
+		/// Loop rotation: when @p bi re-enters an already emitted block that only
+		/// tests a fused compare (a loop header), emits that test with direct
+		/// jumps to its successors in place of a jump back to the header. True
+		/// when it did; the caller then emits no jump of its own.
+		bool tryRotateLoopBranch(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
+		/// True when lowering @p bi (block-argument copies) emits no code.
+		bool isNoOpInvocation(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
+		// The cmp/test of an integer (non-null-check) compare; see visitCompare.
+		void emitIntegerCompare(const ir::CompareOperation* cmp, RegisterFrame& frame);
 
 		// Per-operation hooks invoked by OperationDispatcher::dispatch.
 		void visitConstBoolean(ir::ConstBooleanOperation* op, RegisterFrame& frame);

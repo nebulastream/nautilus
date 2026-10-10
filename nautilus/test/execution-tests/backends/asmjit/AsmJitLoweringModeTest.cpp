@@ -2,6 +2,8 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/function.hpp"
+#include "nautilus/nautilus_function.hpp"
 #include "nautilus/select.hpp"
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
@@ -192,6 +194,110 @@ val<int64_t> selectMix(val<int64_t> x, val<int64_t> y) {
 
 val<double> selectFloatKernel(val<bool> c, val<double> a, val<double> b) {
 	return select(c, a, b);
+}
+
+// ── Lazy narrowing ──────────────────────────────────────────────────────────
+// Narrow loop-carried values wrap around (their registers then hold garbage
+// above the stamp's width) and reach every consumer that needs the canonical
+// pattern: division, right shifts, int->float and int->int casts, mixed-width
+// compares, external calls with narrow arguments, and the return.
+
+int64_t narrowSink(int8_t a, uint16_t b, int32_t c, uint32_t d) noexcept {
+	return int64_t(a) * 1000003 + int64_t(b) * 1009 + int64_t(c) * 7 + int64_t(d);
+}
+
+val<int64_t> narrowWrapMix(val<int32_t> x, val<uint16_t> y, val<int8_t> z, val<uint32_t> w) {
+	val<int64_t> acc = 0;
+	for (val<int32_t> i = 0; i < 6; i = i + 1) {
+		x = x * 1103515245 + 12345;            // wraps i32
+		y = y * (uint16_t) 251 + (uint16_t) 7; // wraps ui16
+		z = z + (int8_t) 77;                   // wraps i8
+		w = w * 2654435761u;                   // wraps ui32
+		val<int32_t> q = x / 7;
+		val<int32_t> r = x % 13;
+		val<int32_t> s = x >> 3;
+		val<uint32_t> t = w >> 5;
+		val<double> f = static_cast<val<double>>(x) + static_cast<val<double>>(w);
+		val<int64_t> wide = static_cast<val<int64_t>>(x) + static_cast<val<int64_t>>(y) + static_cast<val<int64_t>>(z);
+		if (z < (int8_t) 0) {
+			acc = acc + 1;
+		}
+		if (y > (uint16_t) 30000) {
+			acc = acc + 2;
+		}
+		if (static_cast<val<int64_t>>(x) < static_cast<val<int64_t>>(w)) {
+			acc = acc + 4;
+		}
+		acc = acc + wide + static_cast<val<int64_t>>(q) + static_cast<val<int64_t>>(r) + static_cast<val<int64_t>>(s) +
+		      static_cast<val<int64_t>>(t) + static_cast<val<int64_t>>(f);
+		acc = acc + invoke(narrowSink, z, y, x, w);
+	}
+	return acc;
+}
+
+val<int16_t> narrowReturn(val<int16_t> a, val<int16_t> b) {
+	for (val<int32_t> i = 0; i < 3; i = i + 1) {
+		a = a * b + (int16_t) 12345;
+	}
+	return a;
+}
+
+// ── Address fusion ──────────────────────────────────────────────────────────
+// Loads and stores at every scale (1/2/4/8), a constant displacement, and a
+// pointer add that is also passed across blocks (so it must be materialised).
+
+val<int64_t> addressMix(val<int8_t*> b, val<int16_t*> h, val<int32_t*> w, val<int64_t*> q, val<int32_t> n) {
+	val<int64_t> acc = 0;
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		val<int8_t> bi = b[i];
+		val<int16_t> hi = h[i];
+		val<int32_t> wi = w[i];
+		val<int64_t> qi = q[i];
+		acc = acc + static_cast<val<int64_t>>(bi) + static_cast<val<int64_t>>(hi) + static_cast<val<int64_t>>(wi) + qi;
+		q[i] = acc;
+		w[i] = static_cast<val<int32_t>>(acc);
+	}
+	val<int64_t*> last = q + 3;
+	if (n > 2) {
+		acc = acc + *last;
+	}
+	return acc + *(q + 1);
+}
+
+// ── Inlining ────────────────────────────────────────────────────────────────
+
+val<int32_t> inlineNarrowBody(val<int32_t> a, val<int8_t> b) {
+	return a * 3 + static_cast<val<int32_t>>(b);
+}
+static auto inlineNarrow = NautilusFunction {"inlineNarrow", inlineNarrowBody};
+
+val<double> inlineFloatBody(val<double> a, val<int64_t> b) {
+	return a * 0.5 + static_cast<val<double>>(b);
+}
+static auto inlineFloat = NautilusFunction {"inlineFloat", inlineFloatBody};
+
+val<int64_t> inlineSelectBody(val<int64_t> a, val<int64_t> b) {
+	return select(a < b, a, b);
+}
+static auto inlineSelect = NautilusFunction {"inlineSelect", inlineSelectBody};
+
+val<int64_t> inliningCaller(val<int32_t> x, val<int8_t> y, val<int32_t> n) {
+	val<int64_t> acc = 0;
+	val<double> f = 1.0;
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		x = inlineNarrow(x, y); // narrow argument and result, wraps
+		f = inlineFloat(f, static_cast<val<int64_t>>(i));
+		acc = acc + inlineSelect(static_cast<val<int64_t>>(x), acc);
+		// Constant arguments fold into the inlined body.
+		acc = acc + static_cast<val<int64_t>>(inlineNarrow(x, val<int8_t>((int8_t) -7)));
+		acc = acc + inlineSelect(acc, val<int64_t>(1000));
+	}
+	return acc + static_cast<val<int64_t>>(f);
+}
+
+engine::NautilusEngine makeAsmJitOptionEngine(const std::string& option, bool value) {
+	return nautilus::testing::makeEngine("asmjit",
+	                                     [option, value](engine::Options& opts) { opts.setOption(option, value); });
 }
 
 engine::NautilusEngine makeAsmJitEngine(bool enableBranchFusion, bool enableConstFolding = true,
@@ -393,6 +499,106 @@ TEST_CASE("AsmJit select cmov: differential correctness across inputs") {
 		INFO("selectFloatKernel differential c=" << c);
 		REQUIRE(fOn(c, 1.5, -2.5) == fOff(c, 1.5, -2.5));
 		REQUIRE(fOn(c, 1.5, -2.5) == (c ? 1.5 : -2.5));
+	}
+}
+
+TEST_CASE("AsmJit lazy narrowing: differential correctness across inputs") {
+	auto mixOn = makeAsmJitOptionEngine("asmjit.enableLazyNarrowing", true).registerFunction(narrowWrapMix);
+	auto mixOff = makeAsmJitOptionEngine("asmjit.enableLazyNarrowing", false).registerFunction(narrowWrapMix);
+	for (int32_t x : {INT32_MIN, -7, 0, 1, 123456789, INT32_MAX}) {
+		for (uint16_t y : {uint16_t(0), uint16_t(300), uint16_t(65535)}) {
+			for (int8_t z : {int8_t(-128), int8_t(0), int8_t(50), int8_t(127)}) {
+				for (uint32_t w : {0u, 1u, 0x80000000u, 0xFFFFFFFFu}) {
+					INFO("narrowWrapMix differential x=" << x << " y=" << y << " z=" << int(z) << " w=" << w);
+					REQUIRE(mixOn(x, y, z, w) == mixOff(x, y, z, w));
+				}
+			}
+		}
+	}
+
+	auto retOn = makeAsmJitOptionEngine("asmjit.enableLazyNarrowing", true).registerFunction(narrowReturn);
+	auto retOff = makeAsmJitOptionEngine("asmjit.enableLazyNarrowing", false).registerFunction(narrowReturn);
+	for (int16_t a : {int16_t(-32768), int16_t(-1), int16_t(0), int16_t(321), int16_t(32767)}) {
+		for (int16_t b : {int16_t(-3), int16_t(0), int16_t(7), int16_t(32767)}) {
+			INFO("narrowReturn differential a=" << a << " b=" << b);
+			int16_t expected = a;
+			for (int i = 0; i < 3; i++) {
+				expected = static_cast<int16_t>(expected * b + 12345);
+			}
+			REQUIRE(retOn(a, b) == expected);
+			REQUIRE(retOff(a, b) == expected);
+		}
+	}
+}
+
+TEST_CASE("AsmJit address fusion: counters and differential correctness") {
+	auto engineOn = makeAsmJitOptionEngine("asmjit.enableAddressFusion", true);
+	auto engineOff = makeAsmJitOptionEngine("asmjit.enableAddressFusion", false);
+	auto on = engineOn.registerFunction(addressMix);
+	auto off = engineOff.registerFunction(addressMix);
+	for (int32_t n : {0, 1, 3, 17}) {
+		int8_t b[17];
+		int16_t h[17];
+		int32_t wOn[17], wOff[17];
+		int64_t qOn[17], qOff[17];
+		for (int i = 0; i < 17; i++) {
+			b[i] = static_cast<int8_t>(i * 37 - 100);
+			h[i] = static_cast<int16_t>(i * 4099 - 30000);
+			wOn[i] = wOff[i] = i * 1000003 - 7;
+			qOn[i] = qOff[i] = (int64_t(i) << 40) - i;
+		}
+		INFO("addressMix differential n=" << n);
+		REQUIRE(on(b, h, wOn, qOn, n) == off(b, h, wOff, qOff, n));
+		for (int i = 0; i < 17; i++) {
+			REQUIRE(wOn[i] == wOff[i]);
+			REQUIRE(qOn[i] == qOff[i]);
+		}
+	}
+	auto stats = on.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(getCounter(stats, "asmjit.lowering.fusedAddresses") >= 4);
+	REQUIRE(off.getStatistics()->find("asmjit.lowering.fusedAddresses") == nullptr);
+}
+
+TEST_CASE("AsmJit inlining: counters and differential correctness") {
+	auto engineOn = makeAsmJitOptionEngine("asmjit.enableInlining", true);
+	auto engineOff = makeAsmJitOptionEngine("asmjit.enableInlining", false);
+	auto on = engineOn.registerFunction(inliningCaller);
+	auto off = engineOff.registerFunction(inliningCaller);
+	for (int32_t x : {INT32_MIN, -5, 0, 77, INT32_MAX}) {
+		for (int8_t y : {int8_t(-128), int8_t(-1), int8_t(9), int8_t(127)}) {
+			for (int32_t n : {0, 1, 9}) {
+				INFO("inliningCaller differential x=" << x << " y=" << int(y) << " n=" << n);
+				REQUIRE(on(x, y, n) == off(x, y, n));
+			}
+		}
+	}
+	auto stats = on.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(getCounter(stats, "asmjit.lowering.inlinedCalls") >= 3);
+	REQUIRE(off.getStatistics()->find("asmjit.lowering.inlinedCalls") == nullptr);
+}
+
+TEST_CASE("AsmJit loop rotation: counters and differential correctness") {
+	auto engineOn = makeAsmJitOptionEngine("asmjit.enableLoopRotation", true);
+	auto engineOff = makeAsmJitOptionEngine("asmjit.enableLoopRotation", false);
+	auto fibOn = engineOn.registerFunction(fibLike);
+	auto fibOff = engineOff.registerFunction(fibLike);
+	for (int32_t n : {0, 1, 2, 3, 10, 1000}) {
+		INFO("fibLike rotation differential n=" << n);
+		REQUIRE(fibOn(n) == fibOff(n));
+	}
+	auto stats = fibOn.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(getCounter(stats, "asmjit.lowering.rotatedLoops") >= 1);
+	REQUIRE(fibOff.getStatistics()->find("asmjit.lowering.rotatedLoops") == nullptr);
+
+	auto mergeOn = engineOn.registerFunction(zeroTripMergeAddConstant);
+	auto mergeOff = engineOff.registerFunction(zeroTripMergeAddConstant);
+	for (uint64_t c : {uint64_t(0), uint64_t(1)}) {
+		for (uint64_t p : {uint64_t(0), uint64_t(7)}) {
+			REQUIRE(mergeOn(c, p) == mergeOff(c, p));
+		}
 	}
 }
 

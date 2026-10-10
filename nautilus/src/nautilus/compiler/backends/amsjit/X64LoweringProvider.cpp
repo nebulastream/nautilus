@@ -5,8 +5,10 @@
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/ir/Usages.hpp"
+#include "nautilus/compiler/ir/operations/DestructorOperands.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -28,6 +30,30 @@ public:
 		throw std::runtime_error(std::string("AsmJit error: ") + (message ? message : "unknown"));
 	}
 };
+} // anonymous namespace
+
+namespace {
+// Truncate @p value to @p stamp's width and re-extend per its signedness --
+// the canonical 64-bit register pattern the materialising lowering produces.
+int64_t canonicalizeToStamp(int64_t value, Type stamp) {
+	switch (stamp) {
+	case Type::i8:
+		return static_cast<int64_t>(static_cast<int8_t>(value));
+	case Type::i16:
+		return static_cast<int64_t>(static_cast<int16_t>(value));
+	case Type::i32:
+		return static_cast<int64_t>(static_cast<int32_t>(value));
+	case Type::b:
+	case Type::ui8:
+		return static_cast<int64_t>(static_cast<uint8_t>(value));
+	case Type::ui16:
+		return static_cast<int64_t>(static_cast<uint16_t>(value));
+	case Type::ui32:
+		return static_cast<int64_t>(static_cast<uint32_t>(value));
+	default:
+		return value; // i64/ui64/ptr -- full width already.
+	}
+}
 } // anonymous namespace
 
 AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir,
@@ -107,6 +133,11 @@ AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRG
 	enableBranchFusion_ = options.getOptionOrDefault<bool>("asmjit.enableBranchFusion", true);
 	enableConstFolding_ = options.getOptionOrDefault<bool>("asmjit.enableConstFolding", true);
 	enableSelectCmov_ = options.getOptionOrDefault<bool>("asmjit.enableSelectCmov", true);
+	enableLazyNarrowing_ = options.getOptionOrDefault<bool>("asmjit.enableLazyNarrowing", true);
+	enableAddressFusion_ = options.getOptionOrDefault<bool>("asmjit.enableAddressFusion", true);
+	enableInlining_ = options.getOptionOrDefault<bool>("asmjit.enableInlining", true);
+	enableLoopRotation_ = options.getOptionOrDefault<bool>("asmjit.enableLoopRotation", true);
+	inliningMaxOperations_ = static_cast<size_t>(options.getOptionOrDefault<int>("asmjit.inliningMaxOperations", 24));
 }
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
@@ -180,6 +211,473 @@ void AsmJitLoweringProvider::LoweringContext::narrowToStamp(Gp reg, Type stamp) 
 	}
 }
 
+// ── Lazy narrowing ────────────────────────────────────────────────────────────
+// Narrow integer values are canonical (sign/zero-extended to 64 bits per stamp)
+// unless mayBeDirty_ says otherwise. A dirty value's low stampBits() bits are
+// exact; the bits above are garbage. Operations whose result's low bits depend
+// only on the low bits of their inputs (add/sub/mul/not/shl/and/or/xor/select)
+// accept dirty inputs at least as wide as their result and produce dirty
+// results. Everything that reads the full register asks for a clean operand.
+
+uint32_t AsmJitLoweringProvider::LoweringContext::stampBits(Type t) {
+	switch (t) {
+	case Type::i8:
+	case Type::ui8:
+		return 8;
+	case Type::i16:
+	case Type::ui16:
+		return 16;
+	case Type::i32:
+	case Type::ui32:
+		return 32;
+	default:
+		return 64;
+	}
+}
+
+void AsmJitLoweringProvider::LoweringContext::computeDirtyValues(const ir::FunctionOperation* funcOp) {
+	mayBeDirty_.clear();
+	if (!enableLazyNarrowing_) {
+		return;
+	}
+	const auto mark = [&](const ir::Operation* op) {
+		if (stampBits(op->getStamp()) == 64) {
+			return;
+		}
+		const auto id = op->getIdentifier().getId();
+		if (id >= mayBeDirty_.size()) {
+			mayBeDirty_.resize(id + 1, 0);
+		}
+		mayBeDirty_[id] = 1;
+	};
+	const auto* entryBlock = &funcOp->getFunctionBasicBlock();
+	for (const auto* block : funcOp->getBasicBlocks()) {
+		// A block parameter merges values from every incoming edge, any of which
+		// may be dirty. Function arguments are extended in the prologue.
+		if (block != entryBlock) {
+			for (const auto* arg : block->getArguments()) {
+				mark(arg);
+			}
+		}
+		for (const auto* op : block->getOperations()) {
+			const auto* shift = ir::dyn_cast<ir::ShiftOperation>(op);
+			if (ir::dyn_cast<ir::AddOperation>(op) != nullptr || ir::dyn_cast<ir::SubOperation>(op) != nullptr ||
+			    ir::dyn_cast<ir::MulOperation>(op) != nullptr || ir::dyn_cast<ir::NegateOperation>(op) != nullptr ||
+			    ir::dyn_cast<ir::BinaryCompOperation>(op) != nullptr ||
+			    ir::dyn_cast<ir::SelectOperation>(op) != nullptr ||
+			    (shift != nullptr && shift->getType() == ir::ShiftOperation::LS)) {
+				mark(op);
+			}
+		}
+	}
+}
+
+bool AsmJitLoweringProvider::LoweringContext::isDirty(const ir::Operation* in) const {
+	const auto id = in->getIdentifier().getId();
+	return id < mayBeDirty_.size() && mayBeDirty_[id] != 0;
+}
+
+void AsmJitLoweringProvider::LoweringContext::extendFromStamp(Gp dst, Gp src, Type stamp) {
+	switch (stamp) {
+	case Type::i8:
+		cc.movsx(dst.r64(), src.r8());
+		break;
+	case Type::b:
+	case Type::ui8:
+		cc.movzx(dst.r32(), src.r8());
+		break;
+	case Type::i16:
+		cc.movsx(dst.r64(), src.r16());
+		break;
+	case Type::ui16:
+		cc.movzx(dst.r32(), src.r16());
+		break;
+	case Type::i32:
+		cc.movsxd(dst.r64(), src.r32());
+		break;
+	case Type::ui32:
+		cc.mov(dst.r32(), src.r32());
+		break;
+	default:
+		cc.mov(dst, src);
+		break;
+	}
+}
+
+Gp AsmJitLoweringProvider::LoweringContext::gpOperandAtWidth(const ir::Operation* in, uint32_t width,
+                                                             RegisterFrame& frame) {
+	auto reg = gpOperand(in, frame);
+	// A rematerialised constant is always canonical.
+	if (stampBits(in->getStamp()) < width && isDirty(in) && !(enableConstFolding_ && foldableConstValue(in))) {
+		auto extended = cc.newInt64();
+		extendFromStamp(extended, reg, in->getStamp());
+		return extended;
+	}
+	return reg;
+}
+
+void AsmJitLoweringProvider::LoweringContext::narrowResult(Gp reg, Type stamp) {
+	if (!enableLazyNarrowing_) {
+		narrowToStamp(reg, stamp);
+	}
+}
+
+// ── Address-mode fusion ───────────────────────────────────────────────────────
+// Folding an add into its consumers' memory operands re-reads the add's inputs
+// at each consumer. That is only sound while those registers still hold the
+// values they held at the add, so every consumer must sit in the add's own
+// block: a register only changes inside a block when its own identifier is
+// (re)defined, while block-argument copies on the edges out of a block can
+// overwrite registers that identifiers shared with merge parameters live in
+// (issue #321).
+
+namespace {
+// log2(@p value) for 1, 2, 4 and 8 -- the scales of an x86 address.
+std::optional<uint32_t> addressScaleShift(int64_t value) {
+	switch (value) {
+	case 1:
+		return 0;
+	case 2:
+		return 1;
+	case 4:
+		return 2;
+	case 8:
+		return 3;
+	default:
+		return std::nullopt;
+	}
+}
+} // anonymous namespace
+
+std::optional<AsmJitLoweringProvider::LoweringContext::AddressParts>
+AsmJitLoweringProvider::LoweringContext::matchAddress(const ir::Operation* op) {
+	if (!enableAddressFusion_) {
+		return std::nullopt;
+	}
+	const auto* add = ir::dyn_cast<ir::AddOperation>(op);
+	if (add == nullptr) {
+		return std::nullopt;
+	}
+	const Type stamp = add->getStamp();
+	if (stamp != Type::ptr && stamp != Type::i64 && stamp != Type::ui64) {
+		return std::nullopt;
+	}
+	const ir::Operation* base = add->getLeftInput();
+	const ir::Operation* offset = add->getRightInput();
+	// The base is the pointer operand of a pointer add.
+	if (stamp == Type::ptr && base->getStamp() != Type::ptr) {
+		std::swap(base, offset);
+	}
+	const auto isFullWidthInteger = [](const ir::Operation* value) {
+		return stampBits(value->getStamp()) == 64 && !isFloatType(value->getStamp());
+	};
+	if (!isFullWidthInteger(base) || !isFullWidthInteger(offset)) {
+		return std::nullopt;
+	}
+
+	// x * 2^k or x << k, with k <= 3; the scaled input must be a full-width
+	// register value (a constant would have been folded by the IR passes).
+	const auto scaledOf =
+	    [&](const ir::Operation* candidate) -> std::optional<std::pair<const ir::Operation*, uint32_t>> {
+		if (const auto* mul = ir::dyn_cast<ir::MulOperation>(candidate)) {
+			for (int side = 0; side < 2; side++) {
+				const auto* x = side == 0 ? mul->getLeftInput() : mul->getRightInput();
+				const auto* c = side == 0 ? mul->getRightInput() : mul->getLeftInput();
+				const auto value = imm32Operand(c);
+				if (!value.has_value() || imm32Operand(x).has_value() || !isFullWidthInteger(x)) {
+					continue;
+				}
+				if (const auto shift = addressScaleShift(*value)) {
+					return std::make_pair(x, *shift);
+				}
+			}
+		} else if (const auto* shl = ir::dyn_cast<ir::ShiftOperation>(candidate)) {
+			const auto count = imm32Operand(shl->getRightInput());
+			const auto* x = shl->getLeftInput();
+			if (shl->getType() == ir::ShiftOperation::LS && count.has_value() && *count >= 0 && *count <= 3 &&
+			    !imm32Operand(x).has_value() && isFullWidthInteger(x)) {
+				return std::make_pair(x, static_cast<uint32_t>(*count));
+			}
+		}
+		return std::nullopt;
+	};
+
+	AddressParts parts;
+	if (const auto disp = imm32Operand(offset)) {
+		if (imm32Operand(base).has_value()) {
+			return std::nullopt;
+		}
+		parts.base = base;
+		parts.disp = *disp;
+		// An integer add of a doubled value plus a constant is one
+		// `lea [x + x + disp]` once the doubling is folded in.
+		if (stamp != Type::ptr) {
+			if (const auto scaled = scaledOf(base); scaled.has_value() && scaled->second == 1) {
+				parts.base = nullptr;
+				parts.offset = base;
+				parts.scaledInput = scaled->first;
+				parts.shift = 1;
+			}
+		}
+		return parts;
+	}
+	// For an integer add either side may be the scaled one.
+	if (stamp != Type::ptr && !scaledOf(offset).has_value() && scaledOf(base).has_value()) {
+		std::swap(base, offset);
+	}
+	parts.base = base;
+	parts.offset = offset;
+	if (const auto scaled = scaledOf(offset)) {
+		parts.scaledInput = scaled->first;
+		parts.shift = scaled->second;
+	}
+	return parts;
+}
+
+void AsmJitLoweringProvider::LoweringContext::computeFusionUses(const ir::FunctionOperation* funcOp) {
+	fusionUses_.clear();
+	if (!enableAddressFusion_) {
+		return;
+	}
+	std::vector<const ir::BasicBlock*> blocks(funcOp->getBasicBlocks().begin(), funcOp->getBasicBlocks().end());
+	if (funcOp->exceptionRegion.has_value()) {
+		for (const auto& pad : funcOp->exceptionRegion->pads) {
+			blocks.push_back(pad.block);
+		}
+	}
+	// Defining block per operation id.
+	std::vector<const ir::BasicBlock*> defBlock;
+	const auto growTo = [&](uint32_t id) {
+		if (id >= defBlock.size()) {
+			defBlock.resize(id + 1, nullptr);
+			fusionUses_.resize(id + 1, 0x3);
+		}
+	};
+	for (const auto* block : blocks) {
+		for (const auto* op : block->getOperations()) {
+			growTo(op->getIdentifier().getId());
+			defBlock[op->getIdentifier().getId()] = block;
+		}
+	}
+	const auto use = [&](const ir::Operation* in, const ir::BasicBlock* block, uint8_t allowedBits) {
+		const auto id = in->getIdentifier().getId();
+		growTo(id);
+		if (defBlock[id] != block) {
+			allowedBits = 0;
+		}
+		fusionUses_[id] &= allowedBits;
+	};
+	for (const auto* block : blocks) {
+		for (const auto* op : block->getOperations()) {
+			const auto* load = ir::dyn_cast<ir::LoadOperation>(op);
+			const auto* store = ir::dyn_cast<ir::StoreOperation>(op);
+			const auto parts = ir::dyn_cast<ir::AddOperation>(op) != nullptr ? matchAddress(op) : std::nullopt;
+			for (const auto* in : op->getInputs()) {
+				uint8_t allowed = 0;
+				if ((load != nullptr && in == load->getAddress()) ||
+				    (store != nullptr && in == store->getAddress() && in != store->getValue())) {
+					allowed |= 0x1;
+				}
+				if (parts.has_value() && parts->scaledInput != nullptr && in == parts->offset) {
+					allowed |= 0x2;
+				}
+				use(in, block, allowed);
+			}
+			for (size_t i = 0; i < ir::getDestructorOperandCount(*op); i++) {
+				use(ir::getDestructorOperand(*op, i), block, 0);
+			}
+			if (const auto* ifOp = ir::dyn_cast<ir::IfOperation>(op)) {
+				for (const auto* in : ifOp->getTrueBlockInvocation().getArguments()) {
+					use(in, block, 0);
+				}
+				for (const auto* in : ifOp->getFalseBlockInvocation().getArguments()) {
+					use(in, block, 0);
+				}
+			} else if (const auto* br = ir::dyn_cast<ir::BranchOperation>(op)) {
+				for (const auto* in : br->getNextBlockInvocation().getArguments()) {
+					use(in, block, 0);
+				}
+			}
+		}
+	}
+}
+
+bool AsmJitLoweringProvider::LoweringContext::hasFusionUse(const ir::Operation* op, uint8_t bit) const {
+	const auto id = op->getIdentifier().getId();
+	return id < fusionUses_.size() && (fusionUses_[id] & bit) != 0;
+}
+
+bool AsmJitLoweringProvider::LoweringContext::isDeferredAddressPart(const ir::Operation* op) const {
+	const auto id = op->getIdentifier().getId();
+	return id < deferredAddressParts_.size() && deferredAddressParts_[id] != 0;
+}
+
+void AsmJitLoweringProvider::LoweringContext::markDeferredAddressPart(const ir::Operation* op) {
+	const auto id = op->getIdentifier().getId();
+	if (id >= deferredAddressParts_.size()) {
+		deferredAddressParts_.resize(id + 1, 0);
+	}
+	deferredAddressParts_[id] = 1;
+}
+
+bool AsmJitLoweringProvider::LoweringContext::deferAddressPart(const ir::Operation* op, uint8_t useBit,
+                                                               RegisterFrame& frame) {
+	// A bound identifier doubles as a merge-block parameter register that must
+	// be written (issue #321).
+	if (!hasFusionUse(op, useBit) || frame.contains(op->getIdentifier())) {
+		return false;
+	}
+	markDeferredAddressPart(op);
+	return true;
+}
+
+Mem AsmJitLoweringProvider::LoweringContext::memFromParts(const AddressParts& parts, RegisterFrame& frame) {
+	if (parts.base == nullptr) {
+		// `x * 2 + disp`: the doubling as base + index when folded, otherwise
+		// the doubled value's register plus the displacement.
+		if (isDeferredAddressPart(parts.offset)) {
+			auto x = gpOperand(parts.scaledInput, frame);
+			return x86::ptr(x, x, 0, parts.disp);
+		}
+		return x86::ptr(gpOperand(parts.offset, frame), parts.disp);
+	}
+	auto base = gpOperand(parts.base, frame);
+	if (parts.offset == nullptr) {
+		return x86::ptr(base, parts.disp);
+	}
+	if (parts.scaledInput != nullptr && isDeferredAddressPart(parts.offset)) {
+		return x86::ptr(base, gpOperand(parts.scaledInput, frame), parts.shift, parts.disp);
+	}
+	return x86::ptr(base, gpOperand(parts.offset, frame), 0, parts.disp);
+}
+
+Mem AsmJitLoweringProvider::LoweringContext::memOperand(const ir::Operation* addr, uint32_t size,
+                                                        RegisterFrame& frame) {
+	Mem mem;
+	if (isDeferredAddressPart(addr)) {
+		mem = memFromParts(*matchAddress(addr), frame);
+		fusedAddresses_++;
+	} else {
+		mem = x86::ptr(gpOperand(addr, frame));
+	}
+	mem.setSize(size);
+	return mem;
+}
+
+// ── Inlining ──────────────────────────────────────────────────────────────────
+// A small leaf callee (e.g. a NautilusFunction wrapping one expression) costs
+// far more in call overhead -- argument shuffling, the call/ret pair, and the
+// caller's values forced into callee-saved registers -- than its body. Such a
+// body is lowered straight into the caller: the callee's parameters are bound
+// to the call's argument registers in a fresh frame (callee identifiers are a
+// separate namespace), and the returned value becomes the call's result. The
+// callee is still compiled on its own for other callers and exports.
+
+bool AsmJitLoweringProvider::LoweringContext::isInlinable(const ir::FunctionOperation* callee) const {
+	// No exception-region check needed: without calls nothing in the body can
+	// throw (the region of a call-free function has no call sites).
+	if (callee == nullptr || callee == currentFunction_ || callee->getBasicBlocks().size() != 1 ||
+	    !callee->getAllocaSpecs().empty()) {
+		return false;
+	}
+	const auto& ops = callee->getFunctionBasicBlock().getOperations();
+	if (ops.empty() || ops.size() > inliningMaxOperations_ ||
+	    ir::dyn_cast<ir::ReturnOperation>(ops.back()) == nullptr) {
+		return false;
+	}
+	for (size_t i = 0; i + 1 < ops.size(); i++) {
+		const auto* op = ops[i];
+		const bool plainValueOp =
+		    ir::dyn_cast<ir::ConstIntOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::ConstBooleanOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::ConstFloatOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::ConstPtrOperation>(op) != nullptr || ir::dyn_cast<ir::AddOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::SubOperation>(op) != nullptr || ir::dyn_cast<ir::MulOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::DivOperation>(op) != nullptr || ir::dyn_cast<ir::ModOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::CompareOperation>(op) != nullptr || ir::dyn_cast<ir::AndOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::OrOperation>(op) != nullptr || ir::dyn_cast<ir::NotOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::NegateOperation>(op) != nullptr || ir::dyn_cast<ir::ShiftOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::BinaryCompOperation>(op) != nullptr || ir::dyn_cast<ir::SelectOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::LoadOperation>(op) != nullptr || ir::dyn_cast<ir::StoreOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::CastOperation>(op) != nullptr;
+		if (!plainValueOp) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool AsmJitLoweringProvider::LoweringContext::tryInlineCall(ir::CallOperation* op, RegisterFrame& frame) {
+	if (!enableInlining_ || !funcNodes_.contains(op->getCalleeId()) || callNeedsCapture(op)) {
+		return false;
+	}
+	const auto* callee = ir->getFunctionTable().get(op->getCalleeId()).getDefinition();
+	if (!isInlinable(callee)) {
+		return false;
+	}
+	const auto& params = callee->getFunctionBasicBlock().getArguments();
+	const auto args = op->getInputArguments();
+	if (params.size() != args.size()) {
+		return false;
+	}
+
+	// Parameters arrive canonical, exactly as through the callee's prologue.
+	// A constant argument stays a constant: the body folds or rematerialises
+	// it like any other deferred constant, and never reads it from the frame.
+	RegisterFrame calleeFrame;
+	for (size_t i = 0; i < params.size(); i++) {
+		if (enableConstFolding_ && !isFloatType(args[i]->getStamp())) {
+			if (const auto value = foldableConstValue(args[i])) {
+				inlinedConstParams_[params[i]] = canonicalizeToStamp(*value, params[i]->getStamp());
+				continue;
+			}
+		}
+		const AsmReg value =
+		    isFloatType(args[i]->getStamp()) ? regOperand(args[i], frame) : AsmReg(cleanGpOperand(args[i], frame));
+		calleeFrame.setValue(params[i]->getIdentifier(), value);
+	}
+
+	// The per-function analyses are keyed by operation id: swap in the
+	// callee's for the duration of its body.
+	auto savedDirty = std::move(mayBeDirty_);
+	auto savedFusionUses = std::move(fusionUses_);
+	auto savedDeferred = std::move(deferredAddressParts_);
+	auto savedUsageCounts = std::move(usageCounts_);
+	computeDirtyValues(callee);
+	computeFusionUses(callee);
+	deferredAddressParts_.clear();
+	usageCounts_.clear();
+
+	const auto& ops = callee->getFunctionBasicBlock().getOperations();
+	for (size_t i = 0; i + 1 < ops.size(); i++) {
+		dispatch(ops[i], calleeFrame);
+	}
+	std::optional<AsmReg> result;
+	const auto* ret = ir::cast<ir::ReturnOperation>(ops.back());
+	if (op->getStamp() != Type::v && ret->hasReturnValue()) {
+		// The callee's return narrows the value to its stamp.
+		auto value = regOperand(ret->getReturnValue(), calleeFrame);
+		result = allocReg(op->getStamp());
+		if (std::holds_alternative<Gp>(value)) {
+			extendFromStamp(toGp(*result), toGp(value), ret->getReturnValue()->getStamp());
+		} else {
+			emitMove(*result, value);
+		}
+	}
+
+	inlinedConstParams_.clear();
+	mayBeDirty_ = std::move(savedDirty);
+	fusionUses_ = std::move(savedFusionUses);
+	deferredAddressParts_ = std::move(savedDeferred);
+	usageCounts_ = std::move(savedUsageCounts);
+
+	if (result.has_value()) {
+		bindResult(op->getIdentifier(), *result, frame);
+	}
+	inlinedCalls_++;
+	return true;
+}
+
 // ── Register allocation ───────────────────────────────────────────────────────
 // All integer/bool/ptr types are represented as 64-bit GP registers.
 // This avoids size-mismatch issues when combining values across operations,
@@ -242,31 +740,12 @@ void AsmJitLoweringProvider::LoweringContext::bindResult(const ir::OperationIden
 // the register-content invariant (sign/zero-extension per stamp) is identical
 // on both paths.
 
-namespace {
-// Truncate @p value to @p stamp's width and re-extend per its signedness --
-// the canonical 64-bit register pattern the materialising lowering produces.
-int64_t canonicalizeToStamp(int64_t value, Type stamp) {
-	switch (stamp) {
-	case Type::i8:
-		return static_cast<int64_t>(static_cast<int8_t>(value));
-	case Type::i16:
-		return static_cast<int64_t>(static_cast<int16_t>(value));
-	case Type::i32:
-		return static_cast<int64_t>(static_cast<int32_t>(value));
-	case Type::b:
-	case Type::ui8:
-		return static_cast<int64_t>(static_cast<uint8_t>(value));
-	case Type::ui16:
-		return static_cast<int64_t>(static_cast<uint16_t>(value));
-	case Type::ui32:
-		return static_cast<int64_t>(static_cast<uint32_t>(value));
-	default:
-		return value; // i64/ui64/ptr -- full width already.
-	}
-}
-} // anonymous namespace
-
 std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstValue(const ir::Operation* in) {
+	if (!inlinedConstParams_.empty()) {
+		if (const auto it = inlinedConstParams_.find(in); it != inlinedConstParams_.end()) {
+			return it->second;
+		}
+	}
 	if (const auto* constInt = ir::dyn_cast<ir::ConstIntOperation>(in)) {
 		return canonicalizeToStamp(constInt->getValue(), constInt->getStamp());
 	}
@@ -389,6 +868,9 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		exceptionalExitLabel_.reset();
 		currentFunction_ = funcOp;
 		transport_ = CapturedExceptionTransport(*funcOp);
+		computeDirtyValues(funcOp);
+		computeFusionUses(funcOp);
+		deferredAddressParts_.clear();
 
 		// Static usage counts feed the compare→branch fusion decision; only
 		// pay for the walk when the fusion is enabled.
@@ -425,24 +907,19 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 			} else {
 				funcNode->setArg(i, toXmm(reg));
 			}
-			rootFrame.setValue(entryArgs[i]->getIdentifier(), reg);
-
+			// The body works on a copy, sign/zero-extended per the stamp. The
+			// argument register itself carries the ABI register as a hint, which
+			// the allocator honors even when the value is live across a call
+			// (forcing a spill around it); the copy is unconstrained, and the
+			// allocator coalesces it with the argument register when they do
+			// not conflict.
+			AsmReg value = allocReg(stamp);
 			if (std::holds_alternative<Gp>(reg)) {
-				auto gReg = toGp(reg);
-				if (stamp == Type::i8) {
-					cc.movsx(gReg.r64(), gReg.r8());
-				} else if (stamp == Type::i16) {
-					cc.movsx(gReg.r64(), gReg.r16());
-				} else if (stamp == Type::ui8 || stamp == Type::b) {
-					cc.movzx(gReg.r32(), gReg.r8());
-				} else if (stamp == Type::ui16) {
-					cc.movzx(gReg.r32(), gReg.r16());
-				} else if (stamp == Type::i32) {
-					cc.movsxd(gReg.r64(), gReg.r32());
-				} else if (stamp == Type::ui32) {
-					cc.mov(gReg.r32(), gReg.r32()); // zero-extends upper 32 bits
-				}
+				extendFromStamp(toGp(value), toGp(reg), stamp);
+			} else {
+				emitMove(value, reg);
 			}
+			rootFrame.setValue(entryArgs[i]->getIdentifier(), value);
 		}
 
 		processBlock(&funcBlock, rootFrame);
@@ -458,6 +935,15 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 	}
 	if (statistics_ != nullptr && enableConstFolding_) {
 		statistics_->add("asmjit.lowering.foldedImmediates", foldedImmediates_);
+	}
+	if (statistics_ != nullptr && enableAddressFusion_) {
+		statistics_->add("asmjit.lowering.fusedAddresses", fusedAddresses_);
+	}
+	if (statistics_ != nullptr && enableInlining_) {
+		statistics_->add("asmjit.lowering.inlinedCalls", inlinedCalls_);
+	}
+	if (statistics_ != nullptr && enableBranchFusion_ && enableLoopRotation_) {
+		statistics_->add("asmjit.lowering.rotatedLoops", rotatedLoops_);
 	}
 
 	// Format the builder node list before finalize(): at this point the IR still carries
@@ -695,8 +1181,19 @@ void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, Reg
 			cc.addss(xDst, toXmm(right));
 		else
 			cc.addsd(xDst, toXmm(right));
+	} else if (const auto parts = matchAddress(op)) {
+		// Every consumer folds it into its own memory operand: emit nothing.
+		if (deferAddressPart(op, 0x1, frame)) {
+			return;
+		}
+		// Otherwise one three-operand lea computes it, scaling included.
+		cc.lea(toGp(result), memFromParts(*parts, frame));
+		if (parts->offset == nullptr) {
+			foldedImmediates_++;
+		}
 	} else {
 		auto gDst = toGp(result);
+		const uint32_t width = stampBits(op->getStamp());
 		// Fold a small-constant operand into the add's immediate form
 		// (add is commutative, so either side qualifies).
 		const auto rightImm = imm32Operand(op->getRightInput());
@@ -705,22 +1202,22 @@ void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, Reg
 			leftImm = imm32Operand(op->getLeftInput());
 		}
 		if (rightImm.has_value()) {
-			cc.mov(gDst, gpOperand(op->getLeftInput(), frame));
+			cc.mov(gDst, gpOperandAtWidth(op->getLeftInput(), width, frame));
 			cc.add(gDst, *rightImm);
 			foldedImmediates_++;
 		} else if (leftImm.has_value()) {
-			cc.mov(gDst, gpOperand(op->getRightInput(), frame));
+			cc.mov(gDst, gpOperandAtWidth(op->getRightInput(), width, frame));
 			cc.add(gDst, *leftImm);
 			foldedImmediates_++;
 		} else {
-			cc.mov(gDst, gpOperand(op->getLeftInput(), frame));
-			cc.add(gDst, gpOperand(op->getRightInput(), frame));
+			cc.mov(gDst, gpOperandAtWidth(op->getLeftInput(), width, frame));
+			cc.add(gDst, gpOperandAtWidth(op->getRightInput(), width, frame));
 		}
 		// An add that overflows the narrow stamp's width still produces a
 		// "correct" 64-bit sum; re-extend per the result type so its
 		// sign/zero-extension matches the wrapped-around narrow-width value
-		// (see narrowToStamp's doc comment).
-		narrowToStamp(gDst, op->getStamp());
+		// (see narrowToStamp's doc comment), unless narrowing is lazy.
+		narrowResult(gDst, op->getStamp());
 	}
 	bindResult(op->getIdentifier(), result, frame);
 }
@@ -738,19 +1235,24 @@ void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, Reg
 			cc.subsd(xDst, toXmm(right));
 	} else {
 		auto gDst = toGp(result);
-		cc.mov(gDst, gpOperand(op->getLeftInput(), frame));
+		const uint32_t width = stampBits(op->getStamp());
+		cc.mov(gDst, gpOperandAtWidth(op->getLeftInput(), width, frame));
 		if (const auto rightImm = imm32Operand(op->getRightInput())) {
 			cc.sub(gDst, *rightImm);
 			foldedImmediates_++;
 		} else {
-			cc.sub(gDst, gpOperand(op->getRightInput(), frame));
+			cc.sub(gDst, gpOperandAtWidth(op->getRightInput(), width, frame));
 		}
-		narrowToStamp(gDst, op->getStamp());
+		narrowResult(gDst, op->getStamp());
 	}
 	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, RegisterFrame& frame) {
+	// A scaled address index every consumer folds into its address.
+	if (deferAddressPart(op, 0x2, frame)) {
+		return;
+	}
 	auto result = allocReg(op->getStamp());
 	if (isFloatType(op->getStamp())) {
 		auto left = frame.getValue(op->getLeftInput()->getIdentifier());
@@ -770,17 +1272,27 @@ void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, Reg
 		if (!rightImm.has_value()) {
 			leftImm = imm32Operand(op->getLeftInput());
 		}
-		if (rightImm.has_value()) {
-			cc.imul(gDst, gpOperand(op->getLeftInput(), frame), *rightImm);
-			foldedImmediates_++;
-		} else if (leftImm.has_value()) {
-			cc.imul(gDst, gpOperand(op->getRightInput(), frame), *leftImm);
+		const uint32_t width = stampBits(op->getStamp());
+		if (rightImm.has_value() || leftImm.has_value()) {
+			const int32_t imm = rightImm.has_value() ? *rightImm : *leftImm;
+			auto src = gpOperandAtWidth(rightImm.has_value() ? op->getLeftInput() : op->getRightInput(), width, frame);
+			// Strength-reduce the 3-cycle imul: a power of two is a shift, and
+			// 3/5/9 are one lea (the low 64 bits agree in every case).
+			if (imm > 1 && (imm & (imm - 1)) == 0) {
+				cc.mov(gDst, src);
+				cc.shl(gDst, static_cast<uint32_t>(std::countr_zero(static_cast<uint32_t>(imm))));
+			} else if (imm == 3 || imm == 5 || imm == 9) {
+				cc.lea(gDst,
+				       x86::ptr(src, src, static_cast<uint32_t>(std::countr_zero(static_cast<uint32_t>(imm - 1)))));
+			} else {
+				cc.imul(gDst, src, imm);
+			}
 			foldedImmediates_++;
 		} else {
-			cc.mov(gDst, gpOperand(op->getLeftInput(), frame));
-			cc.imul(gDst, gpOperand(op->getRightInput(), frame));
+			cc.mov(gDst, gpOperandAtWidth(op->getLeftInput(), width, frame));
+			cc.imul(gDst, gpOperandAtWidth(op->getRightInput(), width, frame));
 		}
-		narrowToStamp(gDst, op->getStamp());
+		narrowResult(gDst, op->getStamp());
 	}
 	bindResult(op->getIdentifier(), result, frame);
 }
@@ -801,13 +1313,13 @@ void AsmJitLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* op, Reg
 		// AsmJit Compiler handles the rax/rdx hardware constraint automatically.
 		auto quot = cc.newInt64();
 		auto rem = cc.newInt64();
-		cc.mov(quot, gpOperand(op->getLeftInput(), frame));
+		cc.mov(quot, cleanGpOperand(op->getLeftInput(), frame));
 		if (isUnsignedType(op->getStamp())) {
 			cc.xor_(rem, rem);
-			cc.div(rem, quot, gpOperand(op->getRightInput(), frame));
+			cc.div(rem, quot, cleanGpOperand(op->getRightInput(), frame));
 		} else {
 			cc.cqo(rem, quot);
-			cc.idiv(rem, quot, gpOperand(op->getRightInput(), frame));
+			cc.idiv(rem, quot, cleanGpOperand(op->getRightInput(), frame));
 		}
 		cc.mov(toGp(result), quot);
 	}
@@ -818,13 +1330,13 @@ void AsmJitLoweringProvider::LoweringContext::visitMod(ir::ModOperation* op, Reg
 	auto result = allocReg(op->getStamp());
 	auto quot = cc.newInt64();
 	auto rem = cc.newInt64();
-	cc.mov(quot, gpOperand(op->getLeftInput(), frame));
+	cc.mov(quot, cleanGpOperand(op->getLeftInput(), frame));
 	if (isUnsignedType(op->getStamp())) {
 		cc.xor_(rem, rem);
-		cc.div(rem, quot, gpOperand(op->getRightInput(), frame));
+		cc.div(rem, quot, cleanGpOperand(op->getRightInput(), frame));
 	} else {
 		cc.cqo(rem, quot);
-		cc.idiv(rem, quot, gpOperand(op->getRightInput(), frame));
+		cc.idiv(rem, quot, cleanGpOperand(op->getRightInput(), frame));
 	}
 	cc.mov(toGp(result), rem);
 	bindResult(op->getIdentifier(), result, frame);
@@ -898,20 +1410,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 		else
 			cc.setne(resultGp);
 	} else {
-		auto left = gpOperand(op->getLeftInput(), frame);
-		// Peephole: `cmp x, 0` → `test x, x` when the right operand is the
-		// integer constant zero. Same flag output for ZF/SF/CF/OF and all
-		// consumers here read only via setcc/jcc — two bytes shorter and
-		// breaks no dependency.
-		const auto* rightConst = ir::dyn_cast<ir::ConstIntOperation>(op->getRightInput());
-		if (rightConst != nullptr && rightConst->getValue() == 0) {
-			cc.test(left, left);
-		} else if (const auto rightImm = imm32Operand(op->getRightInput())) {
-			cc.cmp(left, *rightImm);
-			foldedImmediates_++;
-		} else {
-			cc.cmp(left, gpOperand(op->getRightInput(), frame));
-		}
+		emitIntegerCompare(op, frame);
 		if (leftIsUnsigned) {
 			switch (op->getComparator()) {
 			case ir::CompareOperation::EQ:
@@ -1030,22 +1529,30 @@ void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* o
 	// NegateOperation is bitwise NOT (~x): result = input XOR all-ones.
 	auto result = allocReg(stamp);
 	auto gDst = toGp(result);
-	cc.mov(gDst, gpOperand(op->getInput(), frame));
+	cc.mov(gDst, gpOperandAtWidth(op->getInput(), stampBits(stamp), frame));
 	cc.not_(gDst);
 	// not_ flips the full 64-bit register, including the extension padding.
 	// That happens to stay correct for signed stamps (flipping a sign bit
 	// flips its replicated extension consistently) but is wrong for unsigned
 	// stamps, whose invariant is a zero-extended (not flipped) upper half.
-	narrowToStamp(gDst, stamp);
+	narrowResult(gDst, stamp);
 	bindResult(op->getIdentifier(), result, frame);
 }
 
 // ── Binary bit operations ─────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* op, RegisterFrame& frame) {
+	// A scaled address index every consumer folds into its address.
+	if (deferAddressPart(op, 0x2, frame)) {
+		return;
+	}
 	auto result = allocReg(op->getStamp());
 	auto gDst = toGp(result);
-	cc.mov(gDst, gpOperand(op->getLeftInput(), frame));
+	// A left shift's low bits depend only on the input's low bits; a right
+	// shift pulls the upper bits down, so it needs the canonical pattern.
+	const bool isLeftShift = op->getType() == ir::ShiftOperation::LS;
+	cc.mov(gDst, isLeftShift ? gpOperandAtWidth(op->getLeftInput(), stampBits(op->getStamp()), frame)
+	                         : cleanGpOperand(op->getLeftInput(), frame));
 	// A constant count uses the immediate shift form. The hardware masks the
 	// count mod 64 for 64-bit shifts, exactly like the CL-register form, so
 	// masking here preserves the register-form semantics.
@@ -1078,14 +1585,20 @@ void AsmJitLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* op,
 	// longer matches the wrapped-around narrow-width value. sar already
 	// shifts in the sign bit, but a shift can still move that bit into
 	// positions that change the narrow-width result's own sign, so this is
-	// needed for all three shift forms.
-	narrowToStamp(gDst, op->getStamp());
+	// needed for all three shift forms. (Under lazy narrowing a left shift's
+	// result is recorded as dirty instead.)
+	if (isLeftShift) {
+		narrowResult(gDst, op->getStamp());
+	} else {
+		narrowToStamp(gDst, op->getStamp());
+	}
 	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOperation* op, RegisterFrame& frame) {
 	auto result = allocReg(op->getStamp());
-	cc.mov(toGp(result), gpOperand(op->getLeftInput(), frame));
+	const uint32_t width = stampBits(op->getStamp());
+	cc.mov(toGp(result), gpOperandAtWidth(op->getLeftInput(), width, frame));
 	if (const auto rightImm = imm32Operand(op->getRightInput())) {
 		switch (op->getType()) {
 		case ir::BinaryCompOperation::BAND:
@@ -1100,7 +1613,7 @@ void AsmJitLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOper
 		}
 		foldedImmediates_++;
 	} else {
-		auto right = gpOperand(op->getRightInput(), frame);
+		auto right = gpOperandAtWidth(op->getRightInput(), width, frame);
 		switch (op->getType()) {
 		case ir::BinaryCompOperation::BAND:
 			cc.and_(toGp(result), right);
@@ -1163,77 +1676,99 @@ void AsmJitLoweringProvider::LoweringContext::visitIf(ir::IfOperation* op, Regis
 	processBlock(op->getFalseBlockInvocation().getBlock(), frame);
 }
 
+// Emits the flag-setting half of an integer compare (everything but the
+// null-pointer check). When both sides are 32 bits wide the compare runs on
+// the low halves, which are exact even for dirty operands (see the lazy
+// narrowing helpers); other widths compare the canonical 64-bit patterns.
+void AsmJitLoweringProvider::LoweringContext::emitIntegerCompare(const ir::CompareOperation* cmp,
+                                                                 RegisterFrame& frame) {
+	const auto* leftIn = cmp->getLeftInput();
+	const auto* rightIn = cmp->getRightInput();
+	const bool compare32 = stampBits(leftIn->getStamp()) == 32 && stampBits(rightIn->getStamp()) == 32;
+	auto left = compare32 ? gpOperand(leftIn, frame).r32() : cleanGpOperand(leftIn, frame);
+	// Peephole: `cmp x, 0` → `test x, x` when the right operand is the
+	// integer constant zero. Same flag output for ZF/SF/CF/OF and all
+	// consumers here read only via setcc/jcc — two bytes shorter and
+	// breaks no dependency.
+	const auto* rightConst = ir::dyn_cast<ir::ConstIntOperation>(rightIn);
+	if (rightConst != nullptr && rightConst->getValue() == 0) {
+		cc.test(left, left);
+	} else if (const auto rightImm = imm32Operand(rightIn)) {
+		// The canonical pattern fits a sign-extended imm32, so its low 32 bits
+		// are also the 32-bit compare's immediate.
+		cc.cmp(left, *rightImm);
+		foldedImmediates_++;
+	} else {
+		cc.cmp(left, compare32 ? gpOperand(rightIn, frame).r32() : cleanGpOperand(rightIn, frame));
+	}
+}
+
 // Fused replacement for visitCompare + the test/jz in visitIf: emits the
 // compare and jumps to @p falseTarget when the condition is false. Mirrors
 // visitCompare's integer paths (the float path is excluded by
 // isFusibleCompare); the condition codes are the negation of the setcc the
 // unfused lowering would have used.
-void AsmJitLoweringProvider::LoweringContext::emitFusedCompareBranch(const ir::CompareOperation* cmp, Label falseTarget,
-                                                                     RegisterFrame& frame) {
-	auto left = gpOperand(cmp->getLeftInput(), frame);
-
+void AsmJitLoweringProvider::LoweringContext::emitFusedCompareBranch(const ir::CompareOperation* cmp, Label target,
+                                                                     RegisterFrame& frame, bool jumpIfTrue) {
+	// Jump to `target` on `cond` (the condition holding) when jumpIfTrue,
+	// otherwise on its negation.
+	const auto jumpOn = [&](CondCode cond) {
+		cc.j(jumpIfTrue ? cond : x86::negateCond(cond), target);
+	};
 	if (cmp->getLeftInput()->getStamp() == Type::ptr && isInteger(cmp->getRightInput()->getStamp())) {
 		// Null-pointer check (see visitCompare): only EQ/NE are meaningful.
+		auto left = gpOperand(cmp->getLeftInput(), frame);
 		cc.test(left, left);
 		if (cmp->getComparator() == ir::CompareOperation::EQ) {
-			cc.jnz(falseTarget);
+			jumpOn(CondCode::kZero);
 		} else {
-			cc.jz(falseTarget);
+			jumpOn(CondCode::kNotZero);
 		}
 		return;
 	}
 
-	// Keep visitCompare's `cmp x, 0` → `test x, x` peephole.
-	const auto* rightConst = ir::dyn_cast<ir::ConstIntOperation>(cmp->getRightInput());
-	if (rightConst != nullptr && rightConst->getValue() == 0) {
-		cc.test(left, left);
-	} else if (const auto rightImm = imm32Operand(cmp->getRightInput())) {
-		cc.cmp(left, *rightImm);
-		foldedImmediates_++;
-	} else {
-		cc.cmp(left, gpOperand(cmp->getRightInput(), frame));
-	}
+	emitIntegerCompare(cmp, frame);
 
 	if (isUnsignedType(cmp->getLeftInput()->getStamp())) {
 		switch (cmp->getComparator()) {
 		case ir::CompareOperation::EQ:
-			cc.jne(falseTarget);
+			jumpOn(CondCode::kEqual);
 			break;
 		case ir::CompareOperation::NE:
-			cc.je(falseTarget);
+			jumpOn(CondCode::kNotEqual);
 			break;
 		case ir::CompareOperation::LT:
-			cc.jae(falseTarget);
+			jumpOn(CondCode::kUnsignedLT);
 			break;
 		case ir::CompareOperation::LE:
-			cc.ja(falseTarget);
+			jumpOn(CondCode::kUnsignedLE);
 			break;
 		case ir::CompareOperation::GT:
-			cc.jbe(falseTarget);
+			jumpOn(CondCode::kUnsignedGT);
 			break;
 		case ir::CompareOperation::GE:
-			cc.jb(falseTarget);
+			jumpOn(CondCode::kUnsignedGE);
 			break;
 		}
 	} else {
 		switch (cmp->getComparator()) {
 		case ir::CompareOperation::EQ:
-			cc.jne(falseTarget);
+			jumpOn(CondCode::kEqual);
 			break;
 		case ir::CompareOperation::NE:
-			cc.je(falseTarget);
+			jumpOn(CondCode::kNotEqual);
 			break;
 		case ir::CompareOperation::LT:
-			cc.jge(falseTarget);
+			jumpOn(CondCode::kSignedLT);
 			break;
 		case ir::CompareOperation::LE:
-			cc.jg(falseTarget);
+			jumpOn(CondCode::kSignedLE);
 			break;
 		case ir::CompareOperation::GT:
-			cc.jle(falseTarget);
+			jumpOn(CondCode::kSignedGT);
 			break;
 		case ir::CompareOperation::GE:
-			cc.jl(falseTarget);
+			jumpOn(CondCode::kSignedGE);
 			break;
 		}
 	}
@@ -1242,8 +1777,62 @@ void AsmJitLoweringProvider::LoweringContext::emitFusedCompareBranch(const ir::C
 void AsmJitLoweringProvider::LoweringContext::visitBranch(ir::BranchOperation* op, RegisterFrame& frame) {
 	const auto& bi = op->getNextBlockInvocation();
 	processBlockInvocation(bi, frame);
-	cc.jmp(getOrCreateLabel(bi.getBlock()->getIdentifier()));
+	if (!tryRotateLoopBranch(bi, frame)) {
+		cc.jmp(getOrCreateLabel(bi.getBlock()->getIdentifier()));
+	}
 	processBlock(bi.getBlock(), frame);
+}
+
+bool AsmJitLoweringProvider::LoweringContext::isNoOpInvocation(const ir::BasicBlockInvocation& bi,
+                                                               RegisterFrame& frame) {
+	const auto& srcArgs = bi.getArguments();
+	const auto& dstArgs = bi.getBlock()->getArguments();
+	for (size_t i = 0; i < srcArgs.size(); i++) {
+		const auto& dstId = dstArgs[i]->getIdentifier();
+		if ((enableConstFolding_ && foldableConstValue(srcArgs[i]).has_value()) || !frame.contains(dstId) ||
+		    !frame.contains(srcArgs[i]->getIdentifier())) {
+			return false;
+		}
+		const auto regId = [](const AsmReg& r) {
+			return std::visit([](const auto& reg) { return reg.id(); }, r);
+		};
+		if (regId(frame.getValue(srcArgs[i]->getIdentifier())) != regId(frame.getValue(dstId))) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// A loop's back edge normally jumps to the header, which tests the exit
+// condition and branches into the body: two jumps per iteration, one of them
+// taken. When the header holds nothing but that test (a fused compare feeding
+// its if) and the if's own block-argument copies are register self-moves, the
+// test can be repeated at the end of the back edge instead, jumping straight
+// into the body (taken) or out of the loop. The header's own copy still
+// handles the first entry. The compare reads the header's parameter registers,
+// which the back edge's copies have just written.
+bool AsmJitLoweringProvider::LoweringContext::tryRotateLoopBranch(const ir::BasicBlockInvocation& bi,
+                                                                  RegisterFrame& frame) {
+	const auto* header = bi.getBlock();
+	if (!enableBranchFusion_ || !enableLoopRotation_ || !processedBlocks.contains(header->getIdentifier())) {
+		return false;
+	}
+	const auto& ops = header->getOperations();
+	if (ops.size() != 2) {
+		return false;
+	}
+	const auto* cmp = ir::dyn_cast<ir::CompareOperation>(ops[0]);
+	const auto* ifOp = ir::dyn_cast<ir::IfOperation>(ops[1]);
+	if (cmp == nullptr || ifOp == nullptr || !isFusibleCompare(cmp, ifOp, frame) ||
+	    !isNoOpInvocation(ifOp->getTrueBlockInvocation(), frame) ||
+	    !isNoOpInvocation(ifOp->getFalseBlockInvocation(), frame)) {
+		return false;
+	}
+	emitFusedCompareBranch(cmp, getOrCreateLabel(ifOp->getTrueBlockInvocation().getBlock()->getIdentifier()), frame,
+	                       /*jumpIfTrue=*/true);
+	cc.jmp(getOrCreateLabel(ifOp->getFalseBlockInvocation().getBlock()->getIdentifier()));
+	rotatedLoops_++;
+	return true;
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* op, RegisterFrame& frame) {
@@ -1273,8 +1862,9 @@ void AsmJitLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* o
 		// branch and its misprediction risk. The operand movs do not touch
 		// EFLAGS, so the test's flags survive until the cmov. A64 lowers
 		// select the same way via csel.
-		auto falseGp = gpOperand(op->getFalseValue(), frame);
-		emitMoveFromOperand(result, op->getTrueValue(), frame);
+		const uint32_t width = stampBits(op->getStamp());
+		auto falseGp = gpOperandAtWidth(op->getFalseValue(), width, frame);
+		cc.mov(toGp(result), gpOperandAtWidth(op->getTrueValue(), width, frame));
 		cc.test(condGp, condGp);
 		cc.cmovz(toGp(result), falseGp);
 	} else {
@@ -1296,42 +1886,45 @@ void AsmJitLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* o
 // ── Memory ────────────────────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::visitLoad(ir::LoadOperation* op, RegisterFrame& frame) {
-	auto addrGp = gpOperand(op->getAddress(), frame);
+	const auto* addr = op->getAddress();
 	auto result = allocReg(op->getStamp());
+	const auto at = [&](uint32_t size) {
+		return memOperand(addr, size, frame);
+	};
 
 	if (op->getStamp() == Type::f32) {
-		cc.movss(toXmm(result), x86::dword_ptr(addrGp));
+		cc.movss(toXmm(result), at(4));
 	} else if (op->getStamp() == Type::f64) {
-		cc.movsd(toXmm(result), x86::qword_ptr(addrGp));
+		cc.movsd(toXmm(result), at(8));
 	} else {
 		auto gDst = toGp(result);
 		switch (op->getStamp()) {
 		case Type::b:
 		case Type::ui8:
-			cc.movzx(gDst.r32(), x86::byte_ptr(addrGp));
+			cc.movzx(gDst.r32(), at(1));
 			break; // zero-extends to 64
 		case Type::i8:
-			cc.movsx(gDst.r64(), x86::byte_ptr(addrGp));
+			cc.movsx(gDst.r64(), at(1));
 			break;
 		case Type::ui16:
-			cc.movzx(gDst.r32(), x86::word_ptr(addrGp));
+			cc.movzx(gDst.r32(), at(2));
 			break; // zero-extends to 64
 		case Type::i16:
-			cc.movsx(gDst.r64(), x86::word_ptr(addrGp));
+			cc.movsx(gDst.r64(), at(2));
 			break;
 		case Type::ui32:
-			cc.mov(gDst.r32(), x86::dword_ptr(addrGp));
+			cc.mov(gDst.r32(), at(4));
 			break; // zero-extends
 		case Type::i32:
-			cc.movsxd(gDst.r64(), x86::dword_ptr(addrGp));
+			cc.movsxd(gDst.r64(), at(4));
 			break;
 		case Type::i64:
 		case Type::ui64:
 		case Type::ptr:
-			cc.mov(gDst.r64(), x86::qword_ptr(addrGp));
+			cc.mov(gDst.r64(), at(8));
 			break;
 		default:
-			cc.mov(gDst.r64(), x86::qword_ptr(addrGp));
+			cc.mov(gDst.r64(), at(8));
 			break;
 		}
 	}
@@ -1339,15 +1932,17 @@ void AsmJitLoweringProvider::LoweringContext::visitLoad(ir::LoadOperation* op, R
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* op, RegisterFrame& frame) {
-	auto addrGp = gpOperand(op->getAddress(), frame);
 	auto valReg = regOperand(op->getValue(), frame);
+	const auto at = [&](uint32_t size) {
+		return memOperand(op->getAddress(), size, frame);
+	};
 
 	if (op->getValue()->getStamp() == Type::f32) {
-		cc.movss(x86::dword_ptr(addrGp), toXmm(valReg));
+		cc.movss(at(4), toXmm(valReg));
 		return;
 	}
 	if (op->getValue()->getStamp() == Type::f64) {
-		cc.movsd(x86::qword_ptr(addrGp), toXmm(valReg));
+		cc.movsd(at(8), toXmm(valReg));
 		return;
 	}
 
@@ -1356,18 +1951,18 @@ void AsmJitLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* op,
 	case Type::b:
 	case Type::i8:
 	case Type::ui8:
-		cc.mov(x86::byte_ptr(addrGp), valGp.r8());
+		cc.mov(at(1), valGp.r8());
 		break;
 	case Type::i16:
 	case Type::ui16:
-		cc.mov(x86::word_ptr(addrGp), valGp.r16());
+		cc.mov(at(2), valGp.r16());
 		break;
 	case Type::i32:
 	case Type::ui32:
-		cc.mov(x86::dword_ptr(addrGp), valGp.r32());
+		cc.mov(at(4), valGp.r32());
 		break;
 	default:
-		cc.mov(x86::qword_ptr(addrGp), valGp.r64());
+		cc.mov(at(8), valGp.r64());
 		break;
 	}
 }
@@ -1398,12 +1993,21 @@ void AsmJitLoweringProvider::LoweringContext::visitCall(ir::CallOperation* op, R
 		for (auto* arg : op->getInputArguments()) {
 			if (!frame.contains(arg->getIdentifier())) {
 				frame.setValue(arg->getIdentifier(), regOperand(arg, frame));
+			} else if (isDirty(arg) && !(enableConstFolding_ && foldableConstValue(arg))) {
+				// Handlers expect canonical registers. Re-extending in place is
+				// safe: the canonical pattern is a valid encoding of a dirty
+				// value for every other reader too.
+				narrowToStamp(toGp(frame.getValue(arg->getIdentifier())), arg->getStamp());
 			}
 		}
 		IntrinsicCallContext ctx {cc, op, frame};
 		if ((*intrinsic)(ctx)) {
 			return;
 		}
+	}
+
+	if (tryInlineCall(op, frame)) {
+		return;
 	}
 
 	// Build the callee's signature dynamically from the IR's type information.
@@ -1426,10 +2030,14 @@ void AsmJitLoweringProvider::LoweringContext::visitCall(ir::CallOperation* op, R
 	// Resolve argument registers BEFORE emitting the InvokeNode: a deferred
 	// constant rematerialises with a `mov reg, imm`, which must precede the
 	// call in the instruction stream.
+	// External callees get canonical narrow arguments (the SysV ABI leaves
+	// bits above 32 undefined, but compilers expect 8/16-bit arguments
+	// extended to 32 bits); internal callees re-extend in their prologue.
 	std::vector<AsmReg> argRegs;
 	argRegs.reserve(op->getInputArguments().size());
 	for (auto* arg : op->getInputArguments()) {
-		argRegs.push_back(regOperand(arg, frame));
+		argRegs.push_back(isInternal || isFloatType(arg->getStamp()) ? regOperand(arg, frame)
+		                                                             : AsmReg(cleanGpOperand(arg, frame)));
 	}
 
 	InvokeNode* invokeNode = nullptr;
@@ -1503,7 +2111,7 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 	std::vector<AsmReg> argRegs;
 	argRegs.reserve(inputArgs.size());
 	for (auto* arg : inputArgs) {
-		argRegs.push_back(regOperand(arg, frame));
+		argRegs.push_back(isFloatType(arg->getStamp()) ? regOperand(arg, frame) : AsmReg(cleanGpOperand(arg, frame)));
 	}
 
 	InvokeNode* invokeNode = nullptr;
@@ -1569,13 +2177,15 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 	if (enableConstFolding_ && !frame.contains(op->getIdentifier()) && foldableConstValue(op).has_value()) {
 		return;
 	}
-	auto src = regOperand(op->getInput(), frame);
 	const Type srcType = op->getInput()->getStamp();
 	const Type dstType = op->getStamp();
-	auto result = allocReg(dstType);
-
 	const bool srcIsFloat = isFloatType(srcType);
 	const bool dstIsFloat = isFloatType(dstType);
+	// Integer sources are read at their own width below (extension, test),
+	// except by the int->float conversions, which read all 64 bits.
+	auto src =
+	    !srcIsFloat && dstIsFloat ? AsmReg(cleanGpOperand(op->getInput(), frame)) : regOperand(op->getInput(), frame);
+	auto result = allocReg(dstType);
 
 	if (dstType == Type::b && srcType != Type::b) {
 		// A cast to bool is `value != 0` (C++ semantics), not a truncation to
