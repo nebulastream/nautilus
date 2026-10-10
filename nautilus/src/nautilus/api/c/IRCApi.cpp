@@ -964,7 +964,7 @@ NautilusStringRef nautilus_ir_function_get_name(NautilusIRFunctionRef function) 
 }
 
 NautilusIRType nautilus_ir_function_get_return_type(NautilusIRFunctionRef function) {
-	return function != nullptr ? fromType(unwrap(function)->getOutputArg()) : NAUTILUS_IR_TYPE_VOID;
+	return function != nullptr ? fromType(unwrap(function)->getOutputArg()) : NautilusIRType {NAUTILUS_IR_TYPE_VOID};
 }
 
 NautilusIRCalleeId nautilus_ir_function_get_callee(NautilusIRGraphRef graph, NautilusIRFunctionRef function) {
@@ -1046,11 +1046,12 @@ NautilusIRValueRef nautilus_ir_block_get_terminator(NautilusIRBlockRef block) {
 /* ── Values and operations ──────────────────────────────────────────────── */
 
 NautilusIROpKind nautilus_ir_value_get_kind(NautilusIRValueRef value) {
-	return value != nullptr ? fromOperationType(unwrap(value)->getOperationType()) : NAUTILUS_IR_OP_UNKNOWN;
+	return value != nullptr ? fromOperationType(unwrap(value)->getOperationType())
+	                        : NautilusIROpKind {NAUTILUS_IR_OP_UNKNOWN};
 }
 
 NautilusIRType nautilus_ir_value_get_type(NautilusIRValueRef value) {
-	return value != nullptr ? fromType(unwrap(value)->getStamp()) : NAUTILUS_IR_TYPE_VOID;
+	return value != nullptr ? fromType(unwrap(value)->getStamp()) : NautilusIRType {NAUTILUS_IR_TYPE_VOID};
 }
 
 uint32_t nautilus_ir_value_get_id(NautilusIRValueRef value) {
