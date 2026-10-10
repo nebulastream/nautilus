@@ -108,7 +108,8 @@ void nautilus_executable_dispose(NautilusExecutableRef executable) {
 	delete executable;
 }
 
-NautilusStatus nautilus_executable_get_function(NautilusExecutableRef executable, NautilusStringRef name, void** out) {
+NautilusStatus nautilus_executable_get_function(NautilusExecutableRef executable, NautilusStringRef name,
+                                                NautilusFunctionPointer* out) {
 	return status([&] {
 		require(executable != nullptr, "executable is NULL");
 		outParam(out);
@@ -120,7 +121,7 @@ NautilusStatus nautilus_executable_get_function(NautilusExecutableRef executable
 			// Some backends throw for an unknown name, others return NULL.
 		}
 		check(function != nullptr, NAUTILUS_ERROR_NOT_FOUND, "no compiled function with this name");
-		*out = function;
+		*out = reinterpret_cast<NautilusFunctionPointer>(function);
 	});
 }
 

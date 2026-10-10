@@ -29,7 +29,7 @@
  *     nautilus_ir_function_builder_finish(fb);
  *
  *     NautilusExecutableRef exe = nautilus_ir_graph_compile(g, nautilus_string_ref("bc"), NULL);
- *     void* fn = NULL;
+ *     NautilusFunctionPointer fn = NULL;
  *     nautilus_executable_get_function(exe, nautilus_string_ref("add"), &fn);
  *     ((int64_t (*)(int64_t, int64_t)) fn)(40, 2);
  *     nautilus_executable_dispose(exe);
@@ -213,8 +213,8 @@ typedef struct {
 	NautilusIRLinkage linkage;
 	/* The identifier backends emit the callee under. Borrowed from the graph. */
 	NautilusStringRef name;
-	/* Native address of an external or intrinsic callee, NULL for an internal one. */
-	void* address;
+	/* Native function of an external or intrinsic callee, NULL for an internal one. */
+	NautilusFunctionPointer address;
 	/* Definition of an internal callee; NULL for native callees and for an
 	 * internal one whose builder has not been finished. */
 	NautilusIRFunctionRef function;
@@ -249,12 +249,13 @@ NAUTILUS_C_API size_t nautilus_ir_graph_get_functions(NautilusIRGraphRef graph, 
 NAUTILUS_C_API NautilusStatus nautilus_ir_graph_find_function(NautilusIRGraphRef graph, NautilusStringRef name,
                                                               NautilusIRFunctionRef* out);
 
-/* Declares a native function at @p address that IR in the graph may call.
- * Declaring the same address again returns the same id. @p symbol is the
+/* Declares the native function @p address (cast to NautilusFunctionPointer)
+ * so IR in the graph may call it. Declaring the same function again returns
+ * the same id. @p symbol is the
  * linker-level name and @p display_name the name shown in dumps; either may
  * be empty. The function must not throw C++ exceptions. */
 NAUTILUS_C_API NautilusStatus nautilus_ir_graph_declare_external_function(
-    NautilusIRGraphRef graph, NautilusStringRef symbol, NautilusStringRef display_name, void* address,
+    NautilusIRGraphRef graph, NautilusStringRef symbol, NautilusStringRef display_name, NautilusFunctionPointer address,
     NautilusIRType result_type, const NautilusIRType* param_types, size_t param_count,
     NautilusIRFunctionAttributes attributes, NautilusIRCalleeId* out);
 

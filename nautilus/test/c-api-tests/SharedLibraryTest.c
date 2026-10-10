@@ -17,8 +17,8 @@ static int64_t helper(int64_t a, int64_t b) {
 		}                                                                                                              \
 	} while (0)
 
-static void* lookup(NautilusExecutableRef executable, const char* name) {
-	void* fn = NULL;
+static NautilusFunctionPointer lookup(NautilusExecutableRef executable, const char* name) {
+	NautilusFunctionPointer fn = NULL;
 	return nautilus_executable_get_function(executable, nautilus_string_ref(name), &fn) == NAUTILUS_OK ? fn : NULL;
 }
 

@@ -80,7 +80,7 @@ inline Graph buildAll() {
 
 template <typename F>
 F function(NautilusExecutableRef executable, const char* name) {
-	void* fn = nullptr;
+	NautilusFunctionPointer fn = nullptr;
 	const auto status = nautilus_executable_get_function(executable, str(name), &fn);
 	INFO(lastError());
 	REQUIRE(status == NAUTILUS_OK);

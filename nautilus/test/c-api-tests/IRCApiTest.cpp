@@ -160,7 +160,7 @@ TEST_CASE("C IR API: inspection walks functions, blocks and operations") {
 	REQUIRE(nautilus_ir_value_get_callee(call, &externalId) == NAUTILUS_OK);
 	REQUIRE(nautilus_ir_graph_get_callee_info(graph.get(), externalId, &info) == NAUTILUS_OK);
 	REQUIRE(info.linkage == NAUTILUS_IR_LINKAGE_EXTERNAL);
-	REQUIRE(info.address == reinterpret_cast<void*>(&externalHelper));
+	REQUIRE(info.address == reinterpret_cast<NautilusFunctionPointer>(&externalHelper));
 	REQUIRE(info.function == nullptr);
 	REQUIRE(nautilus_ir_graph_get_callee_info(graph.get(), 12345, &info) == NAUTILUS_ERROR_NOT_FOUND);
 
@@ -239,8 +239,8 @@ TEST_CASE("C IR API: invalid construction is reported with a status") {
 		attributes.flags = 1u << 31;
 		NautilusIRCalleeId id = NAUTILUS_IR_INVALID_CALLEE;
 		REQUIRE(nautilus_ir_graph_declare_external_function(
-		            graph.get(), str("x"), str("x"), reinterpret_cast<void*>(&externalHelper), NAUTILUS_IR_TYPE_I64,
-		            nullptr, 0, attributes, &id) == NAUTILUS_ERROR_INVALID_ARGUMENT);
+		            graph.get(), str("x"), str("x"), reinterpret_cast<NautilusFunctionPointer>(&externalHelper),
+		            NAUTILUS_IR_TYPE_I64, nullptr, 0, attributes, &id) == NAUTILUS_ERROR_INVALID_ARGUMENT);
 		REQUIRE(id == NAUTILUS_IR_INVALID_CALLEE);
 	}
 
@@ -321,7 +321,7 @@ TEST_CASE("C IR API: options and executables report lookups") {
 	auto graph = buildAll();
 	Executable executable(nautilus_ir_graph_compile(graph.get(), str("bc"), options.get()));
 	REQUIRE(executable);
-	void* fn = nullptr;
+	NautilusFunctionPointer fn = nullptr;
 	REQUIRE(nautilus_executable_get_function(executable.get(), str("missing"), &fn) == NAUTILUS_ERROR_NOT_FOUND);
 	REQUIRE(fn == nullptr);
 }

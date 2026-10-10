@@ -124,9 +124,9 @@ int build_call_external(NautilusIRGraphRef graph, int64_t (*fn)(int64_t, int64_t
 	NautilusIRFunctionAttributes attrs = nautilus_ir_function_attributes_default();
 	attrs.flags |= NAUTILUS_IR_FUNCTION_NO_UNWIND;
 	NautilusIRCalleeId callee = NAUTILUS_IR_INVALID_CALLEE;
-	CHECK(nautilus_ir_graph_declare_external_function(graph, nautilus_string_ref("external_helper"),
-	                                                  nautilus_string_ref(NULL), (void*) fn, NAUTILUS_IR_TYPE_I64,
-	                                                  calleeParams, 2, attrs, &callee) == NAUTILUS_OK);
+	CHECK(nautilus_ir_graph_declare_external_function(
+	          graph, nautilus_string_ref("external_helper"), nautilus_string_ref(NULL), (NautilusFunctionPointer) fn,
+	          NAUTILUS_IR_TYPE_I64, calleeParams, 2, attrs, &callee) == NAUTILUS_OK);
 
 	NautilusIRFunctionBuilderRef fb = function(graph, "call_external", NAUTILUS_IR_TYPE_I64);
 	CHECK(fb);

@@ -157,6 +157,14 @@ NAUTILUS_C_API NautilusStatus nautilus_options_set_double(NautilusOptionsRef opt
 NAUTILUS_C_API NautilusStatus nautilus_options_set_string(NautilusOptionsRef options, NautilusStringRef name,
                                                           NautilusStringRef value);
 
+/* ── Function pointers ──────────────────────────────────────────────────── */
+
+/* A native function, as a generic function pointer. ISO C does not allow
+ * converting function pointers to or from void*, but does allow converting
+ * between function pointer types, so cast to and from the real signature:
+ *     int64_t (*add)(int64_t, int64_t) = (int64_t (*)(int64_t, int64_t)) fn; */
+typedef void (*NautilusFunctionPointer)(void);
+
 /* ── Executables ────────────────────────────────────────────────────────── */
 
 /* Compiled code for every function of a graph. Owned by the caller. */
@@ -165,11 +173,11 @@ typedef struct NautilusOpaqueExecutable* NautilusExecutableRef;
 NAUTILUS_C_API void nautilus_executable_dispose(NautilusExecutableRef executable);
 
 /* Writes the native entry point of the compiled function @p name to @p out;
- * cast it to the function's C signature. The pointer is valid while the
+ * cast it to the function's C signature (see NautilusFunctionPointer). The pointer is valid while the
  * executable is alive. NAUTILUS_ERROR_NOT_FOUND if there is no such
  * function. */
 NAUTILUS_C_API NautilusStatus nautilus_executable_get_function(NautilusExecutableRef executable, NautilusStringRef name,
-                                                               void** out);
+                                                               NautilusFunctionPointer* out);
 
 #ifdef __cplusplus
 }

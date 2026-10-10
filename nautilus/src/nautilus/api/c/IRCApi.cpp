@@ -521,8 +521,8 @@ NautilusStatus nautilus_ir_graph_find_function(NautilusIRGraphRef graph, Nautilu
 }
 
 NautilusStatus nautilus_ir_graph_declare_external_function(NautilusIRGraphRef graph, NautilusStringRef symbol,
-                                                           NautilusStringRef display_name, void* address,
-                                                           NautilusIRType result_type,
+                                                           NautilusStringRef display_name,
+                                                           NautilusFunctionPointer address, NautilusIRType result_type,
                                                            const NautilusIRType* param_types, size_t param_count,
                                                            NautilusIRFunctionAttributes attributes,
                                                            NautilusIRCalleeId* out) {
@@ -533,7 +533,7 @@ NautilusStatus nautilus_ir_graph_declare_external_function(NautilusIRGraphRef gr
 		outParam(out);
 		ir::CalleeDescriptor descriptor;
 		descriptor.kind = ir::CalleeDescriptor::Kind::External;
-		descriptor.key = address;
+		descriptor.key = reinterpret_cast<void*>(address);
 		descriptor.mangledName = toString(symbol);
 		descriptor.demangledName = toString(display_name);
 		if (descriptor.demangledName.empty()) {
@@ -564,10 +564,11 @@ NautilusStatus nautilus_ir_graph_get_callee_info(NautilusIRGraphRef graph, Nauti
 		check(table.contains(callee), NAUTILUS_ERROR_NOT_FOUND, "unknown callee id");
 		const auto& target = table.get(callee);
 		const auto* native = target.getNative();
-		*out = NautilusIRCalleeInfo {.linkage = fromLinkage(target.getLinkage()),
-		                             .name = borrow(target.getName().forEmission()),
-		                             .address = native != nullptr ? native->address : nullptr,
-		                             .function = wrap(target.getDefinition())};
+		*out = NautilusIRCalleeInfo {
+		    .linkage = fromLinkage(target.getLinkage()),
+		    .name = borrow(target.getName().forEmission()),
+		    .address = native != nullptr ? reinterpret_cast<NautilusFunctionPointer>(native->address) : nullptr,
+		    .function = wrap(target.getDefinition())};
 	});
 }
 

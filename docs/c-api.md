@@ -60,7 +60,7 @@ if (!nautilus_ir_function_builder_finish(fb)) {
 
 NautilusEngineRef engine = nautilus_engine_create(NULL);
 NautilusExecutableRef exe = nautilus_engine_compile(engine, g, NULL);
-void* fn = NULL;
+NautilusFunctionPointer fn = NULL;
 nautilus_executable_get_function(exe, nautilus_string_ref("sum_to"), &fn);
 ((int64_t (*)(int64_t)) fn)(10); /* 45 */
 
@@ -173,6 +173,7 @@ without guesswork:
 | Owning handles (`Graph`, `Engine`, `Executable`, `Options`, `FunctionBuilder`) | Newtypes with `Drop` calling `_dispose` |
 | Function, block and value refs | `Copy` newtypes with a lifetime tied to `&Graph`; `optimize`/`compile` take `&mut Graph`, so stale refs cannot outlive the rewrite |
 | `NautilusStringRef` | `&str` in (no allocation), `&str` out (borrowed from its owner) |
+| `NautilusFunctionPointer` | `Option<unsafe extern "C" fn()>`, transmuted to the real signature |
 | `NautilusString` | `String`, copied and then disposed |
 | Copy-out accessors | `Vec<T>`, from one sizing call and one fill call |
 | Enumerations (`uint32_t` + constants) | `#[non_exhaustive]` Rust enums, converting unknown values to an `Unknown` variant |
