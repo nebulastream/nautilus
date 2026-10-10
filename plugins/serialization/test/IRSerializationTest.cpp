@@ -170,8 +170,8 @@ std::vector<Section> readSections(const std::vector<std::byte>& buffer) {
 	std::vector<Section> sections;
 	for (uint32_t i = 0; i < header.sectionCount; ++i) {
 		Section section {};
-		std::memcpy(&section.entry, buffer.data() + header.sectionDirOffset + i * sizeof(ser::SectionEntry),
-		            sizeof(ser::SectionEntry));
+		const size_t entryOffset = header.sectionDirOffset + static_cast<size_t>(i) * sizeof(ser::SectionEntry);
+		std::memcpy(&section.entry, &buffer[entryOffset], sizeof(ser::SectionEntry));
 		const auto size = static_cast<size_t>(section.entry.recordStride) * section.entry.recordCount;
 		const auto* begin = buffer.data() + section.entry.offset;
 		section.bytes.assign(begin, begin + size);
@@ -201,8 +201,8 @@ std::vector<std::byte> writeSections(const std::vector<std::byte>& original, std
 	}
 	std::vector<std::byte> out(cursor, std::byte {0});
 	for (size_t i = 0; i < sections.size(); ++i) {
-		std::memcpy(out.data() + sizeof(ser::FileHeader) + i * sizeof(ser::SectionEntry), &sections[i].entry,
-		            sizeof(ser::SectionEntry));
+		const size_t entryOffset = sizeof(ser::FileHeader) + i * sizeof(ser::SectionEntry);
+		std::memcpy(&out[entryOffset], &sections[i].entry, sizeof(ser::SectionEntry));
 		std::memcpy(out.data() + sections[i].entry.offset, sections[i].bytes.data(), sections[i].bytes.size());
 	}
 	header.totalSize = out.size();
@@ -379,13 +379,14 @@ TEST_CASE("Versioning") {
 				continue;
 			}
 			// Append 8 bytes of "new fields" to every record.
-			const auto stride = section.entry.recordStride;
+			const size_t stride = section.entry.recordStride;
 			std::vector<std::byte> grown;
-			for (uint32_t i = 0; i < section.entry.recordCount; ++i) {
-				grown.insert(grown.end(), section.bytes.begin() + i * stride, section.bytes.begin() + (i + 1) * stride);
+			for (size_t i = 0; i < section.entry.recordCount; ++i) {
+				const auto record = section.bytes.begin() + static_cast<std::ptrdiff_t>(i * stride);
+				grown.insert(grown.end(), record, record + static_cast<std::ptrdiff_t>(stride));
 				grown.insert(grown.end(), 8, std::byte {0x5A});
 			}
-			section.entry.recordStride = stride + 8;
+			section.entry.recordStride = static_cast<uint32_t>(stride + 8);
 			section.bytes = std::move(grown);
 		}
 		REQUIRE(ser::deserialize(writeSections(buffer, sections))->toString() == ir->toString());

@@ -152,9 +152,10 @@ public:
 		        "section directory out of bounds");
 
 		for (uint32_t i = 0; i < header.sectionCount; ++i) {
+			// Bounds were checked for the whole directory above.
+			const uint64_t entryOffset = header.sectionDirOffset + static_cast<uint64_t>(i) * sizeof(SectionEntry);
 			SectionEntry entry {};
-			std::memcpy(&entry, buffer.data() + header.sectionDirOffset + i * sizeof(SectionEntry),
-			            sizeof(SectionEntry));
+			std::memcpy(&entry, buffer.subspan(entryOffset, sizeof(SectionEntry)).data(), sizeof(SectionEntry));
 			const uint64_t bytes = static_cast<uint64_t>(entry.recordStride) * entry.recordCount;
 			require(entry.offset <= buffer.size() && bytes <= buffer.size() - entry.offset, "section out of bounds");
 			auto* view = sectionFor(entry.tag);
