@@ -102,6 +102,10 @@ public:
 	[[nodiscard]] bool hasAttribute(const std::string& key) const;
 	[[nodiscard]] std::optional<std::string> getAttribute(const std::string& key) const;
 
+	[[nodiscard]] const std::unordered_map<std::string, std::string>& getAttributes() const {
+		return attributes;
+	}
+
 	/// Where this function was registered (docs/engine.md), or an unknown location for a
 	/// function traced without going through a registration entry point that captures one.
 	[[nodiscard]] const SourceLocation& getLocation() const;
