@@ -10,43 +10,11 @@ define float @execute(ptr readonly %0) local_unnamed_addr #0 {
   ret float %3
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
-define float @_mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load <16 x float>, ptr %0, align 4
-  %3 = tail call nnan float @llvm.vector.reduce.fmax.v16f32(<16 x float> %2)
-  ret float %3
-}
-
 ; Function Attrs: mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none)
 declare float @llvm.vector.reduce.fmax.v16f32(<16 x float>) #1
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = load <16 x float>, ptr %3, align 4
-  %5 = tail call nnan float @llvm.vector.reduce.fmax.v16f32(<16 x float> %4)
-  %6 = getelementptr i8, ptr %0, i64 8
-  %7 = load ptr, ptr %6, align 8
-  store float %5, ptr %7, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = load <16 x float>, ptr %3, align 4
-  %5 = tail call nnan float @llvm.vector.reduce.fmax.v16f32(<16 x float> %4)
-  %6 = getelementptr i8, ptr %0, i64 8
-  %7 = load ptr, ptr %6, align 8
-  store float %5, ptr %7, align 4
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) }
 attributes #1 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

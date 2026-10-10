@@ -13,64 +13,11 @@ define void @execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr writ
   ret void
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
-define void @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr writeonly %3) local_unnamed_addr #0 {
-  %5 = load <16 x float>, ptr %0, align 4
-  %6 = load <16 x float>, ptr %1, align 4
-  %7 = load <16 x float>, ptr %2, align 4
-  %8 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %5, <16 x float> %6, <16 x float> %7)
-  store <16 x float> %8, ptr %3, align 4
-  ret void
-}
-
 ; Function Attrs: mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none)
 declare <16 x float> @llvm.fma.v16f32(<16 x float>, <16 x float>, <16 x float>) #1
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load ptr, ptr %5, align 8
-  %7 = getelementptr i8, ptr %0, i64 16
-  %8 = load ptr, ptr %7, align 8
-  %9 = load ptr, ptr %8, align 8
-  %10 = getelementptr i8, ptr %0, i64 24
-  %11 = load ptr, ptr %10, align 8
-  %12 = load ptr, ptr %11, align 8
-  %13 = load <16 x float>, ptr %3, align 4
-  %14 = load <16 x float>, ptr %6, align 4
-  %15 = load <16 x float>, ptr %9, align 4
-  %16 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %13, <16 x float> %14, <16 x float> %15)
-  store <16 x float> %16, ptr %12, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load ptr, ptr %5, align 8
-  %7 = getelementptr i8, ptr %0, i64 16
-  %8 = load ptr, ptr %7, align 8
-  %9 = load ptr, ptr %8, align 8
-  %10 = getelementptr i8, ptr %0, i64 24
-  %11 = load ptr, ptr %10, align 8
-  %12 = load ptr, ptr %11, align 8
-  %13 = load <16 x float>, ptr %3, align 4
-  %14 = load <16 x float>, ptr %6, align 4
-  %15 = load <16 x float>, ptr %9, align 4
-  %16 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %13, <16 x float> %14, <16 x float> %15)
-  store <16 x float> %16, ptr %12, align 4
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite) }
 attributes #1 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

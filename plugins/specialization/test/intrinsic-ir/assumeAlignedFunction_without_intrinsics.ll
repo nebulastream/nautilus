@@ -9,36 +9,8 @@ define signext i32 @execute(ptr %0) local_unnamed_addr #0 {
   ret i32 %2
 }
 
-define signext i32 @_mlir_ciface_execute(ptr %0) local_unnamed_addr #0 {
-  tail call void @runtimeFunc0(ptr %0, i8 16)
-  %2 = load i32, ptr %0, align 4
-  ret i32 %2
-}
-
 ; Function Attrs: memory(readwrite)
 declare void @runtimeFunc0(ptr, i8 signext) local_unnamed_addr #1
-
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  tail call void @runtimeFunc0(ptr %3, i8 16)
-  %4 = load i32, ptr %3, align 4
-  %5 = getelementptr i8, ptr %0, i64 8
-  %6 = load ptr, ptr %5, align 8
-  store i32 %4, ptr %6, align 4
-  ret void
-}
-
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  tail call void @runtimeFunc0(ptr %3, i8 16)
-  %4 = load i32, ptr %3, align 4
-  %5 = getelementptr i8, ptr %0, i64 8
-  %6 = load ptr, ptr %5, align 8
-  store i32 %4, ptr %6, align 4
-  ret void
-}
 
 attributes #1 = { memory(readwrite) }
 
