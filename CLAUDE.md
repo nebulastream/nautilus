@@ -409,6 +409,7 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
 | `ENABLE_C_BACKEND` | ON | Enable C++ code generation |
 | `ENABLE_BC_BACKEND` | ON | Enable bytecode backend |
 | `ENABLE_ASMJIT_BACKEND` | ON | Enable AsmJit backend |
+| `ENABLE_TAIL_MERGE_GUARD` | ON | Disable Clang tail merging in code that links nautilus (keeps traced call sites apart, issue #487) |
 
 ### Code Formatting
 
