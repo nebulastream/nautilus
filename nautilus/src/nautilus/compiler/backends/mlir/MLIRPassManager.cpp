@@ -37,7 +37,7 @@ std::unique_ptr<mlir::Pass> getMLIROptimizationPass(MLIRPassManager::Optimizatio
 
 int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp>& module,
                                                 const std::vector<OptimizationPass>& optimizationPasses,
-                                                const DebugInfoOptions& debugInfo) {
+                                                const DebugInfoOptions& debugInfo, bool enableInliner) {
 	mlir::PassManager passManager(module->getContext());
 
 	const bool debugEnabled = debugInfo.enableDebug;
@@ -49,7 +49,7 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	// production-optimized code. It also leaves some frames with no source
 	// position at all, which the debug-info passes below must not be handed
 	// -- see NormalizeInlineLocationsPass.
-	const bool skipInliner = debugEnabled;
+	const bool skipInliner = debugEnabled || !enableInliner;
 
 	if (!skipInliner) {
 		if (!optimizationPasses.empty()) {
