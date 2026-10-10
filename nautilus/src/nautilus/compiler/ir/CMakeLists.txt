@@ -2,6 +2,7 @@
 add_subdirectory(blocks)
 add_subdirectory(operations)
 add_subdirectory(passes)
+add_subdirectory(serialization)
 add_subdirectory(util)
 #add_subdirectory(Types)
 
