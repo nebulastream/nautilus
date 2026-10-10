@@ -150,6 +150,8 @@ TEST_CASE("PostRA peephole: pass publishes counters via CompilationStatistics") 
 	}
 }
 
+// The jump rules exist only in the x86-64 peephole pass.
+#if !defined(__aarch64__) && !defined(_M_ARM64)
 TEST_CASE("PostRA peephole: jumps to the next instruction are removed") {
 	// Every loop edge ends in an explicit jmp, and the lowering usually emits
 	// the target block right after it.
@@ -160,6 +162,7 @@ TEST_CASE("PostRA peephole: jumps to the next instruction are removed") {
 	REQUIRE(stats != nullptr);
 	REQUIRE(getCounter(stats, "asmjit.peephole.jumpsRemoved") >= 1);
 }
+#endif
 
 TEST_CASE("PostRA peephole: disabling pass suppresses counter emission") {
 	auto engine = makeAsmJitEngine(false);
