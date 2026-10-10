@@ -1055,8 +1055,8 @@ TEST_CASE("Debug info: the entry block's scope is the function's own, not a vari
 
 	const auto executeId = ir.subprogramId("execute");
 	REQUIRE_FALSE(executeId.empty());
-	// Only execute's own blocks matter: the `_mlir_ciface_` wrapper in the same
-	// module has an entry block too, and counting it would let the bug through.
+	// Only execute's own blocks matter: any other function in the module has
+	// an entry block too, and counting it would let the bug through.
 	auto blockLines = ir.lexicalBlockLinesOf(executeId);
 	REQUIRE(blockLines.size() > 1);
 
@@ -1085,14 +1085,13 @@ TEST_CASE("Debug info: multi-function module emits a DISubprogram + scopes per f
 		REQUIRE(compiled.getFunction<int32_t(int32_t)>("mod_loop")(5) == 10);
 	});
 
-	// One subprogram per user function, ignoring the `_mlir_ciface_*` wrappers
-	// convert-func-to-llvm synthesizes alongside each.
+	// One subprogram per user function.
 	for (const auto& name : {"mod_add", "mod_mul", "mod_loop"}) {
 		INFO("expected a DISubprogram for " << name);
 		REQUIRE_FALSE(ir.subprogramId(name).empty());
 	}
 
-	// Every subprogram, wrappers included, needs a real line or GDB cannot land
+	// Every subprogram needs a real line or GDB cannot land
 	// inside the function on `step`.
 	for (const auto& [id, subprogram] : ir.subprograms) {
 		INFO("DISubprogram !" << id << " (" << subprogram.name << ")");

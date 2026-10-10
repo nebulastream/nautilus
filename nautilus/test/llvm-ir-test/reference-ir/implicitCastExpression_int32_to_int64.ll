@@ -9,36 +9,7 @@ define signext i64 @execute(i32 %0) local_unnamed_addr #0 {
   ret i64 %2
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext i64 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
-  %2 = sext i32 %0 to i64
-  ret i64 %2
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = sext i32 %3 to i64
-  %5 = getelementptr i8, ptr %0, i64 8
-  %6 = load ptr, ptr %5, align 8
-  store i64 %4, ptr %6, align 8
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = sext i32 %3 to i64
-  %5 = getelementptr i8, ptr %0, i64 8
-  %6 = load ptr, ptr %5, align 8
-  store i64 %4, ptr %6, align 8
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
-attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

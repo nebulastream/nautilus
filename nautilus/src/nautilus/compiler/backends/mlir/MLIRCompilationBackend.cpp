@@ -180,7 +180,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	    debugInfo.perfEmitDebugInfo, debugInfo.perfEmitUnwindInfo, debugInfo.perfRegionSymbols,
 	    debugInfo.enableSampleSymbols, ir->getId());
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
-		auto result = engine->lookupPacked("execute");
+		auto result = engine->lookup("execute");
 		if (!result) {
 			llvm::errs() << "Could not compile function" << result.takeError() << "\n";
 		}

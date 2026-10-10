@@ -78,7 +78,6 @@ public:
 	void registerSymbols(llvm::function_ref<llvm::orc::SymbolMap(llvm::orc::MangleAndInterner)> symbolMapFn);
 
 	llvm::Expected<void*> lookup(llvm::StringRef name);
-	llvm::Expected<void (*)(void**)> lookupPacked(llvm::StringRef name);
 
 	// Escape hatch. Upstream mlir::ExecutionEngine refuses to expose its
 	// LLJIT; the reason for this class's existence is that it is public here.

@@ -26,11 +26,6 @@ define noundef signext i32 @execute() local_unnamed_addr #0 personality ptr @__g
   resume { ptr, i32 } %5
 }
 
-define noundef signext i32 @_mlir_ciface_execute() local_unnamed_addr #0 personality ptr @__gxx_personality_v0 {
-  %1 = tail call i32 @execute()
-  ret i32 0
-}
-
 ; Function Attrs: nounwind memory(readwrite)
 declare void @runtimeFunc0(ptr) local_unnamed_addr #1
 
@@ -44,20 +39,6 @@ declare void @runtimeFunc3(ptr) local_unnamed_addr #2
 declare void @runtimeFunc1(ptr) local_unnamed_addr #1
 
 declare i32 @__gxx_personality_v0(...)
-
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = tail call i32 @execute()
-  %3 = load ptr, ptr %0, align 8
-  store i32 0, ptr %3, align 4
-  ret void
-}
-
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 personality ptr @__gxx_personality_v0 {
-  %2 = tail call i32 @execute()
-  %3 = load ptr, ptr %0, align 8
-  store i32 0, ptr %3, align 4
-  ret void
-}
 
 attributes #1 = { nounwind memory(readwrite) }
 attributes #2 = { memory(readwrite) }
