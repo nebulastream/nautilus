@@ -223,6 +223,58 @@ standard library distinguishes them.
 
 ---
 
+## `algorithm.h` — Sorting and selection (`<algorithm>`)
+
+Header-only wrappers for the sorting and selection algorithms. Ranges are
+passed as `val<T*>` pointers, and each call runs the whole std:: algorithm as
+one runtime call through `invoke(...)`:
+
+- Sorting: `sort`, `stable_sort`, `partial_sort`, `partial_sort_copy`
+- Selection: `nth_element`, `min_element`, `max_element`
+- Queries: `is_sorted`, `is_sorted_until`
+
+A custom ordering is passed as the `Compare` template argument (default
+`std::less<>`). The comparator is instantiated inside the runtime function, so
+it must be a stateless, default-constructible type:
+
+```cpp
+#include <nautilus/std/algorithm.h>
+
+val<double> median(val<double*> values, val<size_t> size) {
+	auto mid = values + size / val<size_t>(2);
+	nautilus::nth_element(values, mid, values + size);
+	return *mid;
+}
+
+void sortDescending(val<int32_t*> values, val<size_t> size) {
+	nautilus::sort<std::greater<>>(values, values + size);
+}
+```
+
+For a `val<std::vector<T>>`, pass `vec.data()` and `vec.data() + vec.size()`.
+
+The runtime call is marked `noexcept` (and gets the `nounwind` attribute) when
+neither the comparator nor moving elements can throw. The standard ordering
+function objects (`std::less`, `std::greater`, `std::less_equal`,
+`std::greater_equal`) count as non-throwing for arithmetic and pointer
+elements, even in their typed form (e.g. `std::less<int>`), which is not
+declared `noexcept`.
+
+The runtime functions are annotated as inlining candidates for the
+[`nautilus-inlining`](functions.md#nautilus_inline-macro) plugin. To inline
+the algorithms into the generated code, compile the translation unit that uses
+them with `nautilus_inline(<target>)`, include `<nautilus/inline.hpp>`, link
+`nautilus-inlining` and enable `mlir.inline_invoke_calls`:
+
+```cmake
+target_link_libraries(my_query_engine PRIVATE nautilus nautilus-std nautilus-inlining)
+nautilus_inline(my_query_engine)
+```
+
+Otherwise, each algorithm is a regular call into the host binary.
+
+---
+
 ## `string.h` — `val<std::basic_string>`
 
 A class specialization `val<std::basic_string<CharT, Traits>>` that wraps a
@@ -326,7 +378,10 @@ from inside a traced function for debugging or simple output.
 - When `ENABLE_TESTS=ON`, the plugin's own test suite under `plugins/std/test/`
   is added. It contains:
   - `STDProxyTest.cpp` — exercises the C-stdlib wrappers
-  - `StringTest.cpp`, `VectorTest.cpp`, `OstreamTest.cpp`, `AtomicTest.cpp`
+  - `StringTest.cpp`, `VectorTest.cpp`, `OstreamTest.cpp`, `AtomicTest.cpp`,
+    `AlgorithmTest.cpp`
+  - `AlgorithmInliningTest.cpp` (separate `nautilus-std-inlining-tests`
+    executable, built with the inlining plugin and the MLIR backend)
   - `BitIntrinsicExecutionTest.cpp` and `MemoryIntrinsicExecutionTest.cpp`
   - `LLVMIRBitIntrinsicTest.cpp` and `LLVMIRCMathIntrinsicTest.cpp`, which
     diff generated LLVM IR against the reference files in
