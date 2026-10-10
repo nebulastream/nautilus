@@ -11,48 +11,8 @@ define signext i32 @execute(ptr %0, ptr %1) local_unnamed_addr #0 {
   ret i32 %5
 }
 
-; Function Attrs: nounwind
-define signext i32 @_mlir_ciface_execute(ptr %0, ptr %1) local_unnamed_addr #0 {
-  %3 = tail call i32 @runtimeFunc0(ptr %0)
-  %4 = tail call i32 @runtimeFunc0(ptr %1)
-  %5 = add i32 %4, %3
-  ret i32 %5
-}
-
 ; Function Attrs: nounwind memory(readwrite)
 declare i32 @runtimeFunc0(ptr) local_unnamed_addr #1
-
-; Function Attrs: nounwind
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load ptr, ptr %5, align 8
-  %7 = tail call i32 @runtimeFunc0(ptr %3)
-  %8 = tail call i32 @runtimeFunc0(ptr %6)
-  %9 = add i32 %8, %7
-  %10 = getelementptr i8, ptr %0, i64 16
-  %11 = load ptr, ptr %10, align 8
-  store i32 %9, ptr %11, align 4
-  ret void
-}
-
-; Function Attrs: nounwind
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load ptr, ptr %5, align 8
-  %7 = tail call i32 @runtimeFunc0(ptr %3)
-  %8 = tail call i32 @runtimeFunc0(ptr %6)
-  %9 = add i32 %8, %7
-  %10 = getelementptr i8, ptr %0, i64 16
-  %11 = load ptr, ptr %10, align 8
-  store i32 %9, ptr %11, align 4
-  ret void
-}
 
 attributes #0 = { nounwind }
 attributes #1 = { nounwind memory(readwrite) }

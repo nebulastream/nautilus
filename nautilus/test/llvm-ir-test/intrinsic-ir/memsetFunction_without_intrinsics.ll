@@ -9,48 +9,8 @@ define ptr @execute(ptr %0, i32 %1, i64 %2) local_unnamed_addr #0 {
   ret ptr %4
 }
 
-; Function Attrs: nounwind
-define ptr @_mlir_ciface_execute(ptr %0, i32 %1, i64 %2) local_unnamed_addr #0 {
-  %4 = tail call ptr @runtimeFunc0(ptr %0, i32 %1, i64 %2)
-  ret ptr %4
-}
-
 ; Function Attrs: nounwind memory(readwrite)
 declare ptr @runtimeFunc0(ptr, i32, i64) local_unnamed_addr #1
-
-; Function Attrs: nounwind
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load i32, ptr %5, align 4
-  %7 = getelementptr i8, ptr %0, i64 16
-  %8 = load ptr, ptr %7, align 8
-  %9 = load i64, ptr %8, align 8
-  %10 = tail call ptr @runtimeFunc0(ptr %3, i32 %6, i64 %9)
-  %11 = getelementptr i8, ptr %0, i64 24
-  %12 = load ptr, ptr %11, align 8
-  store ptr %10, ptr %12, align 8
-  ret void
-}
-
-; Function Attrs: nounwind
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load i32, ptr %5, align 4
-  %7 = getelementptr i8, ptr %0, i64 16
-  %8 = load ptr, ptr %7, align 8
-  %9 = load i64, ptr %8, align 8
-  %10 = tail call ptr @runtimeFunc0(ptr %3, i32 %6, i64 %9)
-  %11 = getelementptr i8, ptr %0, i64 24
-  %12 = load ptr, ptr %11, align 8
-  store ptr %10, ptr %12, align 8
-  ret void
-}
 
 attributes #0 = { nounwind }
 attributes #1 = { nounwind memory(readwrite) }

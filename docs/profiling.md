@@ -886,8 +886,7 @@ names and manages generated code, not of either profiler.
 Every single-function registration lowers to a function named literally
 `execute`, and `NautilusFunction` callees get their own name but are only unique
 within one module's function table. Several compiled modules live in one process
-therefore contribute several symbols all called `execute`, plus
-`_mlir_execute`-style packed-argument wrapper noise.
+therefore contribute several symbols all called `execute`.
 
 Splitting the emission/display name from the lookup key that `Engine.hpp` and
 `TieredCompiler.cpp` depend on is a change to the engine's naming, not to the

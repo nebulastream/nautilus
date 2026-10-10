@@ -17,60 +17,8 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   br label %3
 }
 
-; Function Attrs: nounwind
-define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
-  %2 = icmp eq i32 %0, 1
-  br i1 %2, label %execute.exit, label %3, !prof !1
-
-3:                                                ; preds = %1
-  %4 = tail call i32 @runtimeFunc0(i32 %0)
-  br label %execute.exit
-
-execute.exit:                                     ; preds = %1, %3
-  %5 = phi i32 [ %4, %3 ], [ 42, %1 ]
-  ret i32 %5
-}
-
 ; Function Attrs: nounwind memory(readwrite)
 declare i32 @runtimeFunc0(i32) local_unnamed_addr #1
-
-; Function Attrs: nounwind
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = icmp eq i32 %3, 1
-  br i1 %4, label %execute.exit, label %5, !prof !1
-
-5:                                                ; preds = %1
-  %6 = tail call i32 @runtimeFunc0(i32 %3)
-  br label %execute.exit
-
-execute.exit:                                     ; preds = %1, %5
-  %7 = phi i32 [ %6, %5 ], [ 42, %1 ]
-  %8 = getelementptr i8, ptr %0, i64 8
-  %9 = load ptr, ptr %8, align 8
-  store i32 %7, ptr %9, align 4
-  ret void
-}
-
-; Function Attrs: nounwind
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = icmp eq i32 %3, 1
-  br i1 %4, label %_mlir_ciface_execute.exit, label %5, !prof !1
-
-5:                                                ; preds = %1
-  %6 = tail call i32 @runtimeFunc0(i32 %3)
-  br label %_mlir_ciface_execute.exit
-
-_mlir_ciface_execute.exit:                        ; preds = %1, %5
-  %7 = phi i32 [ %6, %5 ], [ 42, %1 ]
-  %8 = getelementptr i8, ptr %0, i64 8
-  %9 = load ptr, ptr %8, align 8
-  store i32 %7, ptr %9, align 4
-  ret void
-}
 
 attributes #0 = { nounwind }
 attributes #1 = { nounwind memory(readwrite) }

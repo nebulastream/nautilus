@@ -22,75 +22,7 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   br label %5
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
-  %2 = icmp sgt i32 %0, 0
-  br i1 %2, label %3, label %execute.exit
-
-3:                                                ; preds = %1
-  %4 = icmp samesign ult i32 %0, 5
-  br i1 %4, label %execute.exit, label %5
-
-5:                                                ; preds = %3
-  %6 = icmp eq i32 %0, 6
-  %spec.select.i = select i1 %6, i32 3, i32 2
-  br label %execute.exit
-
-execute.exit:                                     ; preds = %1, %3, %5
-  %7 = phi i32 [ -1, %1 ], [ %spec.select.i, %5 ], [ 1, %3 ]
-  ret i32 %7
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = icmp sgt i32 %3, 0
-  br i1 %4, label %5, label %execute.exit
-
-5:                                                ; preds = %1
-  %6 = icmp samesign ult i32 %3, 5
-  br i1 %6, label %execute.exit, label %7
-
-7:                                                ; preds = %5
-  %8 = icmp eq i32 %3, 6
-  %spec.select.i = select i1 %8, i32 3, i32 2
-  br label %execute.exit
-
-execute.exit:                                     ; preds = %1, %5, %7
-  %9 = phi i32 [ -1, %1 ], [ %spec.select.i, %7 ], [ 1, %5 ]
-  %10 = getelementptr i8, ptr %0, i64 8
-  %11 = load ptr, ptr %10, align 8
-  store i32 %9, ptr %11, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = icmp sgt i32 %3, 0
-  br i1 %4, label %5, label %_mlir_ciface_execute.exit
-
-5:                                                ; preds = %1
-  %6 = icmp samesign ult i32 %3, 5
-  br i1 %6, label %_mlir_ciface_execute.exit, label %7
-
-7:                                                ; preds = %5
-  %8 = icmp eq i32 %3, 6
-  %spec.select.i.i = select i1 %8, i32 3, i32 2
-  br label %_mlir_ciface_execute.exit
-
-_mlir_ciface_execute.exit:                        ; preds = %1, %5, %7
-  %9 = phi i32 [ -1, %1 ], [ %spec.select.i.i, %7 ], [ 1, %5 ]
-  %10 = getelementptr i8, ptr %0, i64 8
-  %11 = load ptr, ptr %10, align 8
-  store i32 %9, ptr %11, align 4
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
-attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

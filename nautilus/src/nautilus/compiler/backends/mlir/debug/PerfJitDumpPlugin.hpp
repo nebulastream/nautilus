@@ -18,10 +18,9 @@ namespace nautilus::compiler::mlir {
 //    to the next load record, and drops it. PerfSupportPlugin collects a whole
 //    object into one PerfJITRecordBatch of two separate vectors, and
 //    JITLoaderPerf writes every debug record before every code record -- so
-//    with more than one function in the object (every Nautilus compile, since
-//    even a trivial kernel emits `execute` plus its `_mlir_ciface_*`
-//    trampolines) each load record receives the wrong function's line table,
-//    or none. This plugin emits one batch per code range, so each debug record
+//    with more than one function in the object (a kernel that calls a
+//    Nautilus function, or a module) each load record receives the wrong
+//    function's line table, or none. This plugin emits one batch per code range, so each debug record
 //    is immediately followed by the load record it describes.
 //
 // 2. region() visibility. The jitdump format has no scope tree -- its debug
