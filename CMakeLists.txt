@@ -44,6 +44,12 @@ option(ENABLE_INLINING_PLUGIN "Enable the LLVM function inlining plugin" ON)
 option(ENABLE_GPU_PLUGIN "Enable the GPU plugin (CUDA + Metal backends)" OFF)
 option(ENABLE_BUILTIN_PLUGIN "Enable the compiler builtins plugin (memory prefetch)" ON)
 option(ENABLE_PROFILING_PLUGIN "Enable the in-process hardware performance monitoring plugin (perf counters + sampling)" ON)
+cmake_dependent_option(ENABLE_C_API_SHARED_LIBRARY "Build libnautilus-c, a shared library that exports only the C API (nautilus/c/*.h), for bindings such as Rust or Python" OFF "ENABLE_TRACING" OFF)
+if (ENABLE_C_API_SHARED_LIBRARY)
+    # Everything linked into the shared library must be position independent,
+    # the bundled third-party libraries included.
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif ()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)

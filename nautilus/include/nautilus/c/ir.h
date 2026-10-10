@@ -1,438 +1,479 @@
 /*
- * C API for the Nautilus IR.
+ * Nautilus C API: the IR.
  *
- * Builds, inspects, verifies and compiles Nautilus IR graphs from C (or any
- * language with a C FFI) without going through the C++ tracing frontend.
+ * Builds, inspects, verifies and compiles Nautilus IR graphs without the C++
+ * tracing frontend. See nautilus/c/common.h for the conventions every
+ * function here follows (errors, strings, arrays, thread safety) and
+ * docs/c-api.md for a guide.
  *
- * Ownership model
- * ---------------
- * - A NautilusIRGraphRef owns every function, block and value created in it.
- *   Function, block and value refs are borrowed pointers into the graph and
- *   stay valid until the graph is disposed (or, for inspection refs, until a
- *   compile runs the IR passes, which may rewrite the graph in place).
- * - A NautilusIRFunctionBuilderRef is owned by its graph until it is finished
- *   with nautilus_ir_function_builder_finish(), which consumes it.
- * - A NautilusIRExecutableRef is independent of the graph that produced it and
- *   must be released with nautilus_ir_executable_dispose(). Function pointers
- *   obtained from it are valid only while it is alive.
- * - Strings returned as `char*` are heap-allocated and must be released with
- *   nautilus_ir_string_dispose(). Strings returned as `const char*` are
- *   borrowed from the graph.
- *
- * Errors
- * ------
- * Functions that can fail return NULL, NAUTILUS_IR_INVALID_CALLEE or a
- * non-zero status, and record a message retrievable on the same thread with
- * nautilus_ir_get_last_error().
+ * Ownership
+ * ---------
+ * - NautilusIRGraphRef is owned by the caller. It owns every function, block
+ *   and value in it; their refs are borrowed from the graph and valid until it
+ *   is disposed. Optimizing or compiling rewrites the graph in place, after
+ *   which refs taken before may dangle: re-read them from the graph.
+ * - NautilusIRFunctionBuilderRef is owned by the caller until
+ *   nautilus_ir_function_builder_finish() consumes it (on success and on
+ *   failure); nautilus_ir_function_builder_dispose() abandons it instead.
  *
  * Example: int64_t add(int64_t a, int64_t b) { return a + b; }
  *
- *     NautilusIRGraphRef g = nautilus_ir_graph_create("example");
- *     NautilusIRFunctionBuilderRef fb = nautilus_ir_function_builder_create(g, "add", NAUTILUS_IR_TYPE_I64);
+ *     NautilusIRGraphRef g = nautilus_ir_graph_create(nautilus_string_ref("example"));
+ *     NautilusIRFunctionBuilderRef fb =
+ *         nautilus_ir_function_builder_create(g, nautilus_string_ref("add"), NAUTILUS_IR_TYPE_I64);
  *     NautilusIRType params[] = {NAUTILUS_IR_TYPE_I64, NAUTILUS_IR_TYPE_I64};
  *     NautilusIRBlockRef entry = nautilus_ir_function_builder_add_block(fb, params, 2);
- *     NautilusIRValueRef sum = nautilus_ir_build_binary(fb, entry, NAUTILUS_IR_BINARY_ADD,
- *                                                       nautilus_ir_block_get_argument(entry, 0),
- *                                                       nautilus_ir_block_get_argument(entry, 1));
- *     nautilus_ir_build_return(fb, entry, sum);
+ *     NautilusIRValueRef a = nautilus_ir_block_get_argument(entry, 0);
+ *     NautilusIRValueRef b = nautilus_ir_block_get_argument(entry, 1);
+ *     nautilus_ir_build_return(fb, entry, nautilus_ir_build_binary(fb, entry, NAUTILUS_IR_BINARY_ADD, a, b));
  *     nautilus_ir_function_builder_finish(fb);
  *
- *     NautilusIRExecutableRef exe = nautilus_ir_graph_compile(g, "bc", NULL);
- *     int64_t (*fn)(int64_t, int64_t) = (int64_t (*)(int64_t, int64_t)) nautilus_ir_executable_get_function(exe,
- * "add");
- *     ...
- *     nautilus_ir_executable_dispose(exe);
+ *     NautilusExecutableRef exe = nautilus_ir_graph_compile(g, nautilus_string_ref("bc"), NULL);
+ *     void* fn = NULL;
+ *     nautilus_executable_get_function(exe, nautilus_string_ref("add"), &fn);
+ *     ((int64_t (*)(int64_t, int64_t)) fn)(40, 2);
+ *     nautilus_executable_dispose(exe);
  *     nautilus_ir_graph_dispose(g);
  */
 #ifndef NAUTILUS_C_IR_H
 #define NAUTILUS_C_IR_H
 
-#include <stddef.h>
-#include <stdint.h>
+#include "nautilus/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* ── Opaque handles ─────────────────────────────────────────────────────── */
+/* ── Handles ────────────────────────────────────────────────────────────── */
 
 typedef struct NautilusIROpaqueGraph* NautilusIRGraphRef;
 typedef struct NautilusIROpaqueFunctionBuilder* NautilusIRFunctionBuilderRef;
 typedef struct NautilusIROpaqueFunction* NautilusIRFunctionRef;
 typedef struct NautilusIROpaqueBlock* NautilusIRBlockRef;
-/* Any operation. Operations that produce a result (and block arguments) are
+/* Any operation. Operations that produce a result, and block arguments, are
  * the SSA values of the IR, so a value ref doubles as an operation ref. */
 typedef struct NautilusIROpaqueValue* NautilusIRValueRef;
-typedef struct NautilusIROpaqueOptions* NautilusIROptionsRef;
-typedef struct NautilusIROpaqueExecutable* NautilusIRExecutableRef;
 
-/* Entry in the graph's function table; the target of a call. */
+/* Entry in a graph's function table: the target of a call. */
 typedef uint32_t NautilusIRCalleeId;
 #define NAUTILUS_IR_INVALID_CALLEE ((NautilusIRCalleeId) 0xFFFFFFFFu)
 
 /* ── Enumerations ───────────────────────────────────────────────────────── */
 
-typedef enum {
+typedef uint32_t NautilusIRType;
+enum {
 	NAUTILUS_IR_TYPE_VOID = 0,
-	NAUTILUS_IR_TYPE_BOOL,
-	NAUTILUS_IR_TYPE_I8,
-	NAUTILUS_IR_TYPE_I16,
-	NAUTILUS_IR_TYPE_I32,
-	NAUTILUS_IR_TYPE_I64,
-	NAUTILUS_IR_TYPE_UI8,
-	NAUTILUS_IR_TYPE_UI16,
-	NAUTILUS_IR_TYPE_UI32,
-	NAUTILUS_IR_TYPE_UI64,
-	NAUTILUS_IR_TYPE_F32,
-	NAUTILUS_IR_TYPE_F64,
-	NAUTILUS_IR_TYPE_PTR,
-} NautilusIRType;
+	NAUTILUS_IR_TYPE_BOOL = 1,
+	NAUTILUS_IR_TYPE_I8 = 2,
+	NAUTILUS_IR_TYPE_I16 = 3,
+	NAUTILUS_IR_TYPE_I32 = 4,
+	NAUTILUS_IR_TYPE_I64 = 5,
+	NAUTILUS_IR_TYPE_UI8 = 6,
+	NAUTILUS_IR_TYPE_UI16 = 7,
+	NAUTILUS_IR_TYPE_UI32 = 8,
+	NAUTILUS_IR_TYPE_UI64 = 9,
+	NAUTILUS_IR_TYPE_F32 = 10,
+	NAUTILUS_IR_TYPE_F64 = 11,
+	NAUTILUS_IR_TYPE_PTR = 12,
+};
 
-typedef enum {
-	NAUTILUS_IR_OP_ADD = 0,
-	NAUTILUS_IR_OP_AND,
-	NAUTILUS_IR_OP_NOT,
-	NAUTILUS_IR_OP_BLOCK_ARGUMENT,
-	NAUTILUS_IR_OP_BLOCK_INVOCATION,
-	NAUTILUS_IR_OP_BRANCH,
-	NAUTILUS_IR_OP_CONST_INT,
-	NAUTILUS_IR_OP_CONST_BOOL,
-	NAUTILUS_IR_OP_CONST_PTR,
-	NAUTILUS_IR_OP_CONST_FLOAT,
-	NAUTILUS_IR_OP_CAST,
-	NAUTILUS_IR_OP_COMPARE,
-	NAUTILUS_IR_OP_DIV,
-	NAUTILUS_IR_OP_MOD,
-	NAUTILUS_IR_OP_FUNCTION,
-	NAUTILUS_IR_OP_IF,
-	NAUTILUS_IR_OP_LOAD,
-	NAUTILUS_IR_OP_MUL,
-	NAUTILUS_IR_OP_MLIR_YIELD,
-	NAUTILUS_IR_OP_NEGATE,
-	NAUTILUS_IR_OP_OR,
-	NAUTILUS_IR_OP_CALL,
-	NAUTILUS_IR_OP_INDIRECT_CALL,
-	NAUTILUS_IR_OP_RETURN,
-	NAUTILUS_IR_OP_SELECT,
-	NAUTILUS_IR_OP_STORE,
-	NAUTILUS_IR_OP_SUB,
-	NAUTILUS_IR_OP_BITWISE,
-	NAUTILUS_IR_OP_SHIFT,
-	NAUTILUS_IR_OP_ALLOCA,
-	NAUTILUS_IR_OP_FUNCTION_ADDRESS_OF,
-} NautilusIROpKind;
+typedef uint32_t NautilusIROpKind;
+enum {
+	/* An operation kind this version of the API does not know yet. */
+	NAUTILUS_IR_OP_UNKNOWN = 0,
+	NAUTILUS_IR_OP_BLOCK_ARGUMENT = 1,
+	NAUTILUS_IR_OP_CONST_INT = 2,
+	NAUTILUS_IR_OP_CONST_FLOAT = 3,
+	NAUTILUS_IR_OP_CONST_BOOL = 4,
+	NAUTILUS_IR_OP_CONST_PTR = 5,
+	NAUTILUS_IR_OP_ADD = 6,
+	NAUTILUS_IR_OP_SUB = 7,
+	NAUTILUS_IR_OP_MUL = 8,
+	NAUTILUS_IR_OP_DIV = 9,
+	NAUTILUS_IR_OP_MOD = 10,
+	NAUTILUS_IR_OP_LOGICAL_AND = 11,
+	NAUTILUS_IR_OP_LOGICAL_OR = 12,
+	NAUTILUS_IR_OP_NOT = 13,
+	/* Bitwise and/or/xor; see nautilus_ir_value_get_bitwise_kind(). */
+	NAUTILUS_IR_OP_BITWISE = 14,
+	/* Shift left/right; see nautilus_ir_value_get_shift_kind(). */
+	NAUTILUS_IR_OP_SHIFT = 15,
+	NAUTILUS_IR_OP_NEGATE = 16,
+	NAUTILUS_IR_OP_COMPARE = 17,
+	NAUTILUS_IR_OP_CAST = 18,
+	NAUTILUS_IR_OP_SELECT = 19,
+	NAUTILUS_IR_OP_LOAD = 20,
+	NAUTILUS_IR_OP_STORE = 21,
+	NAUTILUS_IR_OP_ALLOCA = 22,
+	NAUTILUS_IR_OP_CALL = 23,
+	NAUTILUS_IR_OP_INDIRECT_CALL = 24,
+	NAUTILUS_IR_OP_FUNCTION_ADDRESS = 25,
+	NAUTILUS_IR_OP_BRANCH = 26,
+	NAUTILUS_IR_OP_IF = 27,
+	NAUTILUS_IR_OP_RETURN = 28,
+};
 
-/* Two-operand operations accepted by nautilus_ir_build_binary(). */
-typedef enum {
+/* Two-operand operations built by nautilus_ir_build_binary(). */
+typedef uint32_t NautilusIRBinaryOp;
+enum {
 	NAUTILUS_IR_BINARY_ADD = 0,
-	NAUTILUS_IR_BINARY_SUB,
-	NAUTILUS_IR_BINARY_MUL,
-	NAUTILUS_IR_BINARY_DIV,
-	NAUTILUS_IR_BINARY_MOD,
-	/* Logical and/or on bool operands; the result is bool. */
-	NAUTILUS_IR_BINARY_LOGICAL_AND,
-	NAUTILUS_IR_BINARY_LOGICAL_OR,
-	/* Bitwise and/or/xor on integer operands. */
-	NAUTILUS_IR_BINARY_BITWISE_AND,
-	NAUTILUS_IR_BINARY_BITWISE_OR,
-	NAUTILUS_IR_BINARY_BITWISE_XOR,
-	NAUTILUS_IR_BINARY_SHIFT_LEFT,
-	NAUTILUS_IR_BINARY_SHIFT_RIGHT,
-} NautilusIRBinaryOp;
+	NAUTILUS_IR_BINARY_SUB = 1,
+	NAUTILUS_IR_BINARY_MUL = 2,
+	NAUTILUS_IR_BINARY_DIV = 3,
+	NAUTILUS_IR_BINARY_MOD = 4,
+	/* Logical and/or of bool operands; the result is bool. */
+	NAUTILUS_IR_BINARY_LOGICAL_AND = 5,
+	NAUTILUS_IR_BINARY_LOGICAL_OR = 6,
+	/* Bitwise operations and shifts of integer operands. */
+	NAUTILUS_IR_BINARY_BITWISE_AND = 7,
+	NAUTILUS_IR_BINARY_BITWISE_OR = 8,
+	NAUTILUS_IR_BINARY_BITWISE_XOR = 9,
+	NAUTILUS_IR_BINARY_SHIFT_LEFT = 10,
+	NAUTILUS_IR_BINARY_SHIFT_RIGHT = 11,
+};
 
-typedef enum {
+typedef uint32_t NautilusIRComparator;
+enum {
 	NAUTILUS_IR_CMP_EQ = 0,
-	NAUTILUS_IR_CMP_NE,
-	NAUTILUS_IR_CMP_LT,
-	NAUTILUS_IR_CMP_LE,
-	NAUTILUS_IR_CMP_GT,
-	NAUTILUS_IR_CMP_GE,
-} NautilusIRComparator;
+	NAUTILUS_IR_CMP_NE = 1,
+	NAUTILUS_IR_CMP_LT = 2,
+	NAUTILUS_IR_CMP_LE = 3,
+	NAUTILUS_IR_CMP_GT = 4,
+	NAUTILUS_IR_CMP_GE = 5,
+};
 
-typedef enum {
+typedef uint32_t NautilusIRBitwiseKind;
+enum {
 	NAUTILUS_IR_BITWISE_AND = 0,
-	NAUTILUS_IR_BITWISE_OR,
-	NAUTILUS_IR_BITWISE_XOR,
-} NautilusIRBitwiseKind;
+	NAUTILUS_IR_BITWISE_OR = 1,
+	NAUTILUS_IR_BITWISE_XOR = 2,
+};
 
-typedef enum {
+typedef uint32_t NautilusIRShiftKind;
+enum {
 	NAUTILUS_IR_SHIFT_LEFT = 0,
-	NAUTILUS_IR_SHIFT_RIGHT,
-} NautilusIRShiftKind;
+	NAUTILUS_IR_SHIFT_RIGHT = 1,
+};
 
-typedef enum {
+typedef uint32_t NautilusIRLinkage;
+enum {
+	/* Defined in the graph. */
 	NAUTILUS_IR_LINKAGE_INTERNAL = 0,
-	NAUTILUS_IR_LINKAGE_EXTERNAL,
-	NAUTILUS_IR_LINKAGE_INTRINSIC,
-} NautilusIRLinkage;
+	/* Native code called through its address. */
+	NAUTILUS_IR_LINKAGE_EXTERNAL = 1,
+	/* Native code a backend may replace with instructions. */
+	NAUTILUS_IR_LINKAGE_INTRINSIC = 2,
+};
 
-typedef enum {
+typedef uint32_t NautilusIRModRef;
+enum {
 	NAUTILUS_IR_MOD_REF_NONE = 0,
-	NAUTILUS_IR_MOD_REF_REF = 1,
-	NAUTILUS_IR_MOD_REF_MOD = 2,
-	NAUTILUS_IR_MOD_REF_MOD_REF = 3,
-} NautilusIRModRef;
+	NAUTILUS_IR_MOD_REF_READS = 1,
+	NAUTILUS_IR_MOD_REF_WRITES = 2,
+	NAUTILUS_IR_MOD_REF_READS_WRITES = 3,
+};
 
-/* What a callee may do; lets the IR passes and backends drop or reorder calls.
- * Start from nautilus_ir_function_attributes_default() (the pessimistic
- * "may do anything" set) and relax only what is known to hold. */
+typedef uint32_t NautilusIRFunctionFlags;
+enum {
+	/* Every call returns (or has undefined behavior). */
+	NAUTILUS_IR_FUNCTION_WILL_RETURN = 1u << 0,
+	/* The function never throws. Native functions called from compiled code
+	 * must not throw C++ exceptions anyway; setting this lets the passes drop
+	 * or move calls that are otherwise pure. */
+	NAUTILUS_IR_FUNCTION_NO_UNWIND = 1u << 1,
+};
+
+/* What a callee may do, so the IR passes and backends can drop or reorder
+ * calls. nautilus_ir_function_attributes_default() is the pessimistic
+ * "may do anything" set; relax only what is known to hold. */
 typedef struct {
 	NautilusIRModRef mod_ref;
-	int will_return;
-	int no_unwind;
+	NautilusIRFunctionFlags flags;
 } NautilusIRFunctionAttributes;
 
-/* How much of the IR optimization pipeline runs before the backend. */
-typedef enum {
+typedef uint32_t NautilusIROptimizationLevel;
+enum {
+	/* Whatever the backend compiling the graph asks for. */
+	NAUTILUS_IR_OPTIMIZE_BACKEND_DEFAULT = 0,
 	/* Only the analyses every backend needs. */
-	NAUTILUS_IR_OPTIMIZE_NONE = 0,
+	NAUTILUS_IR_OPTIMIZE_NONE = 1,
 	/* Block-argument pruning only. */
-	NAUTILUS_IR_OPTIMIZE_ARGUMENT_PRUNING,
+	NAUTILUS_IR_OPTIMIZE_ARGUMENT_PRUNING = 2,
 	/* Every optimization pass. */
-	NAUTILUS_IR_OPTIMIZE_FULL,
-	/* Whatever the selected backend asks for. */
-	NAUTILUS_IR_OPTIMIZE_BACKEND_DEFAULT,
-} NautilusIROptimizationLevel;
+	NAUTILUS_IR_OPTIMIZE_FULL = 3,
+};
 
-/* ── Errors and strings ─────────────────────────────────────────────────── */
+typedef struct {
+	size_t size;
+	size_t align;
+} NautilusIRStackSlot;
 
-/* Message of the last failed call on this thread, or NULL. Borrowed; valid
- * until the next failing call on this thread. */
-const char* nautilus_ir_get_last_error(void);
+/* One entry of a graph's function table. */
+typedef struct {
+	NautilusIRLinkage linkage;
+	/* The identifier backends emit the callee under. Borrowed from the graph. */
+	NautilusStringRef name;
+	/* Native address of an external or intrinsic callee, NULL for an internal one. */
+	void* address;
+	/* Definition of an internal callee; NULL for native callees and for an
+	 * internal one whose builder has not been finished. */
+	NautilusIRFunctionRef function;
+} NautilusIRCalleeInfo;
 
-void nautilus_ir_string_dispose(char* str);
+/* Name of @p type ("i64", "ptr", ...), or an empty string if it is invalid. */
+NAUTILUS_C_API NautilusStringRef nautilus_ir_type_name(NautilusIRType type);
 
-const char* nautilus_ir_type_name(NautilusIRType type);
-
-NautilusIRFunctionAttributes nautilus_ir_function_attributes_default(void);
+NAUTILUS_C_API NautilusIRFunctionAttributes nautilus_ir_function_attributes_default(void);
 
 /* ── Graphs ─────────────────────────────────────────────────────────────── */
 
-NautilusIRGraphRef nautilus_ir_graph_create(const char* id);
+NAUTILUS_C_API NautilusIRGraphRef nautilus_ir_graph_create(NautilusStringRef id);
 
-/* Releases the graph, every function, block and value in it, and every
- * builder that has not been finished. */
-void nautilus_ir_graph_dispose(NautilusIRGraphRef graph);
+/* Releases the graph, everything in it, and every builder not yet finished
+ * or disposed (whose refs then dangle). */
+NAUTILUS_C_API void nautilus_ir_graph_dispose(NautilusIRGraphRef graph);
 
-/* Renders the graph in the textual form used by Nautilus' IR dumps. */
-char* nautilus_ir_graph_to_string(NautilusIRGraphRef graph);
+/* Renders the graph in the textual form of Nautilus' IR dumps. */
+NAUTILUS_C_API NautilusStatus nautilus_ir_graph_to_string(NautilusIRGraphRef graph, NautilusString* out);
 
-/* Runs the IR verifier. Returns 0 when the graph is well-formed; otherwise
- * returns non-zero and, if @p error_message is non-NULL, stores a
- * newline-separated list of problems in it (dispose with
- * nautilus_ir_string_dispose()). */
-int nautilus_ir_graph_verify(NautilusIRGraphRef graph, char** error_message);
+/* Runs the IR verifier. Returns NAUTILUS_OK for a well-formed graph, or
+ * NAUTILUS_ERROR_VERIFICATION_FAILED and, if @p diagnostics is not NULL,
+ * every problem found, one per line. */
+NAUTILUS_C_API NautilusStatus nautilus_ir_graph_verify(NautilusIRGraphRef graph, NautilusString* diagnostics);
 
-size_t nautilus_ir_graph_get_function_count(NautilusIRGraphRef graph);
-NautilusIRFunctionRef nautilus_ir_graph_get_function(NautilusIRGraphRef graph, size_t index);
-/* NULL when no finished function has that name. */
-NautilusIRFunctionRef nautilus_ir_graph_get_function_by_name(NautilusIRGraphRef graph, const char* name);
+/* Finished functions, in the order they were finished. Copy-out accessor. */
+NAUTILUS_C_API size_t nautilus_ir_graph_get_functions(NautilusIRGraphRef graph, NautilusIRFunctionRef* out,
+                                                      size_t capacity);
 
-/* Declares a native function at @p address that IR in this graph may call.
- * Declaring the same address twice returns the same id. @p symbol is the
- * linker-level name (may be NULL); @p display_name is shown in dumps. */
-NautilusIRCalleeId nautilus_ir_graph_declare_external_function(NautilusIRGraphRef graph, const char* symbol,
-                                                               const char* display_name, void* address,
-                                                               NautilusIRType result_type,
-                                                               const NautilusIRType* param_types, size_t param_count,
-                                                               NautilusIRFunctionAttributes attributes);
+/* NAUTILUS_ERROR_NOT_FOUND if no finished function has that name. */
+NAUTILUS_C_API NautilusStatus nautilus_ir_graph_find_function(NautilusIRGraphRef graph, NautilusStringRef name,
+                                                              NautilusIRFunctionRef* out);
 
-size_t nautilus_ir_graph_get_callee_count(NautilusIRGraphRef graph);
-NautilusIRLinkage nautilus_ir_graph_get_callee_linkage(NautilusIRGraphRef graph, NautilusIRCalleeId callee);
-/* The identifier a backend emits the callee under. Borrowed. */
-const char* nautilus_ir_graph_get_callee_name(NautilusIRGraphRef graph, NautilusIRCalleeId callee);
-/* Native address of an external callee, NULL for an internal one. */
-void* nautilus_ir_graph_get_callee_address(NautilusIRGraphRef graph, NautilusIRCalleeId callee);
-/* Definition of an internal callee; NULL for external callees and for
- * internal ones whose builder has not been finished yet. */
-NautilusIRFunctionRef nautilus_ir_graph_get_callee_function(NautilusIRGraphRef graph, NautilusIRCalleeId callee);
+/* Declares a native function at @p address that IR in the graph may call.
+ * Declaring the same address again returns the same id. @p symbol is the
+ * linker-level name and @p display_name the name shown in dumps; either may
+ * be empty. The function must not throw C++ exceptions. */
+NAUTILUS_C_API NautilusStatus nautilus_ir_graph_declare_external_function(
+    NautilusIRGraphRef graph, NautilusStringRef symbol, NautilusStringRef display_name, void* address,
+    NautilusIRType result_type, const NautilusIRType* param_types, size_t param_count,
+    NautilusIRFunctionAttributes attributes, NautilusIRCalleeId* out);
+
+/* Number of entries in the function table; ids are 0 .. count - 1. */
+NAUTILUS_C_API size_t nautilus_ir_graph_get_callee_count(NautilusIRGraphRef graph);
+
+NAUTILUS_C_API NautilusStatus nautilus_ir_graph_get_callee_info(NautilusIRGraphRef graph, NautilusIRCalleeId callee,
+                                                                NautilusIRCalleeInfo* out);
 
 /* ── Function builders ──────────────────────────────────────────────────── */
 
-/* Starts a function. Its callee id exists immediately, so the function can
- * be called (including recursively) before it is finished. Names must be
- * unique within the graph. */
-NautilusIRFunctionBuilderRef nautilus_ir_function_builder_create(NautilusIRGraphRef graph, const char* name,
-                                                                 NautilusIRType return_type);
+/* Starts a function; names must be unique within the graph. Fails once the
+ * graph has been optimized or compiled. */
+NAUTILUS_C_API NautilusIRFunctionBuilderRef nautilus_ir_function_builder_create(NautilusIRGraphRef graph,
+                                                                                NautilusStringRef name,
+                                                                                NautilusIRType return_type);
 
-NautilusIRCalleeId nautilus_ir_function_builder_get_callee(NautilusIRFunctionBuilderRef builder);
+/* Abandons an unfinished function. Its blocks and values stay in the graph's
+ * memory but belong to no function. If its callee id was already taken (see
+ * below) and is still called, the graph can no longer be compiled. */
+NAUTILUS_C_API void nautilus_ir_function_builder_dispose(NautilusIRFunctionBuilderRef builder);
+
+/* The function's callee id, so it can be called (including recursively)
+ * before it is finished. */
+NAUTILUS_C_API NautilusStatus nautilus_ir_function_builder_get_callee(NautilusIRFunctionBuilderRef builder,
+                                                                      NautilusIRCalleeId* out);
 
 /* Sets a string attribute on the function (e.g. "entry" = "true"). */
-int nautilus_ir_function_builder_set_attribute(NautilusIRFunctionBuilderRef builder, const char* key,
-                                               const char* value);
+NAUTILUS_C_API NautilusStatus nautilus_ir_function_builder_set_attribute(NautilusIRFunctionBuilderRef builder,
+                                                                         NautilusStringRef key,
+                                                                         NautilusStringRef value);
 
-/* Adds a basic block with the given argument types. The first block added is
- * the entry block, and its arguments are the function's parameters. */
-NautilusIRBlockRef nautilus_ir_function_builder_add_block(NautilusIRFunctionBuilderRef builder,
-                                                          const NautilusIRType* arg_types, size_t arg_count);
+/* Adds a block with the given argument types. The first block added is the
+ * entry block; its arguments are the function's parameters. */
+NAUTILUS_C_API NautilusIRBlockRef nautilus_ir_function_builder_add_block(NautilusIRFunctionBuilderRef builder,
+                                                                         const NautilusIRType* arg_types,
+                                                                         size_t arg_count);
 
-/* Reserves a stack slot in the function frame and returns its index, for use
- * with nautilus_ir_build_alloca(). */
-uint32_t nautilus_ir_function_builder_add_stack_slot(NautilusIRFunctionBuilderRef builder, size_t size, size_t align);
+/* Reserves a stack slot in the function's frame, for nautilus_ir_build_alloca(). */
+NAUTILUS_C_API NautilusStatus nautilus_ir_function_builder_add_stack_slot(NautilusIRFunctionBuilderRef builder,
+                                                                          size_t size, size_t align,
+                                                                          uint32_t* out_slot);
 
-/* Finishes the function and adds it to the graph. Consumes the builder, even
- * on failure. Every block must end in a terminator (branch, if or return). */
-NautilusIRFunctionRef nautilus_ir_function_builder_finish(NautilusIRFunctionBuilderRef builder);
+/* Adds the function to the graph and consumes the builder, also on failure.
+ * Every block must end in a terminator (branch, if or return). */
+NAUTILUS_C_API NautilusIRFunctionRef nautilus_ir_function_builder_finish(NautilusIRFunctionBuilderRef builder);
 
 /* ── Instruction building ───────────────────────────────────────────────────
- * Every nautilus_ir_build_* call appends one operation to the end of @p block,
- * which must have been added to @p builder, and returns it. Nothing can be
- * appended after a terminator. Operands must be values of the same function
- * that are defined before their use (nautilus_ir_graph_verify() checks it). */
+ * Each nautilus_ir_build_* call appends one operation to the end of @p block,
+ * which must belong to @p builder, and returns it (NULL on failure). Nothing
+ * can follow a terminator. Operands must be values of the same function,
+ * defined before their use; nautilus_ir_graph_verify() checks what the
+ * builders cannot check locally. */
 
-/* Integer constant of an integer type; the bits of @p value are reinterpreted
- * for unsigned types. */
-NautilusIRValueRef nautilus_ir_build_const_int(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                               int64_t value, NautilusIRType type);
-NautilusIRValueRef nautilus_ir_build_const_float(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                                 double value, NautilusIRType type);
-NautilusIRValueRef nautilus_ir_build_const_bool(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                                int value);
-NautilusIRValueRef nautilus_ir_build_const_ptr(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                               void* value);
+/* Integer constant. For unsigned types, @p value holds the bits. */
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_const_int(NautilusIRFunctionBuilderRef builder,
+                                                              NautilusIRBlockRef block, int64_t value,
+                                                              NautilusIRType type);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_const_float(NautilusIRFunctionBuilderRef builder,
+                                                                NautilusIRBlockRef block, double value,
+                                                                NautilusIRType type);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_const_bool(NautilusIRFunctionBuilderRef builder,
+                                                               NautilusIRBlockRef block, bool value);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_const_ptr(NautilusIRFunctionBuilderRef builder,
+                                                              NautilusIRBlockRef block, void* value);
 
-NautilusIRValueRef nautilus_ir_build_binary(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                            NautilusIRBinaryOp op, NautilusIRValueRef lhs, NautilusIRValueRef rhs);
-NautilusIRValueRef nautilus_ir_build_compare(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                             NautilusIRComparator comparator, NautilusIRValueRef lhs,
-                                             NautilusIRValueRef rhs);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_binary(NautilusIRFunctionBuilderRef builder,
+                                                           NautilusIRBlockRef block, NautilusIRBinaryOp op,
+                                                           NautilusIRValueRef lhs, NautilusIRValueRef rhs);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_compare(NautilusIRFunctionBuilderRef builder,
+                                                            NautilusIRBlockRef block, NautilusIRComparator comparator,
+                                                            NautilusIRValueRef lhs, NautilusIRValueRef rhs);
 /* Logical not of a bool. */
-NautilusIRValueRef nautilus_ir_build_not(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                         NautilusIRValueRef value);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_not(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
+                                                        NautilusIRValueRef value);
 /* Bitwise complement of an integer. */
-NautilusIRValueRef nautilus_ir_build_negate(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                            NautilusIRValueRef value);
-NautilusIRValueRef nautilus_ir_build_cast(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                          NautilusIRValueRef value, NautilusIRType target_type);
-NautilusIRValueRef nautilus_ir_build_select(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                            NautilusIRValueRef condition, NautilusIRValueRef true_value,
-                                            NautilusIRValueRef false_value);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_negate(NautilusIRFunctionBuilderRef builder,
+                                                           NautilusIRBlockRef block, NautilusIRValueRef value);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_cast(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
+                                                         NautilusIRValueRef value, NautilusIRType target_type);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_select(NautilusIRFunctionBuilderRef builder,
+                                                           NautilusIRBlockRef block, NautilusIRValueRef condition,
+                                                           NautilusIRValueRef true_value,
+                                                           NautilusIRValueRef false_value);
 
-NautilusIRValueRef nautilus_ir_build_load(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                          NautilusIRValueRef address, NautilusIRType type);
-NautilusIRValueRef nautilus_ir_build_store(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                           NautilusIRValueRef value, NautilusIRValueRef address);
-/* Pointer to the stack slot @p slot of the enclosing function. */
-NautilusIRValueRef nautilus_ir_build_alloca(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                            uint32_t slot);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_load(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
+                                                         NautilusIRValueRef address, NautilusIRType type);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_store(NautilusIRFunctionBuilderRef builder,
+                                                          NautilusIRBlockRef block, NautilusIRValueRef value,
+                                                          NautilusIRValueRef address);
+/* Pointer to stack slot @p slot of the function. */
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_alloca(NautilusIRFunctionBuilderRef builder,
+                                                           NautilusIRBlockRef block, uint32_t slot);
 
-/* Direct call to a callee in the graph's function table. The result type is
- * the callee's; for a void callee the returned operation has no value. */
-NautilusIRValueRef nautilus_ir_build_call(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                          NautilusIRCalleeId callee, const NautilusIRValueRef* args, size_t arg_count);
+/* Direct call. The result type is the callee's; a void call produces no value. */
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_call(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
+                                                         NautilusIRCalleeId callee, const NautilusIRValueRef* args,
+                                                         size_t arg_count);
 /* Call through a function-pointer value. */
-NautilusIRValueRef nautilus_ir_build_indirect_call(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                                   NautilusIRValueRef function_pointer, const NautilusIRValueRef* args,
-                                                   size_t arg_count, NautilusIRType result_type,
-                                                   NautilusIRFunctionAttributes attributes);
-/* Address of a callee as a pointer value. */
-NautilusIRValueRef nautilus_ir_build_function_address(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                                      NautilusIRCalleeId callee);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_indirect_call(NautilusIRFunctionBuilderRef builder,
+                                                                  NautilusIRBlockRef block,
+                                                                  NautilusIRValueRef function_pointer,
+                                                                  const NautilusIRValueRef* args, size_t arg_count,
+                                                                  NautilusIRType result_type,
+                                                                  NautilusIRFunctionAttributes attributes);
+/* Address of a callee, as a pointer value. */
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_function_address(NautilusIRFunctionBuilderRef builder,
+                                                                     NautilusIRBlockRef block,
+                                                                     NautilusIRCalleeId callee);
 
-/* Terminators. Branch arguments bind, in order, to the target's arguments. */
-NautilusIRValueRef nautilus_ir_build_branch(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                            NautilusIRBlockRef target, const NautilusIRValueRef* args,
-                                            size_t arg_count);
-/* @p probability is the expected likelihood of taking the true edge (0..1). */
-NautilusIRValueRef nautilus_ir_build_if(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                        NautilusIRValueRef condition, NautilusIRBlockRef true_block,
-                                        const NautilusIRValueRef* true_args, size_t true_arg_count,
-                                        NautilusIRBlockRef false_block, const NautilusIRValueRef* false_args,
-                                        size_t false_arg_count, double probability);
+/* Terminators. Branch arguments bind, in order, to the target's arguments;
+ * the entry block cannot be a target. */
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_branch(NautilusIRFunctionBuilderRef builder,
+                                                           NautilusIRBlockRef block, NautilusIRBlockRef target,
+                                                           const NautilusIRValueRef* args, size_t arg_count);
+/* @p probability is the expected likelihood of the true edge, in [0, 1]. */
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_if(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
+                                                       NautilusIRValueRef condition, NautilusIRBlockRef true_block,
+                                                       const NautilusIRValueRef* true_args, size_t true_arg_count,
+                                                       NautilusIRBlockRef false_block,
+                                                       const NautilusIRValueRef* false_args, size_t false_arg_count,
+                                                       double probability);
 /* @p value is NULL for a void return. */
-NautilusIRValueRef nautilus_ir_build_return(NautilusIRFunctionBuilderRef builder, NautilusIRBlockRef block,
-                                            NautilusIRValueRef value);
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_build_return(NautilusIRFunctionBuilderRef builder,
+                                                           NautilusIRBlockRef block, NautilusIRValueRef value);
 
-/* ── Function inspection ────────────────────────────────────────────────── */
+/* ── Functions ──────────────────────────────────────────────────────────── */
 
-const char* nautilus_ir_function_get_name(NautilusIRFunctionRef function);
-NautilusIRType nautilus_ir_function_get_return_type(NautilusIRFunctionRef function);
-NautilusIRCalleeId nautilus_ir_function_get_callee(NautilusIRGraphRef graph, NautilusIRFunctionRef function);
-size_t nautilus_ir_function_get_block_count(NautilusIRFunctionRef function);
-NautilusIRBlockRef nautilus_ir_function_get_block(NautilusIRFunctionRef function, size_t index);
-size_t nautilus_ir_function_get_stack_slot_count(NautilusIRFunctionRef function);
-int nautilus_ir_function_get_stack_slot(NautilusIRFunctionRef function, uint32_t slot, size_t* size, size_t* align);
-/* NULL when the attribute is not set; dispose with nautilus_ir_string_dispose(). */
-char* nautilus_ir_function_get_attribute(NautilusIRFunctionRef function, const char* key);
+/* Borrowed from the graph. */
+NAUTILUS_C_API NautilusStringRef nautilus_ir_function_get_name(NautilusIRFunctionRef function);
+NAUTILUS_C_API NautilusIRType nautilus_ir_function_get_return_type(NautilusIRFunctionRef function);
+NAUTILUS_C_API NautilusIRCalleeId nautilus_ir_function_get_callee(NautilusIRGraphRef graph,
+                                                                  NautilusIRFunctionRef function);
+NAUTILUS_C_API NautilusIRBlockRef nautilus_ir_function_get_entry_block(NautilusIRFunctionRef function);
+/* Copy-out accessors. */
+NAUTILUS_C_API size_t nautilus_ir_function_get_blocks(NautilusIRFunctionRef function, NautilusIRBlockRef* out,
+                                                      size_t capacity);
+NAUTILUS_C_API size_t nautilus_ir_function_get_stack_slots(NautilusIRFunctionRef function, NautilusIRStackSlot* out,
+                                                           size_t capacity);
+/* NAUTILUS_ERROR_NOT_FOUND when the attribute is not set. */
+NAUTILUS_C_API NautilusStatus nautilus_ir_function_get_attribute(NautilusIRFunctionRef function, NautilusStringRef key,
+                                                                 NautilusString* out);
 
-/* ── Block inspection ───────────────────────────────────────────────────── */
+/* ── Blocks ─────────────────────────────────────────────────────────────── */
 
-uint32_t nautilus_ir_block_get_id(NautilusIRBlockRef block);
-size_t nautilus_ir_block_get_argument_count(NautilusIRBlockRef block);
-NautilusIRValueRef nautilus_ir_block_get_argument(NautilusIRBlockRef block, size_t index);
-size_t nautilus_ir_block_get_operation_count(NautilusIRBlockRef block);
-NautilusIRValueRef nautilus_ir_block_get_operation(NautilusIRBlockRef block, size_t index);
-/* The block's last operation if it is a terminator, else NULL. */
-NautilusIRValueRef nautilus_ir_block_get_terminator(NautilusIRBlockRef block);
+NAUTILUS_C_API uint32_t nautilus_ir_block_get_id(NautilusIRBlockRef block);
+/* Copy-out accessors. */
+NAUTILUS_C_API size_t nautilus_ir_block_get_arguments(NautilusIRBlockRef block, NautilusIRValueRef* out,
+                                                      size_t capacity);
+NAUTILUS_C_API size_t nautilus_ir_block_get_operations(NautilusIRBlockRef block, NautilusIRValueRef* out,
+                                                       size_t capacity);
+/* Argument @p index, or NULL (recording NAUTILUS_ERROR_INVALID_ARGUMENT) if
+ * out of range. */
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_block_get_argument(NautilusIRBlockRef block, size_t index);
+/* The block's terminator, or NULL while it has none. */
+NAUTILUS_C_API NautilusIRValueRef nautilus_ir_block_get_terminator(NautilusIRBlockRef block);
 
-/* ── Operation / value inspection ───────────────────────────────────────── */
+/* ── Values and operations ──────────────────────────────────────────────── */
 
-NautilusIROpKind nautilus_ir_value_get_kind(NautilusIRValueRef value);
+NAUTILUS_C_API NautilusIROpKind nautilus_ir_value_get_kind(NautilusIRValueRef value);
 /* Result type; NAUTILUS_IR_TYPE_VOID for operations without a result. */
-NautilusIRType nautilus_ir_value_get_type(NautilusIRValueRef value);
-/* SSA id as printed in dumps ($<id>). */
-uint32_t nautilus_ir_value_get_id(NautilusIRValueRef value);
-int nautilus_ir_value_is_terminator(NautilusIRValueRef value);
+NAUTILUS_C_API NautilusIRType nautilus_ir_value_get_type(NautilusIRValueRef value);
+/* SSA id, as printed in dumps ($<id>). */
+NAUTILUS_C_API uint32_t nautilus_ir_value_get_id(NautilusIRValueRef value);
+NAUTILUS_C_API bool nautilus_ir_value_is_terminator(NautilusIRValueRef value);
 
-/* SSA operands. For branch and if, these are the block-invocation arguments;
- * use the successor accessors below for structured access. */
-size_t nautilus_ir_value_get_operand_count(NautilusIRValueRef value);
-NautilusIRValueRef nautilus_ir_value_get_operand(NautilusIRValueRef value, size_t index);
+/* SSA operands, a copy-out accessor. Binary operations: lhs, rhs. Select:
+ * condition, true value, false value. Store: value, address. Call: the
+ * arguments. Indirect call: the function pointer, then the arguments. If: the
+ * condition. Return: the returned value, if any. Branch: none. Block
+ * arguments passed along control-flow edges are read per successor. */
+NAUTILUS_C_API size_t nautilus_ir_value_get_operands(NautilusIRValueRef value, NautilusIRValueRef* out,
+                                                     size_t capacity);
 
-/* Constants. Each returns 0 on success and non-zero if the value has another kind. */
-int nautilus_ir_value_get_const_int(NautilusIRValueRef value, int64_t* out);
-int nautilus_ir_value_get_const_float(NautilusIRValueRef value, double* out);
-int nautilus_ir_value_get_const_bool(NautilusIRValueRef value, int* out);
-int nautilus_ir_value_get_const_ptr(NautilusIRValueRef value, void** out);
+/* Successor blocks of a branch (1) or if (true, then false); none for other
+ * operations. Copy-out accessor. */
+NAUTILUS_C_API size_t nautilus_ir_value_get_successors(NautilusIRValueRef value, NautilusIRBlockRef* out,
+                                                       size_t capacity);
+/* Values passed to the arguments of successor @p successor. Copy-out
+ * accessor; returns 0 and records NAUTILUS_ERROR_INVALID_ARGUMENT if there is
+ * no such successor. */
+NAUTILUS_C_API size_t nautilus_ir_value_get_successor_arguments(NautilusIRValueRef value, size_t successor,
+                                                                NautilusIRValueRef* out, size_t capacity);
 
-/* Kind-specific details; each returns 0 on success, non-zero on kind mismatch. */
-int nautilus_ir_value_get_comparator(NautilusIRValueRef value, NautilusIRComparator* out);
-int nautilus_ir_value_get_bitwise_kind(NautilusIRValueRef value, NautilusIRBitwiseKind* out);
-int nautilus_ir_value_get_shift_kind(NautilusIRValueRef value, NautilusIRShiftKind* out);
-int nautilus_ir_value_get_stack_slot(NautilusIRValueRef value, uint32_t* out);
-/* Call and function-address-of only. */
-int nautilus_ir_value_get_callee(NautilusIRValueRef value, NautilusIRCalleeId* out);
-/* If only. */
-int nautilus_ir_value_get_branch_probability(NautilusIRValueRef value, double* out);
+/* Kind-specific details. Each fails with NAUTILUS_ERROR_INVALID_ARGUMENT for a
+ * value of another kind. */
+NAUTILUS_C_API NautilusStatus nautilus_ir_value_get_const_int(NautilusIRValueRef value, int64_t* out);
+NAUTILUS_C_API NautilusStatus nautilus_ir_value_get_const_float(NautilusIRValueRef value, double* out);
+NAUTILUS_C_API NautilusStatus nautilus_ir_value_get_const_bool(NautilusIRValueRef value, bool* out);
+NAUTILUS_C_API NautilusStatus nautilus_ir_value_get_const_ptr(NautilusIRValueRef value, void** out);
+NAUTILUS_C_API NautilusStatus nautilus_ir_value_get_comparator(NautilusIRValueRef value, NautilusIRComparator* out);
+NAUTILUS_C_API NautilusStatus nautilus_ir_value_get_bitwise_kind(NautilusIRValueRef value, NautilusIRBitwiseKind* out);
+NAUTILUS_C_API NautilusStatus nautilus_ir_value_get_shift_kind(NautilusIRValueRef value, NautilusIRShiftKind* out);
+NAUTILUS_C_API NautilusStatus nautilus_ir_value_get_stack_slot(NautilusIRValueRef value, uint32_t* out);
+/* Call and function-address operations. */
+NAUTILUS_C_API NautilusStatus nautilus_ir_value_get_callee(NautilusIRValueRef value, NautilusIRCalleeId* out);
+/* If operations. */
+NAUTILUS_C_API NautilusStatus nautilus_ir_value_get_branch_probability(NautilusIRValueRef value, double* out);
 
-/* Successors of a branch (1) or if (2: true, false); 0 for other operations. */
-size_t nautilus_ir_value_get_successor_count(NautilusIRValueRef value);
-NautilusIRBlockRef nautilus_ir_value_get_successor(NautilusIRValueRef value, size_t index);
-size_t nautilus_ir_value_get_successor_argument_count(NautilusIRValueRef value, size_t index);
-NautilusIRValueRef nautilus_ir_value_get_successor_argument(NautilusIRValueRef value, size_t index, size_t arg_index);
+/* ── Optimization and compilation ───────────────────────────────────────── */
 
-/* ── Compilation ────────────────────────────────────────────────────────── */
+/* True if the backend ("mlir", "cpp", "bc", "tbc", "asmjit") is compiled into
+ * this build. */
+NAUTILUS_C_API bool nautilus_ir_backend_is_available(NautilusStringRef backend);
 
-/* Engine/module options, as documented in docs/options.md (for example
- * "dump.all", "ir.enableLICM", "mlir.optimizationLevel"). */
-NautilusIROptionsRef nautilus_ir_options_create(void);
-void nautilus_ir_options_dispose(NautilusIROptionsRef options);
-void nautilus_ir_options_set_bool(NautilusIROptionsRef options, const char* name, int value);
-void nautilus_ir_options_set_int(NautilusIROptionsRef options, const char* name, int value);
-void nautilus_ir_options_set_double(NautilusIROptionsRef options, const char* name, double value);
-void nautilus_ir_options_set_string(NautilusIROptionsRef options, const char* name, const char* value);
+/* Runs the IR pass pipeline on the graph, in place. Compiling runs it too;
+ * call this to inspect the optimized IR or to pick the level yourself. Runs
+ * at most once per graph: later calls, and compiles, reuse the result.
+ * NAUTILUS_IR_OPTIMIZE_BACKEND_DEFAULT means FULL here. @p options may be
+ * NULL. Every builder must be finished or disposed first. */
+NAUTILUS_C_API NautilusStatus nautilus_ir_graph_optimize(NautilusIRGraphRef graph, NautilusIROptimizationLevel level,
+                                                         NautilusOptionsRef options);
 
-/* Returns non-zero if a backend of that name ("mlir", "cpp", "bc", "tbc",
- * "asmjit") is compiled into this build. */
-int nautilus_ir_backend_is_available(const char* backend);
-
-/* Runs the IR pass pipeline on the graph in place. Compiling runs it too, so
- * calling this is only needed to inspect the optimized IR. Every function
- * must be finished first. */
-int nautilus_ir_graph_optimize(NautilusIRGraphRef graph, NautilusIROptimizationLevel level,
-                               NautilusIROptionsRef options);
-
-/* Runs the IR pass pipeline (at the backend's default level) and compiles
- * every function in the graph with @p backend. @p options may be NULL. The
- * graph is optimized in place and can no longer be extended afterwards. */
-NautilusIRExecutableRef nautilus_ir_graph_compile(NautilusIRGraphRef graph, const char* backend,
-                                                  NautilusIROptionsRef options);
-
-/* Native entry point of the compiled function @p name; cast it to the
- * function's C signature. NULL if there is no such function. */
-void* nautilus_ir_executable_get_function(NautilusIRExecutableRef executable, const char* name);
-
-void nautilus_ir_executable_dispose(NautilusIRExecutableRef executable);
+/* Optimizes the graph (at the backend's level, unless already optimized) and
+ * compiles every function in it with @p backend; an empty name picks the
+ * build's default backend. @p options may be NULL. To compile through a
+ * configured engine instead, see nautilus/c/engine.h. */
+NAUTILUS_C_API NautilusExecutableRef nautilus_ir_graph_compile(NautilusIRGraphRef graph, NautilusStringRef backend,
+                                                               NautilusOptionsRef options);
 
 #ifdef __cplusplus
 }

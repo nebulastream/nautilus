@@ -8,8 +8,12 @@
 		}                                                                                                              \
 	} while (0)
 
+static NautilusIRFunctionBuilderRef function(NautilusIRGraphRef graph, const char* name, NautilusIRType type) {
+	return nautilus_ir_function_builder_create(graph, nautilus_string_ref(name), type);
+}
+
 int build_add(NautilusIRGraphRef graph) {
-	NautilusIRFunctionBuilderRef fb = nautilus_ir_function_builder_create(graph, "add", NAUTILUS_IR_TYPE_I64);
+	NautilusIRFunctionBuilderRef fb = function(graph, "add", NAUTILUS_IR_TYPE_I64);
 	CHECK(fb);
 	NautilusIRType params[] = {NAUTILUS_IR_TYPE_I64, NAUTILUS_IR_TYPE_I64};
 	NautilusIRBlockRef entry = nautilus_ir_function_builder_add_block(fb, params, 2);
@@ -24,7 +28,7 @@ int build_add(NautilusIRGraphRef graph) {
 }
 
 int build_sum_loop(NautilusIRGraphRef graph) {
-	NautilusIRFunctionBuilderRef fb = nautilus_ir_function_builder_create(graph, "sum_to", NAUTILUS_IR_TYPE_I64);
+	NautilusIRFunctionBuilderRef fb = function(graph, "sum_to", NAUTILUS_IR_TYPE_I64);
 	CHECK(fb);
 	NautilusIRType entryParams[] = {NAUTILUS_IR_TYPE_I64};
 	NautilusIRType loopParams[] = {NAUTILUS_IR_TYPE_I64, NAUTILUS_IR_TYPE_I64, NAUTILUS_IR_TYPE_I64};
@@ -34,8 +38,8 @@ int build_sum_loop(NautilusIRGraphRef graph) {
 	NautilusIRBlockRef header = nautilus_ir_function_builder_add_block(fb, loopParams, 3);
 	/* body(i, acc, n) */
 	NautilusIRBlockRef body = nautilus_ir_function_builder_add_block(fb, loopParams, 3);
-	NautilusIRBlockRef exit = nautilus_ir_function_builder_add_block(fb, exitParams, 1);
-	CHECK(entry && header && body && exit);
+	NautilusIRBlockRef done = nautilus_ir_function_builder_add_block(fb, exitParams, 1);
+	CHECK(entry && header && body && done);
 
 	NautilusIRValueRef zero = nautilus_ir_build_const_int(fb, entry, 0, NAUTILUS_IR_TYPE_I64);
 	NautilusIRValueRef init[] = {zero, zero, nautilus_ir_block_get_argument(entry, 0)};
@@ -47,7 +51,7 @@ int build_sum_loop(NautilusIRGraphRef graph) {
 	NautilusIRValueRef cond = nautilus_ir_build_compare(fb, header, NAUTILUS_IR_CMP_LT, i, n);
 	NautilusIRValueRef toBody[] = {i, acc, n};
 	NautilusIRValueRef toExit[] = {acc};
-	CHECK(nautilus_ir_build_if(fb, header, cond, body, toBody, 3, exit, toExit, 1, 0.9));
+	CHECK(nautilus_ir_build_if(fb, header, cond, body, toBody, 3, done, toExit, 1, 0.9));
 
 	NautilusIRValueRef bi = nautilus_ir_block_get_argument(body, 0);
 	NautilusIRValueRef bacc = nautilus_ir_block_get_argument(body, 1);
@@ -58,7 +62,7 @@ int build_sum_loop(NautilusIRGraphRef graph) {
 	NautilusIRValueRef back[] = {nextI, nextAcc, bn};
 	CHECK(nautilus_ir_build_branch(fb, body, header, back, 3));
 
-	CHECK(nautilus_ir_build_return(fb, exit, nautilus_ir_block_get_argument(exit, 0)));
+	CHECK(nautilus_ir_build_return(fb, done, nautilus_ir_block_get_argument(done, 0)));
 	CHECK(nautilus_ir_function_builder_finish(fb));
 	return 0;
 }
@@ -66,7 +70,7 @@ int build_sum_loop(NautilusIRGraphRef graph) {
 int build_max(NautilusIRGraphRef graph) {
 	NautilusIRType params[] = {NAUTILUS_IR_TYPE_I32, NAUTILUS_IR_TYPE_I32};
 
-	NautilusIRFunctionBuilderRef fb = nautilus_ir_function_builder_create(graph, "max_if", NAUTILUS_IR_TYPE_I32);
+	NautilusIRFunctionBuilderRef fb = function(graph, "max_if", NAUTILUS_IR_TYPE_I32);
 	CHECK(fb);
 	NautilusIRBlockRef entry = nautilus_ir_function_builder_add_block(fb, params, 2);
 	NautilusIRBlockRef onTrue = nautilus_ir_function_builder_add_block(fb, NULL, 0);
@@ -79,7 +83,7 @@ int build_max(NautilusIRGraphRef graph) {
 	CHECK(nautilus_ir_build_return(fb, onFalse, b));
 	CHECK(nautilus_ir_function_builder_finish(fb));
 
-	fb = nautilus_ir_function_builder_create(graph, "max_select", NAUTILUS_IR_TYPE_I32);
+	fb = function(graph, "max_select", NAUTILUS_IR_TYPE_I32);
 	CHECK(fb);
 	entry = nautilus_ir_function_builder_add_block(fb, params, 2);
 	a = nautilus_ir_block_get_argument(entry, 0);
@@ -91,7 +95,7 @@ int build_max(NautilusIRGraphRef graph) {
 }
 
 int build_factorial(NautilusIRGraphRef graph) {
-	NautilusIRFunctionBuilderRef fb = nautilus_ir_function_builder_create(graph, "factorial", NAUTILUS_IR_TYPE_I64);
+	NautilusIRFunctionBuilderRef fb = function(graph, "factorial", NAUTILUS_IR_TYPE_I64);
 	CHECK(fb);
 	NautilusIRType params[] = {NAUTILUS_IR_TYPE_I64};
 	NautilusIRBlockRef entry = nautilus_ir_function_builder_add_block(fb, params, 1);
@@ -103,10 +107,12 @@ int build_factorial(NautilusIRGraphRef graph) {
 	CHECK(nautilus_ir_build_if(fb, entry, cond, base, NULL, 0, recurse, NULL, 0, 0.1));
 	CHECK(nautilus_ir_build_return(fb, base, nautilus_ir_build_const_int(fb, base, 1, NAUTILUS_IR_TYPE_I64)));
 
+	NautilusIRCalleeId self = NAUTILUS_IR_INVALID_CALLEE;
+	CHECK(nautilus_ir_function_builder_get_callee(fb, &self) == NAUTILUS_OK);
 	NautilusIRValueRef rOne = nautilus_ir_build_const_int(fb, recurse, 1, NAUTILUS_IR_TYPE_I64);
 	NautilusIRValueRef nMinusOne = nautilus_ir_build_binary(fb, recurse, NAUTILUS_IR_BINARY_SUB, n, rOne);
 	NautilusIRValueRef args[] = {nMinusOne};
-	NautilusIRValueRef sub = nautilus_ir_build_call(fb, recurse, nautilus_ir_function_builder_get_callee(fb), args, 1);
+	NautilusIRValueRef sub = nautilus_ir_build_call(fb, recurse, self, args, 1);
 	CHECK(sub);
 	CHECK(nautilus_ir_build_return(fb, recurse, nautilus_ir_build_binary(fb, recurse, NAUTILUS_IR_BINARY_MUL, n, sub)));
 	CHECK(nautilus_ir_function_builder_finish(fb));
@@ -116,12 +122,13 @@ int build_factorial(NautilusIRGraphRef graph) {
 int build_call_external(NautilusIRGraphRef graph, int64_t (*fn)(int64_t, int64_t)) {
 	NautilusIRType calleeParams[] = {NAUTILUS_IR_TYPE_I64, NAUTILUS_IR_TYPE_I64};
 	NautilusIRFunctionAttributes attrs = nautilus_ir_function_attributes_default();
-	attrs.no_unwind = 1;
-	NautilusIRCalleeId callee = nautilus_ir_graph_declare_external_function(
-	    graph, "external_helper", "external_helper", (void*) fn, NAUTILUS_IR_TYPE_I64, calleeParams, 2, attrs);
-	CHECK(callee != NAUTILUS_IR_INVALID_CALLEE);
+	attrs.flags |= NAUTILUS_IR_FUNCTION_NO_UNWIND;
+	NautilusIRCalleeId callee = NAUTILUS_IR_INVALID_CALLEE;
+	CHECK(nautilus_ir_graph_declare_external_function(graph, nautilus_string_ref("external_helper"),
+	                                                  nautilus_string_ref(NULL), (void*) fn, NAUTILUS_IR_TYPE_I64,
+	                                                  calleeParams, 2, attrs, &callee) == NAUTILUS_OK);
 
-	NautilusIRFunctionBuilderRef fb = nautilus_ir_function_builder_create(graph, "call_external", NAUTILUS_IR_TYPE_I64);
+	NautilusIRFunctionBuilderRef fb = function(graph, "call_external", NAUTILUS_IR_TYPE_I64);
 	CHECK(fb);
 	NautilusIRType params[] = {NAUTILUS_IR_TYPE_I64};
 	NautilusIRBlockRef entry = nautilus_ir_function_builder_add_block(fb, params, 1);
@@ -135,10 +142,10 @@ int build_call_external(NautilusIRGraphRef graph, int64_t (*fn)(int64_t, int64_t
 }
 
 int build_memory(NautilusIRGraphRef graph) {
-	NautilusIRFunctionBuilderRef fb =
-	    nautilus_ir_function_builder_create(graph, "store_through", NAUTILUS_IR_TYPE_VOID);
+	NautilusIRFunctionBuilderRef fb = function(graph, "store_through", NAUTILUS_IR_TYPE_VOID);
 	CHECK(fb);
-	uint32_t slot = nautilus_ir_function_builder_add_stack_slot(fb, sizeof(int64_t), _Alignof(int64_t));
+	uint32_t slot = 0;
+	CHECK(nautilus_ir_function_builder_add_stack_slot(fb, sizeof(int64_t), _Alignof(int64_t), &slot) == NAUTILUS_OK);
 	NautilusIRType params[] = {NAUTILUS_IR_TYPE_PTR, NAUTILUS_IR_TYPE_I64};
 	NautilusIRBlockRef entry = nautilus_ir_function_builder_add_block(fb, params, 2);
 	NautilusIRValueRef out = nautilus_ir_block_get_argument(entry, 0);
@@ -156,7 +163,7 @@ int build_memory(NautilusIRGraphRef graph) {
 }
 
 int build_float(NautilusIRGraphRef graph) {
-	NautilusIRFunctionBuilderRef fb = nautilus_ir_function_builder_create(graph, "scale", NAUTILUS_IR_TYPE_F64);
+	NautilusIRFunctionBuilderRef fb = function(graph, "scale", NAUTILUS_IR_TYPE_F64);
 	CHECK(fb);
 	NautilusIRType params[] = {NAUTILUS_IR_TYPE_I32};
 	NautilusIRBlockRef entry = nautilus_ir_function_builder_add_block(fb, params, 1);
@@ -169,15 +176,19 @@ int build_float(NautilusIRGraphRef graph) {
 	return 0;
 }
 
-NautilusIRExecutableRef compile_with_engine(NautilusIRGraphRef graph, const char* backend) {
-	NautilusIROptionsRef options = nautilus_ir_options_create();
-	nautilus_ir_options_set_string(options, "engine.backend", backend);
+NautilusExecutableRef compile_with_engine(NautilusIRGraphRef graph, const char* backend) {
+	NautilusOptionsRef options = nautilus_options_create();
+	if (!options || nautilus_options_set_string(options, nautilus_string_ref("engine.backend"),
+	                                            nautilus_string_ref(backend)) != NAUTILUS_OK) {
+		nautilus_options_dispose(options);
+		return NULL;
+	}
 	NautilusEngineRef engine = nautilus_engine_create(options);
-	nautilus_ir_options_dispose(options);
+	nautilus_options_dispose(options);
 	if (!engine) {
 		return NULL;
 	}
-	NautilusIRExecutableRef executable = nautilus_engine_compile(engine, graph, NULL);
+	NautilusExecutableRef executable = nautilus_engine_compile(engine, graph, NULL);
 	nautilus_engine_dispose(engine);
 	return executable;
 }

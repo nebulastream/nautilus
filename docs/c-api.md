@@ -1,36 +1,33 @@
-# C API for the Nautilus IR and engine
+# C API
 
-`#include <nautilus/c/ir.h>` gives C (and anything with a C FFI: Rust, Python
-`ctypes`, Zig, ...) direct access to the Nautilus IR, without going through the
-C++ tracing frontend. A program can:
+Nautilus has a C API for building, inspecting and compiling Nautilus IR without
+the C++ tracing frontend. It is meant to be used from C directly, and to be
+bound from other languages (Rust, Python, Zig, ...).
 
-- **build** IR functions block by block,
-- **inspect** any graph: functions, blocks, operations, operands, successors,
-  constants and the function table,
-- **verify** it with the IR verifier,
-- **optimize** it with the same pass pipeline traced code goes through, and
-- **compile** it with any backend in the build (`mlir`, `cpp`, `bc`, `tbc`,
-  `asmjit`) into native function pointers.
+| Header | Contents |
+|---|---|
+| `nautilus/c/common.h` | Versioning, status codes and the last error, strings, options, executables |
+| `nautilus/c/ir.h` | Graphs, function builders, instruction building, inspection, optimization, compilation by backend name |
+| `nautilus/c/engine.h` | Engines: configure once, compile many graphs with the engine's backend and options |
 
-`#include <nautilus/c/engine.h>` adds the **engine**: configure once, compile
-many graphs with the engine's backend and options (see [Engine](#engine)).
-
-The API is available whenever the library is built with `ENABLE_TRACING`
-(the default).
+The API is available whenever the library is built with `ENABLE_TRACING` (the
+default). With `-DENABLE_C_API_SHARED_LIBRARY=ON`, the build also produces
+`libnautilus-c`, a shared library that exports the C API and nothing else (see
+[Bindings](#bindings)).
 
 ## Example
 
 ```c
-#include <nautilus/c/ir.h>
+#include <nautilus/c/engine.h>
 
-int64_t sum_to(int64_t n); /* 0 + 1 + ... + (n - 1) */
-
-NautilusIRGraphRef g = nautilus_ir_graph_create("example");
-NautilusIRFunctionBuilderRef fb = nautilus_ir_function_builder_create(g, "sum_to", NAUTILUS_IR_TYPE_I64);
+/* int64_t sum_to(int64_t n): 0 + 1 + ... + (n - 1) */
+NautilusIRGraphRef g = nautilus_ir_graph_create(nautilus_string_ref("example"));
+NautilusIRFunctionBuilderRef fb =
+    nautilus_ir_function_builder_create(g, nautilus_string_ref("sum_to"), NAUTILUS_IR_TYPE_I64);
 
 NautilusIRType n[] = {NAUTILUS_IR_TYPE_I64};
 NautilusIRType loop[] = {NAUTILUS_IR_TYPE_I64, NAUTILUS_IR_TYPE_I64, NAUTILUS_IR_TYPE_I64}; /* i, acc, n */
-NautilusIRBlockRef entry = nautilus_ir_function_builder_add_block(fb, n, 1);   /* params = entry args */
+NautilusIRBlockRef entry = nautilus_ir_function_builder_add_block(fb, n, 1); /* params = entry args */
 NautilusIRBlockRef header = nautilus_ir_function_builder_add_block(fb, loop, 3);
 NautilusIRBlockRef body = nautilus_ir_function_builder_add_block(fb, loop, 3);
 NautilusIRBlockRef done = nautilus_ir_function_builder_add_block(fb, n, 1);
@@ -43,8 +40,8 @@ NautilusIRValueRef i = nautilus_ir_block_get_argument(header, 0);
 NautilusIRValueRef acc = nautilus_ir_block_get_argument(header, 1);
 NautilusIRValueRef lim = nautilus_ir_block_get_argument(header, 2);
 NautilusIRValueRef cond = nautilus_ir_build_compare(fb, header, NAUTILUS_IR_CMP_LT, i, lim);
-NautilusIRValueRef toBody[] = {i, acc, lim}, toExit[] = {acc};
-nautilus_ir_build_if(fb, header, cond, body, toBody, 3, done, toExit, 1, 0.9);
+NautilusIRValueRef toBody[] = {i, acc, lim}, toDone[] = {acc};
+nautilus_ir_build_if(fb, header, cond, body, toBody, 3, done, toDone, 1, 0.9);
 
 /* body: acc += i; i += 1; loop */
 NautilusIRValueRef bi = nautilus_ir_block_get_argument(body, 0);
@@ -56,93 +53,130 @@ NautilusIRValueRef next[] = {
 nautilus_ir_build_branch(fb, body, header, next, 3);
 
 nautilus_ir_build_return(fb, done, nautilus_ir_block_get_argument(done, 0));
-nautilus_ir_function_builder_finish(fb);
+if (!nautilus_ir_function_builder_finish(fb)) {
+    NautilusStringRef msg = nautilus_last_error_message();
+    fprintf(stderr, "%.*s\n", (int) msg.length, msg.data);
+}
 
-NautilusIRExecutableRef exe = nautilus_ir_graph_compile(g, "mlir", NULL);
-int64_t (*fn)(int64_t) = (int64_t (*)(int64_t)) nautilus_ir_executable_get_function(exe, "sum_to");
-fn(10); /* 45 */
+NautilusEngineRef engine = nautilus_engine_create(NULL);
+NautilusExecutableRef exe = nautilus_engine_compile(engine, g, NULL);
+void* fn = NULL;
+nautilus_executable_get_function(exe, nautilus_string_ref("sum_to"), &fn);
+((int64_t (*)(int64_t)) fn)(10); /* 45 */
 
-nautilus_ir_executable_dispose(exe);
+nautilus_executable_dispose(exe);
+nautilus_engine_dispose(engine);
 nautilus_ir_graph_dispose(g);
 ```
 
-## Concepts
+## Conventions
 
-| C handle | Nautilus IR | Lifetime |
-|---|---|---|
-| `NautilusIRGraphRef` | `IRGraph` (a module) | owned by the caller; `nautilus_ir_graph_dispose` |
-| `NautilusIRFunctionBuilderRef` | a function under construction | consumed by `nautilus_ir_function_builder_finish` |
-| `NautilusIRFunctionRef` | `FunctionOperation` | borrowed from the graph |
-| `NautilusIRBlockRef` | `BasicBlock` | borrowed from the graph |
-| `NautilusIRValueRef` | any `Operation`, including block arguments | borrowed from the graph |
-| `NautilusIRCalleeId` | `FunctionId` in the graph's function table | plain integer |
-| `NautilusIRExecutableRef` | `Executable` | owned by the caller; outlives the graph |
+The API follows one set of rules everywhere, so it can be bound mechanically
+and wrapped safely. `common.h` states them in full.
 
-- **SSA with block arguments.** There are no phi nodes: a block declares typed
-  arguments, and every `branch`/`if` passes values for them. The entry block's
-  arguments are the function's parameters, and the entry block cannot be
-  branched to.
-- **Terminators.** Every block ends in exactly one `branch`, `if` or `return`;
-  nothing can be appended after it, and `finish` rejects a block without one.
+- **ABI-stable types.** Every enumeration is a fixed-width integer typedef with
+  explicit constants whose values never change meaning. They are independent
+  of the C++ enumerations, which stay free to change. An unknown value is
+  rejected with `NAUTILUS_ERROR_INVALID_ARGUMENT`, never undefined behavior,
+  and `NAUTILUS_IR_OP_UNKNOWN` covers operation kinds added later. Booleans are
+  C99 `bool`. Bit sets such as `NautilusIRFunctionFlags` reject unknown bits.
+- **Errors.** A function that creates an object returns its handle, or NULL on
+  failure. Any other function that can fail returns a `NautilusStatus`
+  (`NAUTILUS_OK` or a specific `NAUTILUS_ERROR_*`) and writes its results
+  through out-parameters, which are left untouched on failure. Plain accessors
+  cannot fail. Every failure also records its status and message for the
+  calling thread, readable with `nautilus_last_error_code()` and
+  `nautilus_last_error_message()`. No C++ exception crosses the API.
+- **Strings.** Inputs are `NautilusStringRef {data, length}` and need not be
+  NUL-terminated; `nautilus_string_ref()` wraps a C string. Borrowed outputs
+  are `NautilusStringRef` too, and are also NUL-terminated. Owned outputs are
+  `NautilusString`, released with `nautilus_string_dispose()`.
+- **Lists.** These are read with copy-out accessors:
+  `size_t f(handle, T* out, size_t capacity)` copies what fits and returns the
+  total, so `f(h, NULL, 0)` sizes the buffer. A whole block, function or
+  operand list costs two calls, not one call per element.
+- **Handles.** Every object is an opaque pointer typedef. Owning handles have a
+  `_dispose` function that accepts NULL; everything else is borrowed, and its
+  owner is documented. Function, block and value refs are the IR's own
+  pointers, so handing them out costs nothing.
+
+## Building IR
+
+- **SSA with block arguments.** There are no phi nodes. A block declares typed
+  arguments, and every `branch` or `if` passes values for them. The entry
+  block's arguments are the function's parameters, and the entry block cannot
+  be branched to.
+- **Terminators.** Every block ends in exactly one `branch`, `if` or `return`.
+  Nothing can be appended after it, and `finish` rejects a block without one.
 - **Calls.** `nautilus_ir_build_call` targets a `NautilusIRCalleeId`. A
-  function's id exists as soon as its builder is created
+  function's id is available before the function is finished
   (`nautilus_ir_function_builder_get_callee`), so functions can call each other
-  and themselves before they are finished. Native functions are declared with
-  `nautilus_ir_graph_declare_external_function`; they must not throw C++
+  and themselves. Native functions are declared with
+  `nautilus_ir_graph_declare_external_function` and must not throw C++
   exceptions. `nautilus_ir_build_indirect_call` calls through a pointer value.
 - **Stack memory.** `nautilus_ir_function_builder_add_stack_slot` reserves a
-  frame slot; `nautilus_ir_build_alloca` yields a pointer to it for `load` and
-  `store`.
-- **Errors.** Builders check what they can locally (types of operands, arity of
-  branch and call arguments, block ownership, terminators) and return `NULL`
-  with a message in `nautilus_ir_get_last_error()`; no C++ exception crosses
-  the API. `nautilus_ir_graph_verify` runs the full IR verifier, which also
-  catches cross-function operands and uses that do not follow their definition.
+  frame slot, and `nautilus_ir_build_alloca` yields a pointer to it.
+- **Abandoning.** `nautilus_ir_function_builder_dispose` drops an unfinished
+  function. A failed `finish` consumes the builder too.
+- **Checking.** Builders check what they can locally: operand types, branch
+  and call arity, block ownership, terminators. `nautilus_ir_graph_verify` runs
+  the full IR verifier, and optimizing or compiling runs it automatically, so a
+  malformed graph is reported (`NAUTILUS_ERROR_VERIFICATION_FAILED`) rather
+  than reaching a backend.
 
 ## Optimization and compilation
 
-`nautilus_ir_graph_compile` runs the IR pass pipeline at the level the chosen
-backend asks for, then the backend. `nautilus_ir_graph_optimize` runs the
-pipeline on its own, e.g. to inspect the optimized IR. Both rewrite the graph
-in place: block and value refs taken before may be stale afterwards, and the
-graph accepts no new functions. The pipeline runs once per graph.
+There are two ways to compile a graph:
 
-Options from [options.md](options.md) are passed through a
-`NautilusIROptionsRef` (`nautilus_ir_options_set_bool/int/double/string`), for
-example `dump.all` to write the IR and backend dumps, or `ir.enableLICM`.
+- `nautilus_ir_graph_compile(graph, backend, options)` compiles with a named
+  backend (an empty name picks the build's default).
+- `nautilus_engine_compile(engine, graph, overrides)` compiles with an engine,
+  the C counterpart of `NautilusEngine`. The engine takes the engine-wide
+  options once (`engine.backend` and every other option in
+  [options.md](options.md)), so the configuration lives in one place.
+  `overrides` are layered on top for one compile, like per-module options in
+  C++. A graph compiles synchronously with the engine's primary backend: the
+  one `engine.backend` pins, or the tier-1 backend of a tiered engine. A
+  prebuilt graph has nothing to promote between tiers. Compilation statistics
+  are collected as for traced modules, and `engine.logStatistics` logs them.
+  The same entry point is available from C++ as `NautilusEngine::compileIR`.
 
-## Engine
+Both run the IR pass pipeline first, at the level the backend asks for.
+`nautilus_ir_graph_optimize` runs it on its own, e.g. to inspect the optimized
+IR or choose the level. The pipeline runs at most once per graph and rewrites
+it in place, so refs taken before may dangle afterwards, and the graph accepts
+no new functions.
 
-`nautilus/c/engine.h` is the C counterpart of `NautilusEngine`. The engine
-takes the engine-wide options once and compiles any number of graphs with
-them, so the backend choice and configuration live in one place instead of at
-every call site:
+Executables are independent of the graph and engine that produced them.
 
-```c
-#include <nautilus/c/engine.h>
+## Bindings
 
-NautilusIROptionsRef options = nautilus_ir_options_create();
-nautilus_ir_options_set_string(options, "engine.backend", "mlir");
-NautilusEngineRef engine = nautilus_engine_create(options); /* copies options */
-nautilus_ir_options_dispose(options);
+**Linking.** Build with `-DENABLE_C_API_SHARED_LIBRARY=ON` and link
+`libnautilus-c`. It contains all of Nautilus and its dependencies and exports
+only the `nautilus_*` functions. A binding then links one library, without
+C++ standard-library or LLVM symbols clashing with its own. The option builds
+everything position-independent; when the MLIR backend is enabled, the MLIR
+libraries must be built position-independent too (LLVM's default).
 
-NautilusIRExecutableRef exe = nautilus_engine_compile(engine, graph, NULL);
-```
+**Version check.** Compare `nautilus_c_api_version()` with the
+`NAUTILUS_C_API_VERSION_*` macros the bindings were generated from. The major
+versions must match, and the library's minor version must be at least the
+bindings'.
 
-- **Backend.** A graph compiles synchronously with the engine's primary
-  backend: the one `engine.backend` pins, or the tier-1 backend of a tiered
-  engine. `nautilus_engine_get_backend_name` reports it. A prebuilt graph has
-  no trace to interpret and no module to promote, so tier 0 and background
-  promotion do not apply.
-- **Options.** The third argument of `nautilus_engine_compile` takes per-compile
-  overrides, layered on the engine's options exactly like per-module options
-  in C++ (`engine.createModule(overrides)`).
-- **Statistics.** Compilation statistics are collected as for traced modules;
-  `engine.logStatistics` logs them.
-- **Lifetime and threads.** Executables stay valid after the engine is
-  disposed. One engine can compile from several threads at once, as long as
-  each call compiles a different graph.
-- An engine created with `engine.Compilation=false` cannot compile IR, since a
-  prebuilt graph cannot run uncompiled.
+**Mapping to Rust.** The API is shaped so `bindgen` output can be wrapped
+without guesswork:
 
-The same entry point is available from C++ as `NautilusEngine::compileIR`.
+| C | Rust |
+|---|---|
+| `NautilusStatus` + last error | `Result<T, Error { code, message }>`; read the message right after the failing call, on the same thread |
+| Handle-returning constructor | `Option<NonNull<_>>` → `Result` |
+| Owning handles (`Graph`, `Engine`, `Executable`, `Options`, `FunctionBuilder`) | Newtypes with `Drop` calling `_dispose` |
+| Function, block and value refs | `Copy` newtypes with a lifetime tied to `&Graph`; `optimize`/`compile` take `&mut Graph`, so stale refs cannot outlive the rewrite |
+| `NautilusStringRef` | `&str` in (no allocation), `&str` out (borrowed from its owner) |
+| `NautilusString` | `String`, copied and then disposed |
+| Copy-out accessors | `Vec<T>`, from one sizing call and one fill call |
+| Enumerations (`uint32_t` + constants) | `#[non_exhaustive]` Rust enums, converting unknown values to an `Unknown` variant |
+
+Thread safety maps directly: a graph (with its builders and refs) is `Send`
+but not `Sync`. An engine and an executable are `Send + Sync`. Options are
+`Send`. The last error is thread-local.

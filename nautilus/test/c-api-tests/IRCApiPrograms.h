@@ -7,8 +7,8 @@
 extern "C" {
 #endif
 
-/* Graph builders written in plain C, so the test also proves the header
- * compiles as C. Each returns 0 on success. */
+/* Graph builders written in plain C, so the tests also prove the headers
+ * compile as C. Each returns 0 on success. */
 
 /* int64_t add(int64_t a, int64_t b) */
 int build_add(NautilusIRGraphRef graph);
@@ -33,7 +33,7 @@ int build_float(NautilusIRGraphRef graph);
 
 /* Compiles @p graph with a throwaway engine pinned to @p backend, which is
  * disposed before returning: the executable must outlive it. */
-NautilusIRExecutableRef compile_with_engine(NautilusIRGraphRef graph, const char* backend);
+NautilusExecutableRef compile_with_engine(NautilusIRGraphRef graph, const char* backend);
 
 #ifdef __cplusplus
 }

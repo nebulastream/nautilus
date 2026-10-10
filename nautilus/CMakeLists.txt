@@ -69,6 +69,40 @@ endif ()
 # and fmt sets PUBLIC_HEADER with relative paths that CMake resolves against
 # this dir (not fmt's source dir), which breaks `cmake --install`. Nautilus's
 # headers are installed via the install(DIRECTORY ...) calls below instead.
+if (ENABLE_C_API_SHARED_LIBRARY)
+    # libnautilus-c: the C API as one shared library with nautilus linked in
+    # statically. It exports the nautilus_* functions and nothing else, so a
+    # binding (a Rust -sys crate, Python ctypes, ...) links one artifact and no
+    # C++ or LLVM symbol leaks into its process.
+    set(NAUTILUS_C_API_SOURCES
+            src/nautilus/api/c/CommonCApi.cpp
+            src/nautilus/api/c/IRCApi.cpp
+            src/nautilus/api/c/EngineCApi.cpp)
+    add_library(nautilus-c SHARED ${NAUTILUS_C_API_SOURCES})
+    target_include_directories(nautilus-c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(nautilus-c PRIVATE nautilus fmt::fmt)
+    if (ENABLE_LOGGING)
+        target_link_libraries(nautilus-c PRIVATE spdlog::spdlog)
+    endif ()
+    target_compile_definitions(nautilus-c PRIVATE NAUTILUS_C_API_BUILD)
+    set_target_properties(nautilus-c PROPERTIES
+            CXX_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN ON
+            VERSION ${PROJECT_VERSION}
+            SOVERSION 0)
+    if (APPLE)
+        target_link_options(nautilus-c PRIVATE
+                "LINKER:-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/src/nautilus/api/c/exports.txt")
+    elseif (UNIX)
+        target_link_options(nautilus-c PRIVATE
+                "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/nautilus/api/c/exports.map"
+                "LINKER:--exclude-libs,ALL")
+    endif ()
+    install(TARGETS nautilus-c
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif ()
+
 install(
         TARGETS nautilus ${EXPORT_TARGETS}
         EXPORT ${PROJECT_NAME}-config

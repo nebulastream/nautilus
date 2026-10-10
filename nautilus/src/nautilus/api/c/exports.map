@@ -1,0 +1,7 @@
+/* Symbols libnautilus-c exports: the C API, nothing else. */
+{
+  global:
+    nautilus_*;
+  local:
+    *;
+};

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace nautilus::testing {
 
@@ -18,21 +19,44 @@ struct GraphDeleter {
 using Graph = std::unique_ptr<NautilusIROpaqueGraph, GraphDeleter>;
 
 struct ExecutableDeleter {
-	void operator()(NautilusIROpaqueExecutable* executable) const {
-		nautilus_ir_executable_dispose(executable);
+	void operator()(NautilusOpaqueExecutable* executable) const {
+		nautilus_executable_dispose(executable);
 	}
 };
-using Executable = std::unique_ptr<NautilusIROpaqueExecutable, ExecutableDeleter>;
+using Executable = std::unique_ptr<NautilusOpaqueExecutable, ExecutableDeleter>;
 
-inline std::string takeString(char* str) {
-	std::string result = str != nullptr ? str : "";
-	nautilus_ir_string_dispose(str);
+struct OptionsDeleter {
+	void operator()(NautilusOpaqueOptions* options) const {
+		nautilus_options_dispose(options);
+	}
+};
+using Options = std::unique_ptr<NautilusOpaqueOptions, OptionsDeleter>;
+
+inline NautilusStringRef str(const char* cstr) {
+	return nautilus_string_ref(cstr);
+}
+
+inline std::string toStd(NautilusStringRef ref) {
+	return std::string(ref.data, ref.length);
+}
+
+inline std::string take(NautilusString owned) {
+	std::string result(owned.data, owned.length);
+	nautilus_string_dispose(owned);
 	return result;
 }
 
 inline std::string lastError() {
-	const char* error = nautilus_ir_get_last_error();
-	return error != nullptr ? error : "";
+	return toStd(nautilus_last_error_message());
+}
+
+/// Reads a whole list through a copy-out accessor, using the protocol a
+/// binding would: size with (NULL, 0), then fill.
+template <typename T, typename F>
+std::vector<T> collect(F&& accessor) {
+	std::vector<T> items(accessor(static_cast<T*>(nullptr), size_t {0}));
+	REQUIRE(accessor(items.data(), items.size()) == items.size());
+	return items;
 }
 
 inline int64_t externalHelper(int64_t a, int64_t b) {
@@ -42,7 +66,7 @@ inline int64_t externalHelper(int64_t a, int64_t b) {
 /// Builds every test program into one graph, so the cross-function paths
 /// (internal calls, the function table) are exercised by every backend.
 inline Graph buildAll() {
-	Graph graph(nautilus_ir_graph_create("c-api-test"));
+	Graph graph(nautilus_ir_graph_create(str("c-api-test")));
 	REQUIRE(graph);
 	REQUIRE(build_add(graph.get()) == 0);
 	REQUIRE(build_sum_loop(graph.get()) == 0);
@@ -55,15 +79,17 @@ inline Graph buildAll() {
 }
 
 template <typename F>
-F function(NautilusIRExecutableRef executable, const char* name) {
-	auto* fn = nautilus_ir_executable_get_function(executable, name);
+F function(NautilusExecutableRef executable, const char* name) {
+	void* fn = nullptr;
+	const auto status = nautilus_executable_get_function(executable, str(name), &fn);
 	INFO(lastError());
+	REQUIRE(status == NAUTILUS_OK);
 	REQUIRE(fn != nullptr);
 	return reinterpret_cast<F>(fn);
 }
 
 /// Runs every program buildAll() builds against @p executable.
-inline void checkAllPrograms(NautilusIRExecutableRef executable) {
+inline void checkAllPrograms(NautilusExecutableRef executable) {
 	auto add = function<int64_t (*)(int64_t, int64_t)>(executable, "add");
 	REQUIRE(add(40, 2) == 42);
 	REQUIRE(add(-5, 3) == -2);
