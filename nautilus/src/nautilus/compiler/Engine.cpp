@@ -2,6 +2,7 @@
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/TieredCompiler.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 
 namespace nautilus::engine {
@@ -38,6 +39,16 @@ NautilusEngine::NautilusEngine(const Options& options)
 NautilusEngine::NautilusEngine(std::unique_ptr<compiler::JITCompiler> jit, const Options& options)
     : traceArenaPool_(std::make_unique<common::ArenaPool>()), irArenaPool_(std::make_unique<common::ArenaPool>()),
       jit_(std::move(jit)), options(options) {
+}
+
+std::unique_ptr<compiler::Executable> NautilusEngine::compileIR(const std::shared_ptr<compiler::ir::IRGraph>& ir,
+                                                                const ModuleOptions& overrides, bool runPasses) const {
+	if (!isCompiled()) {
+		throw RuntimeException("compileIR needs compilation enabled (engine.Compilation=false)");
+	}
+	auto moduleOptions = options.deriveModuleOptions();
+	moduleOptions.applyOverrides(overrides);
+	return jit_->compileIR(ir, moduleOptions, runPasses);
 }
 
 NautilusEngine::~NautilusEngine() = default;

@@ -1,4 +1,4 @@
-# C API for the Nautilus IR
+# C API for the Nautilus IR and engine
 
 `#include <nautilus/c/ir.h>` gives C (and anything with a C FFI: Rust, Python
 `ctypes`, Zig, ...) direct access to the Nautilus IR, without going through the
@@ -11,6 +11,9 @@ C++ tracing frontend. A program can:
 - **optimize** it with the same pass pipeline traced code goes through, and
 - **compile** it with any backend in the build (`mlir`, `cpp`, `bc`, `tbc`,
   `asmjit`) into native function pointers.
+
+`#include <nautilus/c/engine.h>` adds the **engine**: configure once, compile
+many graphs with the engine's backend and options (see [Engine](#engine)).
 
 The API is available whenever the library is built with `ENABLE_TRACING`
 (the default).
@@ -107,3 +110,39 @@ graph accepts no new functions. The pipeline runs once per graph.
 Options from [options.md](options.md) are passed through a
 `NautilusIROptionsRef` (`nautilus_ir_options_set_bool/int/double/string`), for
 example `dump.all` to write the IR and backend dumps, or `ir.enableLICM`.
+
+## Engine
+
+`nautilus/c/engine.h` is the C counterpart of `NautilusEngine`. The engine
+takes the engine-wide options once and compiles any number of graphs with
+them, so the backend choice and configuration live in one place instead of at
+every call site:
+
+```c
+#include <nautilus/c/engine.h>
+
+NautilusIROptionsRef options = nautilus_ir_options_create();
+nautilus_ir_options_set_string(options, "engine.backend", "mlir");
+NautilusEngineRef engine = nautilus_engine_create(options); /* copies options */
+nautilus_ir_options_dispose(options);
+
+NautilusIRExecutableRef exe = nautilus_engine_compile(engine, graph, NULL);
+```
+
+- **Backend.** A graph compiles synchronously with the engine's primary
+  backend: the one `engine.backend` pins, or the tier-1 backend of a tiered
+  engine. `nautilus_engine_get_backend_name` reports it. A prebuilt graph has
+  no trace to interpret and no module to promote, so tier 0 and background
+  promotion do not apply.
+- **Options.** The third argument of `nautilus_engine_compile` takes per-compile
+  overrides, layered on the engine's options exactly like per-module options
+  in C++ (`engine.createModule(overrides)`).
+- **Statistics.** Compilation statistics are collected as for traced modules;
+  `engine.logStatistics` logs them.
+- **Lifetime and threads.** Executables stay valid after the engine is
+  disposed. One engine can compile from several threads at once, as long as
+  each call compiles a different graph.
+- An engine created with `engine.Compilation=false` cannot compile IR, since a
+  prebuilt graph cannot run uncompiled.
+
+The same entry point is available from C++ as `NautilusEngine::compileIR`.

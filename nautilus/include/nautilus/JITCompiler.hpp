@@ -70,6 +70,20 @@ public:
 	                           std::shared_ptr<engine::details::ModuleState> state) const = 0;
 
 	/**
+	 * @brief Compiles an IR graph that was built directly rather than traced
+	 * (e.g. through the C API in `nautilus/c/engine.h`).
+	 *
+	 * A prebuilt graph has no trace to interpret and no module to promote, so
+	 * it is compiled synchronously with the compiler's primary backend. When
+	 * @p runPasses is true the IR pass pipeline first runs on @p ir, in place,
+	 * at the level that backend asks for; pass false for a graph whose passes
+	 * have already run.
+	 */
+	[[nodiscard]] virtual std::unique_ptr<Executable> compileIR(const std::shared_ptr<ir::IRGraph>& ir,
+	                                                            const engine::ModuleOptions& moduleOptions,
+	                                                            bool runPasses = true) const = 0;
+
+	/**
 	 * @brief Get the name of the primary compilation backend.
 	 */
 	virtual std::string getName() const = 0;

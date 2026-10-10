@@ -1,3 +1,4 @@
+#include "CApiInternal.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/c/ir.h"
 #include "nautilus/compiler/CompilationPipeline.hpp"
@@ -51,79 +52,9 @@
 
 namespace ir = nautilus::compiler::ir;
 using nautilus::Type;
-
-/// One function under construction. The FunctionOperation is created only on
-/// finish, because it takes its block list by value; until then the blocks
-/// live in the graph's arena and are tracked here.
-struct NautilusIROpaqueFunctionBuilder {
-	NautilusIROpaqueGraph* graph;
-	std::string name;
-	Type returnType;
-	ir::FunctionId calleeId;
-	std::vector<ir::BasicBlock*> blocks;
-	std::unordered_set<const ir::BasicBlock*> ownedBlocks;
-	std::vector<ir::AllocaSpec> allocaSpecs;
-	std::unordered_map<std::string, std::string> attributes;
-	uint32_t nextBlockId = 0;
-};
-
-struct NautilusIROpaqueGraph {
-	std::shared_ptr<ir::IRGraph> ir;
-	/// SSA ids are handed out graph-wide, so they are unique per function too.
-	uint32_t nextOperationId = 1;
-	std::unordered_map<NautilusIROpaqueFunctionBuilder*, std::unique_ptr<NautilusIROpaqueFunctionBuilder>> builders;
-	std::unordered_map<ir::FunctionId, NautilusIROpaqueFunctionBuilder*> pendingByCallee;
-	/// Set once the IR passes have run: they rewrite the graph in place, and
-	/// the terminal exception-region pass must run exactly once.
-	bool optimized = false;
-};
-
-struct NautilusIROpaqueOptions {
-	nautilus::engine::ModuleOptions options;
-};
-
-struct NautilusIROpaqueExecutable {
-	std::unique_ptr<nautilus::compiler::Executable> executable;
-};
+using namespace nautilus::capi;
 
 namespace {
-
-thread_local std::string lastError;
-thread_local bool hasLastError = false;
-
-void setError(std::string message) {
-	lastError = std::move(message);
-	hasLastError = true;
-}
-
-/// Runs @p body and turns any exception into the thread's last error, so no
-/// C++ exception ever crosses the C boundary.
-template <typename R, typename F>
-R guarded(R failure, F&& body) {
-	try {
-		return body();
-	} catch (const std::exception& e) {
-		setError(e.what());
-	} catch (...) {
-		setError("unknown error");
-	}
-	return failure;
-}
-
-struct ApiError : std::exception {
-	explicit ApiError(std::string message) : message(std::move(message)) {
-	}
-	const char* what() const noexcept override {
-		return message.c_str();
-	}
-	std::string message;
-};
-
-void require(bool condition, const char* message) {
-	if (!condition) {
-		throw ApiError(message);
-	}
-}
 
 static_assert(static_cast<int>(Type::ptr) == NAUTILUS_IR_TYPE_PTR, "NautilusIRType out of sync with nautilus::Type");
 static_assert(static_cast<int>(ir::Operation::OperationType::FunctionAddressOfOp) == NAUTILUS_IR_OP_FUNCTION_ADDRESS_OF,
@@ -283,15 +214,6 @@ Signature signatureOf(NautilusIROpaqueGraph* graph, ir::FunctionId callee) {
 	return Signature {target.getResultType(), target.getParamTypes()};
 }
 
-void prepareForPasses(NautilusIROpaqueGraph* graph) {
-	require(graph->builders.empty(), "every function builder must be finished first");
-	for (const auto& target : graph->ir->getFunctionTable().getTargets()) {
-		require(target.getLinkage() != ir::Linkage::Internal || target.getDefinition() != nullptr,
-		        "a called function was never successfully finished");
-	}
-	ir::rebuildPredecessorLists(*graph->ir);
-}
-
 nautilus::compiler::IROptimizationLevel toLevel(NautilusIROptimizationLevel level,
                                                 const nautilus::compiler::CompilationBackend* backend) {
 	switch (level) {
@@ -315,11 +237,6 @@ void optimize(NautilusIROpaqueGraph* graph, nautilus::compiler::IROptimizationLe
 	}
 	nautilus::compiler::CompilationPipeline::runIRPasses(*graph->ir, options, level);
 	graph->optimized = true;
-}
-
-const nautilus::engine::ModuleOptions& optionsOf(NautilusIROptionsRef options) {
-	static const nautilus::engine::ModuleOptions defaults;
-	return options != nullptr ? options->options : defaults;
 }
 
 template <typename T>

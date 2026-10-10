@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/c/engine.h"
 #include "nautilus/c/ir.h"
 
 #ifdef __cplusplus
@@ -29,6 +30,10 @@ int build_memory(NautilusIRGraphRef graph);
 
 /* double scale(int32_t x): (double) x * 0.5 */
 int build_float(NautilusIRGraphRef graph);
+
+/* Compiles @p graph with a throwaway engine pinned to @p backend, which is
+ * disposed before returning: the executable must outlive it. */
+NautilusIRExecutableRef compile_with_engine(NautilusIRGraphRef graph, const char* backend);
 
 #ifdef __cplusplus
 }

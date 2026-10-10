@@ -1,1 +1,1 @@
-add_source_files(nautilus IRCApi.cpp)
+add_source_files(nautilus IRCApi.cpp EngineCApi.cpp)

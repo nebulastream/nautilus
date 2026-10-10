@@ -168,3 +168,16 @@ int build_float(NautilusIRGraphRef graph) {
 	CHECK(nautilus_ir_function_builder_finish(fb));
 	return 0;
 }
+
+NautilusIRExecutableRef compile_with_engine(NautilusIRGraphRef graph, const char* backend) {
+	NautilusIROptionsRef options = nautilus_ir_options_create();
+	nautilus_ir_options_set_string(options, "engine.backend", backend);
+	NautilusEngineRef engine = nautilus_engine_create(options);
+	nautilus_ir_options_dispose(options);
+	if (!engine) {
+		return NULL;
+	}
+	NautilusIRExecutableRef executable = nautilus_engine_compile(engine, graph, NULL);
+	nautilus_engine_dispose(engine);
+	return executable;
+}
