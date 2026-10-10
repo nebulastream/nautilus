@@ -177,6 +177,10 @@ private:
 		int64_t rotatedLoops_ = 0;
 		size_t inliningMaxOperations_ = 24;
 		int64_t inlinedCalls_ = 0;
+		/// While inlining: callee parameters whose argument is a foldable
+		/// constant, keyed by the parameter operation, so the body folds the
+		/// constant (see foldableConstValue) instead of reading a register.
+		std::unordered_map<const ir::Operation*, int64_t> inlinedConstParams_;
 		/// Statistics sink shared with the rest of the pipeline; may be null.
 		CompilationStatistics* statistics_ = nullptr;
 		int64_t fusedBranches_ = 0;
@@ -250,7 +254,7 @@ private:
 		/// `base + offset + disp`, where offset is either a plain 64-bit value or
 		/// `scaledInput << shift` computed by the operation `offset`.
 		struct AddressParts {
-			const ir::Operation* base = nullptr;
+			const ir::Operation* base = nullptr;        ///< null for `x + x + disp` (offset doubles x)
 			const ir::Operation* offset = nullptr;      ///< null when the address is `base + disp`
 			const ir::Operation* scaledInput = nullptr; ///< x when offset computes `x << shift`
 			uint32_t shift = 0;

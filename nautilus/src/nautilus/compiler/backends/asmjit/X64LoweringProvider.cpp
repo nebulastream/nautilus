@@ -32,6 +32,30 @@ public:
 };
 } // anonymous namespace
 
+namespace {
+// Truncate @p value to @p stamp's width and re-extend per its signedness --
+// the canonical 64-bit register pattern the materialising lowering produces.
+int64_t canonicalizeToStamp(int64_t value, Type stamp) {
+	switch (stamp) {
+	case Type::i8:
+		return static_cast<int64_t>(static_cast<int8_t>(value));
+	case Type::i16:
+		return static_cast<int64_t>(static_cast<int16_t>(value));
+	case Type::i32:
+		return static_cast<int64_t>(static_cast<int32_t>(value));
+	case Type::b:
+	case Type::ui8:
+		return static_cast<int64_t>(static_cast<uint8_t>(value));
+	case Type::ui16:
+		return static_cast<int64_t>(static_cast<uint16_t>(value));
+	case Type::ui32:
+		return static_cast<int64_t>(static_cast<uint32_t>(value));
+	default:
+		return value; // i64/ui64/ptr -- full width already.
+	}
+}
+} // anonymous namespace
+
 AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir,
                                                                   ::asmjit::JitRuntime& runtime,
                                                                   const engine::Options& options,
@@ -385,6 +409,16 @@ AsmJitLoweringProvider::LoweringContext::matchAddress(const ir::Operation* op) {
 		}
 		parts.base = base;
 		parts.disp = *disp;
+		// An integer add of a doubled value plus a constant is one
+		// `lea [x + x + disp]` once the doubling is folded in.
+		if (stamp != Type::ptr) {
+			if (const auto scaled = scaledOf(base); scaled.has_value() && scaled->second == 1) {
+				parts.base = nullptr;
+				parts.offset = base;
+				parts.scaledInput = scaled->first;
+				parts.shift = 1;
+			}
+		}
 		return parts;
 	}
 	// For an integer add either side may be the scaled one.
@@ -498,6 +532,15 @@ bool AsmJitLoweringProvider::LoweringContext::deferAddressPart(const ir::Operati
 }
 
 Mem AsmJitLoweringProvider::LoweringContext::memFromParts(const AddressParts& parts, RegisterFrame& frame) {
+	if (parts.base == nullptr) {
+		// `x * 2 + disp`: the doubling as base + index when folded, otherwise
+		// the doubled value's register plus the displacement.
+		if (isDeferredAddressPart(parts.offset)) {
+			auto x = gpOperand(parts.scaledInput, frame);
+			return x86::ptr(x, x, 0, parts.disp);
+		}
+		return x86::ptr(gpOperand(parts.offset, frame), parts.disp);
+	}
 	auto base = gpOperand(parts.base, frame);
 	if (parts.offset == nullptr) {
 		return x86::ptr(base, parts.disp);
@@ -579,8 +622,16 @@ bool AsmJitLoweringProvider::LoweringContext::tryInlineCall(ir::CallOperation* o
 	}
 
 	// Parameters arrive canonical, exactly as through the callee's prologue.
+	// A constant argument stays a constant: the body folds or rematerialises
+	// it like any other deferred constant, and never reads it from the frame.
 	RegisterFrame calleeFrame;
 	for (size_t i = 0; i < params.size(); i++) {
+		if (enableConstFolding_ && !isFloatType(args[i]->getStamp())) {
+			if (const auto value = foldableConstValue(args[i])) {
+				inlinedConstParams_[params[i]] = canonicalizeToStamp(*value, params[i]->getStamp());
+				continue;
+			}
+		}
 		const AsmReg value =
 		    isFloatType(args[i]->getStamp()) ? regOperand(args[i], frame) : AsmReg(cleanGpOperand(args[i], frame));
 		calleeFrame.setValue(params[i]->getIdentifier(), value);
@@ -614,6 +665,7 @@ bool AsmJitLoweringProvider::LoweringContext::tryInlineCall(ir::CallOperation* o
 		}
 	}
 
+	inlinedConstParams_.clear();
 	mayBeDirty_ = std::move(savedDirty);
 	fusionUses_ = std::move(savedFusionUses);
 	deferredAddressParts_ = std::move(savedDeferred);
@@ -688,31 +740,12 @@ void AsmJitLoweringProvider::LoweringContext::bindResult(const ir::OperationIden
 // the register-content invariant (sign/zero-extension per stamp) is identical
 // on both paths.
 
-namespace {
-// Truncate @p value to @p stamp's width and re-extend per its signedness --
-// the canonical 64-bit register pattern the materialising lowering produces.
-int64_t canonicalizeToStamp(int64_t value, Type stamp) {
-	switch (stamp) {
-	case Type::i8:
-		return static_cast<int64_t>(static_cast<int8_t>(value));
-	case Type::i16:
-		return static_cast<int64_t>(static_cast<int16_t>(value));
-	case Type::i32:
-		return static_cast<int64_t>(static_cast<int32_t>(value));
-	case Type::b:
-	case Type::ui8:
-		return static_cast<int64_t>(static_cast<uint8_t>(value));
-	case Type::ui16:
-		return static_cast<int64_t>(static_cast<uint16_t>(value));
-	case Type::ui32:
-		return static_cast<int64_t>(static_cast<uint32_t>(value));
-	default:
-		return value; // i64/ui64/ptr -- full width already.
-	}
-}
-} // anonymous namespace
-
 std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstValue(const ir::Operation* in) {
+	if (!inlinedConstParams_.empty()) {
+		if (const auto it = inlinedConstParams_.find(in); it != inlinedConstParams_.end()) {
+			return it->second;
+		}
+	}
 	if (const auto* constInt = ir::dyn_cast<ir::ConstIntOperation>(in)) {
 		return canonicalizeToStamp(constInt->getValue(), constInt->getStamp());
 	}
