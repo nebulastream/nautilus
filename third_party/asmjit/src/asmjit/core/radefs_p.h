@@ -1073,6 +1073,9 @@ public:
   uint8_t _homeRegId = BaseReg::kIdBad;
   //! Global hint register ID (provided by RA or user).
   uint8_t _hintRegId = BaseReg::kIdBad;
+  //! [Nautilus] Work registers this one is copied from/to by a register-to-register move (at most two recorded).
+  //! The global allocator prefers their home register, so the move becomes a no-op the local allocator drops.
+  uint32_t _copyPartners[2] = { Globals::kInvalidId, Globals::kInvalidId };
 
   //! Live spans of the `VirtReg`.
   LiveRegSpans _liveSpans {};
@@ -1169,6 +1172,18 @@ public:
   ASMJIT_INLINE_NODEBUG bool hasHomeRegId() const noexcept { return _homeRegId != BaseReg::kIdBad; }
   ASMJIT_INLINE_NODEBUG uint32_t homeRegId() const noexcept { return _homeRegId; }
   ASMJIT_INLINE_NODEBUG void setHomeRegId(uint32_t physId) noexcept { _homeRegId = uint8_t(physId); }
+
+  ASMJIT_INLINE_NODEBUG uint32_t copyPartner(uint32_t index) const noexcept { return _copyPartners[index]; }
+  inline void addCopyPartner(uint32_t workId) noexcept {
+    for (uint32_t& partner : _copyPartners) {
+      if (partner == workId)
+        return;
+      if (partner == Globals::kInvalidId) {
+        partner = workId;
+        return;
+      }
+    }
+  }
 
   ASMJIT_INLINE_NODEBUG bool hasHintRegId() const noexcept { return _hintRegId != BaseReg::kIdBad; }
   ASMJIT_INLINE_NODEBUG uint32_t hintRegId() const noexcept { return _hintRegId; }
