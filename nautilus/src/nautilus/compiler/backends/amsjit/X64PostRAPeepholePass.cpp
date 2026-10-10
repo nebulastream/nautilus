@@ -331,6 +331,8 @@ int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 			if (condTarget != nullptr && jmpTarget != nullptr && isBoundDirectlyAfter(jmp, condTarget->id())) {
 				inst->setId(Inst::jccFromCond(negateCond(CondCode(cond))));
 				inst->setOp(0, *jmpTarget);
+				// The new target may be out of rel8 range; let the assembler pick.
+				inst->clearOptions(InstOptions::kShortForm);
 				next = jmp->next();
 				cb->removeNode(jmp);
 				++removed;
