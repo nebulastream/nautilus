@@ -288,6 +288,9 @@ val<int64_t> inliningCaller(val<int32_t> x, val<int8_t> y, val<int32_t> n) {
 		x = inlineNarrow(x, y); // narrow argument and result, wraps
 		f = inlineFloat(f, static_cast<val<int64_t>>(i));
 		acc = acc + inlineSelect(static_cast<val<int64_t>>(x), acc);
+		// Constant arguments fold into the inlined body.
+		acc = acc + static_cast<val<int64_t>>(inlineNarrow(x, val<int8_t>((int8_t) -7)));
+		acc = acc + inlineSelect(acc, val<int64_t>(1000));
 	}
 	return acc + static_cast<val<int64_t>>(f);
 }
