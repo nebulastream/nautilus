@@ -377,33 +377,6 @@ AsmJitLoweringProvider::LoweringContext::matchAddress(const ir::Operation* op) {
 		return std::nullopt;
 	}
 
-	// x * 2^k or x << k; the scaled input must be a full-width register value
-	// (a constant would have been folded by the IR passes).
-	const auto scaledOf =
-	    [&](const ir::Operation* candidate) -> std::optional<std::pair<const ir::Operation*, uint32_t>> {
-		if (const auto* mul = ir::dyn_cast<ir::MulOperation>(candidate)) {
-			for (int side = 0; side < 2; side++) {
-				const auto* x = side == 0 ? mul->getLeftInput() : mul->getRightInput();
-				const auto* c = side == 0 ? mul->getRightInput() : mul->getLeftInput();
-				const auto value = constOperand(c);
-				if (!value.has_value() || constOperand(x).has_value() || !isFullWidthInteger(x)) {
-					continue;
-				}
-				if (*value > 0 && std::has_single_bit(static_cast<uint64_t>(*value))) {
-					return std::make_pair(x, static_cast<uint32_t>(std::countr_zero(static_cast<uint64_t>(*value))));
-				}
-			}
-		} else if (const auto* shl = ir::dyn_cast<ir::ShiftOperation>(candidate)) {
-			const auto count = constOperand(shl->getRightInput());
-			const auto* x = shl->getLeftInput();
-			if (shl->getType() == ir::ShiftOperation::LS && count.has_value() && *count >= 0 && *count <= 63 &&
-			    !constOperand(x).has_value() && isFullWidthInteger(x)) {
-				return std::make_pair(x, static_cast<uint32_t>(*count));
-			}
-		}
-		return std::nullopt;
-	};
-
 	AddressParts parts;
 	if (const auto disp = constOperand(offset)) {
 		if (constOperand(base).has_value() || *disp < INT32_MIN || *disp > INT32_MAX) {
@@ -414,16 +387,71 @@ AsmJitLoweringProvider::LoweringContext::matchAddress(const ir::Operation* op) {
 		return parts;
 	}
 	// For an integer add either side may be the scaled one.
-	if (stamp != Type::ptr && !scaledOf(offset).has_value() && scaledOf(base).has_value()) {
+	if (stamp != Type::ptr && !matchScaled(offset).has_value() && matchScaled(base).has_value()) {
 		std::swap(base, offset);
 	}
 	parts.base = base;
 	parts.offset = offset;
-	if (const auto scaled = scaledOf(offset)) {
+	if (const auto scaled = matchScaled(offset)) {
 		parts.scaledInput = scaled->first;
 		parts.shift = scaled->second;
 	}
 	return parts;
+}
+
+std::optional<std::pair<const ir::Operation*, uint32_t>>
+AsmJitLoweringProvider::LoweringContext::matchScaled(const ir::Operation* op) {
+	// The scaled input must be a full-width register value (a constant would
+	// have been folded by the IR passes).
+	const auto isScalable = [&](const ir::Operation* x) {
+		return stampBits(x->getStamp()) == 64 && !isFloatType(x->getStamp()) && !constOperand(x).has_value();
+	};
+	if (const auto* mul = ir::dyn_cast<ir::MulOperation>(op)) {
+		for (int side = 0; side < 2; side++) {
+			const auto* x = side == 0 ? mul->getLeftInput() : mul->getRightInput();
+			const auto* c = side == 0 ? mul->getRightInput() : mul->getLeftInput();
+			const auto value = constOperand(c);
+			if (value.has_value() && isScalable(x) && *value > 0 &&
+			    std::has_single_bit(static_cast<uint64_t>(*value))) {
+				return std::make_pair(x, static_cast<uint32_t>(std::countr_zero(static_cast<uint64_t>(*value))));
+			}
+		}
+	} else if (const auto* shl = ir::dyn_cast<ir::ShiftOperation>(op)) {
+		const auto count = constOperand(shl->getRightInput());
+		const auto* x = shl->getLeftInput();
+		if (shl->getType() == ir::ShiftOperation::LS && count.has_value() && *count >= 0 && *count <= 63 &&
+		    isScalable(x)) {
+			return std::make_pair(x, static_cast<uint32_t>(*count));
+		}
+	}
+	return std::nullopt;
+}
+
+const ir::CastOperation* AsmJitLoweringProvider::LoweringContext::asWidenedIndex(const ir::Operation* op) {
+	const auto* cast = ir::dyn_cast<ir::CastOperation>(op);
+	if (cast == nullptr) {
+		return nullptr;
+	}
+	const Type src = cast->getInput()->getStamp();
+	const Type dst = cast->getStamp();
+	return (src == Type::i32 || src == Type::ui32) && (dst == Type::i64 || dst == Type::ui64) ? cast : nullptr;
+}
+
+AsmJitLoweringProvider::LoweringContext::IndexOperand
+AsmJitLoweringProvider::LoweringContext::indexOperand(const ir::Operation* index, RegisterFrame& frame) {
+	if (const auto* cast = asWidenedIndex(index); cast != nullptr && isDeferredAddressPart(index)) {
+		// Only the low 32 bits are read, so a dirty source is fine.
+		return {gpOperand(cast->getInput(), frame).w(), true, cast->getInput()->getStamp() == Type::i32};
+	}
+	return {gpOperand(index, frame), false, false};
+}
+
+std::pair<const ir::Operation*, uint32_t>
+AsmJitLoweringProvider::LoweringContext::addressIndex(const AddressParts& parts) const {
+	if (parts.scaledInput != nullptr && isDeferredAddressPart(parts.offset)) {
+		return {parts.scaledInput, parts.shift};
+	}
+	return {parts.offset, 0};
 }
 
 bool AsmJitLoweringProvider::LoweringContext::fitsAccess(const AddressParts& parts, uint32_t size) {
@@ -474,7 +502,7 @@ void AsmJitLoweringProvider::LoweringContext::computeFusionUses(const ir::Functi
 	const auto growTo = [&](uint32_t id) {
 		if (id >= defBlock.size()) {
 			defBlock.resize(id + 1, nullptr);
-			fusionUses_.resize(id + 1, 0x3);
+			fusionUses_.resize(id + 1, 0x7);
 		}
 	};
 	for (const auto* block : blocks) {
@@ -502,6 +530,7 @@ void AsmJitLoweringProvider::LoweringContext::computeFusionUses(const ir::Functi
 			const auto* load = ir::dyn_cast<ir::LoadOperation>(op);
 			const auto* store = ir::dyn_cast<ir::StoreOperation>(op);
 			const auto parts = ir::dyn_cast<ir::AddOperation>(op) != nullptr ? matchAddress(op) : std::nullopt;
+			const auto scaled = matchScaled(op);
 			for (const auto* in : op->getInputs()) {
 				uint8_t allowed = 0;
 				if (load != nullptr && in == load->getAddress()) {
@@ -511,6 +540,10 @@ void AsmJitLoweringProvider::LoweringContext::computeFusionUses(const ir::Functi
 				}
 				if (parts.has_value() && parts->scaledInput != nullptr && in == parts->offset) {
 					allowed |= 0x2;
+				}
+				if ((scaled.has_value() && in == scaled->first) ||
+				    (parts.has_value() && parts->scaledInput == nullptr && in == parts->offset)) {
+					allowed |= 0x4;
 				}
 				use(in, block, allowed);
 			}
@@ -572,11 +605,12 @@ Mem AsmJitLoweringProvider::LoweringContext::memOperand(const ir::Operation* add
 	if (parts.offset == nullptr) {
 		return a64::ptr(base, parts.disp);
 	}
-	if (parts.scaledInput != nullptr && isDeferredAddressPart(parts.offset)) {
-		auto index = gpOperand(parts.scaledInput, frame);
-		return parts.shift == 0 ? a64::ptr(base, index) : a64::ptr(base, index, arm::lsl(parts.shift));
+	const auto [indexOp, shift] = addressIndex(parts);
+	const auto index = indexOperand(indexOp, frame);
+	if (index.extended) {
+		return a64::ptr(base, index.reg, index.isSigned ? a64::sxtw(shift) : a64::uxtw(shift));
 	}
-	return a64::ptr(base, gpOperand(parts.offset, frame));
+	return shift == 0 ? a64::ptr(base, index.reg) : a64::ptr(base, index.reg, arm::lsl(shift));
 }
 
 // ── Inlining ──────────────────────────────────────────────────────────────────
@@ -804,6 +838,14 @@ Gp AsmJitLoweringProvider::LoweringContext::gpOperand(const ir::Operation* in, R
 	if (const auto value = constOperand(in)) {
 		auto reg = cc.newInt64();
 		cc.mov(reg, *value);
+		return reg;
+	}
+	// A deferred widening cast read as a full register after all (its consumer
+	// could not fold it): rematerialise the extension from its source, whose
+	// register is unchanged within the cast's block (see address fusion).
+	if (const auto* cast = asWidenedIndex(in); cast != nullptr && isDeferredAddressPart(in)) {
+		auto reg = cc.newInt64();
+		extendFromStamp(reg, gpOperand(cast->getInput(), frame), cast->getInput()->getStamp());
 		return reg;
 	}
 	return toGp(frame.getValue(in->getIdentifier()));
@@ -1200,11 +1242,23 @@ void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, Reg
 		if (deferAddressPart(op, 0x1, frame)) {
 			return;
 		}
-		// A scaled index whose scaling was skipped: one shifted-register add.
-		if (parts->scaledInput != nullptr && isDeferredAddressPart(parts->offset)) {
-			cc.add(gDst, gpOperand(parts->base, frame), gpOperand(parts->scaledInput, frame), arm::lsl(parts->shift));
-			bindResult(op->getIdentifier(), result, frame);
-			return;
+		// A scaled index whose scaling was skipped, or a widened 32-bit index
+		// whose cast was skipped: one shifted- or extended-register add.
+		if (parts->offset != nullptr) {
+			const auto [indexOp, shift] = addressIndex(*parts);
+			if (shift != 0 || isDeferredAddressPart(indexOp)) {
+				auto base = gpOperand(parts->base, frame);
+				auto index = indexOperand(indexOp, frame);
+				if (index.extended && shift <= 4) {
+					// AsmJit insists on equal source widths; the extend option
+					// alone selects the W view, so the X name encodes the same.
+					cc.add(gDst, base, index.reg.x(), index.isSigned ? a64::sxtw(shift) : a64::uxtw(shift));
+				} else {
+					cc.add(gDst, base, index.extended ? gpOperand(indexOp, frame) : index.reg, arm::lsl(shift));
+				}
+				bindResult(op->getIdentifier(), result, frame);
+				return;
+			}
 		}
 	}
 	const uint32_t width = stampBits(op->getStamp());
@@ -2022,6 +2076,10 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 	// rematerialise the pre-computed value. Bound identifiers double as
 	// merge-block parameters and must still be written (issue #321).
 	if (enableConstFolding_ && !frame.contains(op->getIdentifier()) && foldableConstValue(op).has_value()) {
+		return;
+	}
+	// A widening index every consumer reads as an extended W register.
+	if (asWidenedIndex(op) != nullptr && deferAddressPart(op, 0x4, frame)) {
 		return;
 	}
 	const Type srcType = op->getInput()->getStamp();
