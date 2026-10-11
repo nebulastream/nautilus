@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "nautilus/compiler/backends/amsjit/AsmJitRegister.hpp"
+#include "nautilus/compiler/backends/asmjit/AsmJitRegister.hpp"
 #include "nautilus/compiler/ir/IntrinsicRegistry.hpp"
 #include <functional>
 #include <memory>

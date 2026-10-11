@@ -7,7 +7,7 @@ if (ENABLE_TRACING)
 endif ()
 
 if (ENABLE_ASMJIT_BACKEND)
-    add_subdirectory(amsjit)
+    add_subdirectory(asmjit)
 endif ()
 
 

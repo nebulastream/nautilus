@@ -1,5 +1,5 @@
 
-#include "nautilus/compiler/backends/amsjit/AsmJitExecutable.hpp"
+#include "nautilus/compiler/backends/asmjit/AsmJitExecutable.hpp"
 
 namespace nautilus::compiler::asmjit {
 

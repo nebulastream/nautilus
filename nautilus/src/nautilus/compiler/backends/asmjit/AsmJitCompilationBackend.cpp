@@ -1,13 +1,13 @@
 
-#include "nautilus/compiler/backends/amsjit/AsmJitCompilationBackend.hpp"
+#include "nautilus/compiler/backends/asmjit/AsmJitCompilationBackend.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
-#include "nautilus/compiler/backends/amsjit/X64LoweringProvider.hpp"
+#include "nautilus/compiler/backends/asmjit/X64LoweringProvider.hpp"
 #else
-#include "nautilus/compiler/backends/amsjit/A64LoweringProvider.hpp"
+#include "nautilus/compiler/backends/asmjit/A64LoweringProvider.hpp"
 #endif
-#include "nautilus/compiler/backends/amsjit/AsmJitExecutable.hpp"
+#include "nautilus/compiler/backends/asmjit/AsmJitExecutable.hpp"
 #include <chrono>
 #include <memory>
 
