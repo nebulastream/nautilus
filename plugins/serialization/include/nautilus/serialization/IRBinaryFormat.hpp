@@ -94,6 +94,14 @@ enum SectionTag : uint32_t {
 	TAG_STRING_REFS = makeTag('S', 'T', 'R', 'R'), ///< StringRef pool
 	TAG_INDICES = makeTag('I', 'D', 'X', 'S'),     ///< u32 index pool (landing pads)
 	TAG_CALL_SITES = makeTag('X', 'S', 'I', 'T'),  ///< CallSiteRecord
+
+	// Module image manifest (ModuleSerialization.hpp). Written after the IR's
+	// sections and never flagged required, so a module image is also a plain
+	// IR buffer. Their StringRefs point into TAG_MODULE_STRINGS.
+	TAG_MODULE_STRINGS = makeTag('M', 'S', 'T', 'R'),    ///< raw string bytes
+	TAG_MODULE_SIGNATURES = makeTag('M', 'S', 'I', 'G'), ///< SignatureRecord
+	TAG_MODULE_TYPES = makeTag('M', 'T', 'Y', 'P'),      ///< u8 type pool
+	TAG_MODULE_OPTIONS = makeTag('M', 'O', 'P', 'T'),    ///< OptionRecord
 };
 
 /// Section flag: a reader that does not know this section's tag must reject
@@ -336,7 +344,29 @@ struct CallSiteRecord {
 	uint32_t padIndex; ///< index into the function's pads, or NONE
 };
 
+/// One function of a module image: its name and IR signature.
+struct SignatureRecord {
+	StringRef name;
+	uint8_t result;
+	uint8_t reserved[3];
+	uint32_t paramsBegin; ///< into TAG_MODULE_TYPES
+	uint32_t paramCount;
+};
+
+enum class WireOptionKind : uint8_t { Int = 0, Double = 1, String = 2, Bool = 3 };
+
+/// One module option the image was compiled with.
+struct OptionRecord {
+	StringRef key;
+	StringRef text; ///< String options only
+	uint8_t kind;
+	uint8_t reserved[7];
+	uint64_t scalar; ///< Int (two's complement), Double (bits) or Bool (0/1)
+};
+
 static_assert(sizeof(FileHeader) == 72);
+static_assert(sizeof(SignatureRecord) == 20);
+static_assert(sizeof(OptionRecord) == 32);
 static_assert(sizeof(SectionEntry) == 24);
 static_assert(sizeof(StringRef) == 8);
 static_assert(sizeof(SourceLocationRecord) == 24);

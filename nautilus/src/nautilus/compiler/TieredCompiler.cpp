@@ -106,6 +106,18 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 	const auto compilationStart = std::chrono::steady_clock::now();
 
 	auto ir = pipeline_.compileToIR(functions, moduleOptions, statistics.get(), optimization);
+	auto executable = compileIRTier(ir, moduleOptions, backend, tierLabel, std::move(statistics), compilationStart);
+
+	// Hand the IR back to the caller so it can drive background promotion.
+	outIR = std::move(ir);
+	return executable;
+}
+
+std::unique_ptr<Executable>
+TieredJITCompiler::compileIRTier(const std::shared_ptr<ir::IRGraph>& ir, const engine::ModuleOptions& moduleOptions,
+                                 const std::string& backend, const std::string& tierLabel,
+                                 std::shared_ptr<CompilationStatistics> statistics,
+                                 std::chrono::steady_clock::time_point compilationStart) const {
 	auto executable = pipeline_.compileIR(ir, backend, moduleOptions, statistics.get());
 
 	statistics->recordTimingMs("compilation.totalMs", compilationStart);
@@ -119,9 +131,6 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 	}
 
 	executable->setCompilationStatistics(std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
-
-	// Hand the IR back to the caller so it can drive background promotion.
-	outIR = std::move(ir);
 	return executable;
 }
 
@@ -141,6 +150,21 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunct
 	                   pipeline_.irOptimizationLevel({config_.tier0.backend}), ir);
 }
 
+namespace {
+
+/// Keeps @p ir on the module when it was compiled with `engine.retainIR`, so
+/// the module can be serialized later. Called before any background promotion
+/// starts, so the module state is not yet shared with another thread.
+void retainIfRequested(engine::details::ModuleState& state, const std::shared_ptr<ir::IRGraph>& ir,
+                       const engine::ModuleOptions& moduleOptions) {
+	if (moduleOptions.getOptionOrDefault("engine.retainIR", false)) {
+		state.ir = ir;
+		state.options = moduleOptions;
+	}
+}
+
+} // namespace
+
 void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
                                       const engine::ModuleOptions& moduleOptions,
                                       std::shared_ptr<engine::details::ModuleState> state) const {
@@ -149,6 +173,7 @@ void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
 		// Single-tier: compile directly with the high-performance backend, no promotion.
 		state->executable = compileTier(functions, moduleOptions, config_.tier1.backend, "tier1",
 		                                pipeline_.irOptimizationLevel({config_.tier1.backend}), ir);
+		retainIfRequested(*state, ir, moduleOptions);
 		return;
 	}
 	if (config_.tier0.backend == engine::INTERPRETER_BACKEND) {
@@ -158,6 +183,7 @@ void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
 		// executable swap and version bump re-resolve all function handles.
 		auto tracedIR = pipeline_.compileToIR(functions, moduleOptions, nullptr,
 		                                      pipeline_.irOptimizationLevel({config_.tier1.backend}));
+		retainIfRequested(*state, tracedIR, moduleOptions);
 		promoteAsync(state, std::move(tracedIR), moduleOptions);
 		return;
 	}
@@ -165,6 +191,23 @@ void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
 	// this module's own IR -- so both tiers' backends have a say in optimizing it.
 	state->executable = compileTier(functions, moduleOptions, config_.tier0.backend, "tier0",
 	                                pipeline_.irOptimizationLevel({config_.tier0.backend, config_.tier1.backend}), ir);
+	retainIfRequested(*state, ir, moduleOptions);
+	promoteAsync(state, std::move(ir), moduleOptions);
+}
+
+void TieredJITCompiler::compileModuleFromIR(std::shared_ptr<ir::IRGraph> ir, const engine::ModuleOptions& moduleOptions,
+                                            std::shared_ptr<engine::details::ModuleState> state) const {
+	retainIfRequested(*state, ir, moduleOptions);
+	const auto start = std::chrono::steady_clock::now();
+	// An interpreter tier-0 has nothing to interpret here -- a graph carries no
+	// C++ callables -- so it compiles tier-1 up front, like single-tier.
+	if (!config_.backgroundPromotion || config_.tier0.backend == engine::INTERPRETER_BACKEND) {
+		state->executable = compileIRTier(ir, moduleOptions, config_.tier1.backend, "tier1",
+		                                  std::make_shared<CompilationStatistics>(), start);
+		return;
+	}
+	state->executable = compileIRTier(ir, moduleOptions, config_.tier0.backend, "tier0",
+	                                  std::make_shared<CompilationStatistics>(), start);
 	promoteAsync(state, std::move(ir), moduleOptions);
 }
 
@@ -275,6 +318,10 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 }
 void TieredJITCompiler::compileModule(std::list<CompilableFunction>&, const engine::ModuleOptions&,
                                       std::shared_ptr<engine::details::ModuleState>) const {
+	throw RuntimeException("Jit not initialised");
+}
+void TieredJITCompiler::compileModuleFromIR(std::shared_ptr<ir::IRGraph>, const engine::ModuleOptions&,
+                                            std::shared_ptr<engine::details::ModuleState>) const {
 	throw RuntimeException("Jit not initialised");
 }
 void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>, std::shared_ptr<ir::IRGraph>,

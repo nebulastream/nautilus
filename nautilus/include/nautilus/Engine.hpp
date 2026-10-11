@@ -209,6 +209,23 @@ public:
 	 */
 	NautilusModule createModule(ModuleOptions overrides) const;
 
+	/**
+	 * @brief Compiles an existing IR graph into a module, without tracing.
+	 *
+	 * The graph is compiled as-is, without the IR pass pipeline: it is expected
+	 * to be the output of an earlier compile, such as a graph kept with
+	 * `engine.retainIR` or one read back by the serialization plugin
+	 * (docs/ir-serialization.md). Tiering and background promotion behave as
+	 * for a traced module. Because nothing ties a caller's C++ types to the
+	 * graph, CompiledModule::getFunction() checks each requested signature
+	 * against the graph's.
+	 *
+	 * @param ir The graph; shared with the module, which only reads it.
+	 * @param overrides Per-module option overrides.
+	 * @throws std::logic_error if this engine does not compile (`engine.Compilation=false`).
+	 */
+	CompiledModule compileIR(std::shared_ptr<compiler::ir::IRGraph> ir, ModuleOptions overrides = {}) const;
+
 	std::string getNameOfBackend() const {
 		return jit_->getName();
 	}

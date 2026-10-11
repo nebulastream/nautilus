@@ -3,6 +3,7 @@ include(Catch)
 
 add_executable(nautilus-serialization-tests
         IRSerializationTest.cpp
+        ModuleSerializationTest.cpp
 )
 
 target_link_libraries(nautilus-serialization-tests PRIVATE nautilus-serialization Catch2::Catch2WithMain

@@ -58,6 +58,35 @@ Intrinsic ids are never shipped. The reader re-derives them from the resolved ad
 
 Source tags (the trace-time call stacks behind `showSourceLocations` and debug info) point into the tracer's arena. They are not serialized, so a deserialized graph has none.
 
+## Compiled modules
+
+`nautilus/serialization/ModuleSerialization.hpp` saves a whole compiled module and rebuilds it on another engine, in this process or another one.
+
+```cpp
+nautilus::engine::Options options;
+options.setOption("engine.retainIR", true);          // keep the IR on compiled modules
+nautilus::engine::NautilusEngine engine(options);
+
+auto module = engine.createModule();
+module.registerFunction("sum", sumSquares);
+module.registerFunction("offset", offsetTwice);
+auto compiled = module.compile();
+
+std::vector<std::byte> image = ser::saveModule(compiled, out);   // out: SerializeOptions, as above
+
+// Elsewhere:
+ser::ModuleImageInfo info = ser::inspectModule(image);           // names, signatures, options
+auto loaded = ser::loadModule(otherEngine, image, in);           // in: DeserializeOptions
+auto sum = loaded.getFunction<int64_t(int64_t*, int64_t)>("sum");
+```
+
+- **What an image holds.** The IR the module was compiled from, plus a manifest listing every function's IR signature and the module options it was compiled with. No machine code: every backend's output embeds process-specific addresses, so the receiver always compiles.
+- **Saving.** A module only keeps its IR when it is compiled with `engine.retainIR` (off by default, because the graph costs memory for the module's lifetime). `saveModule` throws otherwise. The kept graph is the one the backends compiled, i.e. after the IR pass pipeline. It is valid input for every backend, because the optimization level only tunes performance.
+- **Loading.** `loadModule` materializes the IR and hands it to `NautilusEngine::compileIR`, which compiles a graph without tracing and without the IR passes. The receiving engine's own configuration applies: its backend, its tiers, its background promotion. The sender's options are reported by `inspectModule` but not applied. Pass `info.options` as `loadModule`'s overrides to reproduce them.
+- **Signature checks.** In-process, the C++ types of a registered function tie callers to the compiled code. A loaded module has no such link, so `getFunction<R(Args...)>` on it compares the requested signature with the image's and throws `std::invalid_argument` on a mismatch, signedness and width included.
+- **Inspection.** `inspectModule` reads the manifest in place, without materializing the IR.
+- **Compatibility.** The manifest is stored in four extra sections (`MSTR`, `MSIG`, `MTYP`, `MOPT`) that are not flagged required, so a module image is also a plain IR buffer: `deserialize` reads it and ignores the manifest.
+
 ## Network framing
 
 The header is self-describing: `peekTotalSize(prefix)` returns the full size of a message from its first 24 bytes, so a stream reader can frame messages without understanding them. The format never compresses. Compressing would rule out in-place reads, so compression (e.g. zstd) belongs in the transport. Integrity is checked with a CRC-32C over everything after the header. `DeserializeOptions::verifyChecksum` can turn the check off when the transport already guarantees integrity.
@@ -98,6 +127,7 @@ sections...
 | `CNST` | 64-bit constant pool (integer values, float bits, branch probabilities) |
 | `CALL`, `DTOR` | call details and their destructors |
 | `ALLC`, `ATTR`, `REGN`, `STRR`, `IDXS`, `XSIT` | alloca specs, function attributes, region specs, argument names, landing pads, exceptional call sites |
+| `MSTR`, `MSIG`, `MTYP`, `MOPT` | module images only, optional: manifest strings, function signatures, their parameter types, module options |
 
 The values of a function, its block arguments and its operations alike, are numbered densely, block by block: a block's arguments first, then its operations. Blocks tile this numbering exactly. Every reference is a 32-bit index into a table whose size the reader knows, which is what makes validation cheap and complete. Operations use their own stable *wire opcodes*, mapped explicitly from the C++ enum, so reordering `Operation::OperationType` cannot change the format.
 

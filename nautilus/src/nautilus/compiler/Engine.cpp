@@ -3,6 +3,12 @@
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/TieredCompiler.hpp"
 #include "nautilus/logging.hpp"
+#include <stdexcept>
+
+#ifdef ENABLE_TRACING
+#include "nautilus/compiler/ir/IRGraph.hpp"
+#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#endif
 
 namespace nautilus::engine {
 
@@ -41,6 +47,35 @@ NautilusEngine::NautilusEngine(std::unique_ptr<compiler::JITCompiler> jit, const
 }
 
 NautilusEngine::~NautilusEngine() = default;
+
+CompiledModule NautilusEngine::compileIR(std::shared_ptr<compiler::ir::IRGraph> ir, ModuleOptions overrides) const {
+#ifdef ENABLE_TRACING
+	if (!isCompiled()) {
+		throw std::logic_error("compileIR needs a compiling engine; this one interprets (engine.Compilation=false)");
+	}
+	if (!ir) {
+		throw std::invalid_argument("compileIR needs a graph");
+	}
+	auto moduleOptions = options.deriveModuleOptions();
+	moduleOptions.applyOverrides(overrides);
+
+	auto state = std::make_shared<details::ModuleState>();
+	for (const auto* function : ir->getFunctionOperations()) {
+		details::FunctionTypeSignature signature;
+		signature.result = function->getOutputArg();
+		for (const auto* argument : function->getEntryBlock()->getArguments()) {
+			signature.params.push_back(argument->getStamp());
+		}
+		state->signatures.emplace(function->getName(), std::move(signature));
+	}
+	jit_->compileModuleFromIR(std::move(ir), moduleOptions, state);
+	return CompiledModule(std::move(state));
+#else
+	(void) ir;
+	(void) overrides;
+	throw std::logic_error("compileIR needs a build with ENABLE_TRACING");
+#endif
+}
 NautilusEngine::NautilusEngine(NautilusEngine&&) noexcept = default;
 
 } // namespace nautilus::engine

@@ -4,6 +4,8 @@
 #include <functional>
 #include <list>
 #include <memory>
+#include <stdexcept>
+#include <string>
 
 namespace nautilus::engine::details {
 struct ModuleState;
@@ -68,6 +70,23 @@ public:
 	 */
 	virtual void compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
 	                           std::shared_ptr<engine::details::ModuleState> state) const = 0;
+
+	/**
+	 * @brief Compile an already-built IR graph and publish the result into @p state.
+	 *
+	 * The graph-based counterpart of compileModule(): no tracing and no IR
+	 * passes run, because @p ir is expected to be what a previous compile
+	 * produced (e.g. a deserialized module). Tiering and background promotion
+	 * behave as for a traced module. Backends only read @p ir, so it may be
+	 * shared with the caller.
+	 */
+	virtual void compileModuleFromIR(std::shared_ptr<ir::IRGraph> ir, const engine::ModuleOptions& moduleOptions,
+	                                 std::shared_ptr<engine::details::ModuleState> state) const {
+		(void) ir;
+		(void) moduleOptions;
+		(void) state;
+		throw std::logic_error(getName() + " cannot compile a module from IR");
+	}
 
 	/**
 	 * @brief Get the name of the primary compilation backend.

@@ -5,6 +5,7 @@ target_sources(nautilus-serialization PRIVATE
         src/IRSerializer.cpp
         src/IRDeserializer.cpp
         src/SymbolResolution.cpp
+        src/ModuleSerialization.cpp
 )
 
 target_include_directories(nautilus-serialization PUBLIC

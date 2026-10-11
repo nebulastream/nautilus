@@ -12,8 +12,10 @@
 #include <functional>
 #include <list>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -24,6 +26,12 @@
 namespace nautilus::engine {
 
 namespace details {
+
+/// The IR types of one compiled function: its result and its parameters.
+struct FunctionTypeSignature {
+	Type result = Type::v;
+	std::vector<Type> params;
+};
 
 /**
  * @brief Shared mutable state backing a CompiledModule and all its ModuleFunction handles.
@@ -40,6 +48,65 @@ struct ModuleState {
 	std::unordered_map<std::string, std::any> interpretedFunctions;
 	std::atomic<uint64_t> version {0};
 	mutable std::shared_mutex mutex;
+	/// The graph the module was compiled from, kept only when the module was
+	/// compiled with `engine.retainIR` (or built from IR). Backends treat a
+	/// graph as read-only, so it stays valid after compilation.
+	std::shared_ptr<compiler::ir::IRGraph> ir;
+	/// The options the retained graph was compiled with.
+	ModuleOptions options;
+	/// Per-function IR signatures. Set for a module built from IR, where no C++
+	/// signature ties a caller to the function's real types; getFunction()
+	/// checks the requested signature against it. Empty means unchecked.
+	std::unordered_map<std::string, FunctionTypeSignature> signatures;
+};
+
+/// The IR type of the raw C++ type @p T, or nullopt for a type IR signatures
+/// do not describe (such as an enum, whose IR type depends on its underlying type).
+template <typename T>
+constexpr std::optional<Type> rawIRType() {
+	if constexpr (std::is_void_v<T>) {
+		return Type::v;
+	} else if constexpr (requires { tracing::TypeResolver<T>::to_type(); }) {
+		return tracing::TypeResolver<T>::to_type();
+	} else {
+		return std::nullopt;
+	}
+}
+
+/// Unpacks a raw function signature for the check below.
+template <typename Signature>
+struct SignatureChecker;
+
+template <typename R, typename... Args>
+struct SignatureChecker<R(Args...)> {
+	/// Throws if a function requested as `R(Args...)` cannot be the function
+	/// @p name of @p state. A module without known signatures (anything traced
+	/// in-process) is not checked.
+	static void check(const ModuleState& state, const std::string& name) {
+		if (state.signatures.empty()) {
+			return;
+		}
+		const auto it = state.signatures.find(name);
+		if (it == state.signatures.end()) {
+			throw std::invalid_argument("module has no function named '" + name + "'");
+		}
+		const auto& expected = it->second;
+		const std::optional<Type> requestedParams[] = {rawIRType<Args>()..., std::nullopt};
+		bool matches =
+		    rawIRType<R>().value_or(expected.result) == expected.result && sizeof...(Args) == expected.params.size();
+		for (size_t i = 0; matches && i < sizeof...(Args); ++i) {
+			matches = requestedParams[i].value_or(expected.params[i]) == expected.params[i];
+		}
+		if (!matches) {
+			std::string actual = std::string(toString(expected.result)) + "(";
+			for (size_t i = 0; i < expected.params.size(); ++i) {
+				actual += (i > 0 ? ", " : "") + std::string(toString(expected.params[i]));
+			}
+			actual += ")";
+			throw std::invalid_argument("function '" + name + "' has IR signature " + actual +
+			                            ", which the requested signature does not match");
+		}
+	}
 };
 
 } // namespace details
@@ -267,6 +334,7 @@ public:
 	 */
 	template <typename Signature>
 	ModuleFunction<Signature> getFunction(const std::string& name) {
+		details::SignatureChecker<Signature>::check(*state_, name);
 		return ModuleFunction<Signature>(state_, name);
 	}
 
@@ -295,6 +363,25 @@ public:
 
 	const compiler::Executable* getExecutable() const {
 		return state_->executable.get();
+	}
+
+	/**
+	 * @brief The IR graph this module was compiled from, or nullptr.
+	 *
+	 * Only kept when the module was compiled with the `engine.retainIR` option
+	 * (or built from IR via NautilusEngine::compileIR). It is the graph the
+	 * backends compiled, i.e. after the IR pass pipeline, and must not be
+	 * modified: a background tier-1 compile may still be reading it.
+	 */
+	std::shared_ptr<const compiler::ir::IRGraph> getIR() const {
+		std::shared_lock<std::shared_mutex> lock(state_->mutex);
+		return state_->ir;
+	}
+
+	/// The options the retained IR was compiled with (empty without retained IR).
+	ModuleOptions getCompileOptions() const {
+		std::shared_lock<std::shared_mutex> lock(state_->mutex);
+		return state_->options;
 	}
 
 	/**

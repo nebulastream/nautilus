@@ -1,4 +1,5 @@
 #include "Crc32c.hpp"
+#include "SectionWriter.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
@@ -155,7 +156,8 @@ WireBitwise wireBitwise(BinaryCompOperation::Type type) {
 /// them out into one buffer.
 class Writer {
 public:
-	Writer(const IRGraph& graph, const SerializeOptions& options) : graph(graph), options(options) {
+	Writer(const IRGraph& graph, const SerializeOptions& options, std::span<const detail::ExtraSection> extras)
+	    : graph(graph), options(options), extras(extras) {
 		if (options.pointerMode == PointerMode::Portable && options.namer == nullptr) {
 			throw SerializationException("portable serialization needs a SymbolNamer");
 		}
@@ -606,6 +608,7 @@ private:
 		uint32_t stride;
 		uint32_t count;
 		const void* data;
+		uint32_t flags = SECTION_REQUIRED;
 	};
 
 	template <typename T>
@@ -636,6 +639,12 @@ private:
 		section(pending, TAG_STRING_REFS, stringRefs);
 		section(pending, TAG_INDICES, indices);
 		section(pending, TAG_CALL_SITES, callSites);
+		for (const auto& extra : extras) {
+			if (static_cast<uint64_t>(extra.recordStride) * extra.recordCount != extra.bytes.size()) {
+				throw SerializationException("extra section size does not match its records");
+			}
+			pending.push_back({extra.tag, extra.recordStride, extra.recordCount, extra.bytes.data(), 0});
+		}
 
 		const auto align = [](uint64_t offset) {
 			return (offset + SECTION_ALIGNMENT - 1) / SECTION_ALIGNMENT * SECTION_ALIGNMENT;
@@ -644,7 +653,7 @@ private:
 		uint64_t cursor = align(dirOffset + pending.size() * sizeof(SectionEntry));
 		std::vector<SectionEntry> directory;
 		for (const auto& p : pending) {
-			directory.push_back(SectionEntry {p.tag, SECTION_REQUIRED, cursor, p.stride, p.count});
+			directory.push_back(SectionEntry {p.tag, p.flags, cursor, p.stride, p.count});
 			cursor = align(cursor + static_cast<uint64_t>(p.stride) * p.count);
 		}
 
@@ -674,6 +683,7 @@ private:
 
 	const IRGraph& graph;
 	const SerializeOptions& options;
+	std::span<const detail::ExtraSection> extras;
 	std::unordered_map<const FunctionOperation*, uint32_t> functionIndex;
 
 	std::string strings;
@@ -703,7 +713,12 @@ private:
 } // namespace
 
 std::vector<std::byte> serialize(const IRGraph& graph, const SerializeOptions& options) {
-	return Writer(graph, options).write();
+	return Writer(graph, options, {}).write();
+}
+
+std::vector<std::byte> detail::serializeWithSections(const IRGraph& graph, const SerializeOptions& options,
+                                                     std::span<const ExtraSection> extras) {
+	return Writer(graph, options, extras).write();
 }
 
 std::optional<uint64_t> peekTotalSize(std::span<const std::byte> prefix) {
