@@ -16,9 +16,10 @@ public:
 	// `debugInfo.enable` is true, inserts the
 	// Nautilus debug-info passes (location snapshot for mlir source
 	// mode, DIScopeForLLVMFuncOp to materialize a DISubprogram on every
-	// llvm.func).  Returns non-zero on pass-pipeline failure.
+	// llvm.func).  `enableInliner = false` skips the MLIR inliner (as
+	// debug info does).  Returns non-zero on pass-pipeline failure.
 	static int lowerAndOptimizeMLIRModule(::mlir::OwningOpRef<::mlir::ModuleOp>& module,
 	                                      const std::vector<OptimizationPass>& optimizationPasses,
-	                                      const DebugInfoOptions& debugInfo = {});
+	                                      const DebugInfoOptions& debugInfo = {}, bool enableInliner = true);
 };
 } // namespace nautilus::compiler::mlir
