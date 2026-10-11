@@ -6,7 +6,7 @@ target triple = "x86_64-unknown-linux-gnu"
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define signext i32 @execute(ptr %0) local_unnamed_addr #0 {
   %2 = load i32, ptr %0, align 4
-  %3 = add i32 %2, 10
+  %3 = add nsw i32 %2, 10
   store i32 %3, ptr %0, align 4
   ret i32 %3
 }
@@ -14,7 +14,7 @@ define signext i32 @execute(ptr %0) local_unnamed_addr #0 {
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @voidHelper(ptr %0) local_unnamed_addr #0 {
   %2 = load i32, ptr %0, align 4
-  %3 = add i32 %2, 10
+  %3 = add nsw i32 %2, 10
   store i32 %3, ptr %0, align 4
   ret void
 }

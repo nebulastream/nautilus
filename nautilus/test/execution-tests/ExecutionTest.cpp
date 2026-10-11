@@ -1193,9 +1193,10 @@ void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(int64_t(3), int64_t(4)) == int64_t(7));
 		REQUIRE(f(int64_t(-9000000000LL), int64_t(1000000000LL)) == int64_t(-8000000000LL));
 		REQUIRE(f(int64_t(0), int64_t(0)) == int64_t(0));
-		// Two's-complement wraparound at the int64_t boundaries.
-		REQUIRE(f(std::numeric_limits<int64_t>::max(), int64_t(1)) == std::numeric_limits<int64_t>::min());
-		REQUIRE(f(std::numeric_limits<int64_t>::min(), int64_t(-1)) == std::numeric_limits<int64_t>::max());
+		// Up to the int64_t boundaries. Overflowing them is undefined behavior, as in
+		// C++: the MLIR and cpp backends mark the addition `nsw`.
+		REQUIRE(f(std::numeric_limits<int64_t>::max() - 1, int64_t(1)) == std::numeric_limits<int64_t>::max());
+		REQUIRE(f(std::numeric_limits<int64_t>::min() + 1, int64_t(-1)) == std::numeric_limits<int64_t>::min());
 	}
 	SECTION("nautilusFunctionUInt64") {
 		auto f = engine.registerFunction(nautilusFunctionUInt64);
@@ -1242,11 +1243,12 @@ void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(&value, 3) == 0);
 		value = 0;
 		REQUIRE(f(&value, 0) == 0);
-		// Two's-complement wraparound of the addition through the pointer load.
-		value = std::numeric_limits<int32_t>::max();
-		REQUIRE(f(&value, 1) == std::numeric_limits<int32_t>::min());
-		value = std::numeric_limits<int32_t>::min();
-		REQUIRE(f(&value, -1) == std::numeric_limits<int32_t>::max());
+		// Up to the int32_t boundaries through the pointer load; overflowing them is
+		// undefined behavior, as in C++.
+		value = std::numeric_limits<int32_t>::max() - 1;
+		REQUIRE(f(&value, 1) == std::numeric_limits<int32_t>::max());
+		value = std::numeric_limits<int32_t>::min() + 1;
+		REQUIRE(f(&value, -1) == std::numeric_limits<int32_t>::min());
 	}
 	SECTION("nautilusFunctionPtrWrite") {
 		auto f = engine.registerFunction(nautilusFunctionPtrWrite);
@@ -1781,6 +1783,26 @@ TEST_CASE("NautilusFunction Compiled Execution Test") {
 			                                  options.setOption("mlir.enableMultithreading", false);
 		                                  }
 	                                  });
+}
+#endif
+
+#if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
+val<bool> incrementExceeds(val<int32_t> x) {
+	return x + 1 > x;
+}
+
+TEST_CASE("MLIR signed overflow flags") {
+	// By default the addition is `nsw`, so LLVM folds `x + 1 > x` to true, as
+	// clang does for the same C++ expression.
+	auto nsw = nautilus::testing::makeEngine("mlir").registerFunction(incrementExceeds);
+	REQUIRE(nsw(5));
+	REQUIRE(nsw(std::numeric_limits<int32_t>::max()));
+	// mlir.noSignedWrap=false keeps the wraparound: INT32_MAX + 1 is INT32_MIN.
+	auto wrap = nautilus::testing::makeEngine("mlir", [](engine::Options& options) {
+		            options.setOption("mlir.noSignedWrap", false);
+	            }).registerFunction(incrementExceeds);
+	REQUIRE(wrap(5));
+	REQUIRE_FALSE(wrap(std::numeric_limits<int32_t>::max()));
 }
 #endif
 

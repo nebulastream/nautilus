@@ -9,60 +9,47 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   br i1 %2, label %.lr.ph.preheader, label %._crit_edge
 
 .lr.ph.preheader:                                 ; preds = %1
-  %min.iters.check = icmp ult i32 %0, 8
+  %min.iters.check = icmp eq i32 %0, 1
   br i1 %min.iters.check, label %.lr.ph.preheader2, label %vector.ph
 
 vector.ph:                                        ; preds = %.lr.ph.preheader
-  %n.vec = and i32 %0, 2147483640
+  %n.vec = and i32 %0, 2147483646
   br label %vector.body
 
 vector.body:                                      ; preds = %vector.body, %vector.ph
   %index = phi i32 [ 0, %vector.ph ], [ %index.next, %vector.body ]
-  %vec.ind = phi <4 x i32> [ <i32 0, i32 1, i32 2, i32 3>, %vector.ph ], [ %vec.ind.next, %vector.body ]
-  %vec.phi = phi <4 x i32> [ zeroinitializer, %vector.ph ], [ %7, %vector.body ]
-  %vec.phi1 = phi <4 x i32> [ zeroinitializer, %vector.ph ], [ %8, %vector.body ]
-  %3 = and <4 x i32> %vec.ind, splat (i32 1)
-  %4 = and <4 x i32> %vec.ind, splat (i32 1)
-  %5 = xor <4 x i32> %3, splat (i32 1)
-  %6 = xor <4 x i32> %4, splat (i32 1)
-  %7 = add <4 x i32> %5, %vec.phi
-  %8 = add <4 x i32> %6, %vec.phi1
-  %index.next = add nuw i32 %index, 8
-  %vec.ind.next = add <4 x i32> %vec.ind, splat (i32 8)
-  %9 = icmp eq i32 %index.next, %n.vec
-  br i1 %9, label %middle.block, label %vector.body, !llvm.loop !1
+  %vec.phi = phi i32 [ 0, %vector.ph ], [ %3, %vector.body ]
+  %3 = add i32 %vec.phi, 1
+  %index.next = add nuw i32 %index, 2
+  %4 = icmp eq i32 %index.next, %n.vec
+  br i1 %4, label %middle.block, label %vector.body, !llvm.loop !1
 
 middle.block:                                     ; preds = %vector.body
-  %bin.rdx = add <4 x i32> %8, %7
-  %10 = tail call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> %bin.rdx)
   %cmp.n = icmp eq i32 %0, %n.vec
   br i1 %cmp.n, label %._crit_edge, label %.lr.ph.preheader2
 
 .lr.ph.preheader2:                                ; preds = %.lr.ph.preheader, %middle.block
   %.ph = phi i32 [ 0, %.lr.ph.preheader ], [ %n.vec, %middle.block ]
-  %.ph3 = phi i32 [ 0, %.lr.ph.preheader ], [ %10, %middle.block ]
+  %.ph3 = phi i32 [ 0, %.lr.ph.preheader ], [ %3, %middle.block ]
   br label %.lr.ph
 
 .lr.ph:                                           ; preds = %.lr.ph.preheader2, %.lr.ph
-  %11 = phi i32 [ %15, %.lr.ph ], [ %.ph, %.lr.ph.preheader2 ]
-  %12 = phi i32 [ %spec.select, %.lr.ph ], [ %.ph3, %.lr.ph.preheader2 ]
-  %13 = and i32 %11, 1
-  %14 = xor i32 %13, 1
-  %spec.select = add i32 %14, %12
-  %15 = add nuw nsw i32 %11, 1
-  %exitcond.not = icmp eq i32 %15, %0
+  %5 = phi i32 [ %9, %.lr.ph ], [ %.ph, %.lr.ph.preheader2 ]
+  %6 = phi i32 [ %spec.select, %.lr.ph ], [ %.ph3, %.lr.ph.preheader2 ]
+  %7 = and i32 %5, 1
+  %8 = xor i32 %7, 1
+  %spec.select = add nuw nsw i32 %8, %6
+  %9 = add nuw nsw i32 %5, 1
+  %exitcond.not = icmp eq i32 %9, %0
   br i1 %exitcond.not, label %._crit_edge, label %.lr.ph, !llvm.loop !4
 
 ._crit_edge:                                      ; preds = %.lr.ph, %middle.block, %1
-  %.lcssa = phi i32 [ 0, %1 ], [ %10, %middle.block ], [ %spec.select, %.lr.ph ]
+  %.lcssa = phi i32 [ 0, %1 ], [ %3, %middle.block ], [ %spec.select, %.lr.ph ]
   ret i32 %.lcssa
 }
 
-; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
-declare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>) #1
-
 attributes #0 = { nofree norecurse nosync nounwind memory(none) }
-attributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #1 = { nofree norecurse nosync nounwind memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 
@@ -70,4 +57,10 @@ attributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memo
 !1 = distinct !{!1, !2, !3}
 !2 = !{!"llvm.loop.isvectorized", i32 1}
 !3 = !{!"llvm.loop.unroll.runtime.disable"}
-!4 = distinct !{!4, !3, !2}
+!4 = distinct !{!4, !2}
+!5 = distinct !{!5, !2, !3}
+!6 = distinct !{!6, !2}
+!7 = distinct !{!7, !2, !3}
+!8 = distinct !{!8, !2}
+!9 = distinct !{!9, !2, !3}
+!10 = distinct !{!10, !2}

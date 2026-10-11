@@ -17,7 +17,7 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   br i1 %6, label %3, label %7
 
 7:                                                ; preds = %5
-  %8 = shl nuw i32 %0, 1
+  %8 = shl nuw nsw i32 %0, 1
   %9 = or disjoint i32 %8, 1
   br label %3
 }

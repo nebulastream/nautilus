@@ -3,58 +3,34 @@ source_filename = "LLVMDialectModule"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
-; Function Attrs: nofree norecurse nosync nounwind memory(none)
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %.not1 = icmp slt i32 %0, 1
   br i1 %.not1, label %._crit_edge, label %.lr.ph.preheader
 
 .lr.ph.preheader:                                 ; preds = %1
-  %2 = add nsw i32 %0, -2147483647
-  %or.cond = icmp ult i32 %2, -2147483631
-  br i1 %or.cond, label %.lr.ph.preheader7, label %vector.ph
+  %2 = add nsw i32 %0, -1
+  %3 = zext nneg i32 %2 to i33
+  %4 = add nsw i32 %0, -2
+  %5 = zext i32 %4 to i33
+  %6 = mul i33 %3, %5
+  %7 = add nsw i32 %0, -3
+  %8 = zext i32 %7 to i33
+  %9 = mul i33 %6, %8
+  %10 = lshr i33 %9, 1
+  %11 = trunc nuw i33 %10 to i32
+  %12 = mul i32 %11, 1431655766
+  %13 = lshr i33 %6, 1
+  %14 = trunc nuw i33 %13 to i32
+  %15 = mul i32 %14, 5
+  %16 = add i32 %12, %15
+  %17 = shl i32 %0, 2
+  %18 = add i32 %16, %17
+  %19 = add i32 %18, -3
+  br label %._crit_edge
 
-vector.ph:                                        ; preds = %.lr.ph.preheader
-  %n.vec = and i32 %0, 2147483640
-  %3 = or disjoint i32 %n.vec, 1
-  br label %vector.body
-
-vector.body:                                      ; preds = %vector.body, %vector.ph
-  %index = phi i32 [ 0, %vector.ph ], [ %index.next, %vector.body ]
-  %vec.ind = phi <4 x i32> [ <i32 1, i32 2, i32 3, i32 4>, %vector.ph ], [ %vec.ind.next, %vector.body ]
-  %vec.phi = phi <4 x i32> [ zeroinitializer, %vector.ph ], [ %6, %vector.body ]
-  %vec.phi5 = phi <4 x i32> [ zeroinitializer, %vector.ph ], [ %7, %vector.body ]
-  %step.add = add <4 x i32> %vec.ind, splat (i32 4)
-  %4 = mul <4 x i32> %vec.ind, %vec.ind
-  %5 = mul <4 x i32> %step.add, %step.add
-  %6 = add <4 x i32> %4, %vec.phi
-  %7 = add <4 x i32> %5, %vec.phi5
-  %index.next = add nuw i32 %index, 8
-  %vec.ind.next = add <4 x i32> %vec.ind, splat (i32 8)
-  %8 = icmp eq i32 %index.next, %n.vec
-  br i1 %8, label %middle.block, label %vector.body, !llvm.loop !1
-
-middle.block:                                     ; preds = %vector.body
-  %bin.rdx = add <4 x i32> %7, %6
-  %9 = tail call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> %bin.rdx)
-  %cmp.n = icmp eq i32 %0, %n.vec
-  br i1 %cmp.n, label %._crit_edge, label %.lr.ph.preheader7
-
-.lr.ph.preheader7:                                ; preds = %.lr.ph.preheader, %middle.block
-  %.ph = phi i32 [ 1, %.lr.ph.preheader ], [ %3, %middle.block ]
-  %.ph8 = phi i32 [ 0, %.lr.ph.preheader ], [ %9, %middle.block ]
-  br label %.lr.ph
-
-.lr.ph:                                           ; preds = %.lr.ph.preheader7, %.lr.ph
-  %10 = phi i32 [ %14, %.lr.ph ], [ %.ph, %.lr.ph.preheader7 ]
-  %11 = phi i32 [ %13, %.lr.ph ], [ %.ph8, %.lr.ph.preheader7 ]
-  %12 = mul i32 %10, %10
-  %13 = add i32 %12, %11
-  %14 = add i32 %10, 1
-  %.not = icmp sgt i32 %14, %0
-  br i1 %.not, label %._crit_edge, label %.lr.ph, !llvm.loop !4
-
-._crit_edge:                                      ; preds = %.lr.ph, %middle.block, %1
-  %.lcssa = phi i32 [ 0, %1 ], [ %9, %middle.block ], [ %13, %.lr.ph ]
+._crit_edge:                                      ; preds = %.lr.ph.preheader, %1
+  %.lcssa = phi i32 [ 0, %1 ], [ %19, %.lr.ph.preheader ]
   ret i32 %.lcssa
 }
 

@@ -12,7 +12,7 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @loopHelper(i32 %0) local_unnamed_addr #0 {
-  %2 = add i32 %0, 1
+  %2 = add nsw i32 %0, 1
   ret i32 %2
 }
 

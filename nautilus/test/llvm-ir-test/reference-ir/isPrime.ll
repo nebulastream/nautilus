@@ -17,14 +17,14 @@ define noundef zeroext i1 @execute(i32 %0) local_unnamed_addr #0 {
   ret i1 %3
 
 4:                                                ; preds = %.lr.ph
-  %5 = add i32 %7, 1
-  %6 = mul i32 %5, %5
+  %5 = add nuw nsw i32 %7, 1
+  %6 = mul nuw nsw i32 %5, %5
   %.not = icmp sgt i32 %6, %0
   br i1 %.not, label %.loopexit, label %.lr.ph
 
 .lr.ph:                                           ; preds = %.preheader, %4
   %7 = phi i32 [ %5, %4 ], [ 2, %.preheader ]
-  %8 = srem i32 %0, %7
+  %8 = urem i32 %0, %7
   %.not4.not = icmp ne i32 %8, 0
   br i1 %.not4.not, label %4, label %.loopexit
 }
