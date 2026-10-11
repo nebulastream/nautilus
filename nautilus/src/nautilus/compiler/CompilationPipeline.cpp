@@ -238,6 +238,7 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		const auto snapshot = ir::computeStatistics(*ir);
 		statistics->set("ir.functions", static_cast<int64_t>(snapshot.numFunctions));
 		statistics->set("ir.blocks", static_cast<int64_t>(snapshot.numBlocks));
+		statistics->set("ir.blockArguments", static_cast<int64_t>(snapshot.numBlockArguments));
 		statistics->set("ir.operations", static_cast<int64_t>(snapshot.numOperations));
 	}
 	dumpHandler.dump("after_ir_creation", "nautilus", [&]() { return ir->toString(irPrintOptions); });

@@ -8,7 +8,8 @@
 namespace nautilus::compiler::ir {
 
 /**
- * @brief Aggregate counts of IR entities: functions, blocks, operations.
+ * @brief Aggregate counts of IR entities: functions, blocks, block arguments,
+ * operations.
  *
  * Used by the pass manager to log per-pass deltas. Subtraction yields a
  * signed-free delta representation (values may wrap around if passes add
@@ -18,6 +19,7 @@ namespace nautilus::compiler::ir {
 struct IRStatistics {
 	size_t numFunctions = 0;
 	size_t numBlocks = 0;
+	size_t numBlockArguments = 0;
 	size_t numOperations = 0;
 
 	[[nodiscard]] std::string toString() const;
