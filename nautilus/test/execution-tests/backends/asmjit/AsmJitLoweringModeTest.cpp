@@ -293,6 +293,64 @@ val<int64_t> inliningCaller(val<int32_t> x, val<int8_t> y, val<int32_t> n) {
 	return acc + static_cast<val<int64_t>>(f);
 }
 
+// ── ARM64 extras: widened indices, tail duplication, reassociation ──────────
+
+// i32 and ui32 indices reach their addresses through a widening cast, which
+// the ARM64 lowering folds into the address as a sign/zero extension. Negative
+// i32 indices (relative to a middle pointer) and ui32 indices beyond INT32_MAX
+// bits pin the extension kind.
+val<int64_t> widenedIndexMix(val<int64_t*> mid, val<int32_t> lo, val<int32_t> hi, val<uint32_t> u) {
+	val<int64_t> acc = 0;
+	for (val<int32_t> i = lo; i < hi; i = i + 1) {
+		acc = acc + mid[i];
+		mid[i] = acc;
+	}
+	val<int64_t*> base = mid - 8;
+	return acc + base[u];
+}
+
+// A loop whose body is a diamond with a small merge block: the arm that does
+// not fall into the merge block gets a copy of it. The positive arm also
+// carries the (acc + 3x) - (x >> 1) accumulator that reassociation targets.
+val<int64_t> diamondLoop(val<int64_t*> data, val<int32_t> n) {
+	val<int64_t> acc = 0;
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		val<int64_t> x = data[i];
+		if (x > 0) {
+			acc = acc + x * 3 - (x >> 1);
+		} else {
+			acc = acc - x;
+		}
+	}
+	return acc;
+}
+
+// All four reassociated shapes, with wraparound: (p+a)+b, (p+a)-b, (p-a)+b,
+// (p-a)-b, each with p loop-carried.
+val<int64_t> reassociationMix(val<int64_t> a, val<int64_t> b, val<int32_t> n) {
+	val<int64_t> p = 1, q = 2, r = 3, s = 4;
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		p = p + a + b;
+		q = q + a - b;
+		r = r - a + b;
+		s = s - a - b;
+		a = a * 3 + 1;
+	}
+	return p ^ (q << 1) ^ (r << 2) ^ (s << 3);
+}
+
+int64_t reassociationMixReference(int64_t a, int64_t b, int32_t n) {
+	uint64_t p = 1, q = 2, r = 3, s = 4, ua = static_cast<uint64_t>(a), ub = static_cast<uint64_t>(b);
+	for (int32_t i = 0; i < n; i++) {
+		p = p + ua + ub;
+		q = q + ua - ub;
+		r = r - ua + ub;
+		s = s - ua - ub;
+		ua = ua * 3 + 1;
+	}
+	return static_cast<int64_t>(p ^ (q << 1) ^ (r << 2) ^ (s << 3));
+}
+
 engine::NautilusEngine makeAsmJitOptionEngine(const std::string& option, bool value) {
 	return nautilus::testing::makeEngine("asmjit",
 	                                     [option, value](engine::Options& opts) { opts.setOption(option, value); });
@@ -596,6 +654,73 @@ TEST_CASE("AsmJit loop rotation: counters and differential correctness") {
 	for (uint64_t c : {uint64_t(0), uint64_t(1)}) {
 		for (uint64_t p : {uint64_t(0), uint64_t(7)}) {
 			REQUIRE(mergeOn(c, p) == mergeOff(c, p));
+		}
+	}
+}
+
+TEST_CASE("AsmJit widened indices: sign and zero extension") {
+	auto fn = makeAsmJitOptionEngine("asmjit.enableAddressFusion", true).registerFunction(widenedIndexMix);
+	auto ref = makeAsmJitOptionEngine("asmjit.enableAddressFusion", false).registerFunction(widenedIndexMix);
+	for (int32_t lo : {-8, -3, 0}) {
+		for (int32_t hi : {-1, 0, 5, 8}) {
+			for (uint32_t u : {0u, 3u, 15u}) {
+				int64_t a[17], b[17], expected[17];
+				for (int i = 0; i < 17; i++) {
+					a[i] = b[i] = expected[i] = (int64_t(i) << 33) - i * 7;
+				}
+				int64_t acc = 0;
+				for (int32_t i = lo; i < hi; i++) {
+					acc += expected[8 + i];
+					expected[8 + i] = acc;
+				}
+				acc += expected[u];
+				INFO("widenedIndexMix lo=" << lo << " hi=" << hi << " u=" << u);
+				REQUIRE(fn(a + 8, lo, hi, u) == acc);
+				REQUIRE(ref(b + 8, lo, hi, u) == acc);
+				for (int i = 0; i < 17; i++) {
+					REQUIRE(a[i] == expected[i]);
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("AsmJit tail duplication: counters and differential correctness") {
+	auto engineOn = makeAsmJitOptionEngine("asmjit.enableTailDuplication", true);
+	auto engineOff = makeAsmJitOptionEngine("asmjit.enableTailDuplication", false);
+	auto on = engineOn.registerFunction(diamondLoop);
+	auto off = engineOff.registerFunction(diamondLoop);
+	int64_t data[64];
+	for (int i = 0; i < 64; i++) {
+		data[i] = (i % 3 == 0 ? -1 : 1) * ((int64_t(i) << 40) + i * 977);
+	}
+	for (int32_t n : {0, 1, 2, 17, 64}) {
+		int64_t expected = 0;
+		for (int32_t i = 0; i < n; i++) {
+			const auto x = static_cast<uint64_t>(data[i]);
+			expected = data[i] > 0 ? static_cast<int64_t>(static_cast<uint64_t>(expected) + x * 3 -
+			                                              static_cast<uint64_t>(data[i] >> 1))
+			                       : static_cast<int64_t>(static_cast<uint64_t>(expected) - x);
+		}
+		INFO("diamondLoop n=" << n);
+		REQUIRE(on(data, n) == expected);
+		REQUIRE(off(data, n) == expected);
+	}
+	REQUIRE(off.getStatistics()->find("asmjit.lowering.duplicatedTails") == nullptr);
+#if defined(__aarch64__) || defined(_M_ARM64)
+	// Tail duplication is implemented by the ARM64 lowering only.
+	REQUIRE(getCounter(on.getStatistics(), "asmjit.lowering.duplicatedTails") >= 1);
+#endif
+}
+
+TEST_CASE("AsmJit reassociation: matches the wrapping native reference") {
+	auto fn = makeAsmJitOptionEngine("asmjit.enableConstFolding", true).registerFunction(reassociationMix);
+	for (int64_t a : {int64_t(0), int64_t(-7), INT64_MAX, INT64_MIN + 3}) {
+		for (int64_t b : {int64_t(1), int64_t(-123456789), INT64_MAX}) {
+			for (int32_t n : {0, 1, 5, 40}) {
+				INFO("reassociationMix a=" << a << " b=" << b << " n=" << n);
+				REQUIRE(fn(a, b, n) == reassociationMixReference(a, b, n));
+			}
 		}
 	}
 }

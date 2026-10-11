@@ -129,6 +129,8 @@ inline std::vector<Config> configs() {
 	     {"asmjit", "no-address-fusion", [](engine::Options& o) { o.setOption("asmjit.enableAddressFusion", false); }},
 	     {"asmjit", "no-inlining", [](engine::Options& o) { o.setOption("asmjit.enableInlining", false); }},
 	     {"asmjit", "no-loop-rotation", [](engine::Options& o) { o.setOption("asmjit.enableLoopRotation", false); }},
+	     {"asmjit", "no-tail-duplication",
+	      [](engine::Options& o) { o.setOption("asmjit.enableTailDuplication", false); }},
 	     {"asmjit", "licm-cse", [](engine::Options& o) {
 		      o.setOption("ir.enableLICM", true);
 		      o.setOption("ir.enableLocalCSE", true);
