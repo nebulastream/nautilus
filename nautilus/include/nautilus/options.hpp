@@ -52,6 +52,11 @@ public:
 		return defaultValue;
 	}
 
+	/// Every option value that has been set, by name.
+	[[nodiscard]] const std::unordered_map<std::string, OptionValue>& getValues() const {
+		return options;
+	}
+
 	/**
 	 * @brief Apply every option value set in @p other on top of this one;
 	 * values present in @p other win.

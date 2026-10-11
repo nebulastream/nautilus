@@ -4,6 +4,7 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -97,6 +98,9 @@ public:
 	void compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
 	                   std::shared_ptr<engine::details::ModuleState> state) const override;
 
+	void compileModuleFromIR(std::shared_ptr<ir::IRGraph> ir, const engine::ModuleOptions& moduleOptions,
+	                         std::shared_ptr<engine::details::ModuleState> state) const override;
+
 	std::string getName() const override;
 	const engine::Options& getOptions() const override;
 
@@ -136,6 +140,15 @@ private:
 	 * re-resolve.  The IR and options are owned per call, so nothing is shared
 	 * between concurrent compiles.
 	 */
+	/// Compiles @p ir with @p backend into an executable carrying @p statistics,
+	/// whose total is measured from @p compilationStart. The backend half of
+	/// compileTier(), and the whole of an IR-based compile.
+	[[nodiscard]] std::unique_ptr<Executable>
+	compileIRTier(const std::shared_ptr<ir::IRGraph>& ir, const engine::ModuleOptions& moduleOptions,
+	              const std::string& backend, const std::string& tierLabel,
+	              std::shared_ptr<CompilationStatistics> statistics,
+	              std::chrono::steady_clock::time_point compilationStart) const;
+
 	void promoteAsync(std::weak_ptr<engine::details::ModuleState> state, std::shared_ptr<ir::IRGraph> ir,
 	                  engine::ModuleOptions options) const;
 
