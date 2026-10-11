@@ -139,6 +139,70 @@ TEST_CASE("CompilationStatistics: per-pass IR counts are opt-in via ir.passStati
 	}
 }
 
+namespace {
+
+/// A lower-bound search: its inner loop is traced with two headers, one
+/// where `lo` changes and one where `hi` changes, the first holding nothing
+/// but a jump to the second.
+val<int32_t> statsLowerBound(val<int32_t*> sorted, val<int32_t> length, val<int32_t> needle) {
+	val<int32_t> lo = 0;
+	val<int32_t> hi = length;
+	while (lo < hi) {
+		val<int32_t> mid = lo + (hi - lo) / 2;
+		if (sorted[mid] < needle) {
+			lo = mid + 1;
+		} else {
+			hi = mid;
+		}
+	}
+	return lo;
+}
+
+/// Blocks and block arguments left once the IR passes are done, from the
+/// baseline counts and every pass's delta.
+[[maybe_unused]] std::pair<int64_t, int64_t>
+blocksAndArgumentsAfterPasses(const compiler::CompilationStatistics& stats) {
+	int64_t blocks = std::get<int64_t>(*stats.find("irPasses.baseline.blocks"));
+	int64_t arguments = std::get<int64_t>(*stats.find("irPasses.baseline.blockArguments"));
+	for (const auto& [key, value] : stats) {
+		if (key.ends_with(".blocksDelta")) {
+			blocks -= std::get<int64_t>(value);
+		} else if (key.ends_with(".blockArgumentsDelta")) {
+			arguments -= std::get<int64_t>(value);
+		}
+	}
+	return {blocks, arguments};
+}
+
+} // namespace
+
+#ifdef ENABLE_TRACING
+TEST_CASE("CompilationStatistics: direct SSA construction leaves a loop traced with two headers with one") {
+	auto backend = getAnyBackend();
+	if (backend.empty()) {
+		SKIP("No compilation backend available");
+	}
+	std::vector<int32_t> sorted {1, 3, 5, 7, 9, 11};
+	auto compile = [&](bool direct) {
+		Options options;
+		options.setOption("engine.backend", backend);
+		options.setOption("ir.directSSAConstruction", direct);
+		options.setOption("ir.passStatistics", true);
+		NautilusEngine engine(options);
+		auto fn = engine.registerFunction(statsLowerBound);
+		REQUIRE(fn(sorted.data(), 6, 7) == 3);
+		REQUIRE(fn(sorted.data(), 6, 12) == 6);
+		auto stats = fn.getStatistics();
+		REQUIRE(stats != nullptr);
+		return blocksAndArgumentsAfterPasses(*stats);
+	};
+	// The jump-only header is threaded during conversion; otherwise its phi
+	// would be read past it and it could not be removed (LLVM does not
+	// if-convert a loop with two headers).
+	REQUIRE(compile(true) == compile(false));
+}
+#endif
+
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
 TEST_CASE("CompilationStatistics: a module compiled by mlir alone gets only block-argument pruning") {
 	// LLVM's pipeline performs the other cleanups itself, so by default the

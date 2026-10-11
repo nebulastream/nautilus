@@ -165,6 +165,9 @@ private:
 	};
 
 	void scanTrace();
+	/// Where an edge to @p block really leads: past every block that holds
+	/// nothing but a jump.
+	uint32_t threadedTarget(uint32_t block);
 	BasicBlock* irBlockOf(uint32_t block);
 	void processBlock(uint32_t block);
 	void processJump(uint32_t block, TraceOperation& operation);
@@ -199,6 +202,9 @@ private:
 
 	common::Arena& arena;
 	std::vector<BlockState> blocks;
+	/// Per trace block: the target of its jump if the jump is all it holds,
+	/// otherwise the block itself.
+	std::vector<uint32_t> forwardTo;
 	/// Every block's incoming edges, grouped by target block.
 	std::vector<Edge> edges;
 	std::vector<BasicBlock*> currentBasicBlocks;
@@ -263,13 +269,30 @@ void SSAConversionContext::scanTrace() {
 	}
 
 	size_t assignments = 0;
+	// A trace block holding nothing but a jump -- what the tracer leaves where
+	// control flow from several places meets a loop header -- is threaded:
+	// edges into it lead straight to its target. Converting it would make it a
+	// second loop header whose phis the blocks behind it read directly, so it
+	// could not be cleaned up later, and LLVM leaves a loop with two headers
+	// alone (binarySearch in tools/backend-explorer runs 3x slower).
+	forwardTo.resize(traceBlocks.size());
+	const auto entryId = traceBlocks.front()->blockId;
+	for (const auto* block : traceBlocks) {
+		checkBlock(block->blockId);
+		const auto& operations = block->operations;
+		const bool onlyJump = block->blockId != entryId && operations.size() == 1 && operations.front()->op == Op::JMP;
+		forwardTo[block->blockId] =
+		    onlyJump ? std::get<BlockRef*>(operations.front()->input[0])->block : block->blockId;
+	}
+
 	// Only blocks reachable from the entry are converted, so only their edges count.
 	std::vector<uint32_t> worklist {traceBlocks.front()->blockId};
 	checkBlock(worklist.back());
 	std::vector<uint8_t> seen(traceBlocks.size(), 0);
 	seen[worklist.back()] = 1;
-	auto reach = [&](uint32_t target) {
-		checkBlock(target);
+	auto reach = [&](uint32_t rawTarget) {
+		checkBlock(rawTarget);
+		const auto target = threadedTarget(rawTarget);
 		++blocks[target].predecessorCount;
 		if (seen[target] == 0) {
 			seen[target] = 1;
@@ -308,6 +331,20 @@ void SSAConversionContext::scanTrace() {
 	}
 	edges.resize(edgeTotal);
 	currentDefinitions.reserve(assignments + blocks.size());
+}
+
+uint32_t SSAConversionContext::threadedTarget(uint32_t block) {
+	// A cycle of jump-only blocks never reaches anything else: stop after as
+	// many steps as there are blocks and keep the block reached.
+	auto target = block;
+	for (size_t steps = 0; forwardTo[target] != target && steps < forwardTo.size(); ++steps) {
+		target = forwardTo[target];
+		if (target >= forwardTo.size()) {
+			throw RuntimeException(
+			    fmt::format("Invalid trace: block id {} is outside the {}-block trace.", target, forwardTo.size()));
+		}
+	}
+	return target;
 }
 
 BasicBlock* SSAConversionContext::irBlockOf(uint32_t block) {
@@ -379,7 +416,7 @@ void SSAConversionContext::processBlock(uint32_t blockId) {
 }
 
 void SSAConversionContext::processJump(uint32_t block, TraceOperation& operation) {
-	const auto target = std::get<BlockRef*>(operation.input[0])->block;
+	const auto target = threadedTarget(std::get<BlockRef*>(operation.input[0])->block);
 	auto* branch = irBlockOf(block)->addNextBlock(irBlockOf(target), {});
 	stampProvenance(*branch, operation);
 	addEdge(block, target, static_cast<BranchOperation*>(branch)->getNextBlockInvocation());
@@ -391,8 +428,8 @@ void SSAConversionContext::processJump(uint32_t block, TraceOperation& operation
 
 void SSAConversionContext::processBranch(uint32_t block, TraceOperation& operation) {
 	auto* condition = read(block, std::get<TypedValueRef>(operation.input[0]).ref);
-	const auto trueTarget = std::get<BlockRef*>(operation.input[1])->block;
-	const auto falseTarget = std::get<BlockRef*>(operation.input[2])->block;
+	const auto trueTarget = threadedTarget(std::get<BlockRef*>(operation.input[1])->block);
+	const auto falseTarget = threadedTarget(std::get<BlockRef*>(operation.input[2])->block);
 	auto probability = std::get<BranchProbability>(operation.input[3]);
 
 	auto* ifOperation = arena.create<IfOperation>(arena, condition, probability);

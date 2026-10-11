@@ -26,7 +26,9 @@ class TraceModule;
  * only a block with several predecessors gets a block argument. An argument
  * every edge passes the same value for is folded away as soon as its edges are
  * known. The trace's CFG is complete before conversion starts, so a block is
- * sealed exactly when all of its predecessors have been converted.
+ * sealed exactly when all of its predecessors have been converted. Trace
+ * blocks that hold nothing but a jump are threaded rather than converted, so
+ * a loop the tracer split across two headers comes out with one.
  *
  * Produces the same program as `SSACreationPhase` followed by
  * `TraceToIRConversionPhase`, with block arguments only where control flow
