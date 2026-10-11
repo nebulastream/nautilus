@@ -6,7 +6,9 @@
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
+#include "nautilus/compiler/ir/passes/FlatPointerMap.hpp"
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
+#include "nautilus/compiler/ir/passes/RewriterCache.hpp"
 #include <unordered_set>
 #include <vector>
 
@@ -63,8 +65,8 @@ bool tryFoldIf(FunctionRewriter& rewriter, common::Arena& arena, BasicBlock& blo
 
 /// Every block reachable from @p fn's entry block via successor edges,
 /// found by a plain worklist DFS (function CFGs here are small).
-std::unordered_set<BasicBlock*> computeReachable(FunctionOperation& fn) {
-	std::unordered_set<BasicBlock*> visited;
+FlatPointerSet<BasicBlock> computeReachable(FunctionOperation& fn) {
+	FlatPointerSet<BasicBlock> visited(fn.getBasicBlocks().size());
 	auto* entry = fn.getEntryBlock();
 	if (entry == nullptr) {
 		return visited;
@@ -73,7 +75,7 @@ std::unordered_set<BasicBlock*> computeReachable(FunctionOperation& fn) {
 	while (!worklist.empty()) {
 		auto* block = worklist.back();
 		worklist.pop_back();
-		if (block == nullptr || !visited.insert(block).second) {
+		if (block == nullptr || !visited.insert(block)) {
 			continue;
 		}
 		for (auto* succ : block->getSuccessors()) {
@@ -109,8 +111,7 @@ bool sweepUnreachableBlocks(FunctionRewriter& rewriter, FunctionOperation& fn) {
 	return true;
 }
 
-bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+bool applyToFunction(FunctionOperation& fn, common::Arena& arena, FunctionRewriter& rewriter) {
 	bool changed = false;
 
 	bool foldedThisRound = true;
@@ -135,11 +136,16 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 } // namespace
 
 bool ConstantBranchFoldingPass::apply(IRGraph& ir) {
+	RewriterCache rewriters(ir);
+	return apply(ir, rewriters);
+}
+
+bool ConstantBranchFoldingPass::apply(IRGraph& ir, RewriterCache& rewriters) {
 	common::Arena& arena = ir.getArena();
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn, arena);
+			changed |= applyToFunction(*fn, arena, rewriters.rewriterFor(*fn));
 		}
 	}
 	return changed;

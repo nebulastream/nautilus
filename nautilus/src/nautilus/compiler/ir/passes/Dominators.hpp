@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
+#include "nautilus/compiler/ir/passes/FlatPointerMap.hpp"
 #include <cstddef>
 #include <unordered_map>
 #include <vector>
@@ -47,7 +48,7 @@ public:
 
 private:
 	std::vector<const BasicBlock*> rpo_;
-	std::unordered_map<const BasicBlock*, size_t> rpoIndex_;
+	FlatPointerMap<BasicBlock, size_t> rpoIndex_;
 	/// idom_[i] is the RPO index of the immediate dominator of rpo_[i]; the
 	/// entry block (index 0) is its own immediate dominator.
 	std::vector<size_t> idom_;

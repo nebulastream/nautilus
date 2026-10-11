@@ -18,7 +18,9 @@
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
+#include "nautilus/compiler/ir/passes/FlatPointerMap.hpp"
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
+#include "nautilus/compiler/ir/passes/RewriterCache.hpp"
 #include <deque>
 #include <unordered_set>
 #include <vector>
@@ -407,14 +409,13 @@ Operation* trySimplify(FunctionRewriter& rewriter, Operation* op) {
 /// consumers are re-enqueued) or it is itself a freshly created replacement
 /// (canonicalized/collapsed ops are re-enqueued too, since one round can
 /// otherwise miss a rule that a canonicalization just exposed).
-bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+bool applyToFunction(FunctionOperation& fn, FunctionRewriter& rewriter) {
 	bool changed = false;
 
 	std::deque<Operation*> worklist;
-	std::unordered_set<Operation*> queued;
+	FlatPointerSet<Operation> queued;
 	auto enqueue = [&](Operation* op) {
-		if (op != nullptr && isHandledKind(op->getOperationType()) && queued.insert(op).second) {
+		if (op != nullptr && isHandledKind(op->getOperationType()) && queued.insert(op)) {
 			worklist.push_back(op);
 		}
 	};
@@ -459,11 +460,15 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 } // namespace
 
 bool AlgebraicSimplificationPass::apply(IRGraph& ir) {
-	common::Arena& arena = ir.getArena();
+	RewriterCache rewriters(ir);
+	return apply(ir, rewriters);
+}
+
+bool AlgebraicSimplificationPass::apply(IRGraph& ir, RewriterCache& rewriters) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn, arena);
+			changed |= applyToFunction(*fn, rewriters.rewriterFor(*fn));
 		}
 	}
 	return changed;

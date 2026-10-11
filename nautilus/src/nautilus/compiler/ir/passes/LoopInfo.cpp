@@ -5,6 +5,7 @@
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/passes/Dominators.hpp"
+#include "nautilus/compiler/ir/passes/FlatPointerMap.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include <cstdint>
 
@@ -12,8 +13,7 @@ namespace nautilus::compiler::ir {
 
 bool containsLoop(const FunctionOperation& fn) {
 	enum class Color : uint8_t { White, Grey, Black };
-	std::unordered_map<const BasicBlock*, Color> color;
-	color.reserve(fn.getBasicBlocks().size());
+	FlatPointerMap<BasicBlock, Color> color(fn.getBasicBlocks().size());
 	struct Frame {
 		BasicBlock* block;
 		std::vector<BasicBlock*> successors;

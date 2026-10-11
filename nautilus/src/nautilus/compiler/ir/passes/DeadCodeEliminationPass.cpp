@@ -2,13 +2,13 @@
 #include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
+#include "nautilus/compiler/ir/passes/RewriterCache.hpp"
 
 namespace nautilus::compiler::ir {
 
 namespace {
 
-bool applyToFunction(const IRGraph& ir, FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena, &ir);
+bool applyToFunction(const IRGraph& ir, FunctionOperation& fn, FunctionRewriter& rewriter) {
 	size_t erased = 0;
 	for (auto* block : fn.getBasicBlocks()) {
 		// Snapshot: `eraseIfDead` mutates the block's operation list as it
@@ -18,7 +18,7 @@ bool applyToFunction(const IRGraph& ir, FunctionOperation& fn, common::Arena& ar
 		// first), so re-visiting one here is harmless.
 		auto ops = block->getOperations();
 		for (auto* op : ops) {
-			erased += rewriter.eraseIfDead(op);
+			erased += rewriter.eraseIfDead(op, &ir);
 		}
 	}
 	return erased != 0;
@@ -27,11 +27,15 @@ bool applyToFunction(const IRGraph& ir, FunctionOperation& fn, common::Arena& ar
 } // namespace
 
 bool DeadCodeEliminationPass::apply(IRGraph& ir) {
-	common::Arena& arena = ir.getArena();
+	RewriterCache rewriters(ir);
+	return apply(ir, rewriters);
+}
+
+bool DeadCodeEliminationPass::apply(IRGraph& ir, RewriterCache& rewriters) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(ir, *fn, arena);
+			changed |= applyToFunction(ir, *fn, rewriters.rewriterFor(*fn));
 		}
 	}
 	return changed;
