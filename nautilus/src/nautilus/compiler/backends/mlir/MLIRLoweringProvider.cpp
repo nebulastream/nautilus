@@ -661,17 +661,28 @@ void MLIRLoweringProvider::visitSelect(ir::SelectOperation* selectOperation, Val
 	bind(frame, selectOperation, mlirSelectOp);
 }
 
+// Logical `or`/`and` are lowered as `select` (`a ? true : b`, `a ? b : false`), the
+// form clang emits for `||`/`&&`, rather than as bitwise `or i1`/`and i1`. LLVM
+// treats the bitwise form as commutative: InstCombine may reorder its operands,
+// and the branch it then becomes tests whichever condition ends up first. For a
+// conjunctive filter that can be the least selective one, a branch that
+// mispredicts on every other row (TPC-H Q6 ran 5x slower than with `select`).
+// `select` keeps the traced order, so the chain lowers to one cmp/ccmp sequence
+// and a single branch. Both operands are already evaluated, so nothing else
+// changes.
 void MLIRLoweringProvider::visitOr(ir::OrOperation* orOperation, ValueFrame& frame) {
 	auto leftInput = resolveOperand(orOperation->getLeftInput(), frame);
 	auto rightInput = resolveOperand(orOperation->getRightInput(), frame);
-	auto mlirOrOp = mlir::LLVM::OrOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput);
+	auto mlirOrOp = mlir::LLVM::SelectOp::create(*builder, getNameLoc("binOpResult"), leftInput,
+	                                             getConstBool("loc", true), rightInput);
 	bind(frame, orOperation, mlirOrOp);
 }
 
 void MLIRLoweringProvider::visitAnd(ir::AndOperation* andOperation, ValueFrame& frame) {
 	auto leftInput = resolveOperand(andOperation->getLeftInput(), frame);
 	auto rightInput = resolveOperand(andOperation->getRightInput(), frame);
-	auto mlirAndOp = mlir::LLVM::AndOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput);
+	auto mlirAndOp = mlir::LLVM::SelectOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput,
+	                                              getConstBool("loc", false));
 	bind(frame, andOperation, mlirAndOp);
 }
 
