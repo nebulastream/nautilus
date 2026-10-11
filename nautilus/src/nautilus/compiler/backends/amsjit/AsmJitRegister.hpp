@@ -17,7 +17,7 @@ namespace nautilus::compiler::asmjit {
 // X64/A64 lowering providers and the intrinsic-plugin framework.
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
 using AsmJitCompiler = ::asmjit::x86::Compiler;
-using AsmReg = std::variant<::asmjit::x86::Gp, ::asmjit::x86::Xmm>;
+using AsmReg = std::variant<::asmjit::x86::Gp, ::asmjit::x86::Vec>;
 #else
 using AsmJitCompiler = ::asmjit::a64::Compiler;
 using AsmReg = std::variant<::asmjit::a64::Gp, ::asmjit::a64::Vec>;

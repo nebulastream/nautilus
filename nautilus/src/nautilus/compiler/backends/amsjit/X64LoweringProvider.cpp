@@ -25,8 +25,8 @@ namespace {
 // Custom error handler that throws instead of aborting.
 class ThrowOnError : public ::asmjit::ErrorHandler {
 public:
-	void handleError(::asmjit::Error err, const char* message, ::asmjit::BaseEmitter* /*origin*/) override {
-		fprintf(stderr, "[AsmJit] Error %u: %s\n", err, message ? message : "(null)");
+	void handle_error(::asmjit::Error err, const char* message, ::asmjit::BaseEmitter* /*origin*/) override {
+		fprintf(stderr, "[AsmJit] Error %u: %s\n", static_cast<unsigned>(err), message ? message : "(null)");
 		throw std::runtime_error(std::string("AsmJit error: ") + (message ? message : "unknown"));
 	}
 };
@@ -62,9 +62,9 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
                                                                   const DumpHandler& dumpHandler,
                                                                   CompilationStatistics* statistics) {
 	CodeHolder code;
-	code.init(runtime.environment(), runtime.cpuFeatures());
+	code.init(runtime.environment(), runtime.cpu_features());
 	ThrowOnError errHandler;
-	code.setErrorHandler(&errHandler);
+	code.set_error_handler(&errHandler);
 
 	// Only pay the formatting/logging cost when the corresponding dump is requested.
 	const bool dumpAsmjitIR = dumpHandler.shouldDump("after_asmjit_generation");
@@ -73,7 +73,7 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	// When requested, attach a StringLogger so finalize() records the emitted assembly.
 	StringLogger asmLogger;
 	if (dumpAssembly) {
-		code.setLogger(&asmLogger);
+		code.set_logger(&asmLogger);
 	}
 
 	// Build the intrinsic manager from the global plugin registry. Gated by
@@ -92,13 +92,13 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	// Capture label offsets while code is still in the CodeHolder (before rt.add resets it).
 	std::unordered_map<std::string, uint64_t> offsets;
 	for (const auto& [name, funcNode] : ctx.getFuncNodes()) {
-		offsets[name] = code.labelOffset(funcNode->label());
+		offsets[name] = code.label_offset(funcNode->label());
 	}
 	// Capture size before rt.add — CodeHolder is consumed by add().
-	const uint64_t codeSize = code.codeSize();
+	const uint64_t codeSize = code.code_size();
 
 	void* basePtr = nullptr;
-	if (runtime.add(&basePtr, &code)) {
+	if (runtime.add(&basePtr, &code) != kErrorOk) {
 		return {};
 	}
 
@@ -110,7 +110,7 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	}
 	result.asmjitIR = std::move(asmjitIR);
 	if (dumpAssembly) {
-		result.assembly.assign(asmLogger.data(), asmLogger.dataSize());
+		result.assembly.assign(asmLogger.data(), asmLogger.data_size());
 	}
 	return result;
 }
@@ -128,7 +128,7 @@ AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRG
 	// operands. Gated by an option so it can be toggled off for benchmarks
 	// and regression investigations.
 	if (options.getOptionOrDefault<bool>("asmjit.enablePostRAPeephole", true)) {
-		cc.addPassT<X64PostRAPeepholePass>(statistics);
+		cc.add_pass<X64PostRAPeepholePass>(statistics);
 	}
 	enableBranchFusion_ = options.getOptionOrDefault<bool>("asmjit.enableBranchFusion", true);
 	enableConstFolding_ = options.getOptionOrDefault<bool>("asmjit.enableConstFolding", true);
@@ -309,7 +309,7 @@ Gp AsmJitLoweringProvider::LoweringContext::gpOperandAtWidth(const ir::Operation
 	auto reg = gpOperand(in, frame);
 	// A rematerialised constant is always canonical.
 	if (stampBits(in->getStamp()) < width && isDirty(in) && !(enableConstFolding_ && foldableConstValue(in))) {
-		auto extended = cc.newInt64();
+		auto extended = cc.new_gp64();
 		extendFromStamp(extended, reg, in->getStamp());
 		return extended;
 	}
@@ -560,7 +560,7 @@ Mem AsmJitLoweringProvider::LoweringContext::memOperand(const ir::Operation* add
 	} else {
 		mem = x86::ptr(gpOperand(addr, frame));
 	}
-	mem.setSize(size);
+	mem.set_size(size);
 	return mem;
 }
 
@@ -685,18 +685,18 @@ bool AsmJitLoweringProvider::LoweringContext::tryInlineCall(ir::CallOperation* o
 
 AsmJitLoweringProvider::AsmReg AsmJitLoweringProvider::LoweringContext::allocReg(Type t) {
 	if (t == Type::f32)
-		return cc.newXmmSs();
+		return cc.new_xmm_ss();
 	if (t == Type::f64)
-		return cc.newXmmSd();
-	return cc.newInt64();
+		return cc.new_xmm_sd();
+	return cc.new_gp64();
 }
 
 Gp AsmJitLoweringProvider::LoweringContext::toGp(const AsmReg& r) {
 	return std::get<Gp>(r);
 }
 
-Xmm AsmJitLoweringProvider::LoweringContext::toXmm(const AsmReg& r) {
-	return std::get<Xmm>(r);
+Vec AsmJitLoweringProvider::LoweringContext::toXmm(const AsmReg& r) {
+	return std::get<Vec>(r);
 }
 
 // ── Label management ──────────────────────────────────────────────────────────
@@ -705,7 +705,7 @@ Label AsmJitLoweringProvider::LoweringContext::getOrCreateLabel(ir::BlockIdentif
 	auto it = blockLabels.find(blockId);
 	if (it != blockLabels.end())
 		return it->second;
-	auto label = cc.newLabel();
+	auto label = cc.new_label();
 	blockLabels[blockId] = label;
 	return label;
 }
@@ -713,7 +713,7 @@ Label AsmJitLoweringProvider::LoweringContext::getOrCreateLabel(ir::BlockIdentif
 // ── Register move helper ──────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::emitMove(const AsmReg& dst, const AsmReg& src) {
-	if (std::holds_alternative<Xmm>(dst)) {
+	if (std::holds_alternative<Vec>(dst)) {
 		cc.movaps(toXmm(dst), toXmm(src));
 	} else {
 		cc.mov(toGp(dst), toGp(src));
@@ -784,7 +784,7 @@ Gp AsmJitLoweringProvider::LoweringContext::gpOperand(const ir::Operation* in, R
 	// always means that constant.
 	if (enableConstFolding_) {
 		if (const auto value = foldableConstValue(in)) {
-			auto reg = cc.newInt64();
+			auto reg = cc.new_gp64();
 			cc.mov(reg, *value);
 			return reg;
 		}
@@ -843,11 +843,11 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		const auto& entryArgs = funcBlock.getArguments();
 		FuncSignature sig;
 		const Type retType = funcOp->getOutputArg();
-		sig.setRet(retType == Type::v ? TypeId::kVoid : getTypeId(retType));
+		sig.set_ret(retType == Type::v ? TypeId::kVoid : getTypeId(retType));
 		for (const auto& arg : entryArgs) {
-			sig.addArg(getTypeId(arg->getStamp()));
+			sig.add_arg(getTypeId(arg->getStamp()));
 		}
-		auto* funcNode = cc.newFunc(sig);
+		auto* funcNode = cc.new_func(sig);
 		funcNodes_[ir->getFunctionTable().findByDefinition(funcOp)] = funcNode;
 		funcNodesByName_[funcOp->getName()] = funcNode;
 	}
@@ -858,7 +858,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		const auto& entryArgs = funcBlock.getArguments();
 		auto* funcNode = funcNodes_.at(ir->getFunctionTable().findByDefinition(funcOp));
 
-		cc.addFunc(funcNode);
+		cc.add_func(funcNode);
 
 		// Reset per-function block tracking so each function starts clean.
 		blockLabels.clear();
@@ -886,8 +886,8 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		functionAllocaSlots_.reserve(allocaSpecs.size());
 		for (const auto& spec : allocaSpecs) {
 			auto stackMem =
-			    cc.newStack(static_cast<uint32_t>(spec.size), static_cast<uint32_t>(std::max<size_t>(spec.align, 1)));
-			auto ptrReg = cc.newIntPtr();
+			    cc.new_stack(static_cast<uint32_t>(spec.size), static_cast<uint32_t>(std::max<size_t>(spec.align, 1)));
+			auto ptrReg = cc.new_gp_ptr();
 			cc.lea(ptrReg, stackMem);
 			functionAllocaSlots_.emplace_back(AsmReg(ptrReg));
 		}
@@ -903,9 +903,9 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 			const Type stamp = entryArgs[i]->getStamp();
 			auto reg = allocReg(stamp);
 			if (std::holds_alternative<Gp>(reg)) {
-				funcNode->setArg(i, toGp(reg));
+				funcNode->set_arg(i, toGp(reg));
 			} else {
-				funcNode->setArg(i, toXmm(reg));
+				funcNode->set_arg(i, toXmm(reg));
 			}
 			// The body works on a copy, sign/zero-extended per the stamp. The
 			// argument register itself carries the ABI register as a hint, which
@@ -924,7 +924,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 
 		processBlock(&funcBlock, rootFrame);
 		lowerExceptionPads(rootFrame);
-		cc.endFunc();
+		cc.end_func();
 	}
 
 	// Publish the lowering counters into the pipeline-wide statistics sink,
@@ -951,7 +951,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 	if (asmjitIRDump != nullptr) {
 		::asmjit::String sb;
 		::asmjit::FormatOptions formatOptions;
-		::asmjit::Formatter::formatNodeList(sb, formatOptions, &cc);
+		::asmjit::Formatter::format_node_list(sb, formatOptions, &cc);
 		asmjitIRDump->assign(sb.data(), sb.size());
 	}
 
@@ -1074,11 +1074,11 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 	// never has to be cleared between calls.
 	const auto vregIndex = [](const AsmReg& r) {
 		const uint32_t id = std::visit([](const auto& reg) { return reg.id(); }, r);
-		assert(::asmjit::Operand::isVirtId(id) && "block arguments live in virtual registers");
-		return ::asmjit::Operand::virtIdToIndex(id);
+		assert(::asmjit::Operand::is_virt_id(id) && "block arguments live in virtual registers");
+		return ::asmjit::Operand::virt_id_to_index(id);
 	};
-	if (dstMarks_.size() < cc.virtRegs().size()) {
-		dstMarks_.resize(cc.virtRegs().size(), 0);
+	if (dstMarks_.size() < cc.virt_regs().size()) {
+		dstMarks_.resize(cc.virt_regs().size(), 0);
 	}
 	if (++dstMarkEpoch_ == 0) {
 		std::fill(dstMarks_.begin(), dstMarks_.end(), 0);
@@ -1150,10 +1150,10 @@ void AsmJitLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOper
 	auto reg = allocReg(op->getStamp());
 	auto xmmReg = toXmm(reg);
 	if (op->getStamp() == Type::f32) {
-		auto mem = cc.newFloatConst(ConstPoolScope::kLocal, static_cast<float>(op->getValue()));
+		auto mem = cc.new_float_const(ConstPoolScope::kLocal, static_cast<float>(op->getValue()));
 		cc.movss(xmmReg, mem);
 	} else {
-		auto mem = cc.newDoubleConst(ConstPoolScope::kLocal, op->getValue());
+		auto mem = cc.new_double_const(ConstPoolScope::kLocal, op->getValue());
 		cc.movsd(xmmReg, mem);
 	}
 	bindResult(op->getIdentifier(), reg, frame);
@@ -1311,8 +1311,8 @@ void AsmJitLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* op, Reg
 	} else {
 		// Integer division: use idiv (signed) or div (unsigned).
 		// AsmJit Compiler handles the rax/rdx hardware constraint automatically.
-		auto quot = cc.newInt64();
-		auto rem = cc.newInt64();
+		auto quot = cc.new_gp64();
+		auto rem = cc.new_gp64();
 		cc.mov(quot, cleanGpOperand(op->getLeftInput(), frame));
 		if (isUnsignedType(op->getStamp())) {
 			cc.xor_(rem, rem);
@@ -1328,8 +1328,8 @@ void AsmJitLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* op, Reg
 
 void AsmJitLoweringProvider::LoweringContext::visitMod(ir::ModOperation* op, RegisterFrame& frame) {
 	auto result = allocReg(op->getStamp());
-	auto quot = cc.newInt64();
-	auto rem = cc.newInt64();
+	auto quot = cc.new_gp64();
+	auto rem = cc.new_gp64();
 	cc.mov(quot, cleanGpOperand(op->getLeftInput(), frame));
 	if (isUnsignedType(op->getStamp())) {
 		cc.xor_(rem, rem);
@@ -1354,7 +1354,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 		auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 		auto right = frame.getValue(op->getRightInput()->getIdentifier());
 		const bool isF32 = op->getLeftInput()->getStamp() == Type::f32;
-		auto ucomi = [&](Xmm a, Xmm b) {
+		auto ucomi = [&](Vec a, Vec b) {
 			if (isF32)
 				cc.ucomiss(a, b);
 			else
@@ -1512,14 +1512,14 @@ void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* o
 			uint32_t bits = 0x80000000u;
 			float mask;
 			memcpy(&mask, &bits, sizeof(mask));
-			auto mem = cc.newFloatConst(ConstPoolScope::kLocal, mask);
+			auto mem = cc.new_float_const(ConstPoolScope::kLocal, mask);
 			cc.movss(xMask, mem);
 			cc.xorps(xDst, xMask);
 		} else {
 			uint64_t bits = 0x8000000000000000ULL;
 			double mask;
 			memcpy(&mask, &bits, sizeof(mask));
-			auto mem = cc.newDoubleConst(ConstPoolScope::kLocal, mask);
+			auto mem = cc.new_double_const(ConstPoolScope::kLocal, mask);
 			cc.movsd(xMask, mem);
 			cc.xorpd(xDst, xMask);
 		}
@@ -1635,7 +1635,7 @@ void AsmJitLoweringProvider::LoweringContext::visitIf(ir::IfOperation* op, Regis
 	auto trueLabel = getOrCreateLabel(op->getTrueBlockInvocation().getBlock()->getIdentifier());
 	auto falseLabel = getOrCreateLabel(op->getFalseBlockInvocation().getBlock()->getIdentifier());
 
-	auto elsePath = cc.newLabel();
+	auto elsePath = cc.new_label();
 	if (pendingFusedCompare_ != nullptr) {
 		// processBlock proved this compare's only consumer is this if and
 		// skipped its lowering; emit the compare and the negated conditional
@@ -1713,7 +1713,7 @@ void AsmJitLoweringProvider::LoweringContext::emitFusedCompareBranch(const ir::C
 	// Jump to `target` on `cond` (the condition holding) when jumpIfTrue,
 	// otherwise on its negation.
 	const auto jumpOn = [&](CondCode cond) {
-		cc.j(jumpIfTrue ? cond : x86::negateCond(cond), target);
+		cc.j(jumpIfTrue ? cond : x86::negate_cond(cond), target);
 	};
 	if (cmp->getLeftInput()->getStamp() == Type::ptr && isInteger(cmp->getRightInput()->getStamp())) {
 		// Null-pointer check (see visitCompare): only EQ/NE are meaningful.
@@ -1838,7 +1838,7 @@ bool AsmJitLoweringProvider::LoweringContext::tryRotateLoopBranch(const ir::Basi
 void AsmJitLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* op, RegisterFrame& frame) {
 	if (op->hasReturnValue()) {
 		auto retReg = regOperand(op->getReturnValue(), frame);
-		if (std::holds_alternative<Xmm>(retReg)) {
+		if (std::holds_alternative<Vec>(retReg)) {
 			cc.ret(toXmm(retReg));
 		} else {
 			auto gp = toGp(retReg);
@@ -1868,8 +1868,8 @@ void AsmJitLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* o
 		cc.test(condGp, condGp);
 		cc.cmovz(toGp(result), falseGp);
 	} else {
-		auto falsePath = cc.newLabel();
-		auto donePath = cc.newLabel();
+		auto falsePath = cc.new_label();
+		auto donePath = cc.new_label();
 
 		cc.test(condGp, condGp);
 		cc.jz(falsePath);
@@ -2019,12 +2019,12 @@ void AsmJitLoweringProvider::LoweringContext::visitCall(ir::CallOperation* op, R
 	const bool needsCapture = !isInternal && transport_.callNeedsCaptureThunk(op);
 	const bool needsCheck = callNeedsCapture(op);
 	FuncSignature sig;
-	sig.setRet(getTypeId(op->getStamp()));
+	sig.set_ret(getTypeId(op->getStamp()));
 	if (needsCapture) {
-		sig.addArg(TypeId::kUIntPtr); // raw target as the thunk's first argument
+		sig.add_arg(TypeId::kUIntPtr); // raw target as the thunk's first argument
 	}
 	for (auto* arg : op->getInputArguments()) {
-		sig.addArg(getTypeId(arg->getStamp()));
+		sig.add_arg(getTypeId(arg->getStamp()));
 	}
 
 	// Resolve argument registers BEFORE emitting the InvokeNode: a deferred
@@ -2043,7 +2043,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCall(ir::CallOperation* op, R
 	InvokeNode* invokeNode = nullptr;
 	if (it != funcNodes_.end()) {
 		// Forward reference via AsmJit label — resolved at finalize() time.
-		cc.invoke(&invokeNode, it->second->label(), sig);
+		cc.invoke(Out(invokeNode), it->second->label(), sig);
 	} else if (needsCapture) {
 		// Captured-exception call site: invoke the captureThrowingCall<R,
 		// Args...> thunk — a real C++ frame — instead of the raw target, so
@@ -2054,28 +2054,28 @@ void AsmJitLoweringProvider::LoweringContext::visitCall(ir::CallOperation* op, R
 		// hoist a def that appears after the invoke into the invoke's argument
 		// register; the argument value must already be live when the call is
 		// emitted (mirrors how the regular argument registers are resolved).
-		auto targetReg = cc.newIntPtr();
+		auto targetReg = cc.new_gp_ptr();
 		cc.mov(targetReg, reinterpret_cast<uint64_t>(op->getFunctionPtr()));
-		cc.invoke(&invokeNode, reinterpret_cast<uint64_t>(thunk), sig);
+		cc.invoke(Out(invokeNode), reinterpret_cast<uint64_t>(thunk), sig);
 		// Argument 0: the raw target pointer (compiled as a constant).
-		invokeNode->setArg(0, targetReg);
+		invokeNode->set_arg(0, targetReg);
 	} else {
 		// External function (not a Nautilus IR function): call by raw address.
-		cc.invoke(&invokeNode, reinterpret_cast<uint64_t>(op->getFunctionPtr()), sig);
+		cc.invoke(Out(invokeNode), reinterpret_cast<uint64_t>(op->getFunctionPtr()), sig);
 	}
 	for (size_t i = 0; i < argRegs.size(); i++) {
-		if (std::holds_alternative<Xmm>(argRegs[i]))
-			invokeNode->setArg(i + (needsCapture ? 1 : 0), toXmm(argRegs[i]));
+		if (std::holds_alternative<Vec>(argRegs[i]))
+			invokeNode->set_arg(i + (needsCapture ? 1 : 0), toXmm(argRegs[i]));
 		else
-			invokeNode->setArg(i + (needsCapture ? 1 : 0), toGp(argRegs[i]));
+			invokeNode->set_arg(i + (needsCapture ? 1 : 0), toGp(argRegs[i]));
 	}
 
 	if (op->getStamp() != Type::v) {
 		auto result = allocReg(op->getStamp());
-		if (std::holds_alternative<Xmm>(result)) {
-			invokeNode->setRet(0, toXmm(result));
+		if (std::holds_alternative<Vec>(result)) {
+			invokeNode->set_ret(0, toXmm(result));
 		} else {
-			invokeNode->setRet(0, toGp(result));
+			invokeNode->set_ret(0, toGp(result));
 			// The ABI leaves the upper bits of a narrow integer return value
 			// unspecified (the callee only guarantees the stamp's own width),
 			// so re-establish the extension invariant before anything reads
@@ -2094,12 +2094,12 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 	// Build callee signature from IR type information.
 	const bool needsCapture = transport_.callNeedsCaptureThunk(op);
 	FuncSignature sig;
-	sig.setRet(getTypeId(op->getStamp()));
+	sig.set_ret(getTypeId(op->getStamp()));
 	if (needsCapture) {
-		sig.addArg(TypeId::kUIntPtr); // raw target as the thunk's first argument
+		sig.add_arg(TypeId::kUIntPtr); // raw target as the thunk's first argument
 	}
 	for (auto* arg : op->getInputArguments()) {
-		sig.addArg(getTypeId(arg->getStamp()));
+		sig.add_arg(getTypeId(arg->getStamp()));
 	}
 
 	// The function pointer is a runtime GP register value.
@@ -2119,28 +2119,28 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 		// Captured-exception call site: route through the capture thunk, with
 		// the runtime function pointer as its first argument (see visitCall).
 		void* thunk = resolveCaptureThunk(op);
-		cc.invoke(&invokeNode, reinterpret_cast<uint64_t>(thunk), sig);
+		cc.invoke(Out(invokeNode), reinterpret_cast<uint64_t>(thunk), sig);
 	} else {
-		cc.invoke(&invokeNode, fnPtrGp, sig);
+		cc.invoke(Out(invokeNode), fnPtrGp, sig);
 	}
 
 	if (needsCapture) {
 		// Argument 0: the raw target (the runtime function-pointer register).
-		invokeNode->setArg(0, fnPtrGp);
+		invokeNode->set_arg(0, fnPtrGp);
 	}
 	for (size_t i = 0; i < argRegs.size(); i++) {
-		if (std::holds_alternative<Xmm>(argRegs[i]))
-			invokeNode->setArg(i + (needsCapture ? 1 : 0), toXmm(argRegs[i]));
+		if (std::holds_alternative<Vec>(argRegs[i]))
+			invokeNode->set_arg(i + (needsCapture ? 1 : 0), toXmm(argRegs[i]));
 		else
-			invokeNode->setArg(i + (needsCapture ? 1 : 0), toGp(argRegs[i]));
+			invokeNode->set_arg(i + (needsCapture ? 1 : 0), toGp(argRegs[i]));
 	}
 
 	if (op->getStamp() != Type::v) {
 		auto result = allocReg(op->getStamp());
-		if (std::holds_alternative<Xmm>(result)) {
-			invokeNode->setRet(0, toXmm(result));
+		if (std::holds_alternative<Vec>(result)) {
+			invokeNode->set_ret(0, toXmm(result));
 		} else {
-			invokeNode->setRet(0, toGp(result));
+			invokeNode->set_ret(0, toGp(result));
 			// See visitCall: narrow integer returns arrive with
 			// unspecified upper bits and must be re-extended.
 			narrowToStamp(toGp(result), op->getStamp());
@@ -2193,8 +2193,8 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 		auto gDst = toGp(result);
 		if (srcIsFloat) {
 			auto xSrc = toXmm(src);
-			auto xZero = srcType == Type::f32 ? cc.newXmmSs() : cc.newXmmSd();
-			auto unordered = cc.newInt64();
+			auto xZero = srcType == Type::f32 ? cc.new_xmm_ss() : cc.new_xmm_sd();
+			auto unordered = cc.new_gp64();
 			cc.xorps(xZero, xZero);
 			if (srcType == Type::f32) {
 				cc.ucomiss(xSrc, xZero);
@@ -2283,27 +2283,27 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 			// subtract 2^63 in the float domain (exact, 2^63 is representable
 			// in f32 and f64), convert, and set bit 63 back. Narrower unsigned
 			// destinations fit the signed conversion and need no special case.
-			Label big = cc.newLabel();
-			Label done = cc.newLabel();
+			Label big = cc.new_label();
+			Label done = cc.new_label();
 			if (srcType == Type::f32) {
-				auto threshold = cc.newFloatConst(ConstPoolScope::kLocal, 9223372036854775808.0f);
+				auto threshold = cc.new_float_const(ConstPoolScope::kLocal, 9223372036854775808.0f);
 				cc.ucomiss(xSrc, threshold);
 				cc.jae(big);
 				cc.cvttss2si(gDst.r64(), xSrc);
 				cc.jmp(done);
 				cc.bind(big);
-				auto xAdj = cc.newXmmSs();
+				auto xAdj = cc.new_xmm_ss();
 				cc.movss(xAdj, xSrc);
 				cc.subss(xAdj, threshold);
 				cc.cvttss2si(gDst.r64(), xAdj);
 			} else {
-				auto threshold = cc.newDoubleConst(ConstPoolScope::kLocal, 9223372036854775808.0);
+				auto threshold = cc.new_double_const(ConstPoolScope::kLocal, 9223372036854775808.0);
 				cc.ucomisd(xSrc, threshold);
 				cc.jae(big);
 				cc.cvttsd2si(gDst.r64(), xSrc);
 				cc.jmp(done);
 				cc.bind(big);
-				auto xAdj = cc.newXmmSd();
+				auto xAdj = cc.new_xmm_sd();
 				cc.movsd(xAdj, xSrc);
 				cc.subsd(xAdj, threshold);
 				cc.cvttsd2si(gDst.r64(), xAdj);
@@ -2323,10 +2323,10 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 		auto xDst = toXmm(result);
 		if (srcType == Type::ui64) {
 			// cvtsi2ss/cvtsi2sd treats input as signed; values >= 2^63 need special handling.
-			Label done = cc.newLabel();
-			Label big = cc.newLabel();
-			auto tmp = cc.newInt64();
-			auto lowBit = cc.newInt64();
+			Label done = cc.new_label();
+			Label big = cc.new_label();
+			auto tmp = cc.new_gp64();
+			auto lowBit = cc.new_gp64();
 			cc.test(gSrc, gSrc);
 			cc.js(big);
 			// High bit not set: fits in signed int64, convert directly.
@@ -2402,16 +2402,16 @@ void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir
 
 	// frame = currentExceptionFrame()
 	FuncSignature frameSig;
-	frameSig.setRet(TypeId::kUIntPtr);
+	frameSig.set_ret(TypeId::kUIntPtr);
 	InvokeNode* frameInvoke = nullptr;
-	cc.invoke(&frameInvoke, reinterpret_cast<uint64_t>(&currentExceptionFrame), frameSig);
-	auto frameReg = cc.newIntPtr();
-	frameInvoke->setRet(0, frameReg);
+	cc.invoke(Out(frameInvoke), reinterpret_cast<uint64_t>(&currentExceptionFrame), frameSig);
+	auto frameReg = cc.new_gp_ptr();
+	frameInvoke->set_ret(0, frameReg);
 
 	// Load the pending field and branch to the pad when it is non-null. The
 	// TLS frame is always non-null inside a JIT-invoked function (the
 	// Invocable wrapper pushes it), so no null check is needed here.
-	auto pendingReg = cc.newIntPtr();
+	auto pendingReg = cc.new_gp_ptr();
 	cc.mov(pendingReg, x86::qword_ptr(frameReg, offsetof(ExceptionFrame, pending)));
 	cc.test(pendingReg, pendingReg);
 	cc.jne(target);
@@ -2422,14 +2422,14 @@ void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir
 	if (it != padLabels_.end()) {
 		return it->second;
 	}
-	auto label = cc.newLabel();
+	auto label = cc.new_label();
 	padLabels_[padIndex] = label;
 	return label;
 }
 
 ::asmjit::Label AsmJitLoweringProvider::LoweringContext::getExceptionalExitLabel() {
-	if (!exceptionalExitLabel_.isValid()) {
-		exceptionalExitLabel_ = cc.newLabel();
+	if (!exceptionalExitLabel_.is_valid()) {
+		exceptionalExitLabel_ = cc.new_label();
 	}
 	return exceptionalExitLabel_;
 }
@@ -2461,7 +2461,7 @@ void AsmJitLoweringProvider::LoweringContext::emitDefaultReturn(Type retType) {
 	if (retType == Type::v) {
 		cc.ret();
 	} else if (retType == Type::f32 || retType == Type::f64) {
-		auto xmm = retType == Type::f32 ? cc.newXmmSs() : cc.newXmmSd();
+		auto xmm = retType == Type::f32 ? cc.new_xmm_ss() : cc.new_xmm_sd();
 		if (retType == Type::f32) {
 			cc.xorps(xmm, xmm);
 		} else {
@@ -2470,7 +2470,7 @@ void AsmJitLoweringProvider::LoweringContext::emitDefaultReturn(Type retType) {
 		cc.ret(xmm);
 	} else {
 		// Integers, bools, and pointers: return 0 (false / nullptr).
-		auto reg = cc.newInt64();
+		auto reg = cc.new_gp64();
 		cc.xor_(reg, reg);
 		cc.ret(reg);
 	}

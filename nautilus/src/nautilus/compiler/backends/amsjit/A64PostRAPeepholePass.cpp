@@ -11,26 +11,26 @@ using namespace ::asmjit::a64;
 namespace {
 
 bool isRemovableSelfMove(const InstNode* inst) noexcept {
-	if (inst->opCount() != 2) {
+	if (inst->op_count() != 2) {
 		return false;
 	}
 	const Operand& dst = inst->op(0);
 	const Operand& src = inst->op(1);
-	if (!dst.isReg() || !src.isReg() || !dst.isPhysReg() || !src.isPhysReg()) {
+	if (!dst.is_reg() || !src.is_reg() || !dst.is_phys_reg() || !src.is_phys_reg()) {
 		return false;
 	}
 	if (dst.id() != src.id()) {
 		return false;
 	}
 
-	const InstId id = inst->id();
+	const InstId id = inst->inst_id();
 	switch (id) {
 	case Inst::kIdMov: {
 		// Only delete 64-bit GPR self-moves. W-register self-moves are a
 		// zero-extension idiom and must not be touched.
 		const auto& dstReg = dst.as<Gp>();
 		const auto& srcReg = src.as<Gp>();
-		if (dstReg.isGpX() && srcReg.isGpX()) {
+		if (dstReg.is_gp64() && srcReg.is_gp64()) {
 			return true;
 		}
 		return false;
@@ -51,8 +51,8 @@ bool isRemovableSelfMove(const InstNode* inst) noexcept {
 /// sentinel ending a function all sit between @p node and the label in the
 /// emitted code, so a branch across them is not a fallthrough.
 bool isBoundDirectlyAfter(const BaseNode* node, uint32_t labelId) noexcept {
-	for (const BaseNode* next = node->next(); next != nullptr && next->isLabel(); next = next->next()) {
-		if (next->as<LabelNode>()->labelId() == labelId) {
+	for (const BaseNode* next = node->next(); next != nullptr && next->is_label(); next = next->next()) {
+		if (next->as<LabelNode>()->label_id() == labelId) {
 			return true;
 		}
 	}
@@ -61,7 +61,7 @@ bool isBoundDirectlyAfter(const BaseNode* node, uint32_t labelId) noexcept {
 
 /// The label operand @p index of @p inst, or nullptr when it is not a label.
 const Label* labelOperand(const InstNode* inst, uint32_t index) noexcept {
-	if (inst->opCount() <= index || !inst->op(index).isLabel()) {
+	if (inst->op_count() <= index || !inst->op(index).is_label()) {
 		return nullptr;
 	}
 	return &inst->op(index).as<Label>();
@@ -69,7 +69,7 @@ const Label* labelOperand(const InstNode* inst, uint32_t index) noexcept {
 
 /// The target of an unconditional `b label`, or nullptr.
 const Label* unconditionalTarget(const InstNode* inst) noexcept {
-	if (inst->id() != Inst::kIdB || inst->opCount() != 1) {
+	if (inst->inst_id() != Inst::kIdB || inst->op_count() != 1) {
 		return nullptr;
 	}
 	return labelOperand(inst, 0);
@@ -79,10 +79,10 @@ const Label* unconditionalTarget(const InstNode* inst) noexcept {
 /// Returns the number of branches removed.
 int64_t simplifyBranches(BaseBuilder* cb) noexcept {
 	int64_t removed = 0;
-	BaseNode* node = cb->firstNode();
+	BaseNode* node = cb->first_node();
 	while (node != nullptr) {
 		BaseNode* next = node->next();
-		if (!node->isInst()) {
+		if (!node->is_inst()) {
 			node = next;
 			continue;
 		}
@@ -94,7 +94,7 @@ int64_t simplifyBranches(BaseBuilder* cb) noexcept {
 		// usually emitted next).
 		if (const Label* target = unconditionalTarget(inst)) {
 			if (isBoundDirectlyAfter(node, target->id())) {
-				cb->removeNode(node);
+				cb->remove_node(node);
 				++removed;
 			}
 			node = next;
@@ -106,24 +106,24 @@ int64_t simplifyBranches(BaseBuilder* cb) noexcept {
 		// the conditional branch), so folding it into the inverted branch
 		// removes one taken branch from the path that previously went through
 		// it.
-		const InstId realId = BaseInst::extractRealId(inst->id());
-		const arm::CondCode cond = BaseInst::extractARMCondCode(inst->id());
+		const InstId realId = BaseInst::extract_real_id(inst->inst_id());
+		const arm::CondCode cond = BaseInst::extract_arm_cond_code(inst->inst_id());
 		const bool isCondBranch = realId == Inst::kIdB && cond != arm::CondCode::kAL && cond != arm::CondCode::kNA;
 		const bool isCompareBranch = realId == Inst::kIdCbz || realId == Inst::kIdCbnz;
-		if ((isCondBranch || isCompareBranch) && next != nullptr && next->isInst()) {
+		if ((isCondBranch || isCompareBranch) && next != nullptr && next->is_inst()) {
 			auto* jump = next->as<InstNode>();
 			const uint32_t labelIndex = isCondBranch ? 0 : 1;
 			const Label* condTarget = labelOperand(inst, labelIndex);
 			const Label* jumpTarget = unconditionalTarget(jump);
 			if (condTarget != nullptr && jumpTarget != nullptr && isBoundDirectlyAfter(jump, condTarget->id())) {
 				if (isCondBranch) {
-					inst->setId(BaseInst::composeARMInstId(Inst::kIdB, arm::negateCond(cond)));
+					inst->set_inst_id(BaseInst::compose_arm_inst_id(Inst::kIdB, arm::negate_cond(cond)));
 				} else {
-					inst->setId(realId == Inst::kIdCbz ? Inst::kIdCbnz : Inst::kIdCbz);
+					inst->set_inst_id(realId == Inst::kIdCbz ? Inst::kIdCbnz : Inst::kIdCbz);
 				}
-				inst->setOp(labelIndex, *jumpTarget);
+				inst->set_op(labelIndex, *jumpTarget);
 				next = jump->next();
-				cb->removeNode(jump);
+				cb->remove_node(jump);
 				++removed;
 			}
 		}
@@ -134,11 +134,8 @@ int64_t simplifyBranches(BaseBuilder* cb) noexcept {
 
 } // namespace
 
-Error A64PostRAPeepholePass::run(Zone* /*zone*/, Logger* /*logger*/) {
-	BaseBuilder* cb = _cb;
-	if (cb == nullptr) {
-		return kErrorOk;
-	}
+Error A64PostRAPeepholePass::run(axl::Arena& /*arena*/, Logger* /*logger*/) {
+	BaseBuilder* cb = &Pass::cb();
 
 	// Removing one branch can make another one a fallthrough (`b L; M: b L;
 	// L:`), so iterate to a fixpoint; each round only removes nodes.
@@ -148,13 +145,13 @@ Error A64PostRAPeepholePass::run(Zone* /*zone*/, Logger* /*logger*/) {
 	}
 
 	int64_t selfMovesRemoved = 0;
-	BaseNode* node = cb->firstNode();
+	BaseNode* node = cb->first_node();
 	while (node != nullptr) {
 		BaseNode* next = node->next();
-		if (node->isInst()) {
+		if (node->is_inst()) {
 			auto* inst = node->as<InstNode>();
 			if (isRemovableSelfMove(inst)) {
-				cb->removeNode(node);
+				cb->remove_node(node);
 				++selfMovesRemoved;
 			}
 		}
