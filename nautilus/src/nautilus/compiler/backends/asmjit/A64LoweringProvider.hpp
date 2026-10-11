@@ -178,6 +178,12 @@ private:
 		/// branch fusion. See tryRotateLoopBranch.
 		bool enableLoopRotation_ = true;
 		int64_t rotatedLoops_ = 0;
+		/// Gates tail duplication (option `asmjit.enableTailDuplication`). See
+		/// tryDuplicateTail.
+		bool enableTailDuplication_ = true;
+		/// Set while a duplicated tail is lowered: duplication does not nest.
+		bool duplicatingTail_ = false;
+		int64_t duplicatedTails_ = 0;
 		size_t inliningMaxOperations_ = 24;
 		int64_t inlinedCalls_ = 0;
 		/// While inlining: callee parameters whose argument is a foldable
@@ -363,6 +369,12 @@ private:
 		/// jumps to its successors in place of a jump back to the header. True
 		/// when it did; the caller then emits no jump of its own.
 		bool tryRotateLoopBranch(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
+		/// Tail duplication: when @p bi re-enters an already emitted small block
+		/// that ends in an unconditional branch (typically the merge block of a
+		/// diamond), lowers that block again in place of the jump to it, saving
+		/// a taken branch on this path. True when it did; the caller then emits
+		/// no jump of its own.
+		bool tryDuplicateTail(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
 		/// True when lowering @p bi (block-argument copies) emits no code.
 		bool isNoOpInvocation(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
 		/// Emits the flag-setting half of @p cmp and returns the condition code

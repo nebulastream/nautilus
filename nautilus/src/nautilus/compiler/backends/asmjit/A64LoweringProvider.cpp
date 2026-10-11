@@ -151,6 +151,7 @@ AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRG
 	enableAddressFusion_ = options.getOptionOrDefault<bool>("asmjit.enableAddressFusion", true);
 	enableInlining_ = options.getOptionOrDefault<bool>("asmjit.enableInlining", true);
 	enableLoopRotation_ = options.getOptionOrDefault<bool>("asmjit.enableLoopRotation", true);
+	enableTailDuplication_ = options.getOptionOrDefault<bool>("asmjit.enableTailDuplication", true);
 	inliningMaxOperations_ = static_cast<size_t>(options.getOptionOrDefault<int>("asmjit.inliningMaxOperations", 24));
 }
 
@@ -1000,6 +1001,9 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 	if (statistics_ != nullptr && enableBranchFusion_ && enableLoopRotation_) {
 		statistics_->add("asmjit.lowering.rotatedLoops", rotatedLoops_);
 	}
+	if (statistics_ != nullptr && enableTailDuplication_) {
+		statistics_->add("asmjit.lowering.duplicatedTails", duplicatedTails_);
+	}
 
 	// Format the builder node list before finalize(): at this point the IR still carries
 	// virtual registers, which is the representation users want to inspect as "asmjit IR".
@@ -1684,10 +1688,60 @@ void AsmJitLoweringProvider::LoweringContext::emitFusedCompareBranch(const ir::C
 void AsmJitLoweringProvider::LoweringContext::visitBranch(ir::BranchOperation* op, RegisterFrame& frame) {
 	const auto& bi = op->getNextBlockInvocation();
 	processBlockInvocation(bi, frame);
+	if (tryDuplicateTail(bi, frame)) {
+		return;
+	}
 	if (!tryRotateLoopBranch(bi, frame)) {
 		cc.b(getOrCreateLabel(bi.getBlock()->getIdentifier()));
 	}
 	processBlock(bi.getBlock(), frame);
+}
+
+// A diamond's arms both branch to the merge block, and only one of them can
+// fall into it; the other pays a taken branch, on top of the one that entered
+// it. When the merge block is small and ends in an unconditional branch (which
+// loop rotation usually turns into the loop's latch test), that arm lowers a
+// copy of it instead. The copy runs in the same frame: every value the block
+// defines that its first emission materialised is still bound, so the copy
+// writes the same registers (bindResult moves into them), and its successors
+// see exactly the registers they expect. Deferred values stay deferred, since
+// they were never bound. Nautilus IR passes every cross-block value as a block
+// argument, so nothing outside the block reads its values except through its
+// terminator.
+bool AsmJitLoweringProvider::LoweringContext::tryDuplicateTail(const ir::BasicBlockInvocation& bi,
+                                                               RegisterFrame& frame) {
+	const auto* block = bi.getBlock();
+	if (!enableTailDuplication_ || duplicatingTail_ || !processedBlocks.contains(block->getIdentifier())) {
+		return false;
+	}
+	constexpr size_t maxTailOperations = 6;
+	const auto& ops = block->getOperations();
+	if (ops.empty() || ops.size() > maxTailOperations + 1 || ir::dyn_cast<ir::BranchOperation>(ops.back()) == nullptr) {
+		return false;
+	}
+	for (size_t i = 0; i + 1 < ops.size(); i++) {
+		const auto* op = ops[i];
+		const bool plainValueOp =
+		    ir::dyn_cast<ir::ConstIntOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::ConstBooleanOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::ConstPtrOperation>(op) != nullptr || ir::dyn_cast<ir::AddOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::SubOperation>(op) != nullptr || ir::dyn_cast<ir::MulOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::CompareOperation>(op) != nullptr || ir::dyn_cast<ir::AndOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::OrOperation>(op) != nullptr || ir::dyn_cast<ir::NotOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::NegateOperation>(op) != nullptr || ir::dyn_cast<ir::ShiftOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::BinaryCompOperation>(op) != nullptr || ir::dyn_cast<ir::SelectOperation>(op) != nullptr ||
+		    ir::dyn_cast<ir::LoadOperation>(op) != nullptr || ir::dyn_cast<ir::CastOperation>(op) != nullptr;
+		if (!plainValueOp) {
+			return false;
+		}
+	}
+	duplicatingTail_ = true;
+	for (auto* op : ops) {
+		dispatch(op, frame);
+	}
+	duplicatingTail_ = false;
+	duplicatedTails_++;
+	return true;
 }
 
 bool AsmJitLoweringProvider::LoweringContext::isNoOpInvocation(const ir::BasicBlockInvocation& bi,
