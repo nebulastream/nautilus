@@ -79,11 +79,25 @@ void IRPassManager::run(IRGraph& ir) {
 	size_t totalIterations = 0;
 
 	for (const auto& group : groups) {
+		// Every change to the graph within the group bumps `changes`. A pass
+		// whose last run reported no change at `changes == cleanAt[i]` would
+		// see the same graph again and, being deterministic, report no change
+		// again -- so later rounds skip it until another pass changes the
+		// graph. On trace-sized graphs most passes find nothing in the round
+		// that confirms the fixed point, and each run builds a fresh
+		// FunctionRewriter index over every value of every function.
+		constexpr size_t NEVER_CLEAN = ~size_t {0};
+		std::vector<size_t> cleanAt(group.passes.size(), NEVER_CLEAN);
+		size_t changes = 0;
 		for (size_t iteration = 0; iteration < group.maxIterations; ++iteration) {
 			++totalIterations;
 			bool anyChangeThisRound = false;
 
-			for (const auto& pass : group.passes) {
+			for (size_t passIndex = 0; passIndex < group.passes.size(); ++passIndex) {
+				if (cleanAt[passIndex] == changes) {
+					continue;
+				}
+				const auto& pass = group.passes[passIndex];
 				const auto name = pass->getName();
 
 				IRStatistics before;
@@ -95,6 +109,12 @@ void IRPassManager::run(IRGraph& ir) {
 
 				const bool changed = pass->apply(ir);
 				anyChangeThisRound = anyChangeThisRound || changed;
+				if (changed) {
+					++changes;
+					cleanAt[passIndex] = NEVER_CLEAN;
+				} else {
+					cleanAt[passIndex] = changes;
+				}
 
 				if (statistics != nullptr) {
 					const auto elapsedMs =
