@@ -3,9 +3,9 @@
 
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
-#include "nautilus/compiler/backends/amsjit/A64PostRAPeepholePass.hpp"
-#include "nautilus/compiler/backends/amsjit/AsmJitRegister.hpp"
-#include "nautilus/compiler/backends/amsjit/intrinsics/AsmJitBackendIntrinsic.hpp"
+#include "nautilus/compiler/backends/asmjit/A64PostRAPeepholePass.hpp"
+#include "nautilus/compiler/backends/asmjit/AsmJitRegister.hpp"
+#include "nautilus/compiler/backends/asmjit/intrinsics/AsmJitBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"

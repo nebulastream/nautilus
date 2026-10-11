@@ -14,7 +14,7 @@
 // once, and the PST* variants for the write-intent equivalents).
 
 #include "AsmJitPrefetchIntrinsics.hpp"
-#include "nautilus/compiler/backends/amsjit/intrinsics/AsmJitBackendIntrinsic.hpp"
+#include "nautilus/compiler/backends/asmjit/intrinsics/AsmJitBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "prefetch_impl.hpp"
 
