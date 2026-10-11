@@ -152,6 +152,25 @@ mlir::LLVM::IntegerOverflowFlags MLIRLoweringProvider::getOverflowFlags(Type sta
 	return mlir::LLVM::IntegerOverflowFlags::none;
 }
 
+unsigned MLIRLoweringProvider::getNaturalAlignment(Type stamp) {
+	switch (stamp) {
+	case Type::i16:
+	case Type::ui16:
+		return 2;
+	case Type::i32:
+	case Type::ui32:
+	case Type::f32:
+		return 4;
+	case Type::i64:
+	case Type::ui64:
+	case Type::f64:
+	case Type::ptr:
+		return 8;
+	default:
+		return 1;
+	}
+}
+
 mlir::LocationAttr MLIRLoweringProvider::getRegionScopeLoc(uint32_t index) {
 	if (locationMap_ == nullptr || index == ir::IRLocationMap::NO_CHAIN) {
 		return {};
@@ -850,8 +869,8 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 
 void MLIRLoweringProvider::visitLoad(ir::LoadOperation* loadOp, ValueFrame& frame) {
 	auto address = resolveOperand(loadOp->getAddress(), frame);
-	auto mlirLoadOp =
-	    mlir::LLVM::LoadOp::create(*builder, getNameLoc("loadedValue"), getMLIRType(loadOp->getStamp()), address);
+	auto mlirLoadOp = mlir::LLVM::LoadOp::create(*builder, getNameLoc("loadedValue"), getMLIRType(loadOp->getStamp()),
+	                                             address, getNaturalAlignment(loadOp->getStamp()));
 	bind(frame, loadOp, mlirLoadOp);
 }
 
@@ -885,10 +904,12 @@ void MLIRLoweringProvider::visitAdd(ir::AddOperation* addOp, ValueFrame& frame) 
 	auto leftInput = resolveOperand(addOp->getLeftInput(), frame);
 	auto rightInput = resolveOperand(addOp->getRightInput(), frame);
 	if (addOp->getLeftInput()->getStamp() == Type::ptr) {
-		// if we add something to a ptr we have to use a llvm getelementptr
-		mlir::Value elementAddress =
-		    mlir::LLVM::GEPOp::create(*builder, getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context),
-		                              builder->getI8Type(), leftInput, mlir::ArrayRef<mlir::Value>({rightInput}));
+		// if we add something to a ptr we have to use a llvm getelementptr. It is
+		// `inbounds`, like C++ pointer arithmetic: the result stays within (or one
+		// past) the object the pointer points into.
+		mlir::Value elementAddress = mlir::LLVM::GEPOp::create(
+		    *builder, getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context), builder->getI8Type(),
+		    leftInput, mlir::ArrayRef<mlir::Value>({rightInput}), mlir::LLVM::GEPNoWrapFlags::inbounds);
 		bind(frame, addOp, elementAddress);
 	} else if (isFloat(addOp->getStamp())) {
 		auto mlirAddOp = mlir::LLVM::FAddOp::create(*builder, getNameLoc("binOpResult"), leftInput.getType(), leftInput,
@@ -907,10 +928,12 @@ void MLIRLoweringProvider::visitSub(ir::SubOperation* subIntOp, ValueFrame& fram
 	auto leftInput = resolveOperand(subIntOp->getLeftInput(), frame);
 	auto rightInput = resolveOperand(subIntOp->getRightInput(), frame);
 	if (subIntOp->getLeftInput()->getStamp() == Type::ptr) {
-		// if we add something to a ptr we have to use a llvm getelementptr
-		mlir::Value elementAddress =
-		    mlir::LLVM::GEPOp::create(*builder, getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context),
-		                              builder->getI8Type(), leftInput, mlir::ArrayRef<mlir::Value>({rightInput}));
+		// if we add something to a ptr we have to use a llvm getelementptr. It is
+		// `inbounds`, like C++ pointer arithmetic: the result stays within (or one
+		// past) the object the pointer points into.
+		mlir::Value elementAddress = mlir::LLVM::GEPOp::create(
+		    *builder, getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context), builder->getI8Type(),
+		    leftInput, mlir::ArrayRef<mlir::Value>({rightInput}), mlir::LLVM::GEPNoWrapFlags::inbounds);
 		bind(frame, subIntOp, elementAddress);
 	} else if (isFloat(subIntOp->getStamp())) {
 		auto mlirSubOp =
@@ -984,7 +1007,8 @@ void MLIRLoweringProvider::visitMod(ir::ModOperation* modIntOp, ValueFrame& fram
 void MLIRLoweringProvider::visitStore(ir::StoreOperation* storeOp, ValueFrame& frame) {
 	auto value = resolveOperand(storeOp->getValue(), frame);
 	auto address = resolveOperand(storeOp->getAddress(), frame);
-	mlir::LLVM::StoreOp::create(*builder, getNameLoc("outputStore"), value, address);
+	mlir::LLVM::StoreOp::create(*builder, getNameLoc("outputStore"), value, address,
+	                            getNaturalAlignment(storeOp->getValue()->getStamp()));
 }
 
 void MLIRLoweringProvider::visitReturn(ir::ReturnOperation* returnOp, ValueFrame& frame) {

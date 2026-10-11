@@ -7,7 +7,7 @@ target triple = "x86_64-unknown-linux-gnu"
 define ptr @execute(ptr readnone %0, i32 %1) local_unnamed_addr #0 {
   %3 = sext i32 %1 to i64
   %4 = mul nsw i64 %3, 12
-  %5 = getelementptr i8, ptr %0, i64 %4
+  %5 = getelementptr inbounds i8, ptr %0, i64 %4
   ret ptr %5
 }
 

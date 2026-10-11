@@ -5,7 +5,7 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 define signext i32 @execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = getelementptr i8, ptr %0, i64 8
+  %2 = getelementptr inbounds nuw i8, ptr %0, i64 8
   %3 = load i32, ptr %2, align 4
   ret i32 %3
 }
