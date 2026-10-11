@@ -88,6 +88,10 @@ inline std::vector<Config> configs() {
 		// a sibling entry for the next pass you promote.
 		result.push_back({backend, "strength-reduction",
 		                  [](engine::Options& o) { o.setOption("ir.enableStrengthReduction", true); }});
+		// The direct SSA construction (TraceToSSAIRConversionPhase), soaking
+		// against the oracle until it becomes the default conversion.
+		result.push_back(
+		    {backend, "direct-ssa", [](engine::Options& o) { o.setOption("ir.directSSAConstruction", true); }});
 		// A default-ON P0 pass flipped OFF: differentially tests the
 		// un-simplified lowering path against the simplified default.
 		result.push_back({backend, "no-algebraic-simpl",
