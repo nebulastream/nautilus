@@ -166,6 +166,7 @@ The [`docs/`](docs) directory has in-depth guides:
 | [SIMD](docs/simd.md) | The SIMD vector plugin |
 | [Builtins](docs/builtin.md) | The compiler builtins plugin (memory prefetch) |
 | [Standard Library Plugin](docs/std-plugin.md) | Wrapping C++ standard library functions |
+| [WebAssembly Backend (design)](docs/wasm-backend.md) | Proposal for lowering Nautilus IR to WebAssembly: structured control flow, memory models, runtime-function binding |
 
 ## Project Layout
 
