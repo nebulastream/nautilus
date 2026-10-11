@@ -162,7 +162,9 @@ private:
 		/// bit 0 -- every use is a load/store address in the defining block
 		/// whose access size can encode the address (see fitsAccess);
 		/// bit 1 -- every use is the scaled index of an address add (see
-		/// matchAddress) in the defining block.
+		/// matchAddress) in the defining block;
+		/// bit 2 -- every use is the 64-bit index read by a scaling op or an
+		/// unscaled address add in the defining block (see asWidenedIndex).
 		std::vector<uint8_t> fusionUses_;
 		/// Indexed by operation id: non-zero when lowering skipped the value's
 		/// materialisation because every consumer folds it into an address.
@@ -260,6 +262,22 @@ private:
 		/// Structural match of an add as an address; nullopt when @p op is not a
 		/// ptr/i64/ui64 add that fits.
 		std::optional<AddressParts> matchAddress(const ir::Operation* op);
+		/// `x * 2^k` or `x << k` (x a full-width non-constant value): {x, k}.
+		std::optional<std::pair<const ir::Operation*, uint32_t>> matchScaled(const ir::Operation* op);
+		/// @p op as an i32/ui32 -> i64/ui64 cast, which an address or add can
+		/// read as a sign/zero-extended W register; nullptr otherwise.
+		static const ir::CastOperation* asWidenedIndex(const ir::Operation* op);
+		/// An address index: a 64-bit register, or the W register of a deferred
+		/// widening cast to be sign/zero-extended by the consuming instruction.
+		struct IndexOperand {
+			::asmjit::a64::Gp reg;
+			bool extended = false;
+			bool isSigned = false;
+		};
+		IndexOperand indexOperand(const ir::Operation* index, RegisterFrame& frame);
+		/// The index of @p parts and its shift: the scaled input when the
+		/// scaling op was deferred, the offset (unshifted) otherwise.
+		std::pair<const ir::Operation*, uint32_t> addressIndex(const AddressParts& parts) const;
 		/// True when a load/store of @p size bytes can encode @p parts in its
 		/// memory operand.
 		static bool fitsAccess(const AddressParts& parts, uint32_t size);
