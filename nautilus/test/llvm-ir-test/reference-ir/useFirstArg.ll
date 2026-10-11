@@ -8,33 +8,7 @@ define signext i32 @execute(i32 returned %0, i32 %1) local_unnamed_addr #0 {
   ret i32 %0
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext i32 @_mlir_ciface_execute(i32 returned %0, i32 %1) local_unnamed_addr #0 {
-  ret i32 %0
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = getelementptr i8, ptr %0, i64 16
-  %5 = load ptr, ptr %4, align 8
-  store i32 %3, ptr %5, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = getelementptr i8, ptr %0, i64 16
-  %5 = load ptr, ptr %4, align 8
-  store i32 %3, ptr %5, align 4
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
-attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

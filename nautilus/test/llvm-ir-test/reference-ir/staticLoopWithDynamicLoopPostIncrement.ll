@@ -57,92 +57,11 @@ switch.lookup:                                    ; preds = %.lr.ph.preheader
   ret i32 %.lcssa
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
-  %2 = icmp sgt i32 %0, 0
-  br i1 %2, label %.lr.ph.preheader.i, label %execute.exit
-
-.lr.ph.preheader.i:                               ; preds = %1
-  %3 = icmp samesign ult i32 %0, 7
-  br i1 %3, label %switch.lookup.i, label %.lr.ph.i.preheader
-
-.lr.ph.i.preheader:                               ; preds = %.lr.ph.preheader.i
-  %4 = mul i32 %0, 33
-  %5 = add i32 %4, -18
-  br label %execute.exit
-
-switch.lookup.i:                                  ; preds = %.lr.ph.preheader.i
-  %6 = mul nuw nsw i32 %0, 30
-  br label %execute.exit
-
-execute.exit:                                     ; preds = %.lr.ph.i.preheader, %1, %switch.lookup.i
-  %.lcssa.i = phi i32 [ 0, %1 ], [ %6, %switch.lookup.i ], [ %5, %.lr.ph.i.preheader ]
-  ret i32 %.lcssa.i
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = icmp sgt i32 %3, 0
-  br i1 %4, label %.lr.ph.preheader.i, label %execute.exit
-
-.lr.ph.preheader.i:                               ; preds = %1
-  %5 = icmp samesign ult i32 %3, 7
-  br i1 %5, label %switch.lookup.i, label %.lr.ph.i.preheader
-
-.lr.ph.i.preheader:                               ; preds = %.lr.ph.preheader.i
-  %6 = mul i32 %3, 33
-  %7 = add i32 %6, -18
-  br label %execute.exit
-
-switch.lookup.i:                                  ; preds = %.lr.ph.preheader.i
-  %8 = mul nuw nsw i32 %3, 30
-  br label %execute.exit
-
-execute.exit:                                     ; preds = %.lr.ph.i.preheader, %1, %switch.lookup.i
-  %.lcssa.i = phi i32 [ 0, %1 ], [ %8, %switch.lookup.i ], [ %7, %.lr.ph.i.preheader ]
-  %9 = getelementptr i8, ptr %0, i64 8
-  %10 = load ptr, ptr %9, align 8
-  store i32 %.lcssa.i, ptr %10, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = icmp sgt i32 %3, 0
-  br i1 %4, label %.lr.ph.preheader.i.i, label %_mlir_ciface_execute.exit
-
-.lr.ph.preheader.i.i:                             ; preds = %1
-  %5 = icmp samesign ult i32 %3, 7
-  br i1 %5, label %switch.lookup.i.i, label %.lr.ph.i.preheader.i
-
-.lr.ph.i.preheader.i:                             ; preds = %.lr.ph.preheader.i.i
-  %6 = mul i32 %3, 33
-  %7 = add i32 %6, -18
-  br label %_mlir_ciface_execute.exit
-
-switch.lookup.i.i:                                ; preds = %.lr.ph.preheader.i.i
-  %8 = mul nuw nsw i32 %3, 30
-  br label %_mlir_ciface_execute.exit
-
-_mlir_ciface_execute.exit:                        ; preds = %1, %.lr.ph.i.preheader.i, %switch.lookup.i.i
-  %.lcssa.i.i = phi i32 [ 0, %1 ], [ %8, %switch.lookup.i.i ], [ %7, %.lr.ph.i.preheader.i ]
-  %9 = getelementptr i8, ptr %0, i64 8
-  %10 = load ptr, ptr %9, align 8
-  store i32 %.lcssa.i.i, ptr %10, align 4
-  ret void
-}
-
 ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
-declare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>) #3
+declare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>) #1
 
 attributes #0 = { nofree norecurse nosync nounwind memory(none) }
-attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
-attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
-attributes #3 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
 
 !llvm.module.flags = !{!0}
 

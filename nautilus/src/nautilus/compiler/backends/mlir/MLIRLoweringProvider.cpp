@@ -716,23 +716,18 @@ void MLIRLoweringProvider::visitAnd(ir::AndOperation* andOperation, ValueFrame& 
 	}
 
 	// Intentionally do NOT attach a DISubprogramAttr via FusedLoc here.
-	// The `llvm.emit_c_interface` attribute makes convert-func-to-llvm
-	// generate both `execute` and `_mlir_ciface_execute`; both get the
-	// function's source location, which would end up sharing the same
-	// DISubprogram node and fail LLVM's "DISubprogram attached to more
-	// than one function" verification.  DIScopeForLLVMFuncOpPass, which
-	// runs after conversion, materializes a distinct DISubprogram on
-	// every llvm.func that lacks one — correct for both functions.
+	// DIScopeForLLVMFuncOpPass, which runs after conversion, materializes a
+	// distinct DISubprogram on every llvm.func that lacks one.
 
 	auto mlirFunction = mlir::func::FuncOp::create(*builder, loc, ir->getEmissionName(&functionOp), functionInOutTypes);
 
-	// Avoid function name mangling.
-	mlirFunction->setAttr("llvm.emit_c_interface", mlir::UnitAttr::get(context));
-
-	// The entry function is not reached only through MLIR's packed `void**`
-	// interface: MLIRExecutable::getInvocableFunctionPtr resolves the bare
-	// symbol and Executable.hpp's Invocable calls it through a function pointer
-	// typed with the traced signature. Its parameters therefore sit on a real C
+	// No `llvm.emit_c_interface`: nothing calls the `_mlir_ciface_*` wrapper
+	// it adds, yet LLVM would still optimize it, inlining a full copy of the
+	// body, and generate machine code for it.
+	//
+	// MLIRExecutable::getInvocableFunctionPtr resolves the bare symbol and
+	// Executable.hpp's Invocable calls it through a function pointer typed
+	// with the traced signature. Its parameters therefore sit on a real C
 	// ABI boundary, so where that ABI has the caller extend narrow arguments,
 	// saying so here makes the generated signature a faithful implementation of
 	// the C prototype it is invoked as and lets LLVM drop the defensive

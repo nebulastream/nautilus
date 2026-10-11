@@ -16,75 +16,7 @@ define void @execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr read
   ret void
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
-define void @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr readonly %3, ptr writeonly %4) local_unnamed_addr #0 {
-  %6 = load <16 x float>, ptr %0, align 4
-  %7 = load <16 x float>, ptr %1, align 4
-  %8 = fmul <16 x float> %6, %7
-  %9 = load <16 x float>, ptr %2, align 4
-  %10 = load <16 x float>, ptr %3, align 4
-  %11 = fmul <16 x float> %9, %10
-  %12 = fadd <16 x float> %8, %11
-  store <16 x float> %12, ptr %4, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load ptr, ptr %5, align 8
-  %7 = getelementptr i8, ptr %0, i64 16
-  %8 = load ptr, ptr %7, align 8
-  %9 = load ptr, ptr %8, align 8
-  %10 = getelementptr i8, ptr %0, i64 24
-  %11 = load ptr, ptr %10, align 8
-  %12 = load ptr, ptr %11, align 8
-  %13 = getelementptr i8, ptr %0, i64 32
-  %14 = load ptr, ptr %13, align 8
-  %15 = load ptr, ptr %14, align 8
-  %16 = load <16 x float>, ptr %3, align 4
-  %17 = load <16 x float>, ptr %6, align 4
-  %18 = fmul <16 x float> %16, %17
-  %19 = load <16 x float>, ptr %9, align 4
-  %20 = load <16 x float>, ptr %12, align 4
-  %21 = fmul <16 x float> %19, %20
-  %22 = fadd <16 x float> %18, %21
-  store <16 x float> %22, ptr %15, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load ptr, ptr %5, align 8
-  %7 = getelementptr i8, ptr %0, i64 16
-  %8 = load ptr, ptr %7, align 8
-  %9 = load ptr, ptr %8, align 8
-  %10 = getelementptr i8, ptr %0, i64 24
-  %11 = load ptr, ptr %10, align 8
-  %12 = load ptr, ptr %11, align 8
-  %13 = getelementptr i8, ptr %0, i64 32
-  %14 = load ptr, ptr %13, align 8
-  %15 = load ptr, ptr %14, align 8
-  %16 = load <16 x float>, ptr %3, align 4
-  %17 = load <16 x float>, ptr %6, align 4
-  %18 = fmul <16 x float> %16, %17
-  %19 = load <16 x float>, ptr %9, align 4
-  %20 = load <16 x float>, ptr %12, align 4
-  %21 = fmul <16 x float> %19, %20
-  %22 = fadd <16 x float> %18, %21
-  store <16 x float> %22, ptr %15, align 4
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite) }
-attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

@@ -360,8 +360,8 @@ TEST_CASE("Perf jitdump: each JIT_CODE_DEBUG_INFO immediately precedes its own J
 	// object into a PerfJITRecordBatch of two separate vectors
 	// (DebugInfoRecords, CodeLoadRecords) and JITLoaderPerf writes every debug
 	// record before every code record. With more than one debug record in a
-	// batch -- every Nautilus compile, since even a trivial kernel emits
-	// `execute` plus its `_mlir_ciface_*` trampolines -- the pairing came out
+	// batch -- any compile of more than one function, such as this test's
+	// kernel and the Nautilus function it calls -- the pairing came out
 	// wrong for all of them: of 8 JIT_CODE_LOADs exactly one generated ELF had
 	// a .debug_line section, and it held the *wrong* function's line table,
 	// while `execute`, owning 42 of the line entries, got none.

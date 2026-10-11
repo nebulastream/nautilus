@@ -71,14 +71,14 @@ std::string readWholeFile(std::string_view path) {
 	return buffer.str();
 }
 
-/// Compiles @p func with the MLIR backend and returns the `define` line of the
-/// generated entry function from the `after_llvm_generation` dump.
+/// Compiles @p func with the MLIR backend and returns the generated LLVM IR
+/// module from the `after_llvm_generation` dump.
 ///
 /// The dump file is located through the executable's own record of what it
 /// wrote rather than by scanning the shared dump root, so a concurrently
 /// running test cannot hand this one another test's module.
 template <typename Func>
-std::string entryDefineLine(Func func) {
+std::string generatedLLVMIR(Func func) {
 	Options options;
 	options.setOption("engine.backend", std::string("mlir"));
 	options.setOption("dump.after_llvm_generation", true);
@@ -101,17 +101,32 @@ std::string entryDefineLine(Func func) {
 		std::error_code ec;
 		std::filesystem::remove_all(dumpDir, ec);
 	}
+	return contents;
+}
 
-	std::istringstream iss(contents);
+/// The `define` lines of the module generatedLLVMIR() returns for @p func.
+template <typename Func>
+std::vector<std::string> defineLines(Func func) {
+	std::istringstream iss(generatedLLVMIR(func));
+	std::vector<std::string> defines;
 	std::string line;
 	while (std::getline(iss, line)) {
-		// `llvm.emit_c_interface` also emits `_mlir_ciface_execute` plus the
-		// packed `_mlir_*` wrappers for the same function. The bare symbol is
-		// the one MLIRExecutable::getInvocableFunctionPtr resolves and
-		// Executable.hpp calls through a function pointer typed with the
-		// traced signature, so it is the one whose signature has to state the
-		// ABI contract.
-		if (line.rfind("define", 0) == 0 && line.find(" @execute(") != std::string::npos) {
+		if (line.rfind("define", 0) == 0) {
+			defines.push_back(line);
+		}
+	}
+	return defines;
+}
+
+/// The `define` line of the generated entry function.
+template <typename Func>
+std::string entryDefineLine(Func func) {
+	for (const auto& line : defineLines(func)) {
+		// The bare symbol is the one MLIRExecutable::getInvocableFunctionPtr
+		// resolves and Executable.hpp calls through a function pointer typed
+		// with the traced signature, so its signature has to state the ABI
+		// contract.
+		if (line.find(" @execute(") != std::string::npos) {
 			return line;
 		}
 	}
@@ -274,6 +289,38 @@ TEST_CASE("ABI: narrow arguments round-trip through the native call boundary") {
 	auto mixedFn = engine.registerFunction(abiMixedNarrowArgs);
 	CHECK(mixedFn(true, int8_t(-1), uint16_t(65535), 1) == 1 + (-1) + 65535);
 	CHECK(mixedFn(false, int8_t(-1), uint16_t(65535), 1) == 0);
+}
+
+TEST_CASE("ABI: the entry function is the only function in the module") {
+	// Nothing calls a function other than the bare symbol (see
+	// entryDefineLine), so any wrapper around it -- MLIR's `_mlir_ciface_*`
+	// C interface or the packed `void**` `_mlir_*` interface -- is dead code
+	// that LLVM still optimizes, inlines a copy of the body into, and turns
+	// into machine code. The reference-IR suite cannot catch one coming back:
+	// llvm-diff ignores functions that exist in only one of the two modules.
+	const auto defines = defineLines(abiMixedNarrowArgs);
+	INFO("generated functions:\n"
+	     << [&] {
+		        std::string all;
+		        for (const auto& define : defines) {
+			        all += define + "\n";
+		        }
+		        return all;
+	        }());
+	REQUIRE(defines.size() == 1);
+	REQUIRE(defines.front().find(" @execute(") != std::string::npos);
+}
+
+TEST_CASE("ABI: eager compilation resolves the entry function") {
+	// `mlir.eager_compilation` generates machine code inside the compile by
+	// looking the entry function up right away.
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.eager_compilation", true);
+	NautilusEngine engine(options);
+
+	auto mixedFn = engine.registerFunction(abiMixedNarrowArgs);
+	CHECK(mixedFn(true, int8_t(-1), uint16_t(65535), 1) == 1 + (-1) + 65535);
 }
 
 } // namespace nautilus::engine

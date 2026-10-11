@@ -12,55 +12,11 @@ define signext i32 @execute(ptr readonly %0, ptr readonly %1) local_unnamed_addr
   ret i32 %6
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
-define signext i32 @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1) local_unnamed_addr #0 {
-  %3 = load <16 x i32>, ptr %0, align 4
-  %4 = load <16 x i32>, ptr %1, align 4
-  %5 = mul <16 x i32> %4, %3
-  %6 = tail call i32 @llvm.vector.reduce.add.v16i32(<16 x i32> %5)
-  ret i32 %6
-}
-
 ; Function Attrs: mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none)
 declare i32 @llvm.vector.reduce.add.v16i32(<16 x i32>) #1
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load ptr, ptr %5, align 8
-  %7 = load <16 x i32>, ptr %3, align 4
-  %8 = load <16 x i32>, ptr %6, align 4
-  %9 = mul <16 x i32> %8, %7
-  %10 = tail call i32 @llvm.vector.reduce.add.v16i32(<16 x i32> %9)
-  %11 = getelementptr i8, ptr %0, i64 16
-  %12 = load ptr, ptr %11, align 8
-  store i32 %10, ptr %12, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load ptr, ptr %5, align 8
-  %7 = load <16 x i32>, ptr %3, align 4
-  %8 = load <16 x i32>, ptr %6, align 4
-  %9 = mul <16 x i32> %8, %7
-  %10 = tail call i32 @llvm.vector.reduce.add.v16i32(<16 x i32> %9)
-  %11 = getelementptr i8, ptr %0, i64 16
-  %12 = load ptr, ptr %11, align 8
-  store i32 %10, ptr %12, align 4
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) }
 attributes #1 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

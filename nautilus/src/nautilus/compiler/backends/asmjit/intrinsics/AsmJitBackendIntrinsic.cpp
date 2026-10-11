@@ -1,4 +1,4 @@
-#include "nautilus/compiler/backends/amsjit/intrinsics/AsmJitBackendIntrinsic.hpp"
+#include "nautilus/compiler/backends/asmjit/intrinsics/AsmJitBackendIntrinsic.hpp"
 
 namespace nautilus::compiler::asmjit {
 

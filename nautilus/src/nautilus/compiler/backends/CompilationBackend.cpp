@@ -1,7 +1,7 @@
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/config.hpp"
 #ifdef ENABLE_ASMJIT_BACKEND
-#include "nautilus/compiler/backends/amsjit/AsmJitCompilationBackend.hpp"
+#include "nautilus/compiler/backends/asmjit/AsmJitCompilationBackend.hpp"
 #endif
 #ifdef ENABLE_BC_BACKEND
 #include "nautilus/compiler/backends/bc/BCInterpreterBackend.hpp"

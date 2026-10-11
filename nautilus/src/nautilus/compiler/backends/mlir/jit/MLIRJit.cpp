@@ -1,6 +1,5 @@
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
 #include "nautilus/compiler/JitSymbolRegistry.hpp"
-#include "nautilus/compiler/backends/mlir/jit/PackFunctionArguments.hpp"
 #include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
@@ -157,8 +156,6 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 	llvmModule->setDataLayout((*tmOrError)->createDataLayout());
 	llvmModule->setTargetTriple((*tmOrError)->getTargetTriple());
 
-	detail::packFunctionArguments(llvmModule.get());
-
 	// Instantiate a JITLink-based object linking layer. Only machine code with
 	// reliable exception-handling unwind info (personality + LSDA) is linked;
 	// the legacy RuntimeDyld layer cannot relocate these and causes crashes or
@@ -270,14 +267,6 @@ llvm::Expected<void*> MLIRJit::lookup(llvm::StringRef name) {
 		return fptr;
 	}
 	return makeStringError("looked up function is null");
-}
-
-llvm::Expected<void (*)(void**)> MLIRJit::lookupPacked(llvm::StringRef name) {
-	auto result = lookup(detail::makePackedFunctionName(name));
-	if (!result) {
-		return result.takeError();
-	}
-	return reinterpret_cast<void (*)(void**)>(*result);
 }
 
 } // namespace nautilus::compiler::mlir

@@ -10,55 +10,11 @@ define ptr @execute(ptr returned writeonly %0, i32 %1, i64 %2) local_unnamed_add
   ret ptr %0
 }
 
-; Function Attrs: mustprogress nofree norecurse nounwind willreturn memory(argmem: write, inaccessiblemem: readwrite)
-define ptr @_mlir_ciface_execute(ptr returned writeonly %0, i32 %1, i64 %2) local_unnamed_addr #0 {
-  %4 = trunc i32 %1 to i8
-  tail call void @llvm.memset.p0.i64(ptr %0, i8 %4, i64 %2, i1 true)
-  ret ptr %0
-}
-
 ; Function Attrs: mustprogress nocallback nofree nounwind willreturn memory(argmem: write)
 declare void @llvm.memset.p0.i64(ptr writeonly, i8, i64, i1 immarg) #1
 
-; Function Attrs: mustprogress nofree norecurse nounwind willreturn memory(readwrite)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load i32, ptr %5, align 4
-  %7 = getelementptr i8, ptr %0, i64 16
-  %8 = load ptr, ptr %7, align 8
-  %9 = load i64, ptr %8, align 8
-  %10 = trunc i32 %6 to i8
-  tail call void @llvm.memset.p0.i64(ptr %3, i8 %10, i64 %9, i1 true)
-  %11 = getelementptr i8, ptr %0, i64 24
-  %12 = load ptr, ptr %11, align 8
-  store ptr %3, ptr %12, align 8
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nounwind willreturn memory(readwrite)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load i32, ptr %5, align 4
-  %7 = getelementptr i8, ptr %0, i64 16
-  %8 = load ptr, ptr %7, align 8
-  %9 = load i64, ptr %8, align 8
-  %10 = trunc i32 %6 to i8
-  tail call void @llvm.memset.p0.i64(ptr %3, i8 %10, i64 %9, i1 true)
-  %11 = getelementptr i8, ptr %0, i64 24
-  %12 = load ptr, ptr %11, align 8
-  store ptr %3, ptr %12, align 8
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nounwind willreturn memory(argmem: write, inaccessiblemem: readwrite) }
 attributes #1 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: write) }
-attributes #2 = { mustprogress nofree norecurse nounwind willreturn memory(readwrite) }
 
 !llvm.module.flags = !{!0}
 

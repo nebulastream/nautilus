@@ -11,52 +11,11 @@ define signext i32 @execute(ptr writeonly %0, ptr readonly %1) local_unnamed_add
   ret i32 %3
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite, inaccessiblemem: write)
-define signext i32 @_mlir_ciface_execute(ptr writeonly %0, ptr readonly %1) local_unnamed_addr #0 {
-  call void @llvm.assume(i1 true) [ "separate_storage"(ptr %0, ptr %1) ]
-  store i32 1, ptr %0, align 4
-  %3 = load i32, ptr %1, align 4
-  ret i32 %3
-}
-
 ; Function Attrs: mustprogress nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write)
 declare void @llvm.assume(i1 noundef) #1
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: write)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load ptr, ptr %5, align 8
-  call void @llvm.assume(i1 true) [ "separate_storage"(ptr %3, ptr %6) ]
-  store i32 1, ptr %3, align 4
-  %7 = load i32, ptr %6, align 4
-  %8 = getelementptr i8, ptr %0, i64 16
-  %9 = load ptr, ptr %8, align 8
-  store i32 %7, ptr %9, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: write)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load ptr, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load ptr, ptr %5, align 8
-  call void @llvm.assume(i1 true) [ "separate_storage"(ptr %3, ptr %6) ]
-  store i32 1, ptr %3, align 4
-  %7 = load i32, ptr %6, align 4
-  %8 = getelementptr i8, ptr %0, i64 16
-  %9 = load ptr, ptr %8, align 8
-  store i32 %7, ptr %9, align 4
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite, inaccessiblemem: write) }
 attributes #1 = { mustprogress nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write) }
-attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: write) }
 
 !llvm.module.flags = !{!0}
 

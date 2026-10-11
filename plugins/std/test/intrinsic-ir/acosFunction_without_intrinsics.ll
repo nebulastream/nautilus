@@ -8,33 +8,8 @@ define float @execute(float %0) local_unnamed_addr #0 {
   ret float %2
 }
 
-define float @_mlir_ciface_execute(float %0) local_unnamed_addr #0 {
-  %2 = tail call float @runtimeFunc0(float %0)
-  ret float %2
-}
-
 ; Function Attrs: memory(readwrite)
 declare float @runtimeFunc0(float) local_unnamed_addr #1
-
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load float, ptr %2, align 4
-  %4 = tail call float @runtimeFunc0(float %3)
-  %5 = getelementptr i8, ptr %0, i64 8
-  %6 = load ptr, ptr %5, align 8
-  store float %4, ptr %6, align 4
-  ret void
-}
-
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load float, ptr %2, align 4
-  %4 = tail call float @runtimeFunc0(float %3)
-  %5 = getelementptr i8, ptr %0, i64 8
-  %6 = load ptr, ptr %5, align 8
-  store float %4, ptr %6, align 4
-  ret void
-}
 
 attributes #1 = { memory(readwrite) }
 

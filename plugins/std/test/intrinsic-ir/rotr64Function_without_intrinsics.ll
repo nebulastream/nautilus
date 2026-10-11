@@ -9,42 +9,8 @@ define zeroext i64 @execute(i64 %0, i64 %1) local_unnamed_addr #0 {
   ret i64 %3
 }
 
-; Function Attrs: nounwind
-define zeroext i64 @_mlir_ciface_execute(i64 %0, i64 %1) local_unnamed_addr #0 {
-  %3 = tail call i64 @runtimeFunc0(i64 %0, i64 %1)
-  ret i64 %3
-}
-
 ; Function Attrs: nounwind memory(readwrite)
 declare i64 @runtimeFunc0(i64, i64) local_unnamed_addr #1
-
-; Function Attrs: nounwind
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i64, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load i64, ptr %5, align 8
-  %7 = tail call i64 @runtimeFunc0(i64 %3, i64 %6)
-  %8 = getelementptr i8, ptr %0, i64 16
-  %9 = load ptr, ptr %8, align 8
-  store i64 %7, ptr %9, align 8
-  ret void
-}
-
-; Function Attrs: nounwind
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i64, ptr %2, align 8
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load i64, ptr %5, align 8
-  %7 = tail call i64 @runtimeFunc0(i64 %3, i64 %6)
-  %8 = getelementptr i8, ptr %0, i64 16
-  %9 = load ptr, ptr %8, align 8
-  store i64 %7, ptr %9, align 8
-  ret void
-}
 
 attributes #0 = { nounwind }
 attributes #1 = { nounwind memory(readwrite) }

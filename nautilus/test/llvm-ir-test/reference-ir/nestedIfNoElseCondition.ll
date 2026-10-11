@@ -12,51 +12,7 @@ define signext i32 @execute(i32 %0, i32 %1) local_unnamed_addr #0 {
   ret i32 %5
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext i32 @_mlir_ciface_execute(i32 %0, i32 %1) local_unnamed_addr #0 {
-  %3 = icmp eq i32 %0, 42
-  %.v.i = select i1 %3, i32 4, i32 9
-  %4 = add i32 %1, 2
-  %5 = add i32 %4, %.v.i
-  ret i32 %5
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load i32, ptr %5, align 4
-  %7 = icmp eq i32 %3, 42
-  %.v.i = select i1 %7, i32 4, i32 9
-  %8 = add i32 %6, 2
-  %9 = add i32 %8, %.v.i
-  %10 = getelementptr i8, ptr %0, i64 16
-  %11 = load ptr, ptr %10, align 8
-  store i32 %9, ptr %11, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = load ptr, ptr %0, align 8
-  %3 = load i32, ptr %2, align 4
-  %4 = getelementptr i8, ptr %0, i64 8
-  %5 = load ptr, ptr %4, align 8
-  %6 = load i32, ptr %5, align 4
-  %7 = icmp eq i32 %3, 42
-  %.v.i.i = select i1 %7, i32 4, i32 9
-  %8 = add i32 %6, 2
-  %9 = add i32 %8, %.v.i.i
-  %10 = getelementptr i8, ptr %0, i64 16
-  %11 = load ptr, ptr %10, align 8
-  store i32 %9, ptr %11, align 4
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
-attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

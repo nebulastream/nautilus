@@ -8,29 +8,7 @@ define noundef signext i32 @execute(i32 %0, i32 %1) local_unnamed_addr #0 {
   ret i32 42
 }
 
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define noundef signext i32 @_mlir_ciface_execute(i32 %0, i32 %1) local_unnamed_addr #0 {
-  ret i32 42
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(write, argmem: readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = getelementptr i8, ptr %0, i64 16
-  %3 = load ptr, ptr %2, align 8
-  store i32 42, ptr %3, align 4
-  ret void
-}
-
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(write, argmem: readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
-  %2 = getelementptr i8, ptr %0, i64 16
-  %3 = load ptr, ptr %2, align 8
-  store i32 42, ptr %3, align 4
-  ret void
-}
-
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
-attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(write, argmem: readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

@@ -17,7 +17,7 @@
 // transparently runs the C++ fallbacks in plugins/simd/src/vector.cpp.
 
 #include "AsmJitVectorIntrinsics.hpp"
-#include "nautilus/compiler/backends/amsjit/intrinsics/AsmJitBackendIntrinsic.hpp"
+#include "nautilus/compiler/backends/asmjit/intrinsics/AsmJitBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "vector_impl.hpp"
 #include <cstdint>
