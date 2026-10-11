@@ -102,33 +102,35 @@ namespace {
 } // namespace
 
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
-TEST_CASE("CompilationStatistics: a module compiled by mlir alone gets only block-argument pruning") {
-	// LLVM's pipeline performs the other cleanups itself, so by default the
-	// graph goes to the MLIR backend with only its block arguments pruned --
-	// the exception-handling analyses still run.
+TEST_CASE("CompilationStatistics: a module compiled by mlir alone gets the optimization passes") {
+	// LLVM does not undo every CFG shape a trace leaves behind, so the graph
+	// goes to the MLIR backend fully cleaned up, as to every other backend.
 	{
 		Options options;
 		options.setOption("engine.backend", std::string("mlir"));
-		NautilusEngine engine(options);
-		auto fn = engine.registerFunction(statsAddOne);
-		REQUIRE(fn(41) == 42);
-		auto stats = fn.getStatistics();
-		REQUIRE(stats != nullptr);
-		REQUIRE_FALSE(ranIROptimizationPasses(*stats));
-		REQUIRE(ranBlockArgumentPruning(*stats));
-		REQUIRE(stats->contains("irPasses.exceptionRegionPreparation.ms"));
-	}
-	// The option pins them on regardless of the backend.
-	{
-		Options options;
-		options.setOption("engine.backend", std::string("mlir"));
-		options.setOption("ir.runOptimizationPasses", true);
 		NautilusEngine engine(options);
 		auto fn = engine.registerFunction(statsAddOne);
 		REQUIRE(fn(41) == 42);
 		auto stats = fn.getStatistics();
 		REQUIRE(stats != nullptr);
 		REQUIRE(ranIROptimizationPasses(*stats));
+		REQUIRE(ranBlockArgumentPruning(*stats));
+		REQUIRE(stats->contains("irPasses.exceptionRegionPreparation.ms"));
+	}
+	// The option pins them off regardless of the backend; the
+	// exception-handling analyses still run.
+	{
+		Options options;
+		options.setOption("engine.backend", std::string("mlir"));
+		options.setOption("ir.runOptimizationPasses", false);
+		NautilusEngine engine(options);
+		auto fn = engine.registerFunction(statsAddOne);
+		REQUIRE(fn(41) == 42);
+		auto stats = fn.getStatistics();
+		REQUIRE(stats != nullptr);
+		REQUIRE_FALSE(ranIROptimizationPasses(*stats));
+		REQUIRE_FALSE(ranBlockArgumentPruning(*stats));
+		REQUIRE(stats->contains("irPasses.exceptionRegionPreparation.ms"));
 	}
 }
 #endif
