@@ -171,6 +171,48 @@ unsigned MLIRLoweringProvider::getNaturalAlignment(Type stamp) {
 	}
 }
 
+mlir::ArrayAttr MLIRLoweringProvider::getTBAATags(Type stamp) const {
+	if (!options->getOptionOrDefault("mlir.typeBasedAliasAnalysis", true)) {
+		return {};
+	}
+	// The names are clang's, which makes the IR easy to compare with the cpp
+	// backend's. Attributes are uniqued by the context, so rebuilding the tree
+	// per access costs a hash lookup.
+	auto root = mlir::LLVM::TBAARootAttr::get(context, mlir::StringAttr::get(context, "Nautilus TBAA"));
+	auto charType =
+	    mlir::LLVM::TBAATypeDescriptorAttr::get(context, "omnipotent char", {mlir::LLVM::TBAAMemberAttr::get(root, 0)});
+	auto scalarType = [&](llvm::StringRef name) {
+		return mlir::LLVM::TBAATypeDescriptorAttr::get(context, name, {mlir::LLVM::TBAAMemberAttr::get(charType, 0)});
+	};
+	mlir::LLVM::TBAATypeDescriptorAttr type = charType;
+	switch (stamp) {
+	case Type::i16:
+	case Type::ui16:
+		type = scalarType("short");
+		break;
+	case Type::i32:
+	case Type::ui32:
+		type = scalarType("int");
+		break;
+	case Type::i64:
+	case Type::ui64:
+		type = scalarType("long long");
+		break;
+	case Type::f32:
+		type = scalarType("float");
+		break;
+	case Type::f64:
+		type = scalarType("double");
+		break;
+	case Type::ptr:
+		type = scalarType("any pointer");
+		break;
+	default:
+		break;
+	}
+	return mlir::ArrayAttr::get(context, {mlir::LLVM::TBAATagAttr::get(type, type, 0)});
+}
+
 mlir::LocationAttr MLIRLoweringProvider::getRegionScopeLoc(uint32_t index) {
 	if (locationMap_ == nullptr || index == ir::IRLocationMap::NO_CHAIN) {
 		return {};
@@ -871,6 +913,9 @@ void MLIRLoweringProvider::visitLoad(ir::LoadOperation* loadOp, ValueFrame& fram
 	auto address = resolveOperand(loadOp->getAddress(), frame);
 	auto mlirLoadOp = mlir::LLVM::LoadOp::create(*builder, getNameLoc("loadedValue"), getMLIRType(loadOp->getStamp()),
 	                                             address, getNaturalAlignment(loadOp->getStamp()));
+	if (auto tags = getTBAATags(loadOp->getStamp())) {
+		mlirLoadOp.setTbaaAttr(tags);
+	}
 	bind(frame, loadOp, mlirLoadOp);
 }
 
@@ -1007,8 +1052,11 @@ void MLIRLoweringProvider::visitMod(ir::ModOperation* modIntOp, ValueFrame& fram
 void MLIRLoweringProvider::visitStore(ir::StoreOperation* storeOp, ValueFrame& frame) {
 	auto value = resolveOperand(storeOp->getValue(), frame);
 	auto address = resolveOperand(storeOp->getAddress(), frame);
-	mlir::LLVM::StoreOp::create(*builder, getNameLoc("outputStore"), value, address,
-	                            getNaturalAlignment(storeOp->getValue()->getStamp()));
+	auto mlirStoreOp = mlir::LLVM::StoreOp::create(*builder, getNameLoc("outputStore"), value, address,
+	                                               getNaturalAlignment(storeOp->getValue()->getStamp()));
+	if (auto tags = getTBAATags(storeOp->getValue()->getStamp())) {
+		mlirStoreOp.setTbaaAttr(tags);
+	}
 }
 
 void MLIRLoweringProvider::visitReturn(ir::ReturnOperation* returnOp, ValueFrame& frame) {
