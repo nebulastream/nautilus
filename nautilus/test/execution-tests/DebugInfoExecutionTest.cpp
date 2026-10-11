@@ -902,8 +902,8 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 	// region that collapsed into its parent would show "accumulate" here and
 	// make the inner frame invisible in a backtrace.
 	const auto condition = ir.dbgIdOf("execute", {"icmp slt"});
-	const auto increment = ir.dbgIdOf("execute", {"add i32 %", ", 1,"});
-	const auto accumulation = ir.dbgIdOf("execute", {"add i32 %", ", %"});
+	const auto increment = ir.dbgIdOf("execute", {"add nsw i32 %", ", 1,"});
+	const auto accumulation = ir.dbgIdOf("execute", {"add nsw i32 %", ", %"});
 	REQUIRE_FALSE(condition.empty());
 	REQUIRE_FALSE(increment.empty());
 	REQUIRE_FALSE(accumulation.empty());
@@ -972,7 +972,7 @@ TEST_CASE("Debug info: region() nesting survives to arbitrary depth") {
 	// Innermost first, every level present and in order: that is what makes `bt`
 	// read lvl4 / lvl3 / lvl2 / lvl1 / execute. A chain that lost a level would
 	// still produce a plausible-looking backtrace, just a shorter one.
-	const auto accumulation = ir.dbgIdOf("execute", {"add i32 %", ", %"});
+	const auto accumulation = ir.dbgIdOf("execute", {"add nsw i32 %", ", %"});
 	REQUIRE_FALSE(accumulation.empty());
 	REQUIRE(ir.frameScopes(accumulation) == expected);
 
@@ -1024,7 +1024,7 @@ TEST_CASE("Debug info: 50 levels of region() nesting produce 50 DWARF frames") {
 	REQUIRE_FALSE(executeId.empty());
 	expected.push_back(executeId);
 
-	const auto accumulation = ir.dbgIdOf("execute", {"add i32 %", ", %"});
+	const auto accumulation = ir.dbgIdOf("execute", {"add nsw i32 %", ", %"});
 	REQUIRE_FALSE(accumulation.empty());
 	const auto scopes = ir.frameScopes(accumulation);
 	// Report where a truncated chain stopped rather than just that it did not match.

@@ -7,7 +7,7 @@ target triple = "x86_64-unknown-linux-gnu"
 define signext i32 @execute(i32 %0, i32 %1) local_unnamed_addr #0 {
   %3 = tail call i32 @runtimeFunc0(i32 %0, i32 %1)
   %4 = tail call i32 @runtimeFunc1(i32 %0, i32 %1)
-  %5 = add i32 %4, %3
+  %5 = add nsw i32 %4, %3
   ret i32 %5
 }
 

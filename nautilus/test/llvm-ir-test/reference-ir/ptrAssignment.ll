@@ -7,7 +7,7 @@ target triple = "x86_64-unknown-linux-gnu"
 define signext i32 @execute(ptr readonly %0, ptr readonly %1) local_unnamed_addr #0 {
   %3 = load i32, ptr %1, align 4
   %4 = load i32, ptr %0, align 4
-  %5 = add i32 %4, %3
+  %5 = add nsw i32 %4, %3
   ret i32 %5
 }
 

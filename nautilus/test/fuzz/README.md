@@ -391,7 +391,9 @@ wraparound), and converting back (well-defined modulo 2^n) -- plain signed
 overflow is still undefined behavior in C++20 even though two's-complement
 representation is mandated, so the oracle avoids it explicitly while still
 producing the same bit pattern every backend's two's-complement codegen
-actually computes. Division/modulo divisors are forced non-zero (`| T(1)`),
+actually computes. Compiled code may treat `int32_t`/`int64_t` overflow as
+undefined (the MLIR backend marks those operations `nsw` by default), so the
+harness runs the MLIR backend with `mlir.noSignedWrap=false`. Division/modulo divisors are forced non-zero (`| T(1)`),
 and for signed types additionally forced away from `-1` -- the one divisor
 value for which `TYPE_MIN / divisor` overflows (and traps via `idiv` on
 x86) -- and shift amounts are masked to `[0, bit-width(T))`.

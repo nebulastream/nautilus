@@ -5,21 +5,21 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
-  %2 = shl i32 %0, 1
-  %3 = add i32 %2, 5
+  %2 = shl nsw i32 %0, 1
+  %3 = add nsw i32 %2, 5
   ret i32 %3
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @inner(i32 %0) local_unnamed_addr #0 {
-  %2 = shl i32 %0, 1
+  %2 = shl nsw i32 %0, 1
   ret i32 %2
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @outer(i32 %0) local_unnamed_addr #0 {
-  %2 = shl i32 %0, 1
-  %3 = add i32 %2, 5
+  %2 = shl nsw i32 %0, 1
+  %3 = add nsw i32 %2, 5
   ret i32 %3
 }
 

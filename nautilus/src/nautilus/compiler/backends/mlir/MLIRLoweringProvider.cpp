@@ -143,6 +143,15 @@ mlir::Value MLIRLoweringProvider::getConstBool(const std::string& location, bool
 	                                      builder->getIntegerAttr(builder->getIndexType(), value));
 }
 
+mlir::LLVM::IntegerOverflowFlags MLIRLoweringProvider::getOverflowFlags(Type stamp) const {
+	// Only int32_t/int64_t: C++ promotes narrower operands to int, so int8_t and
+	// int16_t arithmetic cannot overflow and truncating its result wraps.
+	if ((stamp == Type::i32 || stamp == Type::i64) && options->getOptionOrDefault("mlir.noSignedWrap", true)) {
+		return mlir::LLVM::IntegerOverflowFlags::nsw;
+	}
+	return mlir::LLVM::IntegerOverflowFlags::none;
+}
+
 mlir::LocationAttr MLIRLoweringProvider::getRegionScopeLoc(uint32_t index) {
 	if (locationMap_ == nullptr || index == ir::IRLocationMap::NO_CHAIN) {
 		return {};
@@ -887,13 +896,9 @@ void MLIRLoweringProvider::visitAdd(ir::AddOperation* addOp, ValueFrame& frame) 
 		bind(frame, addOp, mlirAddOp);
 	} else {
 		if (!inductionVars.contains(addOp->getLeftInput()->getIdentifier())) {
-			if (!frame.contains(addOp->getIdentifier())) {
-				auto mlirAddOp = mlir::LLVM::AddOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput);
-				bind(frame, addOp, mlirAddOp);
-			} else {
-				auto mlirAddOp = mlir::LLVM::AddOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput);
-				bind(frame, addOp, mlirAddOp);
-			}
+			auto mlirAddOp = mlir::LLVM::AddOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput,
+			                                           getOverflowFlags(addOp->getStamp()));
+			bind(frame, addOp, mlirAddOp);
 		}
 	}
 }
@@ -913,7 +918,8 @@ void MLIRLoweringProvider::visitSub(ir::SubOperation* subIntOp, ValueFrame& fram
 		                               mlir::LLVM::FastmathFlagsAttr::get(context, mlir::LLVM::FastmathFlags::none));
 		bind(frame, subIntOp, mlirSubOp);
 	} else {
-		auto mlirSubOp = mlir::LLVM::SubOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput);
+		auto mlirSubOp = mlir::LLVM::SubOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput,
+		                                           getOverflowFlags(subIntOp->getStamp()));
 		bind(frame, subIntOp, mlirSubOp);
 	}
 }
@@ -927,8 +933,8 @@ void MLIRLoweringProvider::visitMul(ir::MulOperation* mulOp, ValueFrame& frame) 
 		                                            rightInput, mlir::LLVM::FastmathFlags::none);
 		bind(frame, mulOp, mlirMulOp);
 	} else {
-		auto mlirMulOp =
-		    mlir::LLVM::MulOp::create(*builder, getNameLoc("binOpResult"), resultType, leftInput, rightInput);
+		auto mlirMulOp = mlir::LLVM::MulOp::create(*builder, getNameLoc("binOpResult"), resultType, leftInput,
+		                                           rightInput, getOverflowFlags(mulOp->getStamp()));
 		bind(frame, mulOp, mlirMulOp);
 	}
 }

@@ -13,11 +13,11 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %3 = phi i32 [ %10, %.lr.ph ], [ 0, %1 ]
   %4 = and i32 %2, 1
   %5 = icmp eq i32 %4, 0
-  %6 = mul i32 %2, 3
-  %7 = add i32 %6, 1
+  %6 = mul nsw i32 %2, 3
+  %7 = add nsw i32 %6, 1
   %8 = ashr exact i32 %2, 1
   %9 = select i1 %5, i32 %8, i32 %7
-  %10 = add i32 %3, 1
+  %10 = add nuw nsw i32 %3, 1
   %.not = icmp eq i32 %9, 1
   br i1 %.not, label %._crit_edge, label %.lr.ph
 
