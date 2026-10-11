@@ -69,8 +69,7 @@ struct ModuleImageInfo {
  * options. getFunction() on the result checks each requested signature
  * against the image's.
  */
-[[nodiscard]] engine::CompiledModule loadModule(const engine::NautilusEngine& engine,
-                                                std::span<const std::byte> image,
+[[nodiscard]] engine::CompiledModule loadModule(const engine::NautilusEngine& engine, std::span<const std::byte> image,
                                                 const DeserializeOptions& options = {},
                                                 engine::ModuleOptions overrides = {});
 
