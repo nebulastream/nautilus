@@ -9,11 +9,11 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   br i1 %.not1, label %._crit_edge, label %.lr.ph
 
 .lr.ph:                                           ; preds = %1, %.lr.ph
-  %2 = phi i32 [ %4, %.lr.ph ], [ %0, %1 ]
-  %3 = phi i32 [ %5, %.lr.ph ], [ 0, %1 ]
-  %4 = sdiv i32 %2, 10
-  %5 = add i32 %3, 1
-  %.off = add i32 %2, 9
+  %2 = phi i32 [ %5, %.lr.ph ], [ 0, %1 ]
+  %3 = phi i32 [ %4, %.lr.ph ], [ %0, %1 ]
+  %4 = sdiv i32 %3, 10
+  %5 = add i32 %2, 1
+  %.off = add i32 %3, 9
   %.not = icmp ult i32 %.off, 19
   br i1 %.not, label %._crit_edge, label %.lr.ph
 

@@ -1,9 +1,0 @@
-EXECUTE:
-B0($1:ptr,$2:i32)
-	CONST	$3	2	:ui64
-	CAST	$4	$2	:ui64
-	MUL	$5	$4	$3	:ui64
-	ADD	$6	$1	$5	:ptr
-	LOAD	$8	$6	:i16
-	RETURN	$0	$8	:i16
-

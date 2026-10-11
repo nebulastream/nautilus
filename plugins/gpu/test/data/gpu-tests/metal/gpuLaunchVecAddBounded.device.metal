@@ -17,9 +17,6 @@ uint var_$10;
 uint var_$11;
 uint var_$12;
 bool var_$13;
-device uchar* var_$5;
-device uchar* var_$6;
-device uchar* var_$7;
 ulong var_$15;
 ulong var_$16;
 ulong var_$17;
@@ -47,14 +44,6 @@ var_$12 = var_$10+var_$11;
 var_$13 = var_$12 < var_$4;
 if (var_$13){
 {
-uint temp_0 = var_$12;
-device uchar* temp_1 = var_$1;
-device uchar* temp_2 = var_$2;
-device uchar* temp_3 = var_$3;
-var_$12 = temp_0;
-var_$5 = temp_1;
-var_$6 = temp_2;
-var_$7 = temp_3;
 }
 __pc = 1; continue;
 }else{
@@ -66,18 +55,18 @@ case 1: {
 var_$15 = (ulong)4;
 var_$16 = (ulong)var_$12;
 var_$17 = var_$16*var_$15;
-var_$18 = var_$5+var_$17;
+var_$18 = var_$1+var_$17;
 var_$19 = (ulong)4;
 var_$20 = (ulong)var_$12;
 var_$21 = var_$20*var_$19;
-var_$22 = var_$6+var_$21;
+var_$22 = var_$2+var_$21;
 var_$23 = *((device uint*)(var_$18));
 var_$24 = *((device uint*)(var_$22));
 var_$25 = var_$23+var_$24;
 var_$26 = (ulong)4;
 var_$27 = (ulong)var_$12;
 var_$28 = var_$27*var_$26;
-var_$29 = var_$7+var_$28;
+var_$29 = var_$3+var_$28;
 *((device uint*)(var_$29)) = var_$25;
 {
 }

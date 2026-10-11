@@ -432,7 +432,6 @@ fuzzer). Each compiling backend runs:
 | `no-dead-code-elim`    | `ir.disableDeadCodeElimination=true` | a default-**on** P0 pass flipped **off** |
 | `no-const-branch-fold` | `ir.disableConstantBranchFolding=true` | a default-**on** P0 pass flipped **off** |
 | `strength-reduction`   | `ir.enableStrengthReduction=true` | a currently default-**off** pass flipped **on** |
-| `direct-ssa`           | `ir.directSSAConstruction=true` | the default-**off** direct SSA construction (`TraceToSSAIRConversionPhase`) |
 | `no-algebraic-simpl`   | `ir.disableAlgebraicSimplification=true` | a default-**on** P0 pass flipped **off** |
 
 MLIR additionally runs `no-intrinsics` (`mlir.enableIntrinsics=false`). The

@@ -20,14 +20,14 @@ vector.ph:                                        ; preds = %.lr.ph.preheader
 
 vector.body:                                      ; preds = %vector.body, %vector.ph
   %index = phi i32 [ 0, %vector.ph ], [ %index.next, %vector.body ]
-  %vec.ind = phi <4 x i32> [ <i32 1, i32 2, i32 3, i32 4>, %vector.ph ], [ %vec.ind.next, %vector.body ]
   %vec.phi = phi <4 x i32> [ zeroinitializer, %vector.ph ], [ %6, %vector.body ]
   %vec.phi5 = phi <4 x i32> [ zeroinitializer, %vector.ph ], [ %7, %vector.body ]
+  %vec.ind = phi <4 x i32> [ <i32 1, i32 2, i32 3, i32 4>, %vector.ph ], [ %vec.ind.next, %vector.body ]
   %step.add = add <4 x i32> %vec.ind, splat (i32 4)
   %4 = mul <4 x i32> %vec.ind, %vec.ind
   %5 = mul <4 x i32> %step.add, %step.add
-  %6 = add <4 x i32> %4, %vec.phi
-  %7 = add <4 x i32> %5, %vec.phi5
+  %6 = add <4 x i32> %vec.phi, %4
+  %7 = add <4 x i32> %vec.phi5, %5
   %index.next = add nuw i32 %index, 8
   %vec.ind.next = add <4 x i32> %vec.ind, splat (i32 8)
   %8 = icmp eq i32 %index.next, %n.vec
@@ -40,16 +40,16 @@ middle.block:                                     ; preds = %vector.body
   br i1 %cmp.n, label %._crit_edge, label %.lr.ph.preheader7
 
 .lr.ph.preheader7:                                ; preds = %.lr.ph.preheader, %middle.block
-  %.ph = phi i32 [ 1, %.lr.ph.preheader ], [ %3, %middle.block ]
-  %.ph8 = phi i32 [ 0, %.lr.ph.preheader ], [ %9, %middle.block ]
+  %.ph = phi i32 [ 0, %.lr.ph.preheader ], [ %9, %middle.block ]
+  %.ph8 = phi i32 [ 1, %.lr.ph.preheader ], [ %3, %middle.block ]
   br label %.lr.ph
 
 .lr.ph:                                           ; preds = %.lr.ph.preheader7, %.lr.ph
-  %10 = phi i32 [ %14, %.lr.ph ], [ %.ph, %.lr.ph.preheader7 ]
-  %11 = phi i32 [ %13, %.lr.ph ], [ %.ph8, %.lr.ph.preheader7 ]
-  %12 = mul i32 %10, %10
-  %13 = add i32 %12, %11
-  %14 = add i32 %10, 1
+  %10 = phi i32 [ %13, %.lr.ph ], [ %.ph, %.lr.ph.preheader7 ]
+  %11 = phi i32 [ %14, %.lr.ph ], [ %.ph8, %.lr.ph.preheader7 ]
+  %12 = mul i32 %11, %11
+  %13 = add i32 %10, %12
+  %14 = add i32 %11, 1
   %.not = icmp sgt i32 %14, %0
   br i1 %.not, label %._crit_edge, label %.lr.ph, !llvm.loop !4
 

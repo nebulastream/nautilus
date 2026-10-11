@@ -11,10 +11,10 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   br i1 %.not, label %._crit_edge, label %.lr.ph
 
 .lr.ph:                                           ; preds = %1, %.lr.ph
-  %4 = phi i64 [ %7, %.lr.ph ], [ 0, %1 ]
-  %5 = phi i32 [ %6, %.lr.ph ], [ 0, %1 ]
-  %6 = tail call i32 @runtimeFunc1(i32 %5, i32 %0)
-  %7 = add nuw i64 %4, 1
+  %4 = phi i32 [ %6, %.lr.ph ], [ 0, %1 ]
+  %5 = phi i64 [ %7, %.lr.ph ], [ 0, %1 ]
+  %6 = tail call i32 @runtimeFunc1(i32 %4, i32 %0)
+  %7 = add nuw i64 %5, 1
   %exitcond.not = icmp eq i64 %7, %3
   br i1 %exitcond.not, label %._crit_edge, label %.lr.ph
 

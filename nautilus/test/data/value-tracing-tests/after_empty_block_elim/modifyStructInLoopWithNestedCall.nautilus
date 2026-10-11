@@ -5,20 +5,20 @@ Block_0($1:i32):
 	$3 = 0 :i32
 	store($3, $2) :void
 	$5 = 0 :i32
-	br Block_3($2, $5, $1) :void
+	br Block_3($5) :void
 
-Block_3($2:ptr, $5:i32, $1:i32):
+Block_3($5:i32):
 	$6 = $5 < $1 :bool
-	if $6 ? Block_1($2, $1, $5) : Block_2($2) :void
+	if $6 ? Block_1() : Block_2() :void
 
-Block_1($2:ptr, $1:i32, $5:i32):
+Block_1():
 	$9 = 1 :i32
 	call incrementFieldA($2,$9) :void
 	$11 = 1 :i32
 	$12 = $5 + $11 :i32
-	br Block_3($2, $12, $1) :void
+	br Block_3($12) :void
 
-Block_2($2:ptr):
+Block_2():
 	$15 = call readFieldA($2) :i32
 	return ($15) :i32
 }

@@ -16,8 +16,6 @@ uint var_$8;
 uint var_$9;
 uint var_$10;
 bool var_$11;
-device uchar* var_$5;
-device uchar* var_$4;
 ulong var_$13;
 ulong var_$14;
 ulong var_$15;
@@ -71,12 +69,6 @@ var_$10 = var_$8+var_$9;
 var_$11 = var_$10 < var_$3;
 if (var_$11){
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$2;
-device uchar* temp_2 = var_$1;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$4 = temp_2;
 }
 __pc = 1; continue;
 }else{
@@ -88,26 +80,16 @@ case 1: {
 var_$13 = (ulong)4;
 var_$14 = (ulong)var_$10;
 var_$15 = var_$14*var_$13;
-var_$16 = var_$4+var_$15;
+var_$16 = var_$1+var_$15;
 var_$17 = (uint)200;
 var_$18 = *((device uint*)(var_$16));
 var_$19 = var_$18 > var_$17;
 if (var_$19){
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$5;
-var_$10 = temp_0;
-var_$5 = temp_1;
 }
 __pc = 2; continue;
 }else{
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$5;
-device uchar* temp_2 = var_$4;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$4 = temp_2;
 }
 __pc = 4; continue;}
 }
@@ -116,7 +98,7 @@ var_$21 = (uint)3;
 var_$22 = (ulong)4;
 var_$23 = (ulong)var_$10;
 var_$24 = var_$23*var_$22;
-var_$25 = var_$5+var_$24;
+var_$25 = var_$2+var_$24;
 *((device uint*)(var_$25)) = var_$21;
 {
 }
@@ -129,26 +111,16 @@ case 4: {
 var_$33 = (ulong)4;
 var_$34 = (ulong)var_$10;
 var_$35 = var_$34*var_$33;
-var_$36 = var_$4+var_$35;
+var_$36 = var_$1+var_$35;
 var_$37 = (uint)100;
 var_$38 = *((device uint*)(var_$36));
 var_$39 = var_$38 > var_$37;
 if (var_$39){
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$5;
-var_$10 = temp_0;
-var_$5 = temp_1;
 }
 __pc = 5; continue;
 }else{
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$5;
-device uchar* temp_2 = var_$4;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$4 = temp_2;
 }
 __pc = 6; continue;}
 }
@@ -157,7 +129,7 @@ var_$41 = (uint)2;
 var_$42 = (ulong)4;
 var_$43 = (ulong)var_$10;
 var_$44 = var_$43*var_$42;
-var_$45 = var_$5+var_$44;
+var_$45 = var_$2+var_$44;
 *((device uint*)(var_$45)) = var_$41;
 {
 }
@@ -167,24 +139,16 @@ case 6: {
 var_$50 = (ulong)4;
 var_$51 = (ulong)var_$10;
 var_$52 = var_$51*var_$50;
-var_$53 = var_$4+var_$52;
+var_$53 = var_$1+var_$52;
 var_$54 = (uint)0;
 var_$55 = *((device uint*)(var_$53));
 var_$56 = var_$55 > var_$54;
 if (var_$56){
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$5;
-var_$10 = temp_0;
-var_$5 = temp_1;
 }
 __pc = 7; continue;
 }else{
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$5;
-var_$10 = temp_0;
-var_$5 = temp_1;
 }
 __pc = 8; continue;}
 }
@@ -193,7 +157,7 @@ var_$58 = (uint)1;
 var_$59 = (ulong)4;
 var_$60 = (ulong)var_$10;
 var_$61 = var_$60*var_$59;
-var_$62 = var_$5+var_$61;
+var_$62 = var_$2+var_$61;
 *((device uint*)(var_$62)) = var_$58;
 {
 }
@@ -204,7 +168,7 @@ var_$67 = (uint)0;
 var_$68 = (ulong)4;
 var_$69 = (ulong)var_$10;
 var_$70 = var_$69*var_$68;
-var_$71 = var_$5+var_$70;
+var_$71 = var_$2+var_$70;
 *((device uint*)(var_$71)) = var_$67;
 {
 }

@@ -9,8 +9,6 @@ uint32_t var_$8;
 uint32_t var_$9;
 uint32_t var_$10;
 bool var_$11;
-uint8_t* var_$5;
-uint8_t* var_$4;
 uint64_t var_$13;
 uint64_t var_$14;
 uint64_t var_$15;
@@ -61,12 +59,6 @@ var_$10 = var_$8+var_$9;
 var_$11 = var_$10 < var_$3;
 if (var_$11){
 {
-uint32_t temp_0 = var_$10;
-uint8_t* temp_1 = var_$2;
-uint8_t* temp_2 = var_$1;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$4 = temp_2;
 }
 goto Block_1;
 }else{
@@ -78,26 +70,16 @@ Block_1:
 var_$13 = (uint64_t)4;
 var_$14 = (uint64_t)var_$10;
 var_$15 = var_$14*var_$13;
-var_$16 = var_$4+var_$15;
+var_$16 = var_$1+var_$15;
 var_$17 = (uint32_t)200;
 var_$18 = *((uint32_t*)(var_$16));
 var_$19 = var_$18 > var_$17;
 if (var_$19){
 {
-uint32_t temp_0 = var_$10;
-uint8_t* temp_1 = var_$5;
-var_$10 = temp_0;
-var_$5 = temp_1;
 }
 goto Block_3;
 }else{
 {
-uint32_t temp_0 = var_$10;
-uint8_t* temp_1 = var_$5;
-uint8_t* temp_2 = var_$4;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$4 = temp_2;
 }
 goto Block_4;}
 
@@ -106,7 +88,7 @@ var_$21 = (uint32_t)3;
 var_$22 = (uint64_t)4;
 var_$23 = (uint64_t)var_$10;
 var_$24 = var_$23*var_$22;
-var_$25 = var_$5+var_$24;
+var_$25 = var_$2+var_$24;
 *((uint32_t*)(var_$25)) = var_$21;
 {
 }
@@ -119,26 +101,16 @@ Block_4:
 var_$33 = (uint64_t)4;
 var_$34 = (uint64_t)var_$10;
 var_$35 = var_$34*var_$33;
-var_$36 = var_$4+var_$35;
+var_$36 = var_$1+var_$35;
 var_$37 = (uint32_t)100;
 var_$38 = *((uint32_t*)(var_$36));
 var_$39 = var_$38 > var_$37;
 if (var_$39){
 {
-uint32_t temp_0 = var_$10;
-uint8_t* temp_1 = var_$5;
-var_$10 = temp_0;
-var_$5 = temp_1;
 }
 goto Block_5;
 }else{
 {
-uint32_t temp_0 = var_$10;
-uint8_t* temp_1 = var_$5;
-uint8_t* temp_2 = var_$4;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$4 = temp_2;
 }
 goto Block_6;}
 
@@ -147,7 +119,7 @@ var_$41 = (uint32_t)2;
 var_$42 = (uint64_t)4;
 var_$43 = (uint64_t)var_$10;
 var_$44 = var_$43*var_$42;
-var_$45 = var_$5+var_$44;
+var_$45 = var_$2+var_$44;
 *((uint32_t*)(var_$45)) = var_$41;
 {
 }
@@ -157,24 +129,16 @@ Block_6:
 var_$50 = (uint64_t)4;
 var_$51 = (uint64_t)var_$10;
 var_$52 = var_$51*var_$50;
-var_$53 = var_$4+var_$52;
+var_$53 = var_$1+var_$52;
 var_$54 = (uint32_t)0;
 var_$55 = *((uint32_t*)(var_$53));
 var_$56 = var_$55 > var_$54;
 if (var_$56){
 {
-uint32_t temp_0 = var_$10;
-uint8_t* temp_1 = var_$5;
-var_$10 = temp_0;
-var_$5 = temp_1;
 }
 goto Block_7;
 }else{
 {
-uint32_t temp_0 = var_$10;
-uint8_t* temp_1 = var_$5;
-var_$10 = temp_0;
-var_$5 = temp_1;
 }
 goto Block_8;}
 
@@ -183,7 +147,7 @@ var_$58 = (uint32_t)1;
 var_$59 = (uint64_t)4;
 var_$60 = (uint64_t)var_$10;
 var_$61 = var_$60*var_$59;
-var_$62 = var_$5+var_$61;
+var_$62 = var_$2+var_$61;
 *((uint32_t*)(var_$62)) = var_$58;
 {
 }
@@ -194,7 +158,7 @@ var_$67 = (uint32_t)0;
 var_$68 = (uint64_t)4;
 var_$69 = (uint64_t)var_$10;
 var_$70 = var_$69*var_$68;
-var_$71 = var_$5+var_$70;
+var_$71 = var_$2+var_$70;
 *((uint32_t*)(var_$71)) = var_$67;
 {
 }

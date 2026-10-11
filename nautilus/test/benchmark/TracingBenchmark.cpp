@@ -17,7 +17,6 @@
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
-#include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
 #include <list>
@@ -67,164 +66,6 @@ TEST_CASE("Tracing Benchmark") {
 	}
 }
 
-TEST_CASE("SSA Creation Benchmark") {
-
-	for (auto& test : tests) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-
-		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			std::vector<common::ArenaPool::Handle> arenas;
-			std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
-			arenas.reserve(meter.runs());
-			traces.reserve(meter.runs());
-
-			for (int index = 0; index < meter.runs(); ++index) {
-				auto arena = common::ArenaPool::makeStandalone();
-				traces.emplace_back(tracing::TraceContext::trace(func, engine::Options(), *arena));
-				arenas.emplace_back(std::move(arena));
-			}
-
-			meter.measure([&traces](int index) {
-				auto phase = tracing::SSACreationPhase();
-				return phase.apply(traces[index]);
-			});
-		});
-	}
-
-	for (auto& [name, func] : tests) {
-		Catch::Benchmark::Benchmark("ssa_module_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			std::vector<common::ArenaPool::Handle> arenas;
-			std::vector<std::shared_ptr<tracing::TraceModule>> modules;
-			arenas.reserve(meter.runs());
-			modules.reserve(meter.runs());
-
-			for (int index = 0; index < meter.runs(); ++index) {
-				auto arena = common::ArenaPool::makeStandalone();
-				std::list<compiler::CompilableFunction> functions;
-				functions.emplace_back("execute", func);
-				modules.emplace_back(tracing::TraceContext::Trace(functions, engine::Options(), *arena));
-				arenas.emplace_back(std::move(arena));
-			}
-
-			meter.measure([&modules](int index) {
-				auto phase = tracing::SSACreationPhase();
-				return phase.apply(modules[index]);
-			});
-		});
-	}
-
-	auto registerBenchmark = [](size_t valueCount) {
-		Catch::Benchmark::Benchmark("ssa_liveIn" + std::to_string(valueCount))
-		    .operator=([valueCount](Catch::Benchmark::Chronometer meter) {
-			    std::vector<common::ArenaPool::Handle> arenas;
-			    std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
-			    arenas.reserve(meter.runs());
-			    traces.reserve(meter.runs());
-
-			    for (int run = 0; run < meter.runs(); ++run) {
-				    auto arena = common::ArenaPool::makeStandalone();
-				    auto trace = std::make_shared<tracing::ExecutionTrace>(*arena);
-				    std::vector<tracing::TypedValueRef> arguments;
-				    arguments.reserve(valueCount);
-				    for (size_t index = 0; index < valueCount; ++index) {
-					    arguments.push_back(trace->setArgument(Type::i64, index));
-				    }
-				    auto& root = trace->getBlock(0);
-				    const auto useBlockId = trace->createBlock();
-				    root.addOperation(
-				        tracing::makeTraceOp(*arena, tracing::Op::JMP, arena->create<tracing::BlockRef>(useBlockId)));
-				    trace->getBlock(useBlockId).predecessors.emplace_back(root.blockId);
-				    trace->setCurrentBlock(useBlockId);
-				    auto* call = arena->create<tracing::FunctionCall>(tracing::FunctionCall {
-				        .functionName = "consume",
-				        .mangledName = "consume",
-				        .ptr = nullptr,
-				        .arguments = std::move(arguments),
-				        .fnAttrs = {},
-				        .destructors = {},
-				    });
-				    auto snapshot = tracing::Snapshot();
-				    auto callOp = tracing::Op::CALL;
-				    auto resultType = Type::i64;
-				    const auto result = trace->addOperationWithResult(snapshot, callOp, resultType, {call});
-				    trace->addReturn(snapshot, resultType, result);
-				    traces.emplace_back(std::move(trace));
-				    arenas.emplace_back(std::move(arena));
-			    }
-
-			    meter.measure([&traces](int index) {
-				    auto phase = tracing::SSACreationPhase();
-				    return phase.apply(traces[index]);
-			    });
-		    });
-	};
-
-	registerBenchmark(16);
-	registerBenchmark(64);
-	registerBenchmark(256);
-
-	auto function1000 = details::createFunctionWrapper(staticSquareSum<1000>);
-	Catch::Benchmark::Benchmark("ssa_staticSquareSum1000")
-	    .operator=([&function1000](Catch::Benchmark::Chronometer meter) {
-		    std::vector<common::ArenaPool::Handle> arenas;
-		    std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
-		    arenas.reserve(meter.runs());
-		    traces.reserve(meter.runs());
-
-		    for (int index = 0; index < meter.runs(); ++index) {
-			    auto arena = common::ArenaPool::makeStandalone();
-			    traces.emplace_back(tracing::TraceContext::trace(function1000, engine::Options(), *arena));
-			    arenas.emplace_back(std::move(arena));
-		    }
-
-		    meter.measure([&traces](int index) {
-			    auto phase = tracing::SSACreationPhase();
-			    return phase.apply(traces[index]);
-		    });
-	    });
-
-	auto function2000 = details::createFunctionWrapper(staticSquareSum<2000>);
-	Catch::Benchmark::Benchmark("ssa_staticSquareSum2000")
-	    .operator=([&function2000](Catch::Benchmark::Chronometer meter) {
-		    std::vector<common::ArenaPool::Handle> arenas;
-		    std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
-		    arenas.reserve(meter.runs());
-		    traces.reserve(meter.runs());
-
-		    for (int index = 0; index < meter.runs(); ++index) {
-			    auto arena = common::ArenaPool::makeStandalone();
-			    traces.emplace_back(tracing::TraceContext::trace(function2000, engine::Options(), *arena));
-			    arenas.emplace_back(std::move(arena));
-		    }
-
-		    meter.measure([&traces](int index) {
-			    auto phase = tracing::SSACreationPhase();
-			    return phase.apply(traces[index]);
-		    });
-	    });
-
-	auto function4000 = details::createFunctionWrapper(staticSquareSum<4000>);
-	Catch::Benchmark::Benchmark("ssa_staticSquareSum4000")
-	    .operator=([&function4000](Catch::Benchmark::Chronometer meter) {
-		    std::vector<common::ArenaPool::Handle> arenas;
-		    std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
-		    arenas.reserve(meter.runs());
-		    traces.reserve(meter.runs());
-
-		    for (int index = 0; index < meter.runs(); ++index) {
-			    auto arena = common::ArenaPool::makeStandalone();
-			    traces.emplace_back(tracing::TraceContext::trace(function4000, engine::Options(), *arena));
-			    arenas.emplace_back(std::move(arena));
-		    }
-
-		    meter.measure([&traces](int index) {
-			    auto phase = tracing::SSACreationPhase();
-			    return phase.apply(traces[index]);
-		    });
-	    });
-}
-
 TEST_CASE("IR Creation Benchmark") {
 	// Route both the trace arena and every IRGraph's arena through a single
 	// ArenaPool.  The first sample pays the usual heap allocation; subsequent
@@ -240,16 +81,15 @@ TEST_CASE("IR Creation Benchmark") {
 			auto traceArena = pool.acquire();
 			std::shared_ptr<tracing::ExecutionTrace> trace =
 			    tracing::TraceContext::trace(func, engine::Options(), *traceArena);
-			auto ssaCreationPhase = tracing::SSACreationPhase();
-			auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
 
+			// The conversion only reads the trace, so every iteration converts the same one.
 			meter.measure([&] {
 				auto irConversionPhase = tracing::TraceToIRConversionPhase();
-				return irConversionPhase.apply(afterSSAModule, pool);
+				return irConversionPhase.apply(trace, pool);
 			});
 			// Drop trace state before the trace-arena handle is recycled
 			// into the pool at the end of this sample.
-			afterSSAModule.reset();
+			trace.reset();
 		});
 	}
 }
@@ -287,12 +127,10 @@ TEST_CASE("Backend Compilation Benchmark") {
 				    auto traceArena = pool.acquire();
 				    std::shared_ptr<tracing::ExecutionTrace> trace =
 				        tracing::TraceContext::trace(func, engine::Options(), *traceArena);
-				    auto ssaCreationPhase = tracing::SSACreationPhase();
-				    auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
 
 				    auto backendBackend = registry->getBackend(backend);
 				    auto irConversionPhase = tracing::TraceToIRConversionPhase();
-				    auto ir = irConversionPhase.apply(afterSSAModule, pool);
+				    auto ir = irConversionPhase.apply(trace, pool);
 				    auto op = engine::Options();
 				    if (backend == "mlir") {
 					    // force compilation for the MLIR backend.
@@ -304,7 +142,7 @@ TEST_CASE("Backend Compilation Benchmark") {
 				    // Drop trace/IR state before the trace-arena handle is
 				    // recycled into the pool at the end of this sample.
 				    ir.reset();
-				    afterSSAModule.reset();
+				    trace.reset();
 			    });
 		}
 	}

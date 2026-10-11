@@ -46,7 +46,7 @@ run_fixture() {
 			FAILURES=$((FAILURES + 1))
 			return
 		fi
-		for key in after_tracing after_ssa after_ir_creation after_ir_passes; do
+		for key in after_tracing after_ir_creation after_ir_passes; do
 			if ! grep -q "\"key\":\"$key\"" "$manifest"; then
 				echo "FAIL $fixture [$backend]: manifest missing stage $key"
 				FAILURES=$((FAILURES + 1))

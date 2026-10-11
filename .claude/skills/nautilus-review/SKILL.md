@@ -69,12 +69,11 @@ If the user has access to a build, suggest enabling IR dumps to confirm a findin
 ```cpp
 nautilus::engine::Options options;
 options.setOption("dump.ir", true);
-options.setOption("dump.after_ssa", true);
 options.setOption("dump.after_constant_folding", true);
 // Also useful: "mlir.inline_invoke_calls", "engine.backend"
 ```
 
-Compare the generated IR / `after_ssa` / `after_constant_folding` files (the same layout used under `nautilus/test/data/<category>/`). If a finding is about a CALL that should have been inlined, look for the `call` op in the dumped IR. If it's about constant folding, look at `after_constant_folding/`.
+Compare the generated IR / `after_constant_folding` files (the same layout used under `nautilus/test/data/<category>/`). If a finding is about a CALL that should have been inlined, look for the `call` op in the dumped IR. If it's about constant folding, look at `after_constant_folding/`.
 
 ### 5. Report findings
 
@@ -165,14 +164,14 @@ Each cast is a separate IR op. The IR cannot recognize `i` as an induction varia
 
 #### C1. `if/else` that only chooses between two values
 
-`select(cond, a, b)` from `include/nautilus/select.hpp` lowers to LLVM's `select` intrinsic and typically becomes a `cmov`. An `if/else` produces two basic blocks plus a phi at the merge — visible in `after_ssa/`.
+`select(cond, a, b)` from `include/nautilus/select.hpp` lowers to LLVM's `select` intrinsic and typically becomes a `cmov`. An `if/else` produces two basic blocks plus a phi (block argument) at the merge — visible in `ir/`.
 
 Bad: `if (x < 0) y = 0; else y = x;`
 Rewrite: `val<int32_t> y = select(x < 0, val<int32_t>(0), x);`
 
 Use this only for **simple value selection**. Don't use it when both arms have side effects — `select` evaluates both arms unconditionally.
 
-Note: LLVM's later mid-end pipeline often collapses tiny if/else-of-constants into a `select` automatically (see `test/llvm-ir-test/reference-ir/conditionalReturn.ll` and `ifElseIfElse.ll`, both of which boil down to a `select` chain even though the source uses if/else). Manual `select()` still wins because it (a) keeps the *Nautilus* IR shorter — fewer blocks, smaller `after_ssa/`, faster compilation — and (b) makes the intent explicit, so the upstream `ConstantFoldingAndCopyPropagationPass` can fold it before MLIR ever runs. Reach for `select` whenever both arms are cheap, side-effect-free expressions. `select` is also the canonical rewrite when the single-return rule (H1) bans an early-return-of-constants pattern.
+Note: LLVM's later mid-end pipeline often collapses tiny if/else-of-constants into a `select` automatically (see `test/llvm-ir-test/reference-ir/conditionalReturn.ll` and `ifElseIfElse.ll`, both of which boil down to a `select` chain even though the source uses if/else). Manual `select()` still wins because it (a) keeps the *Nautilus* IR shorter — fewer blocks, smaller `ir/`, faster compilation — and (b) makes the intent explicit, so the upstream `ConstantFoldingAndCopyPropagationPass` can fold it before MLIR ever runs. Reach for `select` whenever both arms are cheap, side-effect-free expressions. `select` is also the canonical rewrite when the single-return rule (H1) bans an early-return-of-constants pattern.
 
 #### C2. No probability hint on a heavily skewed `val<bool>` condition
 
@@ -296,12 +295,12 @@ See A3. The Member-pointer overload (`val_ptr.hpp:264`) produces a typed `Load` 
 
 **Project policy.** Any Nautilus function that uses `val<T>` (parameter, local, or return type) must have exactly one `return` statement, placed at the bottom of the function. Multiple `return` statements — including early-exit guards, per-branch returns, and returns inside loops — are not allowed and must be flagged in review as **Major**.
 
-The motivation is concrete. The SSA pass (`src/nautilus/tracing/phases/SSACreationPhase.cpp:48-82`) handles multi-return functions by synthesising a merge block: it clones the *first* return op as the canonical exit (its `resultType` becomes the function's return type), rewrites every other return site to `ASSIGN target = value` + `JMP merge`, and then propagates the merged value as a block argument up the predecessor chain. That synthesis works, but it has costs that pile up:
+The motivation is concrete. Trace-to-IR conversion (`src/nautilus/tracing/phases/TraceToIRConversionPhase.cpp`, `processReturn`) handles multi-return functions by synthesising a merge block: every return site becomes a jump to one return block that takes the returned value as its block argument, typed by the first return it converts. That synthesis works, but it has costs that pile up:
 
-- The first traced return fixes the function's IR return type. If a later return contributes a value of different width or signedness, the per-branch `ASSIGN` silently carries an implicit cast — the GH#90-class regression family lives here (`nautilus/test/data/regressions/tracing/store_mising_downcast-gh_#90.*`).
+- The first traced return fixes the function's IR return type. If a later return contributes a value of different width or signedness, its jump silently carries an implicit cast — the GH#90-class regression family lives here (`nautilus/test/data/regressions/tracing/store_mising_downcast-gh_#90.*`).
 - The merge only shares the *value*. Side effects (Stores, Calls, allocations) sitting in the per-branch tails before each return are duplicated in the trace and the IR; the optimizer often fails to coalesce them.
 - A `return` inside a dynamic `for (val<…> …)` loop adds a second exit edge to the loop body. `LoopAnalysisPhase` then frequently fails to recognise the canonical for-shape, blocking strength reduction and induction-variable simplification.
-- A canonical single-return function has source structure that matches the IR shape, so reviewing `dump.after_ssa` against the source is straightforward.
+- A canonical single-return function has source structure that matches the IR shape, so reviewing `dump.after_ir_creation` against the source is straightforward.
 
 **The rewrite recipes below are exhaustive — every multi-return shape encountered in review maps to one of them.**
 
@@ -446,20 +445,20 @@ Missing probability hint on a heavily-skewed guard is a Minor finding.
 
 #### H8. Void functions — the same rule applies
 
-For `void`-returning functions, multiple `return;` statements are also disallowed. The SSA phase erases per-branch void returns rather than synthesising a merge (`SSACreationPhase.cpp:67-68`), so the IR cost is smaller — but the policy is uniform. Use a single fall-through exit. Never mix `return;` and `return value;` in the same function (that's also a C++ error, but template instantiations make it easy to slip into).
+For `void`-returning functions, multiple `return;` statements are also disallowed. Conversion turns per-branch void returns into argument-less jumps to the merged return block, so the IR cost is smaller — but the policy is uniform. Use a single fall-through exit. Never mix `return;` and `return value;` in the same function (that's also a C++ error, but template instantiations make it easy to slip into).
 
 #### H9. Test fixtures that intentionally exercise the multi-return path
 
-The functions `conditionalReturn`, `multipleReturns`, and `withBranchProbability` in `nautilus/test/common/ControlFlowFunctions.hpp` deliberately violate the single-return rule because they are *fixtures* for the SSA merge logic and the corresponding reference LLVM IR (`multipleReturns.ll`, `conditionalReturn.ll`, `withBranchProbability.ll`). Do not flag these; the multi-return shape is the test. Anywhere else, flag.
+The functions `conditionalReturn`, `multipleReturns`, and `withBranchProbability` in `nautilus/test/common/ControlFlowFunctions.hpp` deliberately violate the single-return rule because they are *fixtures* for the return-merge logic and the corresponding reference LLVM IR (`multipleReturns.ll`, `conditionalReturn.ll`, `withBranchProbability.ll`). Do not flag these; the multi-return shape is the test. Anywhere else, flag.
 
 ### I. Diagnostic workflow
 
 #### I1. When a finding is non-obvious, ask the user to dump the IR
 
-`Engine` accepts options (`include/nautilus/options.hpp`) — `dump.ir`, `dump.after_ssa`, `dump.after_constant_folding`, `dump.after_empty_block_elim`. The same directory layout is mirrored under `nautilus/test/data/<category>/` so you can diff a problematic kernel against a known-good test for the same shape.
+`Engine` accepts options (`include/nautilus/options.hpp`) — `dump.ir`, `dump.after_ir_creation`, `dump.after_constant_folding`, `dump.after_empty_block_elim`. The same directory layout is mirrored under `nautilus/test/data/<category>/` so you can diff a problematic kernel against a known-good test for the same shape.
 
-For return-merge findings specifically, the smoking gun is in `dump.after_ssa`:
-- A merge block whose only operation is `RETURN` and whose argument list has multiple incoming values → the source has multiple `return` statements that the SSA phase merged. Under the single-return rule (H1), this is a violation; rewrite per H2–H8.
+For return-merge findings specifically, the smoking gun is in `dump.after_ir_creation`:
+- A merge block whose only operation is `RETURN` and whose argument list has multiple incoming values → the source has multiple `return` statements that conversion merged. Under the single-return rule (H1), this is a violation; rewrite per H2–H8.
 - The same merge block containing extra ops (Stores, Calls) duplicated across predecessors → H5 candidate (per-branch side effects), and the multi-return shape that produced it is itself an H1 violation.
 
 For probability-hint findings, dump the LLVM IR (`dump.llvm_ir`) and look for `!prof !{!"branch_weights", …}` metadata on the relevant `br` instruction (see `withBranchProbability.ll:9`).
@@ -489,7 +488,7 @@ Output a structured report. Be terse — one block per finding. Group by **sever
 - …
 
 ## Diagnostic suggestions
-- <e.g., "Enable dump.after_ssa to confirm the loop didn't fold">
+- <e.g., "Enable dump.after_ir_passes to confirm the loop didn't fold">
 ```
 
 If the reviewed code has **no findings**, say so explicitly and call out two or three patterns the code uses *well* (e.g., correct use of `static_val`, clean `select`, explicit casts on narrowing stores). Do not invent issues.
@@ -499,7 +498,7 @@ If the reviewed code has **no findings**, say so explicitly and call out two or 
 - Not a build/CMake/formatting reviewer — defer to `./format.sh` and `cmake --build . --target format`.
 - Not a generic C++ style reviewer — naming, comments, file layout are out of scope unless they obscure traced semantics.
 - Not a tool for changing IR phases or backend code — that's compiler-internal work and gets a normal C++ review, not this skill.
-- Not authoritative about whether a transformation will *actually* fire on a given kernel without checking the dumped IR. Always frame findings as "this *should* enable X — confirm with `dump.after_ssa`" when uncertain.
+- Not authoritative about whether a transformation will *actually* fire on a given kernel without checking the dumped IR. Always frame findings as "this *should* enable X — confirm with `dump.after_ir_passes`" when uncertain.
 
 ## Quick reference: signal words to grep for during review
 

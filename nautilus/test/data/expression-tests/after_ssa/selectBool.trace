@@ -1,5 +1,0 @@
-EXECUTE:
-B0($1:bool,$2:bool,$3:bool)
-	SELECT	$7	$1	$2	$3	:bool
-	RETURN	$0	$7	:bool
-

@@ -18,7 +18,7 @@ TEST_CASE("DumpHelperFolderCreationNoDumpToFile") {
 	nautilus::engine::Options options;
 	options.setOption("dump.toFile", false);
 	const compiler::DumpHandler dumpHandler(options, folderName);
-	dumpHandler.dump("after_ssa", "trace", []() { return "Some fancy text"; });
+	dumpHandler.dump("after_tracing", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_ir_creation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_mlir_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_llvm_generation", "trace", []() { return "Some fancy text"; });
@@ -40,7 +40,7 @@ TEST_CASE("DumpHelperFolderCreationNoDumpAll") {
 	nautilus::engine::Options options;
 	options.setOption("dump.all", false);
 	const compiler::DumpHandler dumpHandler(options, folderName);
-	dumpHandler.dump("after_ssa", "trace", []() { return "Some fancy text"; });
+	dumpHandler.dump("after_tracing", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_ir_creation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_mlir_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_llvm_generation", "trace", []() { return "Some fancy text"; });
@@ -61,9 +61,9 @@ TEST_CASE("DumpHelperFolderCreationDumpAll") {
 
 	nautilus::engine::Options options;
 	options.setOption("dump.all", true);
-	options.setOption("dump.after_ssa", true);
+	options.setOption("dump.after_tracing", true);
 	const compiler::DumpHandler dumpHandler(options, folderName);
-	dumpHandler.dump("after_ssa", "trace", []() { return "Some fancy text"; });
+	dumpHandler.dump("after_tracing", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_ir_creation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_mlir_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_llvm_generation", "trace", []() { return "Some fancy text"; });

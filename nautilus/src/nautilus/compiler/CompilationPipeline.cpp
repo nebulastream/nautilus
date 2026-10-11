@@ -39,9 +39,7 @@
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/CopyAttribution.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
-#include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
-#include "nautilus/tracing/phases/TraceToSSAIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #endif
 
@@ -245,29 +243,10 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		dumpHandler.forceDump("copy_sites", "txt", tracing::formatCopySites(*traceModule, copySiteResolver));
 	}
 
-	std::shared_ptr<ir::IRGraph> ir;
-	if (moduleOptions.getOptionOrDefault("ir.directSSAConstruction", false)) {
-		// Builds SSA form while converting; there is no SSA-form trace to dump.
-		const auto irGenStart = std::chrono::steady_clock::now();
-		ir = tracing::TraceToSSAIRConversionPhase().apply(std::move(traceModule), *irArenaPool_, compilationId);
-		if (statistics != nullptr) {
-			statistics->recordTimingMs("irGeneration.ms", irGenStart);
-		}
-	} else {
-		const auto ssaStart = std::chrono::steady_clock::now();
-		auto ssaCreationPhase = tracing::SSACreationPhase();
-		auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
-		if (statistics != nullptr) {
-			statistics->recordTimingMs("ssaCreation.ms", ssaStart);
-		}
-		dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSAModule->toString(); });
-
-		const auto irGenStart = std::chrono::steady_clock::now();
-		auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-		ir = irGenerationPhase.apply(afterSSAModule, *irArenaPool_, compilationId);
-		if (statistics != nullptr) {
-			statistics->recordTimingMs("irGeneration.ms", irGenStart);
-		}
+	const auto irGenStart = std::chrono::steady_clock::now();
+	auto ir = tracing::TraceToIRConversionPhase().apply(std::move(traceModule), *irArenaPool_, compilationId);
+	if (statistics != nullptr) {
+		statistics->recordTimingMs("irGeneration.ms", irGenStart);
 	}
 	if (statistics != nullptr) {
 		const auto snapshot = ir::computeStatistics(*ir);

@@ -52,15 +52,15 @@ void bindDefinition(compiler::ir::IRGraph& ir, TraceModule& traceModule, const s
                     compiler::ir::FunctionOperation* functionOperation);
 
 /**
- * @brief What the two trace-to-IR conversions share: the region table, call
- * interning, provenance, and the conversion of every operation that is not
- * control flow.
+ * @brief The parts of trace-to-IR conversion that do not depend on how
+ * values are resolved: the region table, call interning, provenance, and the
+ * conversion of every operation that is not control flow.
  *
- * The operation converters are templates over the value frame, which is
- * where the two conversions differ: `TraceToIRConversionPhase` reads a trace
- * already in SSA form and looks values up block by block, while
- * `TraceToSSAIRConversionPhase` builds SSA form as it goes. A frame offers
- * `getValue(OperationIdentifier)` and `setValue(OperationIdentifier, Operation*)`.
+ * The operation converters are templates over the value frame, the object
+ * that resolves a traced value to its IR definition
+ * (`getValue(OperationIdentifier)`) and records a new one
+ * (`setValue(OperationIdentifier, Operation*)`); `TraceToIRConversionPhase`
+ * supplies one that builds SSA form as it goes.
  */
 class IRConversionSupport {
 public:

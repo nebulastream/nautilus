@@ -12,13 +12,13 @@ Block_3($1:i32, $3:i32, $2:i32):
 	$7 = $1 / $6 :i32
 	$8 = 0 :i32
 	$9 = $7 > $8 :bool
-	if $9 ? Block_1($7, $5) : Block_2($5) :void
+	if $9 ? Block_1() : Block_2() :void
 
-Block_1($1:i32, $2:i32):
+Block_1():
 	$11 = 10 :i32
-	br Block_3($1, $11, $2) :void
+	br Block_3($7, $11, $5) :void
 
-Block_2($2:i32):
-	return ($2) :i32
+Block_2():
+	return ($5) :i32
 }
 } //nautilus

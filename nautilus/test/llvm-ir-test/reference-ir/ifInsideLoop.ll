@@ -18,9 +18,9 @@ vector.ph:                                        ; preds = %.lr.ph.preheader
 
 vector.body:                                      ; preds = %vector.body, %vector.ph
   %index = phi i32 [ 0, %vector.ph ], [ %index.next, %vector.body ]
-  %vec.ind = phi <4 x i32> [ <i32 0, i32 1, i32 2, i32 3>, %vector.ph ], [ %vec.ind.next, %vector.body ]
   %vec.phi = phi <4 x i32> [ zeroinitializer, %vector.ph ], [ %7, %vector.body ]
   %vec.phi1 = phi <4 x i32> [ zeroinitializer, %vector.ph ], [ %8, %vector.body ]
+  %vec.ind = phi <4 x i32> [ <i32 0, i32 1, i32 2, i32 3>, %vector.ph ], [ %vec.ind.next, %vector.body ]
   %3 = and <4 x i32> %vec.ind, splat (i32 1)
   %4 = and <4 x i32> %vec.ind, splat (i32 1)
   %5 = xor <4 x i32> %3, splat (i32 1)
@@ -39,17 +39,17 @@ middle.block:                                     ; preds = %vector.body
   br i1 %cmp.n, label %._crit_edge, label %.lr.ph.preheader2
 
 .lr.ph.preheader2:                                ; preds = %.lr.ph.preheader, %middle.block
-  %.ph = phi i32 [ 0, %.lr.ph.preheader ], [ %n.vec, %middle.block ]
-  %.ph3 = phi i32 [ 0, %.lr.ph.preheader ], [ %10, %middle.block ]
+  %.ph = phi i32 [ 0, %.lr.ph.preheader ], [ %10, %middle.block ]
+  %.ph3 = phi i32 [ 0, %.lr.ph.preheader ], [ %n.vec, %middle.block ]
   br label %.lr.ph
 
 .lr.ph:                                           ; preds = %.lr.ph.preheader2, %.lr.ph
-  %11 = phi i32 [ %15, %.lr.ph ], [ %.ph, %.lr.ph.preheader2 ]
-  %12 = phi i32 [ %spec.select, %.lr.ph ], [ %.ph3, %.lr.ph.preheader2 ]
-  %13 = and i32 %11, 1
+  %11 = phi i32 [ %spec.select, %.lr.ph ], [ %.ph, %.lr.ph.preheader2 ]
+  %12 = phi i32 [ %15, %.lr.ph ], [ %.ph3, %.lr.ph.preheader2 ]
+  %13 = and i32 %12, 1
   %14 = xor i32 %13, 1
-  %spec.select = add i32 %14, %12
-  %15 = add nuw nsw i32 %11, 1
+  %spec.select = add i32 %14, %11
+  %15 = add nuw nsw i32 %12, 1
   %exitcond.not = icmp eq i32 %15, %0
   br i1 %exitcond.not, label %._crit_edge, label %.lr.ph, !llvm.loop !4
 

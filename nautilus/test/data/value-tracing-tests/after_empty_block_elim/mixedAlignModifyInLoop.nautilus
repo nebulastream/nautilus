@@ -13,13 +13,13 @@ Block_0($1:i32):
 	$11 = $2 + $10 :ptr
 	store($9, $11) :void
 	$13 = 0 :i32
-	br Block_3($2, $13, $1) :void
+	br Block_3($13) :void
 
-Block_3($2:ptr, $13:i32, $1:i32):
+Block_3($13:i32):
 	$14 = $13 < $1 :bool
-	if $14 ? Block_1($2, $1, $13) : Block_2($2) :void
+	if $14 ? Block_1() : Block_2() :void
 
-Block_1($2:ptr, $1:i32, $13:i32):
+Block_1():
 	$17 = load($2) :i8
 	$18 = 1 :i8
 	$19 = $17 cast_to i32 :i32
@@ -45,9 +45,9 @@ Block_1($2:ptr, $1:i32, $13:i32):
 	store($36, $38) :void
 	$40 = 1 :i32
 	$41 = $13 + $40 :i32
-	br Block_3($2, $41, $1) :void
+	br Block_3($41) :void
 
-Block_2($2:ptr):
+Block_2():
 	$44 = load($2) :i8
 	$45 = 4 :ui64
 	$46 = $2 + $45 :ptr

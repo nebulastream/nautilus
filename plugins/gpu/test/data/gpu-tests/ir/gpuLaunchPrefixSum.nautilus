@@ -25,33 +25,33 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 	$9 = call func_*#6() :ui32
 	$10 = $8 + $9 :ui32
 	$11 = $10 < $3 :bool
-	if $11 ? Block_1($10, $2, $1) : Block_2() :void
+	if $11 ? Block_1() : Block_2() :void
 
-Block_1($10:ui32, $5:ptr, $4:ptr):
+Block_1():
 	$13 = 0 :ui32
 	$14 = 0 :ui32
-	br Block_5($10, $5, $13, $14, $4) :void
+	br Block_5($14, $13) :void
 
-Block_5($10:ui32, $5:ptr, $13:ui32, $14:ui32, $4:ptr):
+Block_5($14:ui32, $13:ui32):
 	$15 = $14 <= $10 :bool
-	if $15 ? Block_3($10, $5, $14, $4, $13) : Block_4($10, $5, $13) :void
+	if $15 ? Block_3() : Block_4() :void
 
-Block_3($10:ui32, $5:ptr, $14:ui32, $4:ptr, $13:ui32):
+Block_3():
 	$17 = 4 :ui64
 	$18 = $14 cast_to ui64 :ui64
 	$19 = $18 * $17 :ui64
-	$20 = $4 + $19 :ptr
+	$20 = $1 + $19 :ptr
 	$21 = load($20) :ui32
 	$22 = $13 + $21 :ui32
 	$23 = 1 :ui32
 	$24 = $14 + $23 :ui32
-	br Block_5($10, $5, $22, $24, $4) :void
+	br Block_5($24, $22) :void
 
-Block_4($10:ui32, $5:ptr, $13:ui32):
+Block_4():
 	$31 = 4 :ui64
 	$32 = $10 cast_to ui64 :ui64
 	$33 = $32 * $31 :ui64
-	$34 = $5 + $33 :ptr
+	$34 = $2 + $33 :ptr
 	store($13, $34) :void
 	br Block_6() :void
 

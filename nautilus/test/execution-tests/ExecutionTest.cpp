@@ -1794,31 +1794,6 @@ TEST_CASE("Engine Compiler Test") {
 }
 #endif
 
-#ifdef ENABLE_TRACING
-TEST_CASE("Engine Compiler Test with direct SSA construction") {
-	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { runAllTests(engine); }, false,
-	                                  [](engine::Options& options) {
-		                                  options.setOption("ir.directSSAConstruction", true);
-		                                  options.setOption("ir.verifyAfterEachPass", true);
-		                                  options.setOption("ir.failOnVerifyError", true);
-		                                  if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
-			                                  options.setOption("engine.Compilation", true);
-			                                  options.setOption("mlir.enableMultithreading", false);
-		                                  }
-	                                  });
-}
-
-TEST_CASE("NautilusFunction Compiled Execution Test with direct SSA construction") {
-	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { nautilusFunctionExecutionTest(engine); },
-	                                  false,
-	                                  [](engine::Options& options) {
-		                                  options.setOption("ir.directSSAConstruction", true);
-		                                  options.setOption("ir.verifyAfterEachPass", true);
-		                                  options.setOption("ir.failOnVerifyError", true);
-	                                  });
-}
-#endif
-
 TEST_CASE("NautilusFunction Interpretation Test") {
 	auto engine = nautilus::testing::makeEngine("interpreter");
 	nautilusFunctionExecutionTest(engine);

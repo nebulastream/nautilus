@@ -26,7 +26,7 @@ a navigable, debuggable artifact.
   coverage.
 
   > Note: the alternate "mnemonic" dialect that appears in
-  > `*/after_ssa/*.trace` and `*/tracing/*.trace` (`EXECUTE: B0(…)
+  > `*/tracing/*.trace` (`EXECUTE: B0(…)
   > CONST $3 5 :i32 …`) is not handled by this extension. Open those
   > files as plain text.
 - **Bracket matching, auto-close, smart indent** for `{}`, `()`, `[]`.

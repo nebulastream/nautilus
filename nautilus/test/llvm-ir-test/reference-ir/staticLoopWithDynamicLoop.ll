@@ -36,15 +36,15 @@ middle.block:                                     ; preds = %vector.body
   br i1 %cmp.n, label %._crit_edge, label %.lr.ph.preheader37
 
 .lr.ph.preheader37:                               ; preds = %.lr.ph.preheader34, %middle.block
-  %.ph = phi i32 [ 6, %.lr.ph.preheader34 ], [ %5, %middle.block ]
-  %.ph38 = phi i32 [ 180, %.lr.ph.preheader34 ], [ %7, %middle.block ]
+  %.ph = phi i32 [ 180, %.lr.ph.preheader34 ], [ %7, %middle.block ]
+  %.ph38 = phi i32 [ 6, %.lr.ph.preheader34 ], [ %5, %middle.block ]
   br label %.lr.ph
 
 .lr.ph:                                           ; preds = %.lr.ph.preheader37, %.lr.ph
-  %8 = phi i32 [ %11, %.lr.ph ], [ %.ph, %.lr.ph.preheader37 ]
-  %9 = phi i32 [ %10, %.lr.ph ], [ %.ph38, %.lr.ph.preheader37 ]
-  %10 = add i32 %9, 33
-  %11 = add nuw nsw i32 %8, 1
+  %8 = phi i32 [ %10, %.lr.ph ], [ %.ph, %.lr.ph.preheader37 ]
+  %9 = phi i32 [ %11, %.lr.ph ], [ %.ph38, %.lr.ph.preheader37 ]
+  %10 = add i32 %8, 33
+  %11 = add nuw nsw i32 %9, 1
   %exitcond.not = icmp eq i32 %11, %0
   br i1 %exitcond.not, label %._crit_edge, label %.lr.ph, !llvm.loop !5
 

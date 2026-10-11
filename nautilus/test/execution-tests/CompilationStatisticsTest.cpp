@@ -57,7 +57,7 @@ TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats") {
 	REQUIRE(stats != nullptr);
 
 	// Frontend stage timings are always recorded.
-	for (const auto* key : {"tracing.ms", "ssaCreation.ms", "irGeneration.ms", "frontend.totalMs"}) {
+	for (const auto* key : {"tracing.ms", "irGeneration.ms", "frontend.totalMs"}) {
 		INFO("missing key: " << key);
 		const auto* value = stats->find(key);
 		REQUIRE(value != nullptr);
@@ -139,11 +139,12 @@ TEST_CASE("CompilationStatistics: per-pass IR counts are opt-in via ir.passStati
 	}
 }
 
+#if defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND)
 namespace {
 
-/// A lower-bound search: its inner loop is traced with two headers, one
-/// where `lo` changes and one where `hi` changes, the first holding nothing
-/// but a jump to the second.
+/// A lower-bound search: its loop is traced with two headers, one where `lo`
+/// changes and one where `hi` changes, the first holding nothing but a jump
+/// to the second.
 val<int32_t> statsLowerBound(val<int32_t*> sorted, val<int32_t> length, val<int32_t> needle) {
 	val<int32_t> lo = 0;
 	val<int32_t> hi = length;
@@ -160,8 +161,7 @@ val<int32_t> statsLowerBound(val<int32_t*> sorted, val<int32_t> length, val<int3
 
 /// Blocks and block arguments left once the IR passes are done, from the
 /// baseline counts and every pass's delta.
-[[maybe_unused]] std::pair<int64_t, int64_t>
-blocksAndArgumentsAfterPasses(const compiler::CompilationStatistics& stats) {
+std::pair<int64_t, int64_t> blocksAndArgumentsAfterPasses(const compiler::CompilationStatistics& stats) {
 	int64_t blocks = std::get<int64_t>(*stats.find("irPasses.baseline.blocks"));
 	int64_t arguments = std::get<int64_t>(*stats.find("irPasses.baseline.blockArguments"));
 	for (const auto& [key, value] : stats) {
@@ -176,30 +176,25 @@ blocksAndArgumentsAfterPasses(const compiler::CompilationStatistics& stats) {
 
 } // namespace
 
-#ifdef ENABLE_TRACING
-TEST_CASE("CompilationStatistics: direct SSA construction leaves a loop traced with two headers with one") {
-	auto backend = getAnyBackend();
-	if (backend.empty()) {
-		SKIP("No compilation backend available");
-	}
+TEST_CASE("CompilationStatistics: a loop traced with two headers compiles to one") {
 	std::vector<int32_t> sorted {1, 3, 5, 7, 9, 11};
-	auto compile = [&](bool direct) {
-		Options options;
-		options.setOption("engine.backend", backend);
-		options.setOption("ir.directSSAConstruction", direct);
-		options.setOption("ir.passStatistics", true);
-		NautilusEngine engine(options);
-		auto fn = engine.registerFunction(statsLowerBound);
-		REQUIRE(fn(sorted.data(), 6, 7) == 3);
-		REQUIRE(fn(sorted.data(), 6, 12) == 6);
-		auto stats = fn.getStatistics();
-		REQUIRE(stats != nullptr);
-		return blocksAndArgumentsAfterPasses(*stats);
-	};
-	// The jump-only header is threaded during conversion; otherwise its phi
-	// would be read past it and it could not be removed (LLVM does not
-	// if-convert a loop with two headers).
-	REQUIRE(compile(true) == compile(false));
+	Options options;
+	// bc runs the whole IR pipeline, so the counts below are the final shape.
+	options.setOption("engine.backend", std::string("bc"));
+	options.setOption("ir.passStatistics", true);
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(statsLowerBound);
+	REQUIRE(fn(sorted.data(), 6, 7) == 3);
+	REQUIRE(fn(sorted.data(), 6, 12) == 6);
+	auto stats = fn.getStatistics();
+	REQUIRE(stats != nullptr);
+	// Entry (three parameters), one loop header (`lo` and `hi`), the loop body,
+	// the `lo` update and the exit. The tracer leaves a jump-only block where
+	// `lo` changes in front of the header; threaded during conversion, it never
+	// becomes a second header whose phi the body reads directly -- which could
+	// then not be cleaned up, and LLVM does not if-convert a loop with two
+	// headers.
+	REQUIRE(blocksAndArgumentsAfterPasses(*stats) == std::pair<int64_t, int64_t> {5, 5});
 }
 #endif
 

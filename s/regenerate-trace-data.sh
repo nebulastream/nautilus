@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script to regenerate trace test reference files for Nautilus
-# This includes tracing, ir, and after_ssa reference files
+# This includes tracing and IR reference files
 #
 # Usage:
 #   ./s/regenerate-trace-references.sh [--help]
@@ -33,7 +33,7 @@ for arg in "$@"; do
 			echo "Regenerate trace test reference files for Nautilus"
 			echo ""
 			echo "This script will:"
-			echo "  1. Delete all .trace files from test/data/*/{tracing,after_ssa}/"
+			echo "  1. Delete all .trace files from test/data/*/tracing/"
 			echo "  2. Delete all .nautilus files from test/data/*/{ir,after_constant_folding,after_empty_block_elim}/"
 			echo "  3. Run trace tests to regenerate the reference files"
 			echo ""
@@ -92,7 +92,6 @@ categories=(
 # raw execution traces stay as .trace, Nautilus IR dumps use .nautilus.
 trace_groups=(
 	"tracing"
-	"after_ssa"
 )
 
 ir_groups=(
