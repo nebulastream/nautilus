@@ -59,11 +59,13 @@ void throwWithoutStruct() {
 	throw std::runtime_error("invoke failed without cleanup");
 }
 
+#ifdef ENABLE_MLIR_BACKEND
 val<int32_t> invokeNoexceptWithStruct() {
 	val<ExceptionResult> result;
 	invoke(writeResult, &result, val<int32_t> {42});
 	return result.get(&ExceptionResult::value);
 }
+#endif // ENABLE_MLIR_BACKEND
 
 val<int32_t> invokeThrowingWithStruct() {
 	val<ExceptionResult> result;
@@ -423,6 +425,16 @@ val<int32_t> nestedCallInLoopWithBodyStruct(val<int32_t> iterations) {
 	return sum;
 }
 
+engine::NautilusEngine makeInterpreterEngine() {
+	engine::Options options;
+	options.setOption("engine.Compilation", false);
+	return engine::NautilusEngine {options};
+}
+
+// These engines mirror the backends they target, which are only built when
+// both their backend option and ENABLE_TRACING are on. Guard them identically
+// so a TRACING=OFF / backend-off build doesn't trip -Werror=unused-function.
+#ifdef ENABLE_MLIR_BACKEND
 engine::NautilusEngine makeMlirEngine() {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
@@ -431,13 +443,9 @@ engine::NautilusEngine makeMlirEngine() {
 	options.setOption("mlir.enableMultithreading", false);
 	return engine::NautilusEngine {options};
 }
+#endif // ENABLE_MLIR_BACKEND
 
-engine::NautilusEngine makeInterpreterEngine() {
-	engine::Options options;
-	options.setOption("engine.Compilation", false);
-	return engine::NautilusEngine {options};
-}
-
+#ifdef ENABLE_C_BACKEND
 engine::NautilusEngine makeCppEngine() {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
@@ -445,10 +453,8 @@ engine::NautilusEngine makeCppEngine() {
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
 	return engine::NautilusEngine {options};
 }
+#endif // ENABLE_C_BACKEND
 
-// These engines mirror the backends they target, which are only built when
-// both their backend option and ENABLE_TRACING are on. Guard them identically
-// so a TRACING=OFF / backend-off build doesn't trip -Werror=unused-function.
 #ifdef ENABLE_BC_BACKEND
 engine::NautilusEngine makeBcEngine() {
 	engine::Options options;
@@ -579,6 +585,7 @@ TEST_CASE("invokes in a loop unwind a struct declared before the loop across bac
 	}
 }
 
+#ifdef ENABLE_MLIR_BACKEND
 TEST_CASE("noexcept MLIR invokes retain the direct call path") {
 	auto engine = makeMlirEngine();
 	auto function = engine.registerFunction(invokeNoexceptWithStruct);
@@ -586,6 +593,7 @@ TEST_CASE("noexcept MLIR invokes retain the direct call path") {
 	REQUIRE(function() == 42);
 	REQUIRE(destructorCalls == 1);
 }
+#endif // ENABLE_MLIR_BACKEND
 
 TEST_CASE("exceptional cleanups run in reverse construction order across backends") {
 	for (const auto& backend : exceptionBackends()) {
@@ -631,9 +639,11 @@ TEST_CASE("throwing invokes without live structs retain exception handling") {
 	}
 	REQUIRE(exceptionCalls == 1);
 
+#ifdef ENABLE_MLIR_BACKEND
 	auto engine = makeMlirEngine();
 	auto function = engine.registerFunction(invokeThrowingWithoutStruct);
 	REQUIRE_THROWS_AS(function(), std::runtime_error);
+#endif
 }
 
 TEST_CASE("indirect invokes carry live struct destructors through trace and IR") {
