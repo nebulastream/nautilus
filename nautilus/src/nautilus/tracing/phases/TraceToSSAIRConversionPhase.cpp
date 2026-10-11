@@ -5,7 +5,6 @@
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
-#include "nautilus/compiler/ir/passes/FlatPointerMap.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
@@ -13,6 +12,7 @@
 #include <algorithm>
 #include <deque>
 #include <fmt/format.h>
+#include <span>
 #include <unordered_map>
 
 namespace nautilus::tracing {
@@ -20,6 +20,77 @@ namespace nautilus::tracing {
 namespace {
 
 class SSAConversionContext;
+
+/// The current definition of each variable per block, keyed by
+/// `(block << 32) | variable`. Open addressing with linear probing; key 0
+/// marks a free slot (value ref 0 is never a variable). Entries are never
+/// removed.
+class DefinitionTable {
+public:
+	void reserve(size_t expected) {
+		size_t capacity = 16;
+		while (capacity < expected * 2) {
+			capacity *= 2;
+		}
+		slots.assign(capacity, Slot {});
+		size = 0;
+	}
+
+	[[nodiscard]] Operation* find(uint64_t key) const {
+		for (size_t slot = home(key);; slot = (slot + 1) & mask()) {
+			if (slots[slot].key == key) {
+				return slots[slot].value;
+			}
+			if (slots[slot].key == 0) {
+				return nullptr;
+			}
+		}
+	}
+
+	void set(uint64_t key, Operation* value) {
+		if ((size + 1) * 2 > slots.size()) {
+			grow();
+		}
+		size_t slot = home(key);
+		while (slots[slot].key != 0 && slots[slot].key != key) {
+			slot = (slot + 1) & mask();
+		}
+		if (slots[slot].key == 0) {
+			slots[slot].key = key;
+			++size;
+		}
+		slots[slot].value = value;
+	}
+
+private:
+	struct Slot {
+		uint64_t key = 0;
+		Operation* value = nullptr;
+	};
+
+	[[nodiscard]] size_t mask() const {
+		return slots.size() - 1;
+	}
+
+	[[nodiscard]] size_t home(uint64_t key) const {
+		const auto hash = key * 0x9E3779B97F4A7C15ull;
+		return static_cast<size_t>(hash ^ (hash >> 32)) & mask();
+	}
+
+	void grow() {
+		std::vector<Slot> old(slots.size() * 2);
+		old.swap(slots);
+		size = 0;
+		for (const auto& entry : old) {
+			if (entry.key != 0) {
+				set(entry.key, entry.value);
+			}
+		}
+	}
+
+	std::vector<Slot> slots;
+	size_t size = 0;
+};
 
 /// The value frame of one block: reads and definitions go through the SSA
 /// construction of the context.
@@ -68,6 +139,16 @@ private:
 		std::vector<Phi*> users;
 	};
 
+	/// Every block argument this conversion creates -- function parameters,
+	/// the merged return value, phis -- so a phi's bookkeeping is one load away
+	/// from its argument. `phi` is null for the arguments that are not phis.
+	struct Argument : BasicBlockArgument {
+		Argument(OperationIdentifier identifier, Type stamp, Phi* phi)
+		    : BasicBlockArgument(identifier, stamp), phi(phi) {
+		}
+		Phi* phi;
+	};
+
 	struct BlockState {
 		BasicBlock* irBlock = nullptr;
 		uint32_t predecessorCount = 0;
@@ -75,7 +156,9 @@ private:
 		bool visited = false;
 		/// All predecessors are converted: no edge into the block is still missing.
 		bool sealed = false;
-		std::vector<Edge> incoming;
+		/// The block's incoming edges are `edges[firstEdge, firstEdge + edgeCount)`.
+		uint32_t firstEdge = 0;
+		uint32_t edgeCount = 0;
 		/// Phis created while the block was not sealed yet; their incoming
 		/// values are added when it is.
 		std::vector<Phi*> incompletePhis;
@@ -105,22 +188,33 @@ private:
 	/// removed phis' argument slots.
 	void removeTrivialPhis();
 
+	std::span<Edge> incoming(uint32_t block) {
+		const auto& state = blocks[block];
+		return {edges.data() + state.firstEdge, state.edgeCount};
+	}
+
 	static uint64_t key(uint32_t block, ValueRef variable) {
 		return (static_cast<uint64_t>(block) << 32) | variable;
 	}
 
 	common::Arena& arena;
 	std::vector<BlockState> blocks;
+	/// Every block's incoming edges, grouped by target block.
+	std::vector<Edge> edges;
 	std::vector<BasicBlock*> currentBasicBlocks;
-	/// Per value ref: whether some ASSIGN redefines it.
-	std::vector<uint8_t> isVariable;
-	std::vector<Type> variableTypes;
-	/// Definitions of the values defined once.
-	std::vector<Operation*> values;
+	/// What the conversion knows about one value ref.
+	struct ValueState {
+		/// The definition of a value defined once; unused for variables.
+		Operation* definition = nullptr;
+		/// Whether some ASSIGN redefines the value.
+		bool isVariable = false;
+		/// The variable's type, for the phis it gets.
+		Type type = Type::v;
+	};
+	std::vector<ValueState> valueStates;
 	/// The current definition of a variable at the end of a block.
-	std::unordered_map<uint64_t, Operation*> currentDefinitions;
+	DefinitionTable currentDefinitions;
 	std::deque<Phi> phis;
-	compiler::ir::FlatPointerMap<Operation, Phi*> phiByArgument;
 	size_t removedPhis = 0;
 
 	/// Multiple returns branch to one return block taking the result as its argument.
@@ -142,9 +236,7 @@ void SSAFrame::setValue(OperationIdentifier identifier, Operation* value) {
 void SSAConversionContext::scanTrace() {
 	auto& traceBlocks = trace->getBlocks();
 	const auto numberOfValueRefs = static_cast<size_t>(trace->lastValueRef) + 1;
-	isVariable.assign(numberOfValueRefs, 0);
-	variableTypes.assign(numberOfValueRefs, Type::v);
-	values.assign(numberOfValueRefs, nullptr);
+	valueStates.assign(numberOfValueRefs, ValueState {});
 	blocks.resize(traceBlocks.size() + 1);
 
 	const auto returns = trace->getReturn();
@@ -170,6 +262,7 @@ void SSAConversionContext::scanTrace() {
 		checkRef(argument.ref);
 	}
 
+	size_t assignments = 0;
 	// Only blocks reachable from the entry are converted, so only their edges count.
 	std::vector<uint32_t> worklist {traceBlocks.front()->blockId};
 	checkBlock(worklist.back());
@@ -191,8 +284,9 @@ void SSAConversionContext::scanTrace() {
 				checkRef(operation->resultRef.ref);
 			}
 			if (operation->op == Op::ASSIGN) {
-				isVariable[operation->resultRef.ref] = 1;
-				variableTypes[operation->resultRef.ref] = operation->resultType;
+				++assignments;
+				valueStates[operation->resultRef.ref].isVariable = true;
+				valueStates[operation->resultRef.ref].type = operation->resultType;
 			}
 		}
 		if (block.operations.empty()) {
@@ -206,9 +300,14 @@ void SSAConversionContext::scanTrace() {
 			reach(std::get<BlockRef*>(terminator.input[2])->block);
 		}
 	}
+	uint32_t edgeTotal = 0;
 	for (auto& state : blocks) {
 		state.sealed = state.predecessorCount == 0;
+		state.firstEdge = edgeTotal;
+		edgeTotal += state.predecessorCount;
 	}
+	edges.resize(edgeTotal);
+	currentDefinitions.reserve(assignments + blocks.size());
 }
 
 BasicBlock* SSAConversionContext::irBlockOf(uint32_t block) {
@@ -231,7 +330,7 @@ FunctionOperation* SSAConversionContext::processFunction(const std::string& func
 	std::vector<BasicBlockArgument*> entryArguments;
 	entryArguments.reserve(parameters.size());
 	for (const auto& parameter : parameters) {
-		entryArguments.push_back(arena.create<BasicBlockArgument>(createValueIdentifier(parameter), parameter.type));
+		entryArguments.push_back(arena.create<Argument>(createValueIdentifier(parameter), parameter.type, nullptr));
 	}
 	blocks[entry.blockId].irBlock = arena.create<BasicBlock>(arena, entry.blockId, std::move(entryArguments));
 	for (auto* argument : blocks[entry.blockId].irBlock->getArguments()) {
@@ -328,8 +427,8 @@ void SSAConversionContext::processReturn(uint32_t block, TraceOperation& operati
 	if (returnBlock == nullptr) {
 		std::vector<BasicBlockArgument*> arguments;
 		if (value != nullptr) {
-			arguments.push_back(arena.create<BasicBlockArgument>(
-			    createValueIdentifier(std::get<TypedValueRef>(firstReturn->input[0])), value->getStamp()));
+			arguments.push_back(arena.create<Argument>(
+			    createValueIdentifier(std::get<TypedValueRef>(firstReturn->input[0])), value->getStamp(), nullptr));
 		}
 		returnBlock = arena.create<BasicBlock>(arena, returnBlockId, std::move(arguments));
 		currentBasicBlocks.push_back(returnBlock);
@@ -349,7 +448,8 @@ void SSAConversionContext::processReturn(uint32_t block, TraceOperation& operati
 }
 
 void SSAConversionContext::addEdge(uint32_t from, uint32_t to, BasicBlockInvocation& invocation) {
-	blocks[to].incoming.push_back({&invocation, from});
+	auto& state = blocks[to];
+	edges[state.firstEdge + state.edgeCount++] = {&invocation, from};
 }
 
 void SSAConversionContext::fillPredecessor(uint32_t successor) {
@@ -360,10 +460,11 @@ void SSAConversionContext::fillPredecessor(uint32_t successor) {
 }
 
 Operation* SSAConversionContext::read(uint32_t block, ValueRef ref) {
-	if (isVariable[ref] != 0) {
+	const auto& state = valueStates[ref];
+	if (state.isVariable) {
 		return readVariable(ref, block);
 	}
-	auto* value = values[ref];
+	auto* value = state.definition;
 	if (value == nullptr) {
 		throw RuntimeException(fmt::format("Invalid trace: B{} uses ${} before its definition.", block, ref));
 	}
@@ -371,20 +472,21 @@ Operation* SSAConversionContext::read(uint32_t block, ValueRef ref) {
 }
 
 void SSAConversionContext::define(uint32_t block, ValueRef ref, Operation* value) {
-	if (isVariable[ref] != 0) {
+	auto& state = valueStates[ref];
+	if (state.isVariable) {
 		writeVariable(ref, block, value);
 	} else {
-		values[ref] = value;
+		state.definition = value;
 	}
 }
 
 void SSAConversionContext::writeVariable(ValueRef variable, uint32_t block, Operation* value) {
-	currentDefinitions[key(block, variable)] = value;
+	currentDefinitions.set(key(block, variable), value);
 }
 
 Operation* SSAConversionContext::readVariable(ValueRef variable, uint32_t block) {
-	if (auto it = currentDefinitions.find(key(block, variable)); it != currentDefinitions.end()) {
-		return resolve(it->second);
+	if (auto* value = currentDefinitions.find(key(block, variable))) {
+		return resolve(value);
 	}
 	return readVariableRecursive(variable, block);
 }
@@ -399,7 +501,7 @@ Operation* SSAConversionContext::readVariableRecursive(ValueRef variable, uint32
 		state.incompletePhis.push_back(phi);
 		value = phi->argument;
 	} else if (state.predecessorCount == 1) {
-		value = readVariable(variable, state.incoming.front().predecessor);
+		value = readVariable(variable, edges[state.firstEdge].predecessor);
 	} else if (state.predecessorCount == 0) {
 		throw RuntimeException(fmt::format("Invalid trace: B{} uses ${} before its definition.", block, variable));
 	} else {
@@ -414,16 +516,15 @@ Operation* SSAConversionContext::readVariableRecursive(ValueRef variable, uint32
 
 SSAConversionContext::Phi* SSAConversionContext::createPhi(uint32_t block, ValueRef variable) {
 	auto* irBlock = irBlockOf(block);
-	auto* argument = arena.create<BasicBlockArgument>(OperationIdentifier(variable), variableTypes[variable]);
-	const auto slot = static_cast<uint32_t>(irBlock->getArguments().size());
-	irBlock->addArgument(argument);
-	auto& phi = phis.emplace_back(Phi {argument, block, slot, variable, nullptr, false, {}});
-	phiByArgument[argument] = &phi;
+	auto& phi = phis.emplace_back(
+	    Phi {nullptr, block, static_cast<uint32_t>(irBlock->getArguments().size()), variable, nullptr, false, {}});
+	phi.argument = arena.create<Argument>(OperationIdentifier(variable), valueStates[variable].type, &phi);
+	irBlock->addArgument(phi.argument);
 	return &phi;
 }
 
 Operation* SSAConversionContext::addPhiOperands(Phi* phi) {
-	for (const auto& edge : blocks[phi->block].incoming) {
+	for (const auto& edge : incoming(phi->block)) {
 		auto* value = readVariable(phi->variable, edge.predecessor);
 		edge.invocation->addArgument(arena, value);
 		if (auto* operandPhi = phiOf(value)) {
@@ -436,7 +537,7 @@ Operation* SSAConversionContext::addPhiOperands(Phi* phi) {
 
 Operation* SSAConversionContext::tryRemoveTrivialPhi(Phi* phi) {
 	Operation* same = nullptr;
-	for (const auto& edge : blocks[phi->block].incoming) {
+	for (const auto& edge : incoming(phi->block)) {
 		auto* value = resolve(edge.invocation->getArguments()[phi->slot]);
 		if (value == same || value == phi->argument) {
 			continue;
@@ -471,11 +572,11 @@ void SSAConversionContext::sealBlock(uint32_t block) {
 }
 
 SSAConversionContext::Phi* SSAConversionContext::phiOf(Operation* value) {
+	// Every block argument of the function under construction is an `Argument`.
 	if (value->getOperationType() != Operation::OperationType::BasicBlockArgument) {
 		return nullptr;
 	}
-	auto* phi = phiByArgument.find(value);
-	return phi == nullptr ? nullptr : *phi;
+	return static_cast<Argument*>(value)->phi;
 }
 
 Operation* SSAConversionContext::resolve(Operation* value) {
@@ -520,7 +621,7 @@ void SSAConversionContext::removeTrivialPhis() {
 	for (auto& [block, slots] : removedSlots) {
 		std::sort(slots.begin(), slots.end());
 		blocks[block].irBlock->removeArguments(slots);
-		for (const auto& edge : blocks[block].incoming) {
+		for (const auto& edge : incoming(block)) {
 			edge.invocation->removeArguments(slots);
 		}
 	}
