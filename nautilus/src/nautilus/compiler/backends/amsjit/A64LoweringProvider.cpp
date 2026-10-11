@@ -793,6 +793,11 @@ std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstVal
 			return it->second;
 		}
 	}
+	if (!constBlockParams_.empty()) {
+		if (const auto it = constBlockParams_.find(in); it != constBlockParams_.end()) {
+			return it->second;
+		}
+	}
 	if (const auto* constInt = ir::dyn_cast<ir::ConstIntOperation>(in)) {
 		return canonicalizeToStamp(constInt->getValue(), constInt->getStamp());
 	}
@@ -889,6 +894,63 @@ void AsmJitLoweringProvider::LoweringContext::emitAddImmediate(Gp dst, Gp src, i
 	}
 }
 
+// A block parameter that every incoming edge feeds the same constant (e.g. a
+// loop increment both arms of a diamond pass to their merge block) is that
+// constant. Edges that feed the parameter back to itself (a loop-invariant
+// constant carried around a loop) do not count against it.
+void AsmJitLoweringProvider::LoweringContext::computeConstBlockParams(const ir::FunctionOperation* funcOp) {
+	constBlockParams_.clear();
+	if (!enableConstFolding_) {
+		return;
+	}
+	std::unordered_map<const ir::Operation*, std::vector<const ir::Operation*>> incoming;
+	const auto addEdge = [&](const ir::BasicBlockInvocation& bi) {
+		const auto& srcArgs = bi.getArguments();
+		const auto& dstArgs = bi.getBlock()->getArguments();
+		for (size_t i = 0; i < srcArgs.size() && i < dstArgs.size(); i++) {
+			incoming[dstArgs[i]].push_back(srcArgs[i]);
+		}
+	};
+	for (const auto* block : funcOp->getBasicBlocks()) {
+		const auto& ops = block->getOperations();
+		if (ops.empty()) {
+			continue;
+		}
+		if (const auto* ifOp = ir::dyn_cast<ir::IfOperation>(ops.back())) {
+			addEdge(ifOp->getTrueBlockInvocation());
+			addEdge(ifOp->getFalseBlockInvocation());
+		} else if (const auto* br = ir::dyn_cast<ir::BranchOperation>(ops.back())) {
+			addEdge(br->getNextBlockInvocation());
+		}
+	}
+	for (bool changed = true; changed;) {
+		changed = false;
+		for (const auto& [param, args] : incoming) {
+			if (constBlockParams_.contains(param) || isFloatType(param->getStamp())) {
+				continue;
+			}
+			std::optional<int64_t> value;
+			bool constant = true;
+			for (const auto* arg : args) {
+				if (arg == param) {
+					continue;
+				}
+				const auto argValue = foldableConstValue(arg);
+				if (!argValue.has_value() ||
+				    (value.has_value() && *value != canonicalizeToStamp(*argValue, param->getStamp()))) {
+					constant = false;
+					break;
+				}
+				value = canonicalizeToStamp(*argValue, param->getStamp());
+			}
+			if (constant && value.has_value()) {
+				constBlockParams_[param] = *value;
+				changed = true;
+			}
+		}
+	}
+}
+
 // ── Two-pass compilation ──────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDump) {
@@ -927,6 +989,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		transport_ = CapturedExceptionTransport(*funcOp);
 		padLabels_.clear();
 		exceptionalExitLabel_.reset();
+		computeConstBlockParams(funcOp);
 		computeDirtyValues(funcOp);
 		computeFusionUses(funcOp);
 		deferredAddressParts_.clear();
@@ -1094,6 +1157,12 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 	sources.clear();
 	for (size_t i = 0; i < srcArgs.size(); i++) {
 		BlockArgSource source;
+		// A constant parameter is never read from a register.
+		if (constBlockParams_.contains(dstArgs[i])) {
+			source.skip = true;
+			sources.push_back(source);
+			continue;
+		}
 		// Constant sources are recovered from the operation itself (see
 		// gpOperand for why a frame binding must not shadow a constant).
 		if (const auto value = constOperand(srcArgs[i])) {
@@ -1111,6 +1180,10 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 	dsts.clear();
 	for (size_t i = 0; i < dstArgs.size(); i++) {
 		const auto& dstId = dstArgs[i]->getIdentifier();
+		if (sources[i].skip) {
+			dsts.emplace_back(AsmReg {});
+			continue;
+		}
 		if (!frame.contains(dstId)) {
 			frame.setValue(dstId, allocReg(dstArgs[i]->getStamp()));
 		}
@@ -1138,15 +1211,17 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 		std::fill(dstMarks_.begin(), dstMarks_.end(), 0);
 		dstMarkEpoch_ = 1;
 	}
-	for (const auto& dst : dsts) {
-		dstMarks_[vregIndex(dst)] = dstMarkEpoch_;
+	for (size_t i = 0; i < dsts.size(); i++) {
+		if (!sources[i].skip) {
+			dstMarks_[vregIndex(dsts[i])] = dstMarkEpoch_;
+		}
 	}
 
 	// Phase 1: detour hazardous register sources through fresh temps.
 	auto& temps = blockArgTemps_;
 	temps.assign(srcArgs.size(), std::nullopt);
 	for (size_t i = 0; i < srcArgs.size(); i++) {
-		if (!sources[i].reg.has_value()) {
+		if (sources[i].skip || !sources[i].reg.has_value()) {
 			continue; // immediate -- written directly in phase 2
 		}
 		const auto srcIndex = vregIndex(*sources[i].reg);
@@ -1163,6 +1238,9 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 	// Phase 2: write the destinations.
 	for (size_t i = 0; i < srcArgs.size(); i++) {
 		const auto& dst = dsts[i];
+		if (sources[i].skip) {
+			continue;
+		}
 		if (temps[i].has_value()) {
 			emitMove(dst, *temps[i]);
 		} else if (sources[i].reg.has_value()) {
@@ -1749,6 +1827,9 @@ bool AsmJitLoweringProvider::LoweringContext::isNoOpInvocation(const ir::BasicBl
 	const auto& srcArgs = bi.getArguments();
 	const auto& dstArgs = bi.getBlock()->getArguments();
 	for (size_t i = 0; i < srcArgs.size(); i++) {
+		if (constBlockParams_.contains(dstArgs[i])) {
+			continue;
+		}
 		const auto& dstId = dstArgs[i]->getIdentifier();
 		if (constOperand(srcArgs[i]).has_value() || !frame.contains(dstId) ||
 		    !frame.contains(srcArgs[i]->getIdentifier())) {
