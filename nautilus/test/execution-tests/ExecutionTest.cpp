@@ -1804,6 +1804,28 @@ TEST_CASE("MLIR signed overflow flags") {
 	REQUIRE(wrap(5));
 	REQUIRE_FALSE(wrap(std::numeric_limits<int32_t>::max()));
 }
+
+val<int32_t> storeIntPatchLowByte(val<int32_t*> p, val<int32_t> v) {
+	*p = v;
+	auto bytes = static_cast<val<uint8_t*>>(p);
+	*bytes = val<uint8_t>(0xFF);
+	return *p;
+}
+
+TEST_CASE("MLIR type-based alias analysis keeps byte accesses aliasing") {
+	// With TBAA an int32_t load may not be reordered across an int32_t store,
+	// but a one-byte store is `char` and may alias it: the second load must
+	// see the patched byte rather than the forwarded `v` (little endian).
+	for (const bool tbaa : {true, false}) {
+		INFO("mlir.typeBasedAliasAnalysis=" << tbaa);
+		auto f = nautilus::testing::makeEngine("mlir", [tbaa](engine::Options& options) {
+			         options.setOption("mlir.typeBasedAliasAnalysis", tbaa);
+		         }).registerFunction(storeIntPatchLowByte);
+		int32_t slot = 0;
+		REQUIRE(f(&slot, 0x01020304) == 0x010203FF);
+		REQUIRE(slot == 0x010203FF);
+	}
+}
 #endif
 
 } // namespace nautilus::engine

@@ -26,13 +26,13 @@ vector.body:                                      ; preds = %vector.body, %vecto
   %6 = getelementptr inbounds nuw i8, ptr %0, i64 %4
   %7 = getelementptr inbounds nuw i8, ptr %0, i64 %5
   %8 = getelementptr inbounds nuw i8, ptr %7, i64 4
-  %9 = load i32, ptr %6, align 4
-  %10 = load i32, ptr %8, align 4
+  %9 = load i32, ptr %6, align 4, !tbaa !1
+  %10 = load i32, ptr %8, align 4, !tbaa !1
   %11 = add i32 %9, %vec.phi
   %12 = add i32 %10, %vec.phi5
   %index.next = add nuw i64 %index, 2
   %13 = icmp eq i64 %index.next, %n.vec
-  br i1 %13, label %middle.block, label %vector.body, !llvm.loop !1
+  br i1 %13, label %middle.block, label %vector.body, !llvm.loop !5
 
 middle.block:                                     ; preds = %vector.body
   %bin.rdx = add i32 %12, %11
@@ -49,11 +49,11 @@ middle.block:                                     ; preds = %vector.body
   %14 = phi i32 [ %18, %.lr.ph ], [ %.ph, %.lr.ph.preheader6 ]
   %15 = shl nuw nsw i64 %indvars.iv, 2
   %16 = getelementptr inbounds nuw i8, ptr %0, i64 %15
-  %17 = load i32, ptr %16, align 4
+  %17 = load i32, ptr %16, align 4, !tbaa !1
   %18 = add nsw i32 %17, %14
   %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
   %exitcond.not = icmp eq i64 %indvars.iv.next, %wide.trip.count
-  br i1 %exitcond.not, label %._crit_edge, label %.lr.ph, !llvm.loop !4
+  br i1 %exitcond.not, label %._crit_edge, label %.lr.ph, !llvm.loop !8
 
 ._crit_edge:                                      ; preds = %.lr.ph, %middle.block, %2
   %.lcssa = phi i32 [ 0, %2 ], [ %bin.rdx, %middle.block ], [ %18, %.lr.ph ]
@@ -66,13 +66,11 @@ attributes #1 = { nofree norecurse nosync nounwind memory(readwrite, inaccessibl
 !llvm.module.flags = !{!0}
 
 !0 = !{i32 2, !"Debug Info Version", i32 3}
-!1 = distinct !{!1, !2, !3}
-!2 = !{!"llvm.loop.isvectorized", i32 1}
-!3 = !{!"llvm.loop.unroll.runtime.disable"}
-!4 = distinct !{!4, !2}
-!5 = distinct !{!5, !2, !3}
-!6 = distinct !{!6, !2}
-!7 = distinct !{!7, !2, !3}
-!8 = distinct !{!8, !2}
-!9 = distinct !{!9, !2, !3}
-!10 = distinct !{!10, !2}
+!1 = !{!2, !2, i64 0}
+!2 = !{!"int", !3, i64 0}
+!3 = !{!"omnipotent char", !4, i64 0}
+!4 = !{!"Nautilus TBAA"}
+!5 = distinct !{!5, !6, !7}
+!6 = !{!"llvm.loop.isvectorized", i32 1}
+!7 = !{!"llvm.loop.unroll.runtime.disable"}
+!8 = distinct !{!8, !6}

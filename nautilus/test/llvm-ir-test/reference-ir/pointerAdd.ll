@@ -8,7 +8,7 @@ define signext i32 @execute(ptr readonly %0, i32 %1) local_unnamed_addr #0 {
   %3 = sext i32 %1 to i64
   %4 = shl nsw i64 %3, 2
   %5 = getelementptr inbounds i8, ptr %0, i64 %4
-  %6 = load i32, ptr %5, align 4
+  %6 = load i32, ptr %5, align 4, !tbaa !1
   ret i32 %6
 }
 
@@ -17,3 +17,7 @@ attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memor
 !llvm.module.flags = !{!0}
 
 !0 = !{i32 2, !"Debug Info Version", i32 3}
+!1 = !{!2, !2, i64 0}
+!2 = !{!"int", !3, i64 0}
+!3 = !{!"omnipotent char", !4, i64 0}
+!4 = !{!"Nautilus TBAA"}
