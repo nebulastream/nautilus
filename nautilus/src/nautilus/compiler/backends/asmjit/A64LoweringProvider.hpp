@@ -106,6 +106,7 @@ private:
 		struct BlockArgSource {
 			std::optional<AsmReg> reg;
 			int64_t imm = 0;
+			bool skip = false; ///< the destination is a constant block parameter
 		};
 		/// Scratch buffers of processBlockInvocation, reused across edges so a
 		/// function with many block arguments per edge does not allocate per
@@ -190,6 +191,14 @@ private:
 		/// constant, keyed by the parameter operation, so the body folds the
 		/// constant (see foldableConstValue) instead of reading a register.
 		std::unordered_map<const ir::Operation*, int64_t> inlinedConstParams_;
+		/// Block parameters of the current function that receive the same
+		/// foldable constant on every incoming edge, with that constant's
+		/// canonical pattern: they fold like any other deferred constant and
+		/// their block-argument copies are skipped (see computeConstBlockParams).
+		std::unordered_map<const ir::Operation*, int64_t> constBlockParams_;
+		/// Fills constBlockParams_ for @p funcOp (cleared when constant folding
+		/// is off).
+		void computeConstBlockParams(const ir::FunctionOperation* funcOp);
 		/// Statistics sink shared with the rest of the pipeline; may be null.
 		CompilationStatistics* statistics_ = nullptr;
 		int64_t fusedBranches_ = 0;
