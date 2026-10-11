@@ -352,9 +352,51 @@ public:
     }
   }
 
+  //! [nautilus] Sets `WorkToPhysMap` entries of all currently assigned registers from `PhysToWorkMap`.
+  //!
+  //! Unlike `assign_work_ids_from_phys_ids()` this doesn't reset the whole `WorkToPhysMap`, it requires that all its
+  //! entries are `kIdBad` already. Cost is O(phys_total) instead of O(work_count).
+  inline void assign_work_ids_from_phys_ids_sparse() noexcept {
+    for (RegGroup group : axl::enumerate(RegGroup::kMaxVirt)) {
+      uint32_t phys_base_index = _layout.phys_index.get(group);
+      axl::BitWordIterator<RegMask> it(_phys_to_work_map->assigned[group]);
+
+      while (it.has_next()) {
+        uint32_t phys_id = it.next();
+        RAWorkId work_id = _phys_to_work_map->work_ids[phys_base_index + phys_id];
+
+        ASMJIT_ASSERT(work_id != kBadWorkId);
+        _work_to_phys_map->phys_ids[uint32_t(work_id)] = uint8_t(phys_id);
+      }
+    }
+  }
+
+  //! [nautilus] Resets `WorkToPhysMap` entries of all currently assigned registers to `kIdBad`.
+  //!
+  //! Both maps are always kept in sync, so this leaves the whole `WorkToPhysMap` with `kIdBad` entries only. Cost is
+  //! O(phys_total) instead of O(work_count).
+  inline void unassign_work_ids_sparse() noexcept {
+    for (RegGroup group : axl::enumerate(RegGroup::kMaxVirt)) {
+      uint32_t phys_base_index = _layout.phys_index.get(group);
+      axl::BitWordIterator<RegMask> it(_phys_to_work_map->assigned[group]);
+
+      while (it.has_next()) {
+        uint32_t phys_id = it.next();
+        RAWorkId work_id = _phys_to_work_map->work_ids[phys_base_index + phys_id];
+
+        ASMJIT_ASSERT(work_id != kBadWorkId);
+        _work_to_phys_map->phys_ids[uint32_t(work_id)] = uint8_t(Reg::kIdBad);
+      }
+    }
+  }
+
+  // [nautilus] The `copy_from()` overloads below only touch the `WorkToPhysMap` entries of assigned registers (at most
+  // `phys_total`) instead of resetting or copying all `work_count` entries. They run at every block entry and edge, so
+  // the full reset made the local allocator O(#blocks x #work_regs) (see nebulastream/nautilus#508).
   inline void copy_from(const PhysToWorkMap* phys_to_work_map) noexcept {
+    unassign_work_ids_sparse();
     memcpy(_phys_to_work_map, phys_to_work_map, PhysToWorkMap::size_of(_layout.phys_total));
-    assign_work_ids_from_phys_ids();
+    assign_work_ids_from_phys_ids_sparse();
   }
 
   inline void copy_from(const PhysToWorkMap* phys_to_work_map, const WorkToPhysMap* work_to_phys_map) noexcept {
@@ -363,7 +405,7 @@ public:
   }
 
   inline void copy_from(const RAAssignment& other) noexcept {
-    copy_from(other.phys_to_work_map(), other.work_to_phys_map());
+    copy_from(other.phys_to_work_map());
   }
 
   // Not really useful outside of debugging.

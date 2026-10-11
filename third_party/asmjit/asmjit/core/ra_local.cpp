@@ -149,7 +149,14 @@ Error RALocalAllocator::switch_to_assignment(PhysToWorkMap* dst_phys_to_work_map
 
   dst.init_layout(_pass._phys_reg_count, _pass.work_regs());
   dst.init_maps(dst_phys_to_work_map, _tmp_work_to_phys_map);
-  dst.assign_work_ids_from_phys_ids();
+
+  // [nautilus] `_tmp_work_to_phys_map` is kept all `kIdBad` between calls, so only the entries of assigned registers
+  // have to be set here and reset again on every exit path, instead of resetting all `work_count` entries per edge.
+  dst.assign_work_ids_from_phys_ids_sparse();
+  struct SparseReset {
+    RAAssignment& assignment;
+    inline ~SparseReset() noexcept { assignment.unassign_work_ids_sparse(); }
+  } sparse_reset{dst};
 
   uint32_t multi_work_reg_count = _pass._multi_work_reg_count;
 
