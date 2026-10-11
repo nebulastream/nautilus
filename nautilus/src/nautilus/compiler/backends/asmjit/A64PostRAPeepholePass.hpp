@@ -11,11 +11,15 @@ namespace nautilus::compiler::asmjit {
 
 /// Post-register-allocation peephole for the AsmJit AArch64 backend.
 ///
-/// Mirrors `X64PostRAPeepholePass` but implements only Rule 1 (same-register
-/// move elimination), because ARM64 already has a dedicated zero register
-/// (`xzr`/`wzr`) that makes the x86 zero-idiom rewrite unnecessary.
+/// Mirrors `X64PostRAPeepholePass` minus the zero-idiom rewrite, which ARM64's
+/// dedicated zero register (`xzr`/`wzr`) makes unnecessary:
 ///
-/// Allow-list:
+///  1. Same-register move elimination (allow-list below).
+///  2. A `b` to the label bound right after it is removed.
+///  3. `b.cond A; b B; A:` becomes `b.!cond B; A:` (and `cbz`/`cbnz` invert
+///     likewise). Rules 2 and 3 run to a fixpoint.
+///
+/// Rule 1 allow-list:
 ///   * `mov Xd, Xm` when Xd == Xm (64-bit GPR; encoded as `orr Xd, xzr, Xm`).
 ///
 /// Explicitly NOT removed:
@@ -27,8 +31,8 @@ namespace nautilus::compiler::asmjit {
 ///     observed when the same V register is later accessed at a wider width.
 ///
 /// Per-run rewrite counts are recorded into the supplied
-/// @ref CompilationStatistics (if non-null) under the key
-/// `asmjit.peephole.selfMovesRemoved`.
+/// @ref CompilationStatistics (if non-null) under the keys
+/// `asmjit.peephole.selfMovesRemoved` and `asmjit.peephole.jumpsRemoved`.
 class A64PostRAPeepholePass : public ::asmjit::Pass {
 public:
 	explicit A64PostRAPeepholePass(CompilationStatistics* statistics) noexcept
