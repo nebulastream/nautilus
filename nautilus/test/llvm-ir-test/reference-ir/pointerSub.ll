@@ -8,7 +8,7 @@ define signext i32 @execute(ptr readonly %0, i32 %1) local_unnamed_addr #0 {
   %3 = sub nsw i32 0, %1
   %4 = sext i32 %3 to i64
   %5 = shl nsw i64 %4, 2
-  %6 = getelementptr i8, ptr %0, i64 %5
+  %6 = getelementptr inbounds i8, ptr %0, i64 %5
   %7 = load i32, ptr %6, align 4
   ret i32 %7
 }

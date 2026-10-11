@@ -334,6 +334,12 @@ private:
 	::mlir::LLVM::IntegerOverflowFlags getOverflowFlags(Type stamp) const;
 
 	/**
+	 * @brief Natural alignment in bytes of a value of type @p stamp: its size,
+	 * as for a C++ object of the matching type.
+	 */
+	static unsigned getNaturalAlignment(Type stamp);
+
+	/**
 	 * @brief Get the Bit Width from a basic NES type.
 	 * @param type: Basic NES type.
 	 * @return int8_t: Bit width.
