@@ -18,12 +18,14 @@ public:
 		return ExceptionPropagationMode::NativeUnwind;
 	}
 
-	/// LLVM's pipeline folds constants, simplifies the CFG and eliminates
-	/// dead code itself, so those IR passes would only repeat that work
-	/// before the lowering -- but it is slower on a graph whose block
-	/// arguments were never pruned (see `IROptimizationLevel`).
+	/// LLVM folds constants and eliminates dead code itself, but it does not
+	/// recover from every CFG shape a trace leaves behind: a forwarding block
+	/// that empty-block elimination would remove gives a search loop two
+	/// headers, and LLVM then keeps its data-dependent branch instead of
+	/// turning it into selects (binarySearch ran 3x slower). The full IR
+	/// pipeline costs about 1% of an MLIR compile.
 	[[nodiscard]] IROptimizationLevel irOptimizationLevel() const override {
-		return IROptimizationLevel::ArgumentPruning;
+		return IROptimizationLevel::Full;
 	}
 };
 
