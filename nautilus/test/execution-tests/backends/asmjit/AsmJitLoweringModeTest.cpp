@@ -24,8 +24,6 @@ namespace nautilus::engine {
 
 #ifdef ENABLE_ASMJIT_BACKEND
 #ifdef ENABLE_TRACING
-#if !defined(__aarch64__) && !defined(_M_ARM64)
-
 namespace {
 
 // Loop whose header compare feeds only the loop branch — the canonical
@@ -602,7 +600,6 @@ TEST_CASE("AsmJit loop rotation: counters and differential correctness") {
 	}
 }
 
-#endif // !__aarch64__ && !_M_ARM64
 #endif // ENABLE_TRACING
 #endif // ENABLE_ASMJIT_BACKEND
 
