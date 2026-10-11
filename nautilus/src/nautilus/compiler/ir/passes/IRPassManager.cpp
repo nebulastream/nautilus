@@ -4,6 +4,7 @@
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
+#include "nautilus/compiler/ir/passes/RewriterCache.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
@@ -78,6 +79,9 @@ void IRPassManager::run(IRGraph& ir) {
 
 	size_t totalIterations = 0;
 
+	// FunctionRewriter sessions shared by every pass of the run that makes its
+	// mutations through one (see RewriterCache).
+	RewriterCache rewriters(ir);
 	for (const auto& group : groups) {
 		// Every change to the graph within the group bumps `changes`. A pass
 		// whose last run reported no change at `changes == cleanAt[i]` would
@@ -107,7 +111,7 @@ void IRPassManager::run(IRGraph& ir) {
 					passStart = std::chrono::steady_clock::now();
 				}
 
-				const bool changed = pass->apply(ir);
+				const bool changed = pass->apply(ir, rewriters);
 				anyChangeThisRound = anyChangeThisRound || changed;
 				if (changed) {
 					++changes;

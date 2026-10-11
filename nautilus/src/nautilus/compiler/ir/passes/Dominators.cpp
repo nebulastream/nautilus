@@ -17,7 +17,7 @@ std::vector<const BasicBlock*> postOrder(BasicBlock* entry) {
 	if (entry == nullptr) {
 		return order;
 	}
-	std::unordered_map<const BasicBlock*, bool> visited;
+	FlatPointerSet<BasicBlock> visited;
 	// Each stack frame is a block plus how many of its successors have
 	// already been pushed, so we can resume expanding it after a child
 	// finishes instead of requiring recursion.
@@ -27,15 +27,14 @@ std::vector<const BasicBlock*> postOrder(BasicBlock* entry) {
 		size_t next = 0;
 	};
 	std::vector<Frame> stack;
-	visited.emplace(entry, true);
+	visited.insert(entry);
 	stack.push_back({entry, entry->getSuccessors(), 0});
 
 	while (!stack.empty()) {
 		Frame& frame = stack.back();
 		if (frame.next < frame.successors.size()) {
 			auto* succ = frame.successors[frame.next++];
-			if (succ != nullptr && !visited.contains(succ)) {
-				visited.emplace(succ, true);
+			if (succ != nullptr && visited.insert(succ)) {
 				stack.push_back({succ, succ->getSuccessors(), 0});
 			}
 			continue;
@@ -55,7 +54,7 @@ Dominators::Dominators(const FunctionOperation& fn) {
 	rpo_.assign(post.rbegin(), post.rend());
 	rpoIndex_.reserve(rpo_.size());
 	for (size_t i = 0; i < rpo_.size(); ++i) {
-		rpoIndex_.emplace(rpo_[i], i);
+		rpoIndex_[rpo_[i]] = i;
 	}
 	if (rpo_.empty()) {
 		return;
@@ -92,11 +91,11 @@ Dominators::Dominators(const FunctionOperation& fn) {
 			// contributes one dominance edge, not two.
 			size_t newIdom = rpo_.size();
 			for (auto* rawPred : block->getPredecessors()) {
-				auto it = rpoIndex_.find(rawPred);
-				if (it == rpoIndex_.end()) {
+				const size_t* predIndex = rpoIndex_.find(rawPred);
+				if (predIndex == nullptr) {
 					continue; // predecessor unreachable itself; ignore.
 				}
-				const size_t predIdx = it->second;
+				const size_t predIdx = *predIndex;
 				if (idom_[predIdx] == rpo_.size()) {
 					continue; // predecessor not processed yet this round.
 				}
@@ -140,19 +139,19 @@ bool Dominators::isReachable(const BasicBlock* block) const {
 }
 
 bool Dominators::dominates(const BasicBlock* a, const BasicBlock* b) const {
-	auto bIt = rpoIndex_.find(b);
-	if (bIt == rpoIndex_.end()) {
+	const size_t* bIndex = rpoIndex_.find(b);
+	if (bIndex == nullptr) {
 		return false; // unreachable target: dominated by nothing, not even itself.
 	}
 	if (a == b) {
 		return true;
 	}
-	auto aIt = rpoIndex_.find(a);
-	if (aIt == rpoIndex_.end()) {
+	const size_t* aIndex = rpoIndex_.find(a);
+	if (aIndex == nullptr) {
 		return false;
 	}
-	const size_t aIdx = aIt->second;
-	const size_t bIdx = bIt->second;
+	const size_t aIdx = *aIndex;
+	const size_t bIdx = *bIndex;
 	return treeIn_[aIdx] <= treeIn_[bIdx] && treeOut_[bIdx] <= treeOut_[aIdx];
 }
 

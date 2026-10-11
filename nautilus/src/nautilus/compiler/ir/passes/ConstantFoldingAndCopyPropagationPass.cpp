@@ -17,7 +17,9 @@
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include "nautilus/compiler/ir/passes/FlatPointerMap.hpp"
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
+#include "nautilus/compiler/ir/passes/RewriterCache.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include <cstdint>
 #include <deque>
@@ -369,14 +371,13 @@ Operation* tryFold(FunctionRewriter& rewriter, Operation* op) {
 /// which case its (single) re-examination is re-queued explicitly. This
 /// replaces the previous whole-function rescan per round (O(ops) per round,
 /// O(rounds) rounds) with O(ops + folds) total work.
-bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+bool applyToFunction(FunctionOperation& fn, FunctionRewriter& rewriter) {
 	bool changed = false;
 
 	std::deque<Operation*> worklist;
-	std::unordered_set<Operation*> queued;
+	FlatPointerSet<Operation> queued;
 	auto enqueue = [&](Operation* op) {
-		if (op != nullptr && isa<BinaryOperation>(op) && queued.insert(op).second) {
+		if (op != nullptr && isa<BinaryOperation>(op) && queued.insert(op)) {
 			worklist.push_back(op);
 		}
 	};
@@ -424,11 +425,15 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 } // namespace
 
 bool ConstantFoldingAndCopyPropagationPass::apply(IRGraph& ir) {
-	common::Arena& arena = ir.getArena();
+	RewriterCache rewriters(ir);
+	return apply(ir, rewriters);
+}
+
+bool ConstantFoldingAndCopyPropagationPass::apply(IRGraph& ir, RewriterCache& rewriters) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn, arena);
+			changed |= applyToFunction(*fn, rewriters.rewriterFor(*fn));
 		}
 	}
 	return changed;

@@ -6,8 +6,9 @@
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/passes/Dominators.hpp"
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
+#include "nautilus/compiler/ir/passes/RewriterCache.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
-#include <unordered_set>
+#include <algorithm>
 #include <vector>
 
 namespace nautilus::compiler::ir {
@@ -18,11 +19,13 @@ namespace {
 /// terminator once (the predecessor list is a multiset -- a shared-target
 /// if lists its block twice, but both invocations are found on the first
 /// scan of that terminator).
-std::vector<BasicBlockInvocation*> invocationsTargeting(BasicBlock* block) {
-	std::vector<BasicBlockInvocation*> result;
-	std::unordered_set<BasicBlock*> visitedPreds;
-	for (auto* pred : block->getPredecessors()) {
-		if (pred == nullptr || !visitedPreds.insert(pred).second) {
+void invocationsTargeting(BasicBlock* block, std::vector<BasicBlockInvocation*>& result) {
+	result.clear();
+	const auto& preds = block->getPredecessors();
+	for (size_t p = 0; p < preds.size(); ++p) {
+		auto* pred = preds[p];
+		// A block has a handful of predecessors: a linear look-back beats a set.
+		if (pred == nullptr || std::find(preds.begin(), preds.begin() + p, pred) != preds.begin() + p) {
 			continue;
 		}
 		auto* terminator = pred->getTerminatorOp();
@@ -35,7 +38,6 @@ std::vector<BasicBlockInvocation*> invocationsTargeting(BasicBlock* block) {
 			}
 		}
 	}
-	return result;
 }
 
 /// The value every incoming edge agrees on for argument slot @p index of
@@ -63,8 +65,30 @@ Operation* agreedPassThroughValue(const BasicBlockArgument* arg, size_t index,
 	return agreed;
 }
 
-bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+/// Whether any slot is worth the dominator analysis: an unused argument, or
+/// one every incoming edge passes the same value for. Most runs of a
+/// fixed-point round find neither, and this answers that without it.
+bool anyCandidate(FunctionOperation& fn, FunctionRewriter& rewriter, std::vector<BasicBlockInvocation*>& invocations) {
+	for (auto* block : fn.getBasicBlocks()) {
+		const auto& args = block->getArguments();
+		if (args.empty() || block == fn.getEntryBlock()) {
+			continue;
+		}
+		invocationsTargeting(block, invocations);
+		for (size_t i = 0; i < args.size(); ++i) {
+			if (rewriter.useCount(args[i]) == 0 || agreedPassThroughValue(args[i], i, invocations) != nullptr) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool applyToFunction(FunctionOperation& fn, FunctionRewriter& rewriter) {
+	std::vector<BasicBlockInvocation*> invocations;
+	if (!anyCandidate(fn, rewriter, invocations)) {
+		return false;
+	}
 	// This pass never adds or removes CFG edges, so dominators stay valid
 	// across every mutation it makes.
 	const Dominators dominators(fn);
@@ -111,8 +135,11 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 			if (block == fn.getEntryBlock()) {
 				continue; // entry arguments are the function ABI.
 			}
-			auto invocations = invocationsTargeting(block);
 			const auto& args = block->getArguments();
+			if (args.empty()) {
+				continue;
+			}
+			invocationsTargeting(block, invocations);
 			for (size_t i = 0; i < args.size(); ++i) {
 				BasicBlockArgument* arg = args[i];
 				if (rewriter.useCount(arg) == 0) {
@@ -145,11 +172,15 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 } // namespace
 
 bool BlockArgumentPruningPass::apply(IRGraph& ir) {
-	common::Arena& arena = ir.getArena();
+	RewriterCache rewriters(ir);
+	return apply(ir, rewriters);
+}
+
+bool BlockArgumentPruningPass::apply(IRGraph& ir, RewriterCache& rewriters) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn, arena);
+			changed |= applyToFunction(*fn, rewriters.rewriterFor(*fn));
 		}
 	}
 	return changed;

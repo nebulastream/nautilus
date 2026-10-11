@@ -11,7 +11,6 @@
 #include <functional>
 #include <memory_resource>
 #include <span>
-#include <unordered_map>
 #include <vector>
 
 namespace nautilus::compiler::ir {
@@ -38,15 +37,14 @@ class FunctionOperation;
  * this is what turns a per-pass whole-function rescan into an incremental
  * update.
  *
- * The table is bump-allocated from a session-owned monotonic buffer and
- * released in bulk with the session. Every pass builds a fresh table, so
- * on a large function the table's own allocation would otherwise dominate
- * the pass (one heap node per value plus one heap vector per use list, and
- * the same number of frees at the end): the buffer turns that into a few
- * large allocations. Entries are never given back individually -- a use
- * list that grows leaves its old storage behind -- which is bounded by a
- * constant factor of the final table and is exactly what a per-pass
- * session can afford.
+ * The table is one open-addressing array over entries bump-allocated from a
+ * session-owned monotonic buffer and released in bulk with the session: one
+ * hash per value, the defining block and the first two uses in the entry
+ * itself, no per-value allocation. Entries are never given back individually
+ * -- an erased value's entry is cleared, a use list that grows leaves its old
+ * storage behind -- which is bounded by a constant factor of the final table.
+ * `IRPassManager` shares one session per function between the passes of a run
+ * (see `RewriterCache`), so a pass usually finds the table already built.
  *
  * Session discipline: while a rewriter is live, every mutation of its
  * function must go through it. Bypassing it (raw `BasicBlock::removeOperation`,
@@ -135,7 +133,7 @@ public:
 		T* op = arena_.create<T>(arena_, std::forward<Args>(args)...);
 		Operation* terminator = block->getTerminatorOp();
 		block->addOperationBefore(terminator, op);
-		defBlock_[op] = block;
+		defBlockOf(op) = block;
 		registerUses(op);
 		return op;
 	}
@@ -148,7 +146,7 @@ public:
 		T* op = arena_.create<T>(arena_, std::forward<Args>(args)...);
 		BasicBlock* block = definingBlock(anchor);
 		block->addOperationBefore(anchor, op);
-		defBlock_[op] = block;
+		defBlockOf(op) = block;
 		registerUses(op);
 		return op;
 	}
@@ -165,7 +163,14 @@ public:
 	/// and use-free, then cascades into operands that became use-free and
 	/// pure as a result. Idempotent: calling it again on an already-erased
 	/// operation is a no-op. Returns the number of operations erased.
-	size_t eraseIfDead(Operation* op);
+	size_t eraseIfDead(Operation* op) {
+		return eraseIfDead(op, ir_);
+	}
+
+	/// As above, resolving calls through @p module instead of the session's
+	/// own (see the constructor): a session shared between passes is built
+	/// without one, and dead-code elimination supplies it per call.
+	size_t eraseIfDead(Operation* op, const IRGraph* module);
 
 	// ── Block arguments (both sides of the arity invariant, atomically) ──
 
@@ -262,13 +267,98 @@ private:
 	/// than patching indices in place).
 	void unregisterUser(Operation* user);
 
+	/// The uses of one value: contiguous (so `usesOf` can hand out a span),
+	/// the first `inlineCapacity` in place -- most values have one or two --
+	/// and the rest in storage from the session's buffer. Growth abandons the
+	/// old storage, like any allocation from that buffer.
+	class UseList {
+	public:
+		static constexpr uint32_t inlineCapacity = 2;
+
+		[[nodiscard]] const Use* data() const {
+			return heap_ != nullptr ? heap_ : inline_;
+		}
+		Use* data() {
+			return heap_ != nullptr ? heap_ : inline_;
+		}
+		[[nodiscard]] uint32_t size() const {
+			return size_;
+		}
+		[[nodiscard]] bool empty() const {
+			return size_ == 0;
+		}
+		[[nodiscard]] std::span<const Use> span() const {
+			return {data(), size_};
+		}
+		Use& operator[](size_t i) {
+			return data()[i];
+		}
+		void push_back(const Use& use, std::pmr::memory_resource& memory) {
+			if (size_ == capacity_) {
+				grow(memory);
+			}
+			data()[size_++] = use;
+		}
+		/// Shrinks to the first @p n uses.
+		void truncate(uint32_t n) {
+			size_ = n;
+		}
+		void clear() {
+			size_ = 0;
+		}
+
+	private:
+		void grow(std::pmr::memory_resource& memory);
+
+		Use inline_[inlineCapacity];
+		Use* heap_ = nullptr;
+		uint32_t size_ = 0;
+		uint32_t capacity_ = inlineCapacity;
+	};
+
+	/// Everything the session knows about one value. `block` is null for a
+	/// value that is not (or no longer) defined in the function -- an operand
+	/// that is only used, or an erased definition.
+	struct Entry {
+		const Operation* key;
+		BasicBlock* block = nullptr;
+		UseList uses;
+	};
+
+	/// Open-addressing table from a value to its `Entry`. Entries live in the
+	/// session's buffer and never move, so a span from `usesOf` stays valid
+	/// while other values are inserted; the probe array holds pointers to
+	/// them and is the only thing a rehash copies. Entries are never removed
+	/// -- erasing a value clears its entry -- which keeps probing simple and
+	/// is bounded by the values the session ever saw.
+	class ValueTable {
+	public:
+		ValueTable(std::pmr::memory_resource& memory, size_t expectedValues);
+		[[nodiscard]] Entry* find(const Operation* value) const;
+		Entry& operator[](const Operation* value);
+
+	private:
+		[[nodiscard]] size_t slotOf(const Operation* value) const;
+		void rehash(size_t capacity);
+
+		std::pmr::memory_resource& memory_;
+		Entry** slots_ = nullptr;
+		size_t capacity_ = 0;
+		size_t count_ = 0;
+	};
+
+	[[nodiscard]] BasicBlock*& defBlockOf(const Operation* value) {
+		return table_[value].block;
+	}
+	/// Clears everything known about @p value (its definition and its uses).
+	void forget(const Operation* value);
+
 	FunctionOperation& fn_;
 	common::Arena& arena_;
 	const IRGraph* ir_ = nullptr;
-	/// Backs `uses_` and `defBlock_`; declared before them so it outlives them.
+	/// Backs `table_`; declared before it so it outlives it.
 	std::pmr::monotonic_buffer_resource tableMemory_;
-	std::pmr::unordered_map<const Operation*, std::pmr::vector<Use>> uses_;
-	std::pmr::unordered_map<const Operation*, BasicBlock*> defBlock_;
+	ValueTable table_;
 	uint32_t nextId_ = 0;
 };
 
