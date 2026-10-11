@@ -33,6 +33,17 @@ inline void applyIrVerifyEnvHook(engine::Options& options) {
 	}
 }
 
+/// Applies `NAUTILUS_DIRECT_SSA=1`: every engine built through `makeEngine`
+/// converts traces with `TraceToSSAIRConversionPhase` instead of
+/// `SSACreationPhase` + `TraceToIRConversionPhase`, so any test run doubles as
+/// a sweep of the direct SSA construction.
+inline void applyDirectSSAEnvHook(engine::Options& options) {
+	const char* direct = std::getenv("NAUTILUS_DIRECT_SSA");
+	if (direct != nullptr && std::string(direct) == "1") {
+		options.setOption("ir.directSSAConstruction", true);
+	}
+}
+
 inline std::vector<std::string> availableBackends(bool include_asmjit = true) {
 	std::vector<std::string> backends;
 #ifdef ENABLE_MLIR_BACKEND
@@ -76,6 +87,7 @@ inline engine::NautilusEngine makeEngine(const std::string& backend, const Optio
 		options.setOption("engine.backend", backend);
 	}
 	applyIrVerifyEnvHook(options);
+	applyDirectSSAEnvHook(options);
 	if (tweak) {
 		tweak(options);
 	}

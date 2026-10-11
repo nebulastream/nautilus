@@ -5,4 +5,5 @@ add_source_files(nautilus
         IRConversionSupport.cpp
         SSAVerifier.cpp
         TraceToIRConversionPhase.cpp
+        TraceToSSAIRConversionPhase.cpp
 )
