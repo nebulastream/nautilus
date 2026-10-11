@@ -951,6 +951,122 @@ void AsmJitLoweringProvider::LoweringContext::computeConstBlockParams(const ir::
 	}
 }
 
+// An accumulator updated as `acc = (acc + a) - b` serialises two operations
+// per iteration on acc; `acc + (a - b)` leaves one, with `a - b` computed off
+// the chain. Two's-complement add/sub are associative, so the low 64 bits
+// agree in every case. The parameter is the operand recognised as the chain:
+// a parameter of the block, whose register only changes on its edges.
+void AsmJitLoweringProvider::LoweringContext::computeReassociations(const ir::FunctionOperation* funcOp) {
+	std::unordered_map<ir::OperationIdentifier, uint32_t> uses;
+	const auto countBlock = [&](const ir::BasicBlock* block) {
+		for (const auto* op : block->getOperations()) {
+			for (const auto* in : op->getInputs()) {
+				uses[in->getIdentifier()]++;
+			}
+			for (size_t i = 0; i < ir::getDestructorOperandCount(*op); i++) {
+				uses[ir::getDestructorOperand(*op, i)->getIdentifier()]++;
+			}
+			if (const auto* ifOp = ir::dyn_cast<ir::IfOperation>(op)) {
+				for (const auto* in : ifOp->getTrueBlockInvocation().getArguments()) {
+					uses[in->getIdentifier()]++;
+				}
+				for (const auto* in : ifOp->getFalseBlockInvocation().getArguments()) {
+					uses[in->getIdentifier()]++;
+				}
+			} else if (const auto* br = ir::dyn_cast<ir::BranchOperation>(op)) {
+				for (const auto* in : br->getNextBlockInvocation().getArguments()) {
+					uses[in->getIdentifier()]++;
+				}
+			}
+		}
+	};
+	for (const auto* block : funcOp->getBasicBlocks()) {
+		countBlock(block);
+	}
+	if (funcOp->exceptionRegion.has_value()) {
+		for (const auto& pad : funcOp->exceptionRegion->pads) {
+			countBlock(pad.block);
+		}
+	}
+	const auto isWideAddSub = [](const ir::Operation* op) {
+		return (ir::dyn_cast<ir::AddOperation>(op) != nullptr || ir::dyn_cast<ir::SubOperation>(op) != nullptr) &&
+		       (op->getStamp() == Type::i64 || op->getStamp() == Type::ui64);
+	};
+	for (const auto* block : funcOp->getBasicBlocks()) {
+		const auto& params = block->getArguments();
+		const auto isParam = [&](const ir::Operation* op) {
+			return std::find(params.begin(), params.end(), op) != params.end();
+		};
+		const auto& ops = block->getOperations();
+		const auto definedHere = [&](const ir::Operation* op) {
+			return std::find(ops.begin(), ops.end(), op) != ops.end();
+		};
+		for (const auto* outer : ops) {
+			if (!isWideAddSub(outer)) {
+				continue;
+			}
+			const bool outerSubtracts = ir::dyn_cast<ir::SubOperation>(outer) != nullptr;
+			const auto& outerInputs = outer->getInputs();
+			// A subtraction reassociates only through its left operand.
+			for (size_t side = 0; side < (outerSubtracts ? 1u : 2u); side++) {
+				const auto* inner = outerInputs[side];
+				const auto* b = outerInputs[1 - side];
+				if (!isWideAddSub(inner) || inner->getStamp() != outer->getStamp() || !definedHere(inner) ||
+				    uses[inner->getIdentifier()] != 1 || isParam(b)) {
+					continue;
+				}
+				const bool innerSubtracts = ir::dyn_cast<ir::SubOperation>(inner) != nullptr;
+				const auto& innerInputs = inner->getInputs();
+				for (size_t pSide = 0; pSide < (innerSubtracts ? 1u : 2u); pSide++) {
+					const auto* param = innerInputs[pSide];
+					const auto* a = innerInputs[1 - pSide];
+					if (!isParam(param) || isParam(a) || param->getStamp() != outer->getStamp()) {
+						continue;
+					}
+					reassociations_[outer] = {inner, param, a, b, innerSubtracts, outerSubtracts};
+					reassociatedInners_.insert(inner);
+					break;
+				}
+				if (reassociations_.contains(outer)) {
+					break;
+				}
+			}
+		}
+	}
+}
+
+bool AsmJitLoweringProvider::LoweringContext::emitReassociated(const ir::Operation* op, Gp dst, RegisterFrame& frame) {
+	if (reassociations_.empty()) {
+		return false;
+	}
+	const auto it = reassociations_.find(op);
+	if (it == reassociations_.end()) {
+		return false;
+	}
+	const auto& r = it->second;
+	// (p + a) + b = p + (a + b)    (p + a) - b = p + (a - b)
+	// (p - a) + b = p + (b - a)    (p - a) - b = p - (a + b)
+	const bool tAdds = r.innerSubtracts == r.outerSubtracts;
+	const auto* tLeft = r.innerSubtracts && !r.outerSubtracts ? r.b : r.a;
+	const auto* tRight = tLeft == r.a ? r.b : r.a;
+	auto t = cc.newInt64();
+	if (const auto rightImm = constOperand(tRight)) {
+		const auto value = static_cast<uint64_t>(*rightImm);
+		emitAddImmediate(t, gpOperand(tLeft, frame), static_cast<int64_t>(tAdds ? value : uint64_t {0} - value));
+	} else if (tAdds) {
+		cc.add(t, gpOperand(tLeft, frame), gpOperand(tRight, frame));
+	} else {
+		cc.sub(t, gpOperand(tLeft, frame), gpOperand(tRight, frame));
+	}
+	auto param = gpOperand(r.param, frame);
+	if (r.innerSubtracts && r.outerSubtracts) {
+		cc.sub(dst, param, t);
+	} else {
+		cc.add(dst, param, t);
+	}
+	return true;
+}
+
 // ── Two-pass compilation ──────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDump) {
@@ -972,6 +1088,11 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		auto* funcNode = cc.newFunc(sig);
 		funcNodes_[ir->getFunctionTable().findByDefinition(funcOp)] = funcNode;
 		funcNodesByName_[funcOp->getName()] = funcNode;
+	}
+
+	// Pointer-keyed analyses that inlining reads across functions.
+	for (const auto& funcOp : functionOperations) {
+		computeReassociations(funcOp);
 	}
 
 	// Pass 2: emit each function body.
@@ -1318,6 +1439,14 @@ void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, Reg
 		return;
 	}
 	auto gDst = toGp(result);
+	// The single consumer recomputes a reassociated inner add from its inputs.
+	if (reassociatedInners_.contains(op) && !frame.contains(op->getIdentifier())) {
+		return;
+	}
+	if (emitReassociated(op, gDst, frame)) {
+		bindResult(op->getIdentifier(), result, frame);
+		return;
+	}
 	const auto parts = matchAddress(op);
 	if (parts.has_value()) {
 		// Every consumer folds it into its own memory operand: emit nothing.
@@ -1368,7 +1497,10 @@ void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, Reg
 		auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 		auto right = frame.getValue(op->getRightInput()->getIdentifier());
 		cc.fsub(toVec(result), toVec(left), toVec(right));
-	} else {
+	} else if (reassociatedInners_.contains(op) && !frame.contains(op->getIdentifier())) {
+		// The single consumer recomputes a reassociated inner sub from its inputs.
+		return;
+	} else if (!emitReassociated(op, toGp(result), frame)) {
 		auto gDst = toGp(result);
 		const uint32_t width = stampBits(op->getStamp());
 		auto left = gpOperandAtWidth(op->getLeftInput(), width, frame);

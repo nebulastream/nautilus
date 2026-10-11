@@ -199,6 +199,28 @@ private:
 		/// Fills constBlockParams_ for @p funcOp (cleared when constant folding
 		/// is off).
 		void computeConstBlockParams(const ir::FunctionOperation* funcOp);
+		/// Reassociation of a loop-carried add/sub chain: `outer` computes
+		/// `(param ± a) ± b` through a single-use `inner`; it is lowered as
+		/// `param ± (a ∘ b)`, taking one operation off the parameter's (usually
+		/// loop-carried) dependency chain. Keyed by the outer operation.
+		struct Reassociation {
+			const ir::Operation* inner = nullptr;
+			const ir::Operation* param = nullptr;
+			const ir::Operation* a = nullptr; ///< inner's other operand
+			const ir::Operation* b = nullptr; ///< outer's other operand
+			bool innerSubtracts = false;      ///< inner is `param - a`
+			bool outerSubtracts = false;      ///< outer is `inner - b`
+		};
+		std::unordered_map<const ir::Operation*, Reassociation> reassociations_;
+		/// Inner operations of reassociations_, which emit nothing when their
+		/// identifier is free (their only consumer recomputes from operands).
+		std::unordered_set<const ir::Operation*> reassociatedInners_;
+		/// Fills reassociations_ for @p funcOp (adds to it; pointer-keyed, so
+		/// every function's entries can coexist for inlining).
+		void computeReassociations(const ir::FunctionOperation* funcOp);
+		/// Emits the reassociated form of @p op into @p dst; false when @p op
+		/// has none.
+		bool emitReassociated(const ir::Operation* op, ::asmjit::a64::Gp dst, RegisterFrame& frame);
 		/// Statistics sink shared with the rest of the pipeline; may be null.
 		CompilationStatistics* statistics_ = nullptr;
 		int64_t fusedBranches_ = 0;
