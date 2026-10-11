@@ -31,97 +31,56 @@ enum class FlagScan {
 bool isFlagReader(InstId id) noexcept {
 	switch (id) {
 	// Conditional jumps (kIdJmp is unconditional and is NOT a flag reader).
+	// Condition aliases (jz, jc, ...) share the IDs of the cases below.
 	case Inst::kIdJa:
 	case Inst::kIdJae:
 	case Inst::kIdJb:
 	case Inst::kIdJbe:
-	case Inst::kIdJc:
 	case Inst::kIdJe:
 	case Inst::kIdJg:
 	case Inst::kIdJge:
 	case Inst::kIdJl:
 	case Inst::kIdJle:
-	case Inst::kIdJna:
-	case Inst::kIdJnae:
-	case Inst::kIdJnb:
-	case Inst::kIdJnbe:
-	case Inst::kIdJnc:
 	case Inst::kIdJne:
-	case Inst::kIdJng:
-	case Inst::kIdJnge:
-	case Inst::kIdJnl:
-	case Inst::kIdJnle:
 	case Inst::kIdJno:
 	case Inst::kIdJnp:
 	case Inst::kIdJns:
-	case Inst::kIdJnz:
 	case Inst::kIdJo:
 	case Inst::kIdJp:
-	case Inst::kIdJpe:
-	case Inst::kIdJpo:
 	case Inst::kIdJs:
-	case Inst::kIdJz:
 	// Conditional sets and moves.
 	case Inst::kIdSeta:
 	case Inst::kIdSetae:
 	case Inst::kIdSetb:
 	case Inst::kIdSetbe:
-	case Inst::kIdSetc:
 	case Inst::kIdSete:
 	case Inst::kIdSetg:
 	case Inst::kIdSetge:
 	case Inst::kIdSetl:
 	case Inst::kIdSetle:
-	case Inst::kIdSetna:
-	case Inst::kIdSetnae:
-	case Inst::kIdSetnb:
-	case Inst::kIdSetnbe:
-	case Inst::kIdSetnc:
 	case Inst::kIdSetne:
-	case Inst::kIdSetng:
-	case Inst::kIdSetnge:
-	case Inst::kIdSetnl:
-	case Inst::kIdSetnle:
 	case Inst::kIdSetno:
 	case Inst::kIdSetnp:
 	case Inst::kIdSetns:
-	case Inst::kIdSetnz:
 	case Inst::kIdSeto:
 	case Inst::kIdSetp:
-	case Inst::kIdSetpe:
-	case Inst::kIdSetpo:
 	case Inst::kIdSets:
-	case Inst::kIdSetz:
 	case Inst::kIdCmova:
 	case Inst::kIdCmovae:
 	case Inst::kIdCmovb:
 	case Inst::kIdCmovbe:
-	case Inst::kIdCmovc:
 	case Inst::kIdCmove:
 	case Inst::kIdCmovg:
 	case Inst::kIdCmovge:
 	case Inst::kIdCmovl:
 	case Inst::kIdCmovle:
-	case Inst::kIdCmovna:
-	case Inst::kIdCmovnae:
-	case Inst::kIdCmovnb:
-	case Inst::kIdCmovnbe:
-	case Inst::kIdCmovnc:
 	case Inst::kIdCmovne:
-	case Inst::kIdCmovng:
-	case Inst::kIdCmovnge:
-	case Inst::kIdCmovnl:
-	case Inst::kIdCmovnle:
 	case Inst::kIdCmovno:
 	case Inst::kIdCmovnp:
 	case Inst::kIdCmovns:
-	case Inst::kIdCmovnz:
 	case Inst::kIdCmovo:
 	case Inst::kIdCmovp:
-	case Inst::kIdCmovpe:
-	case Inst::kIdCmovpo:
 	case Inst::kIdCmovs:
-	case Inst::kIdCmovz:
 	// Flag-consuming arithmetic.
 	case Inst::kIdAdc:
 	case Inst::kIdSbb:
@@ -176,11 +135,11 @@ bool isFlagClobberer(InstId id) noexcept {
 FlagScan flagScan(BaseNode* from, std::size_t maxSteps = 16) noexcept {
 	BaseNode* node = from->next();
 	for (std::size_t step = 0; step < maxSteps && node != nullptr; ++step, node = node->next()) {
-		if (!node->isInst()) {
+		if (!node->is_inst()) {
 			continue; // labels, sentinels, comments, etc.
 		}
 		auto* inst = node->as<InstNode>();
-		const InstId id = inst->id();
+		const InstId id = inst->inst_id();
 		if (isFlagReader(id)) {
 			return FlagScan::Live;
 		}
@@ -197,22 +156,22 @@ FlagScan flagScan(BaseNode* from, std::size_t maxSteps = 16) noexcept {
 /// Rule 1: decides whether an instruction is a same-register move we can
 /// safely drop. Conservative allow-list — see class comment.
 bool isRemovableSelfMove(const InstNode* inst) noexcept {
-	if (inst->opCount() != 2) {
+	if (inst->op_count() != 2) {
 		return false;
 	}
 	const Operand& dst = inst->op(0);
 	const Operand& src = inst->op(1);
-	if (!dst.isReg() || !src.isReg()) {
+	if (!dst.is_reg() || !src.is_reg()) {
 		return false;
 	}
-	if (!dst.isPhysReg() || !src.isPhysReg()) {
+	if (!dst.is_phys_reg() || !src.is_phys_reg()) {
 		return false;
 	}
 	if (dst.id() != src.id()) {
 		return false;
 	}
 
-	const InstId id = inst->id();
+	const InstId id = inst->inst_id();
 	switch (id) {
 	case Inst::kIdMov: {
 		// Only delete 64-bit GPR self-moves. 32-bit self-moves are a
@@ -221,7 +180,7 @@ bool isRemovableSelfMove(const InstNode* inst) noexcept {
 		// doc.
 		const auto& dstReg = dst.as<Reg>();
 		const auto& srcReg = src.as<Reg>();
-		if (dstReg.isGp64() && srcReg.isGp64()) {
+		if (dstReg.is_gp64() && srcReg.is_gp64()) {
 			return true;
 		}
 		return false;
@@ -240,21 +199,21 @@ bool isRemovableSelfMove(const InstNode* inst) noexcept {
 /// Rule 2 helper: detect `mov <gpreg>, imm(0)` patterns that are
 /// candidates for the xor-zero rewrite.
 bool isMovGpZeroImm(const InstNode* inst) noexcept {
-	if (inst->id() != Inst::kIdMov) {
+	if (inst->inst_id() != Inst::kIdMov) {
 		return false;
 	}
-	if (inst->opCount() != 2) {
+	if (inst->op_count() != 2) {
 		return false;
 	}
 	const Operand& dst = inst->op(0);
 	const Operand& src = inst->op(1);
-	if (!dst.isReg() || !dst.isPhysReg()) {
+	if (!dst.is_reg() || !dst.is_phys_reg()) {
 		return false;
 	}
-	if (!dst.as<Reg>().isGp()) {
+	if (!dst.as<Reg>().is_gp()) {
 		return false;
 	}
-	if (!src.isImm()) {
+	if (!src.is_imm()) {
 		return false;
 	}
 	return src.as<Imm>().value() == 0;
@@ -266,8 +225,8 @@ bool isMovGpZeroImm(const InstNode* inst) noexcept {
 /// sentinel ending a function all sit between @p node and the label in the
 /// emitted code, so a jump across them is not a fallthrough.
 bool isBoundDirectlyAfter(const BaseNode* node, uint32_t labelId) noexcept {
-	for (const BaseNode* next = node->next(); next != nullptr && next->isLabel(); next = next->next()) {
-		if (next->as<LabelNode>()->labelId() == labelId) {
+	for (const BaseNode* next = node->next(); next != nullptr && next->is_label(); next = next->next()) {
+		if (next->as<LabelNode>()->label_id() == labelId) {
 			return true;
 		}
 	}
@@ -277,7 +236,7 @@ bool isBoundDirectlyAfter(const BaseNode* node, uint32_t labelId) noexcept {
 /// The label targeted by a single-operand jump, or nullptr when @p inst is not
 /// a direct jump to a label.
 const Label* jumpTarget(const InstNode* inst) noexcept {
-	if (inst->opCount() != 1 || !inst->op(0).isLabel()) {
+	if (inst->op_count() != 1 || !inst->op(0).is_label()) {
 		return nullptr;
 	}
 	return &inst->op(0).as<Label>();
@@ -287,7 +246,7 @@ const Label* jumpTarget(const InstNode* inst) noexcept {
 /// a conditional jump.
 uint32_t jccCondition(InstId id) noexcept {
 	for (uint32_t cond = 0; cond < 16; cond++) {
-		if (Inst::jccFromCond(CondCode(cond)) == id) {
+		if (Inst::jcc_from_cond(CondCode(cond)) == id) {
 			return cond;
 		}
 	}
@@ -298,10 +257,10 @@ uint32_t jccCondition(InstId id) noexcept {
 /// Returns the number of jumps removed.
 int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 	int64_t removed = 0;
-	BaseNode* node = cb->firstNode();
+	BaseNode* node = cb->first_node();
 	while (node != nullptr) {
 		BaseNode* next = node->next();
-		if (!node->isInst()) {
+		if (!node->is_inst()) {
 			node = next;
 			continue;
 		}
@@ -311,9 +270,9 @@ int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 		// lowering emits one at nearly every block boundary (each
 		// block-argument edge ends in an explicit jmp, and the target is
 		// usually emitted next).
-		if (inst->id() == Inst::kIdJmp) {
+		if (inst->inst_id() == Inst::kIdJmp) {
 			if (const Label* target = jumpTarget(inst); target != nullptr && isBoundDirectlyAfter(node, target->id())) {
-				cb->removeNode(node);
+				cb->remove_node(node);
 				++removed;
 			}
 			node = next;
@@ -324,17 +283,17 @@ int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 		// target itself (it directly follows the jcc), so folding it into the
 		// inverted conditional jump removes one taken branch from the path
 		// that previously went through it.
-		if (const uint32_t cond = jccCondition(inst->id()); cond < 16 && next != nullptr && next->isInst()) {
+		if (const uint32_t cond = jccCondition(inst->inst_id()); cond < 16 && next != nullptr && next->is_inst()) {
 			auto* jmp = next->as<InstNode>();
 			const Label* condTarget = jumpTarget(inst);
-			const Label* jmpTarget = jmp->id() == Inst::kIdJmp ? jumpTarget(jmp) : nullptr;
+			const Label* jmpTarget = jmp->inst_id() == Inst::kIdJmp ? jumpTarget(jmp) : nullptr;
 			if (condTarget != nullptr && jmpTarget != nullptr && isBoundDirectlyAfter(jmp, condTarget->id())) {
-				inst->setId(Inst::jccFromCond(negateCond(CondCode(cond))));
-				inst->setOp(0, *jmpTarget);
+				inst->set_inst_id(Inst::jcc_from_cond(negate_cond(CondCode(cond))));
+				inst->set_op(0, *jmpTarget);
 				// The new target may be out of rel8 range; let the assembler pick.
-				inst->clearOptions(InstOptions::kShortForm);
+				inst->clear_options(InstOptions::kShortForm);
 				next = jmp->next();
-				cb->removeNode(jmp);
+				cb->remove_node(jmp);
 				++removed;
 			}
 		}
@@ -345,14 +304,8 @@ int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 
 } // namespace
 
-Error X64PostRAPeepholePass::run(Zone* /*zone*/, Logger* /*logger*/) {
-	// The public cb() accessor returns a const pointer, but removeNode() is
-	// a mutating operation. Access the non-const back-pointer directly via
-	// the public _cb member.
-	BaseBuilder* cb = _cb;
-	if (cb == nullptr) {
-		return kErrorOk;
-	}
+Error X64PostRAPeepholePass::run(axl::Arena& /*arena*/, Logger* /*logger*/) {
+	BaseBuilder* cb = &Pass::cb();
 
 	int64_t selfMovesRemoved = 0;
 	int64_t zeroIdiomsApplied = 0;
@@ -363,15 +316,15 @@ Error X64PostRAPeepholePass::run(Zone* /*zone*/, Logger* /*logger*/) {
 		jumpsRemoved += round;
 	}
 
-	BaseNode* node = cb->firstNode();
+	BaseNode* node = cb->first_node();
 	while (node != nullptr) {
 		BaseNode* next = node->next();
 
-		if (node->isInst()) {
+		if (node->is_inst()) {
 			auto* inst = node->as<InstNode>();
 
 			if (isRemovableSelfMove(inst)) {
-				cb->removeNode(node);
+				cb->remove_node(node);
 				++selfMovesRemoved;
 				node = next;
 				continue;
@@ -384,9 +337,9 @@ Error X64PostRAPeepholePass::run(Zone* /*zone*/, Logger* /*logger*/) {
 				// `mov r64, 0`. Also shorter to encode and breaks the
 				// data dependency on the previous value of the register.
 				Gp gp = inst->op(0).as<Gp>().r32();
-				inst->setId(Inst::kIdXor);
-				inst->setOp(0, gp);
-				inst->setOp(1, gp);
+				inst->set_inst_id(Inst::kIdXor);
+				inst->set_op(0, gp);
+				inst->set_op(1, gp);
 				++zeroIdiomsApplied;
 			}
 		}

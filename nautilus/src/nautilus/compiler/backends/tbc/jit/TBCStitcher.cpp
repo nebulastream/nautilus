@@ -228,7 +228,7 @@ public:
 
 		auto code = std::make_unique<StitchedCode>();
 		asmjit::JitAllocator::Span span;
-		if (jitAllocator().alloc(span, lay.totalSize) != asmjit::kErrorOk) {
+		if (jitAllocator().alloc(asmjit::Out(span), lay.totalSize) != asmjit::kErrorOk) {
 			throw RuntimeException("tbc-jit: executable memory allocation failed");
 		}
 		code->rx = span.rx();
