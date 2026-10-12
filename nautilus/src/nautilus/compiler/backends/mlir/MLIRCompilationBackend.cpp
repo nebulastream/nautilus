@@ -182,10 +182,9 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	    debugInfo.perfEmitDebugInfo, debugInfo.perfEmitUnwindInfo, debugInfo.perfRegionSymbols,
 	    debugInfo.enableSampleSymbols, ir->getId());
 	// ORC generates machine code on the first lookup of a symbol, i.e. on the
-	// first call of a compiled function. Generating it here keeps that work in
-	// the compile and in its statistics; turning this off defers it to the
-	// first call.
-	if (options.getOptionOrDefault("mlir.eager_compilation", true)) {
+	// first call of a compiled function. With eager compilation it is
+	// generated here instead, inside the compile and its statistics.
+	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		if (auto err = engine->materialize()) {
 			throw RuntimeException(fmt::format("Could not generate machine code: {}", llvm::toString(std::move(err))));
 		}
