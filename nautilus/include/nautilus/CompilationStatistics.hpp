@@ -73,6 +73,11 @@ public:
 	/// One `key = value` per line, values rendered as @ref formatValue.
 	[[nodiscard]] std::string toString() const;
 
+	/// One flat JSON object with every entry in insertion order: integers and
+	/// durations as JSON numbers, text as JSON strings. Single line, so it can
+	/// be appended to a JSON-lines file.
+	[[nodiscard]] std::string toJson() const;
+
 	/// Multiline, grouped, column-aligned report suitable for user-facing
 	/// log output. Entries are grouped by the substring preceding the first
 	/// `.` in the key; entries without a `.` land in the @c general group.

@@ -72,3 +72,9 @@ See [engine.md](engine.md) for how to create modules and override options per mo
 | asmjit.inliningMaxOperations=[int]          | 24       | Module  | Largest callee, in IR operations, that `asmjit.enableInlining` inlines.                                                                              |
 | asmjit.enableLoopRotation=[true,false]      | true     | Module  | Repeats a loop header's fused compare at the end of the back edge, jumping straight into the body, instead of jumping back to the header (AsmJit backend; needs `asmjit.enableBranchFusion`). |
 | asmjit.enableTailDuplication=[true,false]   | true     | Module  | Lowers a copy of an already emitted small merge block (at most six plain value operations, ending in an unconditional branch) in place of the jump to it, saving a taken branch on that path (AsmJit ARM64 backend). |
+
+## Environment Variables
+
+| Variable                   | Description                                                                                                                                                                                          |
+|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| NAUTILUS_STATISTICS_FILE   | Path of a file that every compilation appends its statistics to, as one JSON object per line (the entries `engine.logStatistics` reports). Measures an application's compilations without changing its options. |

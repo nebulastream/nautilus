@@ -9,6 +9,11 @@ run-name: NebulaStream against nautilus ${{ github.ref_name }}
 # NebulaStream's nautilus port, swaps that build in for the prebuilt package, and
 # then builds and tests NebulaStream exactly as its CI does. Nothing but
 # nautilus is rebuilt, and the container's own state is thrown away afterwards.
+#
+# Once the tests pass, NebulaStream's systests also run as a benchmark: every
+# query once, one at a time, compiled with nautilus. The run records nautilus'
+# compilation statistics per pipeline and each query's execution time, and the
+# `benchmark` job tracks both over nautilus' history.
 on:
   push:
     branches:
@@ -34,7 +39,7 @@ jobs:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'nebulastream')
     runs-on: ubuntu-24.04
     name: Build and test NebulaStream main
-    timeout-minutes: 150
+    timeout-minutes: 180
     env:
       CONTAINER: nes
       # Persisted between runs by actions/cache. NebulaStream's sources rarely
@@ -112,12 +117,6 @@ jobs:
         run: |
           docker exec "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -L Systest \
             --output-on-failure --timeout 4800
-      - name: Save compiler caches
-        if: ${{ !cancelled() }}
-        uses: actions/cache/save@v4
-        with:
-          path: .cache
-          key: nebulastream-${{ steps.image.outputs.sha }}-${{ github.sha }}
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -127,3 +126,79 @@ jobs:
             nebulastream/build/**/*.log
             nebulastream/build/**/*.stats
           if-no-files-found: ignore
+      - name: Build NebulaStream for benchmarking
+        # The test build compiles DEBUG logging in, which the systests write to
+        # their log on every query; benchmarks use the Release default instead,
+        # as NebulaStream's own benchmark job does. The test build is removed
+        # first to keep the runner's disk from filling up.
+        run: |
+          docker exec "$CONTAINER" bash -c '
+            rm -rf build
+            cmake -G Ninja -B build-benchmark -DCMAKE_BUILD_TYPE=Release
+            sccache --start-server
+            status=0
+            cmake --build build-benchmark -j --target systest test-data || status=$?
+            sccache --show-stats
+            sccache --stop-server
+            exit $status'
+      - name: Run systests as benchmark
+        run: |
+          rm -f "$PWD/nautilus-statistics.jsonl"
+          docker exec -e NAUTILUS_STATISTICS_FILE="$PWD/nautilus-statistics.jsonl" "$CONTAINER" \
+            ctest --test-dir build-benchmark --no-tests=error -R '^systest_benchmark_small$' --output-on-failure --timeout 2400
+          python3 nautilus/.github/nebulastream/benchmark-report.py \
+            "$(find nebulastream/build-benchmark -name BenchmarkResults.json -path '*benchmark_small*')" \
+            nautilus-statistics.jsonl benchmark-metrics.json benchmark-summary.md
+          cat benchmark-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebulastream-benchmark
+          path: |
+            benchmark-metrics.json
+            nautilus-statistics.jsonl
+            nebulastream/build-benchmark/**/BenchmarkResults.json
+      - name: Save compiler caches
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cache
+          key: nebulastream-${{ steps.image.outputs.sha }}-${{ github.sha }}
+  benchmark:
+    # Kept apart from the build so the job that may push to the `pages` branch
+    # never runs NebulaStream's code or touches the compiler cache.
+    needs: nebulastream
+    runs-on: ubuntu-24.04
+    name: Track NebulaStream benchmark
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # github-action-benchmark reads and writes the history through the
+      # checkout's `pages` branch.
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: nebulastream-benchmark
+          path: benchmark-results
+      - name: Compare with and record into nautilus' benchmark history
+        uses: benchmark-action/github-action-benchmark@v1.20.7
+        with:
+          name: NebulaStream Systests
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-results/benchmark-metrics.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          gh-pages-branch: pages
+          # Its own directory: the UI in tools/benchmark-ui reads dev/bench and
+          # expects only the tracing benchmark there.
+          benchmark-data-dir-path: dev/nebulastream
+          # Only main's own commits extend the history; PRs and nightly runs
+          # compare against it.
+          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          summary-always: true
+          comment-on-alert: ${{ github.event_name == 'pull_request' }}
+          # Hosted runners vary by tens of percent between runs, so only flag
+          # what that noise cannot explain.
+          alert-threshold: '150%'
+          max-items-in-chart: 200
