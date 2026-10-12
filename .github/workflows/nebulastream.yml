@@ -118,6 +118,13 @@ jobs:
         run: |
           docker exec "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -L Systest \
             --output-on-failure --timeout 4800
+      - name: Run system tests on AsmJit
+        # NebulaStream compiles with MLIR; NAUTILUS_BACKEND moves every compiled
+        # suite onto AsmJit. The interpreter suites never reach a backend.
+        if: ${{ !cancelled() }}
+        run: |
+          docker exec -e NAUTILUS_BACKEND=asmjit "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -L Systest \
+            -E interpreter --output-on-failure --timeout 4800
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
