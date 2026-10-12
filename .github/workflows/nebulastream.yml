@@ -1,0 +1,126 @@
+name: NebulaStream
+run-name: NebulaStream against nautilus ${{ github.ref_name }}
+# Builds NebulaStream against this nautilus checkout and runs its tests, so API
+# and behaviour breaks surface here instead of in NebulaStream's next nautilus bump.
+#
+# NebulaStream ships every dependency prebuilt in its nebulastream/nes-ci image
+# (vcpkg export under /vcpkg). The job runs NebulaStream's own image for its
+# current main, rebuilds nautilus inside it with the toolchain and options of
+# NebulaStream's nautilus port, swaps that build in for the prebuilt package, and
+# then builds and tests NebulaStream exactly as its CI does. Nothing but
+# nautilus is rebuilt, and the container's own state is thrown away afterwards.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types: [ opened, reopened, synchronize, labeled ]
+  schedule:
+    # Nightly, so NebulaStream-side changes that break against nautilus main show
+    # up even on days nautilus itself does not change.
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      nebulastream_ref:
+        description: 'NebulaStream branch, tag or commit to build against'
+        required: false
+        default: 'main'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  nebulastream:
+    # On pull requests this runs only when the PR carries the `nebulastream`
+    # label: a full NebulaStream build is too slow to gate every PR on.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'nebulastream')
+    runs-on: ubuntu-24.04
+    name: Build and test NebulaStream (${{ inputs.nebulastream_ref || 'main' }})
+    timeout-minutes: 150
+    env:
+      CONTAINER: nes
+      # Persisted between runs by actions/cache. NebulaStream's sources rarely
+      # change between two nautilus commits, so most translation units hit; the
+      # ones including a changed nautilus header recompile, as they must.
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      SCCACHE_CACHE_SIZE: 6G
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+    steps:
+      - name: Check out nautilus
+        uses: actions/checkout@v4
+        with:
+          path: nautilus
+      - name: Check out NebulaStream
+        uses: actions/checkout@v4
+        with:
+          repository: nebulastream/nebulastream
+          ref: ${{ inputs.nebulastream_ref || 'main' }}
+          path: nebulastream
+      - name: Resolve NebulaStream CI image
+        id: image
+        working-directory: nebulastream
+        run: |
+          # Same tag NebulaStream's own CI derives (get_dev_images.yml): a hash
+          # over its dependency definitions.
+          tag=$(scripts/hash_dependencies.sh)
+          image="nebulastream/nes-ci:${tag}-libcxx-none"
+          if ! docker manifest inspect "$image" > /dev/null; then
+            echo "::error::$image does not exist (yet). NebulaStream's CI publishes it when its dependencies change; re-run once that is done."
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "NebulaStream $(git rev-parse HEAD), image $image" >> "$GITHUB_STEP_SUMMARY"
+      - name: Free disk space and pull image
+        # NebulaStream's own runner preparation: drops preinstalled toolchains
+        # the job does not need while pulling the image.
+        uses: ./nebulastream/.github/steps/prepare-github
+        with:
+          images: ${{ steps.image.outputs.image }}
+      - name: Restore compiler caches
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: nebulastream-${{ steps.image.outputs.sha }}-${{ github.sha }}
+          restore-keys: |
+            nebulastream-${{ steps.image.outputs.sha }}-
+            nebulastream-
+      - name: Start container
+        run: |
+          mkdir -p "$SCCACHE_DIR" "$CCACHE_DIR"
+          docker run -d --name "$CONTAINER" \
+            -v "$PWD:$PWD" -w "$PWD/nebulastream" -e "HOME=$PWD" -u "$(id -u):$(id -g)" \
+            -e SCCACHE_DIR -e SCCACHE_CACHE_SIZE -e CCACHE_DIR \
+            "${{ steps.image.outputs.image }}" sleep infinity
+      - name: Build nautilus and swap it into the image's vcpkg tree
+        run: docker exec "$CONTAINER" ../nautilus/.github/nebulastream/build-nautilus.sh ../nautilus . ../nautilus-build
+      - name: Configure NebulaStream
+        run: docker exec "$CONTAINER" cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release -DNES_LOG_LEVEL=DEBUG
+      - name: Build NebulaStream
+        run: |
+          docker exec "$CONTAINER" bash -c '
+            sccache --start-server
+            status=0
+            cmake --build build -j -- -k 0 || status=$?
+            sccache --show-stats
+            sccache --stop-server
+            exit $status'
+      - name: Run unit tests
+        run: |
+          docker exec "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -LE "Systest|DockerCompose" \
+            --output-on-failure --timeout 2400
+      - name: Run system tests
+        if: ${{ !cancelled() }}
+        run: |
+          docker exec "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -L Systest \
+            --output-on-failure --timeout 4800
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebulastream-test-logs
+          path: |
+            nebulastream/build/**/*.log
+            nebulastream/build/**/*.stats
+          if-no-files-found: ignore
