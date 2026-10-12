@@ -5,20 +5,17 @@ run-name: NebulaStream against nautilus ${{ github.ref_name }}
 #
 # NebulaStream ships every dependency prebuilt in its nebulastream/nes-ci image
 # (vcpkg export under /vcpkg). The job runs NebulaStream's own image for its
-# current main, rebuilds nautilus inside it with the toolchain and options of
-# NebulaStream's nautilus port, swaps that build in for the prebuilt package, and
-# then builds and tests NebulaStream exactly as its CI does. Nothing but
-# nautilus is rebuilt, and the container's own state is thrown away afterwards.
+# current main, rebuilds nautilus inside it with the toolchain of NebulaStream's
+# nautilus port and every backend enabled, swaps that build in for the prebuilt
+# package, and then builds and tests NebulaStream as its CI does. Its compiled
+# systests also run on the AsmJit, TBC and C++ backends. Nothing but nautilus is
+# rebuilt, and the container's own state is thrown away afterwards.
 #
-# Its compiled systests also run on nautilus' AsmJit, TBC and C++ backends.
-# Once the tests pass, NebulaStream's systests also run as a benchmark on a
-# single node with a single worker thread: every query once, one at a time,
-# compiled with each of the MLIR, AsmJit, TBC and C++ backends. Each run
-# records nautilus' compilation statistics per pipeline and each query's
-# execution time. The queries listed in
-# .github/nebulastream/query-shapes.txt then run one by one, so compilation and
-# execution can be followed per query shape. The `benchmark` job tracks all of
-# it over nautilus' history.
+# Once the tests pass, .github/nebulastream/nes-bench.py runs the systest
+# queries of benchmark.toml under each of its nautilus configurations (backends
+# and options, set at runtime through NAUTILUS_OPTIONS) and records compilation
+# and execution time per query. The `benchmark` job tracks them over nautilus'
+# history.
 on:
   push:
     branches:
@@ -123,14 +120,15 @@ jobs:
           docker exec "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -L Systest \
             --output-on-failure --timeout 4800
       - name: Run system tests on the other backends
-        # NebulaStream compiles with MLIR; NAUTILUS_BACKEND moves every compiled
+        # NebulaStream compiles with MLIR; NAUTILUS_OPTIONS moves every compiled
         # suite onto each other backend in turn. The interpreter suites never
-        # reach a backend.
+        # reach a backend. The bytecode interpreter is left out: it does not
+        # support every type NebulaStream's aggregations and joins use yet.
         if: ${{ !cancelled() }}
         run: |
-          for backend in asmjit tbc cpp; do
-            echo "::group::systests on $backend"
-            docker exec -e NAUTILUS_BACKEND="$backend" "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" \
+          for options in "engine.backend=asmjit" "engine.backend=tbc" "engine.backend=tbc;tbc.mode=jit" "engine.backend=cpp"; do
+            echo "::group::systests with $options"
+            docker exec -e NAUTILUS_OPTIONS="$options" "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" \
               -L Systest -E interpreter --output-on-failure --timeout 4800
             echo "::endgroup::"
           done
@@ -159,20 +157,15 @@ jobs:
             sccache --stop-server
             exit $status'
       - name: Run systests as benchmark
-        # Once per backend: NebulaStream itself always compiles with MLIR, and
-        # NAUTILUS_BACKEND moves the same workload onto the others. Every query runs
-        # on a single node with a single worker thread (see run-benchmark.py):
-        # first the whole suite once, then the queries of query-shapes.txt one
-        # at a time, five rounds each, so each query's compilation and
-        # execution can be told apart from the others'.
+        # The queries and nautilus configurations of benchmark.toml, every
+        # combination on a single node with a single worker thread (see
+        # nes-bench.py). Every configuration runs this same NebulaStream build.
         run: |
-          runs=()
-          for backend in mlir asmjit tbc cpp; do
-            python3 nautilus/.github/nebulastream/run-benchmark.py "$CONTAINER" "$PWD/nebulastream/build-benchmark" \
-              "$PWD/nebulastream/nes-systests" nautilus/.github/nebulastream/query-shapes.txt "$backend" 5 "$PWD/benchmark"
-            runs+=("$backend=benchmark/suite-$backend.json,benchmark/suite-statistics-$backend.jsonl,benchmark/query-shapes-$backend.json")
-          done
-          python3 nautilus/.github/nebulastream/benchmark-report.py benchmark-metrics.json benchmark-summary.md "${runs[@]}"
+          python3 nautilus/.github/nebulastream/nes-bench.py run --config nautilus/.github/nebulastream/benchmark.toml \
+            --container "$CONTAINER" --build-dir "$PWD/nebulastream/build-benchmark" \
+            --systest-dir "$PWD/nebulastream/nes-systests" --out "$PWD/benchmark/results.json"
+          python3 nautilus/.github/nebulastream/nes-bench.py report benchmark/results.json \
+            --metrics benchmark-metrics.json --summary benchmark-summary.md
           cat benchmark-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
@@ -180,8 +173,7 @@ jobs:
           name: nebulastream-benchmark
           path: |
             benchmark-metrics.json
-            benchmark/*.json
-            benchmark/*.jsonl
+            benchmark/results.json
       - name: Save compiler caches
         if: ${{ !cancelled() }}
         uses: actions/cache/save@v4
