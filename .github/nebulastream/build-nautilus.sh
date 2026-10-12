@@ -20,7 +20,9 @@ PACKAGE_LIST=$(echo "${INSTALLED}"/vcpkg/info/nautilus_*_"${TRIPLET}".list)
 # The chainloaded toolchain is the one vcpkg used for every package in the
 # image (clang-${LLVM_TOOLCHAIN_VERSION}, libc++, C++23, -fPIC); a differently
 # configured nautilus would hide ABI problems or invent new ones. The option
-# list mirrors the port's vcpkg_cmake_configure() call.
+# list mirrors the port's vcpkg_cmake_configure() call, except that the C++
+# backend is built too, so NebulaStream's workload can run on every backend
+# (NAUTILUS_BACKEND). It compiles its generated code with the image's `cc`.
 cmake -G Ninja -S "${NAUTILUS_SRC}" -B "${BUILD_DIR}" \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX="${INSTALLED}/${TRIPLET}" \
@@ -34,7 +36,7 @@ cmake -G Ninja -S "${NAUTILUS_SRC}" -B "${BUILD_DIR}" \
 	-DENABLE_MLIR_BACKEND=ON \
 	-DENABLE_LOGGING=OFF \
 	-DENABLE_BC_BACKEND=OFF \
-	-DENABLE_C_BACKEND=OFF \
+	-DENABLE_C_BACKEND=ON \
 	-DENABLE_ASMJIT_BACKEND=ON \
 	-DENABLE_TBC_BACKEND=ON \
 	-DENABLE_TBC_JIT=ON \

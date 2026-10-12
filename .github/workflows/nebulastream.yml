@@ -10,10 +10,12 @@ run-name: NebulaStream against nautilus ${{ github.ref_name }}
 # then builds and tests NebulaStream exactly as its CI does. Nothing but
 # nautilus is rebuilt, and the container's own state is thrown away afterwards.
 #
+# Its compiled systests also run on nautilus' AsmJit, TBC and C++ backends.
 # Once the tests pass, NebulaStream's systests also run as a benchmark on a
 # single node with a single worker thread: every query once, one at a time,
-# compiled with nautilus' MLIR backend and then with its AsmJit backend. Each run records nautilus' compilation statistics per
-# pipeline and each query's execution time. The queries listed in
+# compiled with each of the MLIR, AsmJit, TBC and C++ backends. Each run
+# records nautilus' compilation statistics per pipeline and each query's
+# execution time. The queries listed in
 # .github/nebulastream/query-shapes.txt then run one by one, so compilation and
 # execution can be followed per query shape. The `benchmark` job tracks all of
 # it over nautilus' history.
@@ -120,13 +122,18 @@ jobs:
         run: |
           docker exec "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -L Systest \
             --output-on-failure --timeout 4800
-      - name: Run system tests on AsmJit
+      - name: Run system tests on the other backends
         # NebulaStream compiles with MLIR; NAUTILUS_BACKEND moves every compiled
-        # suite onto AsmJit. The interpreter suites never reach a backend.
+        # suite onto each other backend in turn. The interpreter suites never
+        # reach a backend.
         if: ${{ !cancelled() }}
         run: |
-          docker exec -e NAUTILUS_BACKEND=asmjit "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -L Systest \
-            -E interpreter --output-on-failure --timeout 4800
+          for backend in asmjit tbc cpp; do
+            echo "::group::systests on $backend"
+            docker exec -e NAUTILUS_BACKEND="$backend" "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" \
+              -L Systest -E interpreter --output-on-failure --timeout 4800
+            echo "::endgroup::"
+          done
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -153,14 +160,14 @@ jobs:
             exit $status'
       - name: Run systests as benchmark
         # Once per backend: NebulaStream itself always compiles with MLIR, and
-        # NAUTILUS_BACKEND moves the same workload onto AsmJit. Every query runs
+        # NAUTILUS_BACKEND moves the same workload onto the others. Every query runs
         # on a single node with a single worker thread (see run-benchmark.py):
         # first the whole suite once, then the queries of query-shapes.txt one
         # at a time, five rounds each, so each query's compilation and
         # execution can be told apart from the others'.
         run: |
           runs=()
-          for backend in mlir asmjit; do
+          for backend in mlir asmjit tbc cpp; do
             python3 nautilus/.github/nebulastream/run-benchmark.py "$CONTAINER" "$PWD/nebulastream/build-benchmark" \
               "$PWD/nebulastream/nes-systests" nautilus/.github/nebulastream/query-shapes.txt "$backend" 5 "$PWD/benchmark"
             runs+=("$backend=benchmark/suite-$backend.json,benchmark/suite-statistics-$backend.jsonl,benchmark/query-shapes-$backend.json")
