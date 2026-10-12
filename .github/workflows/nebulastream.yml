@@ -44,7 +44,7 @@ jobs:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'nebulastream')
     runs-on: ubuntu-24.04
     name: Build and test NebulaStream main
-    timeout-minutes: 180
+    timeout-minutes: 240
     env:
       CONTAINER: nes
       # Persisted between runs by actions/cache. NebulaStream's sources rarely
