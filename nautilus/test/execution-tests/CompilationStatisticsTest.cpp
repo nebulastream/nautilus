@@ -101,6 +101,40 @@ namespace {
 
 } // namespace
 
+TEST_CASE("CompilationStatistics: per-pass IR counts are opt-in via ir.passStatistics") {
+	auto backend = getAnyBackend();
+	if (backend.empty()) {
+		SKIP("No compilation backend available");
+	}
+
+	// Timing keys are always recorded; the IR walks behind the entity counts
+	// only run when asked for, so the default compile does not pay for them.
+	{
+		Options options;
+		options.setOption("engine.backend", backend);
+		NautilusEngine engine(options);
+		auto fn = engine.registerFunction(statsAddOne);
+		REQUIRE(fn(41) == 42);
+		auto stats = fn.getStatistics();
+		REQUIRE(stats != nullptr);
+		REQUIRE(stats->contains("irPasses.totalMs"));
+		REQUIRE_FALSE(stats->contains("irPasses.baseline.operations"));
+		REQUIRE_FALSE(stats->contains("irPasses.exceptionRegionPreparation.operationsDelta"));
+	}
+	{
+		Options options;
+		options.setOption("engine.backend", backend);
+		options.setOption("ir.passStatistics", true);
+		NautilusEngine engine(options);
+		auto fn = engine.registerFunction(statsAddOne);
+		REQUIRE(fn(41) == 42);
+		auto stats = fn.getStatistics();
+		REQUIRE(stats != nullptr);
+		REQUIRE(stats->contains("irPasses.baseline.operations"));
+		REQUIRE(stats->contains("irPasses.exceptionRegionPreparation.operationsDelta"));
+	}
+}
+
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
 TEST_CASE("CompilationStatistics: a module compiled by mlir alone gets only block-argument pruning") {
 	// LLVM's pipeline performs the other cleanups itself, so by default the
