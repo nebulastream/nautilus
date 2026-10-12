@@ -407,6 +407,35 @@ void addNegZeroSeed(std::vector<Seed>& seeds) {
 	}
 }
 
+/// f32 only: Ne(Mul(a, b), 0) where a * b underflows to 0 in f32 but not in
+/// f64, and Mul(Mul(a, b), c) where a * b overflows to -inf in f32 but not in
+/// f64 -- the constant-folding f32 rounding bug (issue #542, README.md
+/// "Known findings"). Every operand is a constant, so the whole tree folds.
+void addF32FoldRoundingSeeds(std::vector<Seed>& seeds) {
+	const TypeId ty = typeIdOf<float>();
+	auto underflow = buildInput<float>(ty, [&](Writer& w) {
+		writeNode<float>(w, Kind::Ne, 2, [&](int i) {
+			if (i == 0) {
+				writeBinary<float>(w, Kind::Mul, 9.1834094859526887e-41f, 2.9427267750821158e-44f);
+			} else {
+				writeConst<float>(w, 0.0f);
+			}
+		});
+	});
+	seeds.push_back({"mul-underflow-then-compare-f32", std::move(underflow)});
+
+	auto overflow = buildInput<float>(ty, [&](Writer& w) {
+		writeNode<float>(w, Kind::Mul, 2, [&](int i) {
+			if (i == 0) {
+				writeBinary<float>(w, Kind::Mul, -2.5353030138451882e+30f, 7.5557863725914323e+22f);
+			} else {
+				writeConst<float>(w, 9.0033426332869497e-41f);
+			}
+		});
+	});
+	seeds.push_back({"mul-overflow-then-scale-f32", std::move(overflow)});
+}
+
 /// Cast at range limits: (To)(From)MAX and (To)(From)MIN for a narrowing
 /// integer cast, and float->int casts of the boundary/NaN/inf values that
 /// hiLimitExclusive/loLimitInclusive (Types.hpp) specifically clamp.
@@ -483,6 +512,8 @@ std::vector<Seed> buildAllSeeds() {
 	addCastBoundarySeeds<double, int32_t>(seeds);
 	addCastBoundarySeeds<float, int64_t>(seeds);
 	addCastBoundarySeeds<double, uint64_t>(seeds);
+
+	addF32FoldRoundingSeeds(seeds);
 
 	return seeds;
 }
