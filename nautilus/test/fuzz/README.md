@@ -774,7 +774,9 @@ The same hardening moved the known-finding filter from the smoke corpus into
 `Harness.hpp` (`isKnownFinding`), shared by every driver: the libFuzzer driver
 used to abort on known finding 1 below like on any other, so a long session
 would keep stopping at (and re-filing) the same tracked bug instead of finding
-new ones.
+new ones. (That finding has since stopped reproducing and was removed from the
+filter, which currently has no open entries; the mechanism stays for the next
+tracked bug.)
 
 Running the harness with the AsmJit backend enabled on ARM (it is off in the
 default CI configuration) surfaced a third bug -- now fixed: the A64 lowering
@@ -857,8 +859,7 @@ treating them as pass/fail signal, while any other exception, or any value
 mismatch, still aborted the smoke corpus immediately, and `--survey` kept
 every occurrence individually visible (bucketed by backend/type/exact
 exception text, not merged into one backend/type bucket) for future
-investigation. One is still open, listed below and tolerated by every driver
-via `isKnownFinding` in `Harness.hpp` (a second, "no Return
+investigation. The last of them, listed below, no longer reproduces (a second, "no Return
 operation was recorded", was fixed in nebulastream/nautilus#382, and a third,
 the Tag/Snapshot collision described next, was fixed in
 nebulastream/nautilus#381; neither is tolerated or tracked here anymore).
@@ -929,6 +930,17 @@ exception.
    nor `bindResult` covers -- worth a maintainer's attention alongside it, but
    root-causing and fixing the shared `Frame<K,V>` lookup path is out of
    scope for this Call-coverage expansion.
+
+   **No longer reproduces** on current `main`, and is no longer tolerated:
+   with the tolerance disabled, the 2000-input smoke corpus, a 2000-input
+   `--survey` and a 15-minute strict coverage-guided session (~4500 inputs)
+   found no occurrence, and hand-written kernels of the reported shape agree
+   with the interpreter on every backend. It was most likely closed as a side
+   effect of later merge-block/tracing changes; the shallow history available
+   when this was checked did not allow pinning the fixing commit. The shape is
+   pinned on every backend by `ifMergedValueAsCallArg` and
+   `twoIfMergedValuesAsCallArgs` (`test/common/RunctimeCallFunctions.hpp`), and
+   the smoke corpus now aborts on any recurrence.
 
 Adding `val<bool>`/`val<enum>` as generated domains (see "Bool domain"/"Enum
 domain" above) immediately surfaced four more latent bugs, all fixed by this

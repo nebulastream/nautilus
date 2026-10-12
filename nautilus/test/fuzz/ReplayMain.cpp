@@ -133,11 +133,19 @@ std::vector<uint8_t> randomBuffer() {
 }
 
 // Known findings are tolerated by every driver through
-// nautilus::fuzz::isKnownFinding (Harness.hpp), which lists the open entries;
-// `--survey` still buckets each occurrence by backend/type/exception text so
-// they stay individually visible. The entries below have since been fixed and
-// removed from that list -- the smoke corpus now actively guards against their
-// recurrence.
+// nautilus::fuzz::isKnownFinding (Harness.hpp), which lists the open entries
+// (currently none); `--survey` still buckets each occurrence by
+// backend/type/exception text so they stay individually visible. The entries
+// below have since been fixed and removed from that list -- the smoke corpus
+// now actively guards against their recurrence.
+//
+// Finding "Key $N does not exists in frame." is no longer tolerated: a
+// Frame<K,V> (compiler/Frame.hpp) lookup miss for an SSA value merged across
+// two Kind::If arms nested inside a Kind::Call argument. It no longer
+// reproduces -- not in the smoke corpus, a 2000-input survey, or a strict
+// coverage-guided session -- and its shape is pinned on every backend by
+// ifMergedValueAsCallArg/twoIfMergedValuesAsCallArgs in
+// RunctimeCallFunctions.hpp.
 //
 // Finding "Invalid trace. This is maybe caused by a constant loop." is no
 // longer tolerated (issue #381): Tag identity is a raw

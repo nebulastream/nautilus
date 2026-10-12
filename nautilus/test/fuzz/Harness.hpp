@@ -768,13 +768,9 @@ inline std::vector<Finding> checkOne(const uint8_t* data, size_t size) {
 /// entry, and ReplayMain.cpp for the history of the entries since removed.
 /// Only exceptions are ever tolerated -- a value mismatch never is.
 ///
-///   1. "Key $N does not exists in frame." -- a Frame<K,V> (compiler/Frame.hpp,
-///      shared by the cpp/bc/asmjit lowering providers) lookup miss for an
-///      SSA value merged across two Kind::If arms, reachable with nested
-///      Kind::If inside a Kind::Call argument.
-///
-/// RuntimeException (nautilus/exceptions/RuntimeException.cpp) appends a full
-/// stack trace to its message, so entries are matched on prefix.
+/// There are currently no open entries. To add one, match the exception's
+/// message on prefix: RuntimeException
+/// (nautilus/exceptions/RuntimeException.cpp) appends a full stack trace.
 ///
 /// Setting NAUTILUS_FUZZ_STRICT=1 disables the filter, e.g. to reproduce or
 /// minimize a known finding, or to check whether one has been fixed.
@@ -786,7 +782,8 @@ inline bool isKnownFinding(const Finding& f) {
 	if (strict || !f.exception) {
 		return false;
 	}
-	return f.what.starts_with("Key $");
+	// No open entries; add `f.what.starts_with("<message prefix>")` checks here.
+	return false;
 }
 
 /// libFuzzer behavior: abort (so the input is captured as a reproducer) on the

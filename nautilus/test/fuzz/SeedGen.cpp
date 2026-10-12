@@ -494,7 +494,9 @@ std::vector<Seed> buildAllSeeds() {
 namespace {
 
 std::string seedFileName(int index, const std::string& name) {
-	char prefix[16];
+	// Sized for any int, so GCC's -Wformat-truncation (an error under the
+	// project's -Werror flags) can prove the write fits.
+	char prefix[32];
 	std::snprintf(prefix, sizeof(prefix), "seed-%03d-", index);
 	return prefix + name + ".bin";
 }
