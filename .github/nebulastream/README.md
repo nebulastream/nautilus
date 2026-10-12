@@ -23,11 +23,11 @@
 
 ## Running it locally
 
-Build NebulaStream against your nautilus as the workflow does, then:
+Build NebulaStream against your nautilus as the workflow does (one build serves the tests and the benchmark), then:
 
 ```sh
 nes-bench.py run --config benchmark.toml --container nes \
-    --build-dir $NES/build-benchmark --systest-dir $NES/nes-systests \
+    --build-dir $NES/build --systest-dir $NES/nes-systests \
     --configurations mlir-eager asmjit --queries 'join' --rounds 3 --no-suite --out head.json
 nes-bench.py compare base.json head.json
 ```

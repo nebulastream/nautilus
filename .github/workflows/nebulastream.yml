@@ -141,28 +141,14 @@ jobs:
             nebulastream/build/**/*.log
             nebulastream/build/**/*.stats
           if-no-files-found: ignore
-      - name: Build NebulaStream for benchmarking
-        # The test build compiles DEBUG logging in, which the systests write to
-        # their log on every query; benchmarks use the Release default instead,
-        # as NebulaStream's own benchmark job does. The test build is removed
-        # first to keep the runner's disk from filling up.
-        run: |
-          docker exec "$CONTAINER" bash -c '
-            rm -rf build
-            cmake -G Ninja -B build-benchmark -DCMAKE_BUILD_TYPE=Release
-            sccache --start-server
-            status=0
-            cmake --build build-benchmark -j --target systest test-data || status=$?
-            sccache --show-stats
-            sccache --stop-server
-            exit $status'
       - name: Run systests as benchmark
         # The queries and nautilus configurations of benchmark.toml, every
         # combination on a single node with a single worker thread (see
-        # nes-bench.py). Every configuration runs this same NebulaStream build.
+        # nes-bench.py). It reuses the test build: its DEBUG logging changes
+        # neither compile nor execution times beyond the run-to-run noise.
         run: |
           python3 nautilus/.github/nebulastream/nes-bench.py run --config nautilus/.github/nebulastream/benchmark.toml \
-            --container "$CONTAINER" --build-dir "$PWD/nebulastream/build-benchmark" \
+            --container "$CONTAINER" --build-dir "$PWD/nebulastream/build" \
             --systest-dir "$PWD/nebulastream/nes-systests" --out "$PWD/benchmark/results.json"
           python3 nautilus/.github/nebulastream/nes-bench.py report benchmark/results.json \
             --metrics benchmark-metrics.json --summary benchmark-summary.md
