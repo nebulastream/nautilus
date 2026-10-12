@@ -29,6 +29,11 @@
 #
 #   cmake --build . --target nautilus-fuzz-seedgen
 #   ./nautilus/test/fuzz/nautilus-fuzz-seedgen ../nautilus/test/fuzz/corpus
+#   ./nautilus/test/fuzz/nautilus-fuzz-seedgen --check ../nautilus/test/fuzz/corpus
+#
+# Long, parallel sessions with crash triage (what the weekly CI sweep runs):
+#   ../nautilus/test/fuzz/run-fuzz.sh --fuzzer ./nautilus/test/fuzz/nautilus-fuzz \
+#       --work /tmp/fuzz-work --time 3600
 
 function(_nautilus_fuzz_common target)
 	target_link_libraries(${target} PRIVATE nautilus)

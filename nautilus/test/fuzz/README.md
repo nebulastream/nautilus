@@ -22,19 +22,23 @@ bug because every generated program is fully defined by construction.
 | `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers; dispatches each input to the right `T` and kernel signature shape (see "Kernel signature space"). |
 | `FuzzMain.cpp`     | `LLVMFuzzerTestOneInput`: coverage-guided libFuzzer entry point. |
 | `ReplayMain.cpp`   | Plain-`main` driver: replay saved inputs, smoke corpus, or `--survey`. |
-| `SeedGen.cpp`      | `nautilus-fuzz-seedgen`: regenerates `corpus/` (see "Seed corpus and dictionary"). |
+| `SeedGen.cpp`      | `nautilus-fuzz-seedgen`: regenerates `corpus/`, or `--check`s it is current (see "Seed corpus and dictionary"). |
+| `run-fuzz.sh`      | Runs a bounded, parallel libFuzzer session and triages its crashes into deduplicated, minimized findings (see "Running a fuzzing session"). |
 | `dictionary`       | libFuzzer `-dict` file of boundary-constant byte patterns (see below). |
 | `corpus/`          | Committed seed inputs exercising boundary constants and known bug shapes (see below). |
 
 ## Two drivers
 
 * **`nautilus-fuzz`** — coverage-guided libFuzzer binary (Clang + libFuzzer
-  runtime). Built with `-DENABLE_FUZZING=ON`.
+  runtime). Built with `-DENABLE_FUZZING=ON`. For anything longer than a quick
+  try, drive it through `run-fuzz.sh` (see "Running a fuzzing session").
 * **`nautilus-fuzz-replay`** — libFuzzer-free; runs on any compiler. Built with
   `-DENABLE_FUZZER_REPLAY=ON` (also built by `-DENABLE_FUZZING=ON`). Modes:
   * `nautilus-fuzz-replay` — deterministic built-in smoke corpus (aborts on the
     first finding, like libFuzzer).
-  * `nautilus-fuzz-replay <file> ...` — replay specific saved inputs.
+  * `nautilus-fuzz-replay <path> ...` — replay specific saved inputs; a
+    directory replays every file in it (e.g. `corpus/`). A path that does not
+    exist is an error (exit 2), never a silently-passing empty input.
   * `nautilus-fuzz-replay --survey [N]` — run N inputs **without** aborting and
     print findings bucketed by `(backend, config, type, shape, kind)`, to triage
     how many distinct bug classes exist (e.g. an `i8`-only bug breaks out from an
@@ -503,6 +507,76 @@ exec/s than a typical libFuzzer target — this is a soundness fuzzer, not a
 throughput one. The AST size bounds in `Ast.hpp` (`MAX_DEPTH`, `MAX_NODES`) keep
 each program tractable.
 
+## Running a fuzzing session
+
+`run-fuzz.sh` is the supported way to run `nautilus-fuzz` for real, both in CI
+(the weekly sweep calls it) and locally:
+
+```bash
+../nautilus/test/fuzz/run-fuzz.sh --fuzzer ./nautilus/test/fuzz/nautilus-fuzz \
+    --work /tmp/fuzz-work --time 3600 --jobs 8
+```
+
+It:
+
+1. **Checks the crash pipeline first** (the *canary*): with
+   `NAUTILUS_FUZZ_SELFTEST=1` the fuzzer reports a synthetic finding for its
+   first input, and the session only goes ahead if that produced a crash
+   artifact whose replay prints the expected `signature:` line. `--selftest`
+   runs just this check (the PR gate does).
+2. **Fuzzes in parallel** in libFuzzer's fork mode (`-fork=<jobs>` with
+   `-ignore_crashes/-ignore_timeouts/-ignore_ooms`): each worker is a
+   short-lived process, so a finding does not end the session and slow memory
+   growth in a long-lived process cannot either. The session seeds from the
+   committed `corpus/` (copied, never fuzzed in place) plus any `--corpus DIR`,
+   uses the `dictionary`, and grows `<work>/corpus`.
+3. **Merges the corpus** into a coverage-minimal `<work>/corpus-min` (skip with
+   `--no-merge`); the weekly sweep caches this between runs.
+4. **Triages every crash artifact**: each is replayed (up to three times, for
+   address-dependent findings) and bucketed by its *signature* — the
+   `signature:` line of the harness report (see below), else a normalized
+   sanitizer `SUMMARY:` line, else timeout/OOM/deadly signal. The smallest
+   input per signature is kept in `<work>/findings/<n>/` together with its
+   report, an occurrence count and, if `--minimize` (default 120s) shrank it
+   without changing the signature, a `minimized` reproducer.
+5. Writes `<work>/summary.md` and exits **0** (no reproducible findings),
+   **1** (findings), or **2** (usage/setup error, failed canary).
+
+`--timeout` (per input, default 300s) and `--rss-limit` (per worker, default
+4096 MB; a worker typically peaks around 100 MB) bound pathological inputs.
+Under a sanitizer build it defaults `ASAN_OPTIONS`/`UBSAN_OPTIONS` to abort on
+the first error without leak checking (known JIT-infrastructure leaks, see
+`lsan_suppressions.txt`); set them yourself to override. The script needs
+bash 4+.
+
+### Finding signatures
+
+Every harness report ends with a `signature:` line, e.g.
+
+```
+signature: bc|default|i16|arity2|mismatch
+signature: cpp|default|i32|mixed|exception: Key $N does not exists in frame.
+```
+
+It is `backend|config|type|shape|kind`, where an exception's message is cut at
+its first newline (`RuntimeException` appends a stack trace) and every run of
+digits is collapsed to `N` (SSA ids, register numbers). It deliberately
+excludes the program, arguments and addresses, so two inputs hitting the same
+bug class share a signature. `run-fuzz.sh` triage, the weekly sweep's issue
+titles, and `nautilus-fuzz-replay --survey` buckets all use it.
+
+### Environment variables
+
+| Variable | Effect |
+|----------|--------|
+| `NAUTILUS_FUZZ_BACKENDS=a,b` | Restrict the differential peers to these backends (e.g. `interpreter,bc`); an empty selection is a startup error. |
+| `NAUTILUS_FUZZ_STRICT=1` | Stop tolerating [known findings](#known-findings) (to reproduce or minimize one, or check it is fixed). |
+| `NAUTILUS_FUZZ_DUMP=1` | Dump every compilation stage to the console (triage a replayed finding). |
+| `NAUTILUS_FUZZ_LOG=1` | Keep the engine's info-level logging in `nautilus-fuzz` (silenced to warnings by default). |
+| `NAUTILUS_FUZZ_SELFTEST=1` | `nautilus-fuzz` only: turn every input into a synthetic finding (the crash-pipeline canary). |
+| `NAUTILUS_FUZZ_ITERATIONS=N` | `nautilus-fuzz-replay` only: size of the built-in smoke corpus (default 2000). |
+| `NAUTILUS_IR_VERIFY=1` | Run the IR verifier after every pass and fail on errors. |
+
 ## Seed corpus and dictionary
 
 `ByteReader.hpp` decodes every constant, argument, and buffer value straight
@@ -555,6 +629,11 @@ Two standard levers close this gap:
   ./nautilus/test/fuzz/nautilus-fuzz-seedgen ../nautilus/test/fuzz/corpus
   ```
 
+  `nautilus-fuzz-seedgen --check ../nautilus/test/fuzz/corpus` verifies the
+  committed corpus is exactly what the generator would write today (no seed
+  missing, changed, or stale) and is part of the PR gate. To regenerate,
+  delete the old `seed-*.bin` files and rerun the generator.
+
   Regenerate whenever `Ast.hpp`'s `Kind`/generation logic changes in a way
   that could shift byte offsets (a new `Kind`, a reordered table, a changed
   `sel` bit layout in `generateNode`); `SeedGen.cpp`'s own header comment has
@@ -578,35 +657,46 @@ never inserted, so buffer lengths are unaffected).
 
 ## Continuous fuzzing (CI)
 
-Two scheduled/CI jobs run the harness so its coverage doesn't regress silently
-between fuzzing sessions:
-
-- **PR gate** (`.github/workflows/pr.yml`, job `fuzz-replay-smoke`): builds
-  `nautilus-fuzz-replay` and runs it with no args on every push/PR. This is the
-  deterministic 2000-input built-in corpus — bounded, reproducible, no
-  libFuzzer dependency. Any genuine backend disagreement fails the build with
-  the `Finding` report in the log (see "Known findings" below for the handful
-  of pre-existing exceptions this corpus tolerates). The iteration count is
-  configurable via the `NAUTILUS_FUZZ_ITERATIONS` env var if a different bound
-  is ever needed.
+- **PR gate** (`.github/workflows/pr.yml`):
+  - job `fuzz-replay-smoke` builds `nautilus-fuzz-replay` and
+    `nautilus-fuzz-seedgen` (no libFuzzer dependency), checks the committed
+    seed corpus is current (`--check`), replays it, and runs the deterministic
+    2000-input built-in corpus. Any genuine backend disagreement fails the
+    build with the `Finding` report in the log (see "Known findings" below for
+    the exceptions every driver tolerates). The iteration count is
+    configurable via `NAUTILUS_FUZZ_ITERATIONS`.
+  - job `fuzz-libfuzzer-smoke` builds the coverage-guided `nautilus-fuzz`
+    (so the binary the weekly sweep depends on cannot bit-rot unnoticed),
+    runs the crash-pipeline canary (`run-fuzz.sh --selftest`), and executes
+    the seed corpus through libFuzzer with the dictionary (`-runs=0`: seeds
+    only, no mutation, so the gate stays deterministic).
 - **Weekly sweep** (`.github/workflows/fuzz-weekly.yml`): every Monday (plus
-  on-demand via `workflow_dispatch`), builds the real coverage-guided
-  `nautilus-fuzz` with Clang and runs it for a large, bounded budget
-  (`-max_total_time=7200 -runs=5000000` by default, both configurable as
-  workflow inputs). Any crash or mismatch uploads the crash input + log as a
-  build artifact and automatically files a GitHub issue (labeled
-  `fuzzer-finding`) with the `Finding` report and repro steps; a recurrence of
-  an already-filed finding gets a comment on the existing issue instead of a
-  duplicate.
+  on-demand via `workflow_dispatch`, with a configurable time budget), three
+  build variants — plain, AddressSanitizer, UndefinedBehaviorSanitizer — each
+  run `run-fuzz.sh` for 2h (default) on all runner cores. The minimized corpus
+  is cached between runs (shared by all variants), so coverage accumulates
+  week over week instead of restarting from the seeds. Each variant's
+  `summary.md` goes to the run's job summary; findings (reproducers, reports)
+  are uploaded as `fuzz-weekly-findings-<variant>-<run>` artifacts. A final
+  job collects the findings of all variants, groups them by signature, and
+  files one GitHub issue (labeled `fuzzer-finding`) per signature, or comments
+  on the open issue with the same title if it recurs.
 
 ## Reproducing and pinning a finding
 
-A crash input is a self-contained reproducer:
+A crash input is a self-contained reproducer (from `run-fuzz.sh`, prefer
+`findings/<n>/minimized` when present):
 
 ```bash
 ./nautilus/test/fuzz/nautilus-fuzz crash-<hash>            # replays the exact case
+./nautilus/test/fuzz/nautilus-fuzz-replay crash-<hash>     # same, without libFuzzer
 ./nautilus/test/fuzz/nautilus-fuzz -minimize_crash=1 -runs=10000 crash-<hash>
 ```
+
+Minimization keeps *any* crash, so check the minimized input still prints the
+same `signature:` line (`run-fuzz.sh` does this for you). To work on a
+[known finding](#known-findings), set `NAUTILUS_FUZZ_STRICT=1` — otherwise the
+drivers tolerate it and the input replays as "OK".
 
 On a mismatch the harness prints the offending **backend**, the **config**
 (option permutation, see [Config sweep](#config-sweep)), the pretty-printed
@@ -666,6 +756,25 @@ more common. `Loop` merely made this easy to *stumble into* via survey
 (a `Loop` with a zero trip count folds to its `init`, which is often exactly
 `0.0` for the same reason); the minimal repro above proves the bug itself
 predated and was independent of `Loop`/`Cast`.
+
+Hardening the libFuzzer driver for production use surfaced a harness
+infrastructure bug -- now fixed -- that silently discarded **every** finding of
+the coverage-guided binary: with `ENABLE_STACKTRACE` (on by default), libnautilus
+installs backward-cpp's deadly-signal handlers from a static initializer
+(`exceptions/Stacktrace.cpp`), and libFuzzer deliberately never replaces a
+handler that is already installed. Each finding is an `abort()`, so
+backward-cpp printed its trace and killed the process before libFuzzer could
+write the crash input -- the weekly sweep could not have uploaded a single
+reproducer. `LLVMFuzzerInitialize` (`FuzzMain.cpp`) now hands those signals back
+to `SIG_DFL` before libFuzzer installs its own handlers, and the crash-pipeline
+canary (see "Running a fuzzing session") guards against a recurrence on every
+PR and at the start of every session.
+
+The same hardening moved the known-finding filter from the smoke corpus into
+`Harness.hpp` (`isKnownFinding`), shared by every driver: the libFuzzer driver
+used to abort on known finding 1 below like on any other, so a long session
+would keep stopping at (and re-filing) the same tracked bug instead of finding
+new ones.
 
 Running the harness with the AsmJit backend enabled on ARM (it is off in the
 default CI configuration) surfaced a third bug -- now fixed: the A64 lowering
@@ -743,12 +852,13 @@ plus two further pre-existing defects, on a combined ~6.5% of the 2000-input
 corpus (129 findings via `--survey 2000`). These were in shared tracer/IR
 infrastructure well outside `Kind::Call`'s own lowering (the actual subject
 of this expansion); the smoke corpus tolerated their diagnosed exception
-strings (see `isKnownPreExistingFinding` in `ReplayMain.cpp`) without
+strings (see `isKnownFinding`, now in `Harness.hpp`) without
 treating them as pass/fail signal, while any other exception, or any value
 mismatch, still aborted the smoke corpus immediately, and `--survey` kept
 every occurrence individually visible (bucketed by backend/type/exact
 exception text, not merged into one backend/type bucket) for future
-investigation. One is still open, listed below (a second, "no Return
+investigation. One is still open, listed below and tolerated by every driver
+via `isKnownFinding` in `Harness.hpp` (a second, "no Return
 operation was recorded", was fixed in nebulastream/nautilus#382, and a third,
 the Tag/Snapshot collision described next, was fixed in
 nebulastream/nautilus#381; neither is tolerated or tracked here anymore).
@@ -925,7 +1035,8 @@ clean `main` checkout the same way):
    corpus no longer tolerates this exception.
 
 Investigating finding 3 above also caught the tolerance filter itself in
-`ReplayMain.cpp`'s `isKnownPreExistingFinding` failing silently: it compared
+`ReplayMain.cpp`'s `isKnownPreExistingFinding` (since moved to `Harness.hpp` as
+`isKnownFinding`) failing silently: it compared
 `Finding::what` against findings 1-3's bare messages with exact (`==`)
 equality, but `RuntimeException` (`exceptions/RuntimeException.cpp`)
 unconditionally appends a full stack trace to its message, so none of the
