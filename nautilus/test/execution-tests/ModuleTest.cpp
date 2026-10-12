@@ -743,4 +743,26 @@ TEST_CASE("Module Loop Functions Compiler Test") {
 	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { moduleLoopTests(engine); }, false);
 }
 
+#if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
+TEST_CASE("Module MLIR Eager And Lazy Code Generation Test") {
+	// A module has no `execute` function: eager code generation must still
+	// cover its named functions, and lazy code generation must still produce
+	// them on the first call.
+	for (const bool eager : {true, false}) {
+		DYNAMIC_SECTION("eager " << eager) {
+			engine::Options options;
+			options.setOption("engine.backend", std::string("mlir"));
+			options.setOption("mlir.eager_compilation", eager);
+			auto engine = engine::NautilusEngine(options);
+			auto module = engine.createModule();
+			module.registerFunction("add_one", addOne);
+			module.registerFunction("sum_loop", moduleSumLoop);
+			auto compiled = module.compile();
+			REQUIRE(compiled.getFunction<int32_t(int32_t)>("add_one")(5) == 6);
+			REQUIRE(compiled.getFunction<int32_t(int32_t)>("sum_loop")(3) == 30);
+		}
+	}
+}
+#endif
+
 } // namespace nautilus::engine

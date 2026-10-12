@@ -10,6 +10,7 @@
 #include <llvm/Support/Error.h>
 #include <memory>
 #include <mlir/IR/BuiltinOps.h>
+#include <string>
 
 namespace nautilus::compiler::mlir {
 
@@ -79,6 +80,11 @@ public:
 
 	llvm::Expected<void*> lookup(llvm::StringRef name);
 
+	/// Generates the machine code of the whole module now. ORC otherwise
+	/// generates it on the first lookup, i.e. on the first call of a compiled
+	/// function. Call it after registerSymbols(), as linking needs them.
+	llvm::Error materialize();
+
 	// Escape hatch. Upstream mlir::ExecutionEngine refuses to expose its
 	// LLJIT; the reason for this class's existence is that it is public here.
 	llvm::orc::LLJIT& getLLJIT() {
@@ -95,6 +101,8 @@ private:
 	/// Zeroed when moved from, so only the owner that still holds the code
 	/// withdraws its ranges.
 	ModuleIndex moduleIndex_ = NO_MODULE;
+	/// A function the module defines; looking it up materializes the module.
+	std::string definedFunction_;
 };
 
 } // namespace nautilus::compiler::mlir
