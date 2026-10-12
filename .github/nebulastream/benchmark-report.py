@@ -16,6 +16,10 @@ import statistics
 import sys
 
 
+# NebulaStream's benchmark queries (Nexmark, Linear Road, YSB, ...) on small inputs.
+BENCHMARK_SUITE = "benchmark_small/"
+
+
 def is_duration(key):
     return key.endswith(".ms") or key.endswith("Ms")
 
@@ -61,18 +65,29 @@ def report(backend, results_path, statistics_path, metrics, summary):
         if counts:
             add(f"generated code: {key}", "ops", sum(counts), pipelines)
 
-    # Execution: the worker's running-to-stopped time of each query, best of its rounds.
+    # Execution: the worker's running-to-stopped time of each query, which excludes
+    # compilation. Geometric means keep the few long, rate-limited queries (e.g. the
+    # generator sources) from drowning out everything else. Charted are the means
+    # overall and per test directory, and every query of NebulaStream's own
+    # benchmark suite; the artifact keeps all per-query times.
+    def geometric_mean(values):
+        return math.exp(statistics.fmean(math.log(max(v, 1e-3)) for v in values))
+
     times = [q["time"] * 1000 for q in queries]
-    measured = f"{len(times)} queries"
-    add("execution: total", "ms", sum(times), measured)
-    add("execution: geometric mean per query", "ms", math.exp(statistics.fmean(math.log(max(t, 1e-3)) for t in times)), measured)
+    add("execution: geometric mean per query", "ms", geometric_mean(times), f"{len(times)} queries")
+    groups = {}
+    for query in queries:
+        groups.setdefault(query["query name"].split("/")[0], []).append(query["time"] * 1000)
+    for group in sorted(groups):
+        add(f"execution: {group}/ geometric mean", "ms", geometric_mean(groups[group]), f"{len(groups[group])} queries")
     for query in sorted(queries, key=lambda q: q["query name"]):
-        add(f"execution: {query['query name']}", "ms", query["time"] * 1000)
+        if query["query name"].startswith(BENCHMARK_SUITE):
+            add(f"execution: {query['query name']}", "ms", query["time"] * 1000)
 
     summary.write(f"### NebulaStream systests on {backend}\n\n{len(compilations)} pipelines compiled, {len(times)} queries measured.\n\n")
     summary.write("| Metric | Value |\n|---|---|\n")
     for metric in metrics[first:]:
-        if not metric["name"].startswith(f"{backend} execution: ") or metric["extra"]:
+        if not metric["name"].startswith(f"{backend} execution: {BENCHMARK_SUITE}"):
             summary.write(f"| {metric['name']} | {metric['value']:,} {metric['unit']} |\n")
     slowest = sorted(queries, key=lambda q: q["time"], reverse=True)[:10]
     summary.write("\nSlowest queries:\n\n| Query | Execution |\n|---|---|\n")
