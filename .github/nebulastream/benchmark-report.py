@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
 """Turns NebulaStream systest benchmark runs into github-action-benchmark input.
 
-Reads, for each backend the run used,
-  * the BenchmarkResults.json that `systest -b` writes (best execution time per query), and
+Reads, for each backend,
+  * the BenchmarkResults.json that `systest -b` writes for the whole suite (best
+    execution time per query),
   * the JSON-lines file nautilus appends one compilation's statistics to when
-    NAUTILUS_STATISTICS_FILE is set (one line per compiled pipeline),
+    NAUTILUS_STATISTICS_FILE is set (one line per compiled pipeline), and
+  * the per-query records of run-query-shapes.py,
 and writes a `customSmallerIsBetter` list of metrics, each named after its
 backend, plus a Markdown summary.
 
-Usage: benchmark-report.py <metrics.json> <summary.md> <backend>=<BenchmarkResults.json>,<statistics.jsonl>...
+Usage: benchmark-report.py <metrics.json> <summary.md> <backend>=<BenchmarkResults.json>,<statistics.jsonl>,<shapes.json>...
 """
 import json
 import math
 import statistics
 import sys
-
-
-# NebulaStream's benchmark queries (Nexmark, Linear Road, YSB, ...) on small inputs.
-BENCHMARK_SUITE = "benchmark_small/"
 
 
 def is_duration(key):
@@ -29,7 +27,7 @@ def percentile(values, fraction):
     return ordered[min(len(ordered) - 1, int(fraction * len(ordered)))]
 
 
-def report(backend, results_path, statistics_path, metrics, summary):
+def report(backend, results_path, statistics_path, shapes_path, metrics, summary):
     with open(results_path) as f:
         queries = json.load(f)
     with open(statistics_path) as f:
@@ -68,8 +66,7 @@ def report(backend, results_path, statistics_path, metrics, summary):
     # Execution: the worker's running-to-stopped time of each query, which excludes
     # compilation. Geometric means keep the few long, rate-limited queries (e.g. the
     # generator sources) from drowning out everything else. Charted are the means
-    # overall and per test directory, and every query of NebulaStream's own
-    # benchmark suite; the artifact keeps all per-query times.
+    # overall and per test directory; the artifact keeps all per-query times.
     def geometric_mean(values):
         return math.exp(statistics.fmean(math.log(max(v, 1e-3)) for v in values))
 
@@ -80,15 +77,27 @@ def report(backend, results_path, statistics_path, metrics, summary):
         groups.setdefault(query["query name"].split("/")[0], []).append(query["time"] * 1000)
     for group in sorted(groups):
         add(f"execution: {group}/ geometric mean", "ms", geometric_mean(groups[group]), f"{len(groups[group])} queries")
-    for query in sorted(queries, key=lambda q: q["query name"]):
-        if query["query name"].startswith(BENCHMARK_SUITE):
-            add(f"execution: {query['query name']}", "ms", query["time"] * 1000)
+
+    # Query shapes, each run on its own: compile time is the median of the rounds,
+    # execution time the best one, as systest reports it.
+    with open(shapes_path) as f:
+        shapes = json.load(f)
+    for shape in shapes:
+        runs = shape["runs"]
+        extra = f"{shape['query']}, {runs[0]['pipelines']} pipelines, {len(runs)} rounds"
+        add(f"query {shape['label']}: compilation", "ms", statistics.median(r["compilation_ms"] for r in runs), extra)
+        add(f"query {shape['label']}: execution", "ms", min(r["execution_ms"] for r in runs), extra)
 
     summary.write(f"### NebulaStream systests on {backend}\n\n{len(compilations)} pipelines compiled, {len(times)} queries measured.\n\n")
     summary.write("| Metric | Value |\n|---|---|\n")
     for metric in metrics[first:]:
-        if not metric["name"].startswith(f"{backend} execution: {BENCHMARK_SUITE}"):
+        if not metric["name"].startswith(f"{backend} query "):
             summary.write(f"| {metric['name']} | {metric['value']:,} {metric['unit']} |\n")
+    summary.write("\n| Query shape | Pipelines | Compilation | Execution |\n|---|---|---|---|\n")
+    for shape in shapes:
+        runs = shape["runs"]
+        summary.write(f"| {shape['label']} | {runs[0]['pipelines']} | {statistics.median(r['compilation_ms'] for r in runs):,.1f} ms "
+                      f"| {min(r['execution_ms'] for r in runs):,.1f} ms |\n")
     slowest = sorted(queries, key=lambda q: q["time"], reverse=True)[:10]
     summary.write("\nSlowest queries:\n\n| Query | Execution |\n|---|---|\n")
     for query in slowest:
@@ -101,8 +110,8 @@ def main(metrics_path, summary_path, *runs):
     with open(summary_path, "w") as summary:
         for run in runs:
             backend, paths = run.split("=", 1)
-            results_path, statistics_path = paths.split(",", 1)
-            report(backend, results_path, statistics_path, metrics, summary)
+            results_path, statistics_path, shapes_path = paths.split(",", 2)
+            report(backend, results_path, statistics_path, shapes_path, metrics, summary)
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=1)
 
