@@ -93,7 +93,7 @@ jobs:
       - name: Build nautilus and swap it into the image's vcpkg tree
         run: docker exec "$CONTAINER" ../nautilus/.github/nebulastream/build-nautilus.sh ../nautilus . ../nautilus-build
       - name: Configure NebulaStream
-        run: docker exec "$CONTAINER" cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release -DNES_LOG_LEVEL=DEBUG
+        run: docker exec "$CONTAINER" cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release -DNES_LOG_LEVEL=DEBUG -DNES_SPLIT_TEST_BINARIES=OFF
       - name: Build NebulaStream
         run: |
           docker exec "$CONTAINER" bash -c '
