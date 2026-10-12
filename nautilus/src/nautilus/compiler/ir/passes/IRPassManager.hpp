@@ -30,12 +30,17 @@ namespace nautilus::compiler::ir {
  *    to the dump handler under `after_<pass-name>` after each pass that
  *    reports a change (a pass reporting no change is not dumped, since its
  *    output is byte-identical to the previous stage's).
+ *  - `ir.passStatistics`       (bool, default false): when a statistics sink
+ *    is supplied, also record the IR entity counts. Each count is a full IR
+ *    walk, so it runs before and after every pass in every round and costs
+ *    about as much as small passes themselves; it is off unless asked for.
  *
  * When a non-null `CompilationStatistics*` is supplied, the manager
- * records baseline IR counts under @c irPasses.baseline.*, per-pass
- * durations under @c irPasses.<name>.ms, per-pass entity deltas under
- * @c irPasses.<name>.{blocks,operations}Delta, and the pipeline total
- * under @c irPasses.totalMs. When a pass runs more than once (inside a
+ * records per-pass durations under @c irPasses.<name>.ms and the pipeline
+ * total under @c irPasses.totalMs. With `ir.passStatistics` enabled it also
+ * records baseline IR counts under @c irPasses.baseline.* and per-pass
+ * entity deltas under @c irPasses.<name>.{blocks,operations}Delta. When a
+ * pass runs more than once (inside a
  * fixed-point group), its `.ms`/`.blocksDelta`/`.operationsDelta` entries
  * accumulate across every iteration it ran rather than reflecting only the
  * last one. @c irPasses.pipelineIterations records the total number of
@@ -99,6 +104,7 @@ private:
 	bool verifyAfterEachPass;
 	bool failOnVerifyError;
 	bool dumpAfterEachPass;
+	bool passStatistics;
 	const IRPrintOptions* printOptions;
 
 	void verifyAndReport(const IRGraph& ir, const char* stage);
