@@ -206,8 +206,20 @@ void FunctionRewriter::erase(Operation* op) {
 }
 
 size_t FunctionRewriter::eraseIfDead(Operation* op) {
+	return eraseIfDeadImpl(op, false);
+}
+
+size_t FunctionRewriter::eraseIfDeadDeferred(Operation* op) {
+	return eraseIfDeadImpl(op, true);
+}
+
+size_t FunctionRewriter::eraseIfDeadImpl(Operation* op, bool deferred) {
 	size_t erasedCount = 0;
-	std::vector<Operation*> worklist {op};
+	// The cascade below never re-enters this function, so one scratch
+	// worklist serves every call; it is empty again on return.
+	auto& worklist = eraseWorklist_;
+	worklist.clear(); // a previous call may have thrown mid-cascade.
+	worklist.push_back(op);
 	while (!worklist.empty()) {
 		Operation* cur = worklist.back();
 		worklist.pop_back();
@@ -221,13 +233,79 @@ size_t FunctionRewriter::eraseIfDead(Operation* op) {
 		    (ir_ != nullptr ? !isPureOperation(*ir_, *cur) : !isPureOp(cur->getOperationType()))) {
 			continue;
 		}
-		std::vector<Operation*> operands;
-		forEachOperand(cur, [&](uint32_t, Operation* operand) { operands.push_back(operand); });
-		erase(cur);
+		forEachOperand(cur, [&](uint32_t, Operation* operand) { worklist.push_back(operand); });
+		if (deferred) {
+			// Same bookkeeping as `erase`, minus the list removal.
+			BasicBlock* block = defBlock_.at(cur);
+			unregisterUser(cur);
+			defBlock_.erase(cur);
+			uses_.erase(cur);
+			if (std::find(dirtyBlocks_.begin(), dirtyBlocks_.end(), block) == dirtyBlocks_.end()) {
+				dirtyBlocks_.push_back(block);
+			}
+			pendingErase_.insert(cur);
+		} else {
+			erase(cur);
+		}
 		++erasedCount;
-		worklist.insert(worklist.end(), operands.begin(), operands.end());
 	}
 	return erasedCount;
+}
+
+void FunctionRewriter::compactErasedOperations() {
+	if (pendingErase_.empty()) {
+		return;
+	}
+	for (auto* block : dirtyBlocks_) {
+		block->removeOperationsIf([&](const Operation* op) { return pendingErase_.contains(op); });
+	}
+	pendingErase_.clear();
+	dirtyBlocks_.clear();
+}
+
+FunctionRewriter::~FunctionRewriter() {
+	compactErasedOperations();
+}
+
+void FunctionRewriter::checkReplaceable(const Operation* old) const {
+	if (isTerminatorOp(old->getOperationType())) {
+		throw RuntimeException("FunctionRewriter::createReplacing: cannot replace terminator operation " +
+		                       old->getIdentifier().toString());
+	}
+	if (!defBlock_.contains(old)) {
+		throw RuntimeException("FunctionRewriter::createReplacing: operation " + old->getIdentifier().toString() +
+		                       " is not tracked by this rewriter session");
+	}
+}
+
+size_t FunctionRewriter::slotOf(BasicBlock* block, const Operation* op) {
+	const auto& ops = block->getOperations();
+	auto it = slotIndex_.find(op);
+	if (it != slotIndex_.end() && it->second < ops.size() && ops[it->second] == op) {
+		return it->second;
+	}
+	// Missing or stale: an insertion or removal shifted this block since it
+	// was indexed. Re-index the whole block once.
+	slotIndex_.reserve(slotIndex_.size() + ops.size());
+	for (size_t i = 0; i < ops.size(); ++i) {
+		slotIndex_[ops[i]] = i;
+	}
+	return slotIndex_.at(op);
+}
+
+void FunctionRewriter::replaceInSlot(Operation* old, Operation* replacement) {
+	BasicBlock* block = defBlock_.at(old);
+	const size_t slot = slotOf(block, old);
+	replaceAllUses(old, replacement);
+	unregisterUser(old);
+	defBlock_.erase(old);
+	uses_.erase(old);
+	slotIndex_.erase(old);
+	// `old` is not the terminator, so this is a plain pointer swap.
+	block->replaceOperation(slot, replacement);
+	slotIndex_[replacement] = slot;
+	defBlock_[replacement] = block;
+	registerUses(replacement);
 }
 
 void FunctionRewriter::removeBlockArgument(BasicBlock* block, size_t index) {

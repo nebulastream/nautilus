@@ -632,6 +632,128 @@ TEST_CASE("FunctionRewriter M10: large straight-line graph smoke test") {
 	requireVerifierClean(*irGraph);
 }
 
+// ── Batched replacement: createReplacing, eraseIfDeadDeferred ───────────
+
+namespace {
+
+/// entry: c1 = 2; c2 = 3; sum = c1 + c2; cast = (i64) sum; return cast
+std::shared_ptr<IRGraph> makeFoldableGraph() {
+	auto irGraph = std::make_shared<IRGraph>("replace-in-place-test");
+	auto& arena = irGraph->getArena();
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+	auto* c1 = entry->addOperation<ConstIntOperation>(OperationIdentifier {1}, 2, Type::i32);
+	auto* c2 = entry->addOperation<ConstIntOperation>(OperationIdentifier {2}, 3, Type::i32);
+	auto* sum = entry->addOperation<AddOperation>(OperationIdentifier {3}, c1, c2);
+	auto* cast = entry->addOperation<CastOperation>(OperationIdentifier {4}, sum, Type::i64);
+	entry->addOperation<ReturnOperation>(cast);
+	irGraph->addFunctionOperation(arena.create<FunctionOperation>(
+	    "execute", std::vector<BasicBlock*> {entry}, std::vector<Type> {}, std::vector<std::string> {}, Type::i64));
+	rebuildPredecessorLists(*irGraph);
+	return irGraph;
+}
+
+} // namespace
+
+TEST_CASE("FunctionRewriter batch: createReplacing takes over the old op's slot and uses") {
+	auto ir = makeFoldableGraph();
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	auto* entry = findBlock(*fn, 0);
+	auto* sum = findOp(*fn, 3);
+	auto* cast = findOp(*fn, 4);
+	auto* c1 = findOp(*fn, 1);
+	FunctionRewriter rewriter(*fn, ir->getArena());
+
+	auto* folded = rewriter.createReplacing<ConstIntOperation>(sum, OperationIdentifier {3}, 5, Type::i32);
+
+	const auto& ops = entry->getOperations();
+	REQUIRE(ops.size() == 5);
+	CHECK(ops[2] == folded); // same slot, nothing shifted
+	CHECK(cast->getInputs()[0] == folded);
+	CHECK(rewriter.useCount(folded) == 1);
+	CHECK(rewriter.definingBlock(folded) == entry);
+	CHECK(rewriter.definingBlock(sum) == nullptr);
+	// The old op's operand uses are gone; the operands themselves stay.
+	CHECK(rewriter.useCount(c1) == 0);
+	CHECK(rewriter.definingBlock(c1) == entry);
+	requireVerifierClean(*ir);
+}
+
+TEST_CASE("FunctionRewriter batch: createReplacing rejects terminators and untracked ops") {
+	auto ir = makeFoldableGraph();
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	auto* entry = findBlock(*fn, 0);
+	FunctionRewriter rewriter(*fn, ir->getArena());
+
+	const auto before = entry->getOperations();
+	REQUIRE_THROWS_AS(
+	    rewriter.createReplacing<ConstIntOperation>(entry->getTerminatorOp(), OperationIdentifier {9}, 0, Type::i64),
+	    RuntimeException);
+	ConstIntOperation stray(ir->getArena(), OperationIdentifier {99}, 0, Type::i32);
+	REQUIRE_THROWS_AS(rewriter.createReplacing<ConstIntOperation>(&stray, OperationIdentifier {9}, 0, Type::i32),
+	                  RuntimeException);
+	CHECK(entry->getOperations() == before);
+}
+
+TEST_CASE("FunctionRewriter batch: deferred erasure updates the tables now and the block on compaction") {
+	auto ir = makeFoldableGraph();
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	auto* entry = findBlock(*fn, 0);
+	auto* sum = findOp(*fn, 3);
+	auto* c1 = findOp(*fn, 1);
+	auto* c2 = findOp(*fn, 2);
+	FunctionRewriter rewriter(*fn, ir->getArena());
+
+	rewriter.createReplacing<ConstIntOperation>(sum, OperationIdentifier {3}, 5, Type::i32);
+	CHECK(rewriter.eraseIfDeadDeferred(c1) == 1);
+	CHECK(rewriter.eraseIfDeadDeferred(c2) == 1);
+	CHECK(rewriter.eraseIfDeadDeferred(c2) == 0); // idempotent
+	CHECK(rewriter.definingBlock(c1) == nullptr);
+	CHECK(rewriter.definingBlock(c2) == nullptr);
+	CHECK(entry->getOperations().size() == 5); // still in the list
+
+	rewriter.compactErasedOperations();
+	const auto& ops = entry->getOperations();
+	REQUIRE(ops.size() == 3);
+	CHECK(ops[0]->getIdentifier() == OperationIdentifier {3});
+	CHECK(ops[1]->getIdentifier() == OperationIdentifier {4});
+	CHECK(ops[2]->getOperationType() == Operation::OperationType::ReturnOp);
+	requireVerifierClean(*ir);
+}
+
+TEST_CASE("FunctionRewriter batch: the destructor compacts pending erasures") {
+	auto ir = makeFoldableGraph();
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	auto* entry = findBlock(*fn, 0);
+	{
+		FunctionRewriter rewriter(*fn, ir->getArena());
+		auto* folded =
+		    rewriter.createReplacing<ConstIntOperation>(findOp(*fn, 3), OperationIdentifier {3}, 5, Type::i32);
+		rewriter.createReplacing<ConstIntOperation>(findOp(*fn, 4), OperationIdentifier {4}, 5, Type::i64);
+		CHECK(rewriter.eraseIfDeadDeferred(folded) == 1);
+	}
+	CHECK(entry->getOperations().size() == 4); // c1, c2, folded cast, return
+	requireVerifierClean(*ir);
+}
+
+TEST_CASE("FunctionRewriter batch: a slot index made stale by an insertion is rebuilt") {
+	auto ir = makeFoldableGraph();
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	auto* entry = findBlock(*fn, 0);
+	FunctionRewriter rewriter(*fn, ir->getArena());
+
+	// Index the block, then shift every later op by inserting before c2.
+	rewriter.createReplacing<ConstIntOperation>(findOp(*fn, 1), OperationIdentifier {1}, 2, Type::i32);
+	rewriter.createBefore<ConstIntOperation>(findOp(*fn, 2), rewriter.freshId(), 7, Type::i32);
+	auto* cast = findOp(*fn, 4);
+	auto* folded = rewriter.createReplacing<ConstIntOperation>(cast, OperationIdentifier {4}, 5, Type::i64);
+
+	const auto& ops = entry->getOperations();
+	REQUIRE(ops.size() == 6);
+	CHECK(ops[4] == folded);
+	CHECK(std::find(ops.begin(), ops.end(), cast) == ops.end());
+	requireVerifierClean(*ir);
+}
+
 // ── mergeIntoPredecessor: CFG splice primitive ──────────────────────────
 
 namespace {
