@@ -126,25 +126,18 @@ std::vector<uint8_t> randomBuffer() {
 	return buf;
 }
 
-// One pre-existing, out-of-scope tracer/IR limitation, in shared
-// infrastructure well outside Kind::Call's own lowering or the bool/enum
-// domains this fuzzer also adds (see README.md "Known findings" for the full
-// writeup). Widening Kind::Call's generation surface and adding the
-// bool/enum domains reshuffle the byte-stream enough that the fixed-seed
-// smoke corpus below still reaches it on a small fraction of inputs;
-// `--survey` buckets by backend/type/exact exception text (see the key in
-// survey() below) so it stays individually visible and triageable rather
-// than silently folding into a single backend/type bucket. Tolerated here,
-// in the deterministic smoke corpus only, so this known fragility doesn't
-// block the actual regression signal this corpus exists to catch: any
-// genuine value mismatch, or any other exception, still aborts immediately.
+// Pre-existing, already-diagnosed tracer/IR exceptions the deterministic smoke
+// corpus tolerates (see README.md "Known findings"), so a known, tracked bug
+// does not block the regression signal this corpus exists to catch. There are
+// currently no open entries; the history of the ones since fixed follows.
 //
-//   1. "Key $N does not exists in frame." -- a Frame<K,V> (compiler/Frame.hpp,
-//      shared by the cpp/bc/asmjit lowering providers) lookup miss for an
-//      SSA value merged across two Kind::If arms, reachable with nested
-//      Kind::If inside a Kind::Call argument -- the same *class* of
-//      merged-value bookkeeping bug as the already-fixed BC/AsmJit
-//      instances documented below, just a shape those fixes didn't cover.
+// Finding "Key $N does not exists in frame." is no longer tolerated: a
+// Frame<K,V> (compiler/Frame.hpp) lookup miss for an SSA value merged across
+// two Kind::If arms nested inside a Kind::Call argument. It no longer
+// reproduces -- not in the smoke corpus, a 2000-input survey, or a strict
+// coverage-guided session -- and its shape is pinned on every backend by
+// ifMergedValueAsCallArg/twoIfMergedValuesAsCallArgs in
+// RunctimeCallFunctions.hpp.
 //
 // Finding "Invalid trace. This is maybe caused by a constant loop." is no
 // longer tolerated either (issue #381): Tag identity is a raw
@@ -209,16 +202,8 @@ std::vector<uint8_t> randomBuffer() {
 // TraceContext.cpp (issue #384) by having follow() recognize the
 // reconciliation ASSIGN by its shared tag and transparently skip it; the
 // smoke corpus now actively guards against its recurrence.
-bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& f) {
-	if (!f.exception) {
-		return false;
-	}
-	// RuntimeException (nautilus/exceptions/RuntimeException.cpp) appends a
-	// full stack trace to its message unconditionally, so `f.what` is never
-	// exactly this string when ENABLE_STACKTRACE actually resolves symbols
-	// (it always did in this environment) -- match on prefix instead of exact
-	// equality.
-	return f.what.starts_with("Key $");
+bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& /*f*/) {
+	return false;
 }
 
 // Default corpus size for the PR-gate smoke run. Overridable via

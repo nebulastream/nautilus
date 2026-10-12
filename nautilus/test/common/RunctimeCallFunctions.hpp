@@ -244,6 +244,45 @@ val<int16_t> i16NarrowCallArgCompare(val<int64_t> x, val<int16_t> y) {
 	return invoke(minI16, truncated, y);
 }
 
+int64_t sum3I64(int64_t a, int64_t b, int64_t c) noexcept {
+	return a + b + c;
+}
+
+// Regression (differential fuzzer, "Key $N does not exists in frame."): a value
+// merged across two if-arms and used as a proxy-call argument inside another
+// if-arm, i.e. `if (p0 != 0) sum3(p1, (if (p1 != 0) p1 else p2) ^ p2, p0) else
+// p2`. The cpp/bc/asmjit lowering providers once failed to find the merged SSA
+// value in their Frame for this shape.
+val<int64_t> ifMergedValueAsCallArg(val<int64_t> p0, val<int64_t> p1, val<int64_t> p2) {
+	val<int64_t> result = p2;
+	if (p0 != 0) {
+		val<int64_t> inner = p2;
+		if (p1 != 0) {
+			inner = p1;
+		}
+		result = invoke(sum3I64, p1, inner ^ p2, p0);
+	}
+	return result;
+}
+
+// Same family: two independently merged values feeding one call inside an
+// if-arm.
+val<int64_t> twoIfMergedValuesAsCallArgs(val<int64_t> p0, val<int64_t> p1, val<int64_t> p2) {
+	val<int64_t> result = p2;
+	if (p0 != 0) {
+		val<int64_t> a = p2;
+		if (p1 != 0) {
+			a = p1;
+		}
+		val<int64_t> b = p0;
+		if (p2 != 0) {
+			b = p2;
+		}
+		result = invoke(sum3I64, a, b, a ^ b);
+	}
+	return result;
+}
+
 __attribute__((noinline)) int64_t identityI64(int64_t v) noexcept {
 	return v;
 }

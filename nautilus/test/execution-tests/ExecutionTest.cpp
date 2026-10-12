@@ -1048,6 +1048,20 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		// Negative wide value truncating to a negative narrow one.
 		REQUIRE(f(int64_t(-65538), int16_t(5)) == -2);
 	}
+	// Regression (differential fuzzer): if-merged values as proxy-call
+	// arguments; see ifMergedValueAsCallArg in RunctimeCallFunctions.hpp.
+	SECTION("ifMergedValueAsCallArg") {
+		auto f = engine.registerFunction(ifMergedValueAsCallArg);
+		REQUIRE(f(1, 2, 3) == 4); // sum3(2, 2 ^ 3, 1)
+		REQUIRE(f(0, 2, 3) == 3); // outer branch not taken
+		REQUIRE(f(1, 0, 3) == 1); // sum3(0, 3 ^ 3, 1)
+		REQUIRE(f(5, 0, 0) == 5); // sum3(0, 0 ^ 0, 5)
+		auto g = engine.registerFunction(twoIfMergedValuesAsCallArgs);
+		REQUIRE(g(1, 2, 3) == 6);  // a = 2, b = 3: sum3(2, 3, 1)
+		REQUIRE(g(0, 2, 3) == 3);  // outer branch not taken
+		REQUIRE(g(1, 0, 3) == 6);  // a = 3, b = 3: sum3(3, 3, 0)
+		REQUIRE(g(5, 0, 0) == 10); // a = 0, b = 5: sum3(0, 5, 5)
+	}
 	// Regression (#525): see invokeWithElementRef in RunctimeCallFunctions.hpp.
 	SECTION("invokeWithElementRef") {
 		int64_t data[3] = {11, 42, 100};
