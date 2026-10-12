@@ -11,9 +11,10 @@ run-name: NebulaStream against nautilus ${{ github.ref_name }}
 # nautilus is rebuilt, and the container's own state is thrown away afterwards.
 #
 # Once the tests pass, NebulaStream's systests also run as a benchmark: every
-# query once, one at a time, compiled with nautilus. The run records nautilus'
-# compilation statistics per pipeline and each query's execution time, and the
-# `benchmark` job tracks both over nautilus' history.
+# query once, one at a time, compiled with nautilus' MLIR backend and then with
+# its AsmJit backend. Each run records nautilus' compilation statistics per
+# pipeline and each query's execution time, and the `benchmark` job tracks both
+# over nautilus' history.
 on:
   push:
     branches:
@@ -142,13 +143,18 @@ jobs:
             sccache --stop-server
             exit $status'
       - name: Run systests as benchmark
+        # Once per backend: NebulaStream itself always compiles with MLIR, and
+        # NAUTILUS_BACKEND moves the same workload onto AsmJit.
         run: |
-          rm -f "$PWD/nautilus-statistics.jsonl"
-          docker exec -e NAUTILUS_STATISTICS_FILE="$PWD/nautilus-statistics.jsonl" "$CONTAINER" \
-            ctest --test-dir build-benchmark --no-tests=error -R '^systest_benchmark_small$' --output-on-failure --timeout 2400
-          python3 nautilus/.github/nebulastream/benchmark-report.py \
-            "$(find nebulastream/build-benchmark -name BenchmarkResults.json -path '*benchmark_small*')" \
-            nautilus-statistics.jsonl benchmark-metrics.json benchmark-summary.md
+          runs=()
+          for backend in mlir asmjit; do
+            rm -f "nautilus-statistics-$backend.jsonl"
+            docker exec -e NAUTILUS_BACKEND="$backend" -e NAUTILUS_STATISTICS_FILE="$PWD/nautilus-statistics-$backend.jsonl" "$CONTAINER" \
+              ctest --test-dir build-benchmark --no-tests=error -R '^systest_benchmark_small$' --output-on-failure --timeout 2400
+            cp "$(find nebulastream/build-benchmark -name BenchmarkResults.json -path '*benchmark_small*')" "benchmark-results-$backend.json"
+            runs+=("$backend=benchmark-results-$backend.json,nautilus-statistics-$backend.jsonl")
+          done
+          python3 nautilus/.github/nebulastream/benchmark-report.py benchmark-metrics.json benchmark-summary.md "${runs[@]}"
           cat benchmark-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
@@ -156,8 +162,8 @@ jobs:
           name: nebulastream-benchmark
           path: |
             benchmark-metrics.json
-            nautilus-statistics.jsonl
-            nebulastream/build-benchmark/**/BenchmarkResults.json
+            benchmark-results-*.json
+            nautilus-statistics-*.jsonl
       - name: Save compiler caches
         if: ${{ !cancelled() }}
         uses: actions/cache/save@v4

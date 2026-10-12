@@ -5,6 +5,7 @@
 #include "nautilus/compiler/TieredCompiler.hpp"
 #include "nautilus/config.hpp"
 #include <catch2/catch_all.hpp>
+#include <cstdlib>
 #include <thread>
 #include <vector>
 
@@ -470,5 +471,32 @@ TEST_CASE("Tiered Compilation - Explicit Backend Runs Single-Tier") {
 		}
 	}
 }
+
+#if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND) && defined(ENABLE_ASMJIT_BACKEND)
+TEST_CASE("Tiered Compilation - NAUTILUS_BACKEND Replaces The Selected Backend") {
+	// The environment variable wins over the application's own choice, so a
+	// workload can be moved to another backend without touching its code.
+	struct EnvironmentGuard {
+		EnvironmentGuard() {
+			setenv("NAUTILUS_BACKEND", "asmjit", 1);
+		}
+		~EnvironmentGuard() {
+			unsetenv("NAUTILUS_BACKEND");
+		}
+	};
+	const EnvironmentGuard guard;
+
+	Options options;
+	options.setOption("engine.backend", "mlir");
+	auto engine = NautilusEngine(options);
+	REQUIRE(engine.getNameOfBackend() == "asmjit");
+
+	auto module = engine.createModule();
+	module.registerFunction("add_one", tieredAddOne);
+	auto compiled = module.compile();
+	REQUIRE(compiled.getFunction<int32_t(int32_t)>("add_one")(5) == 6);
+	REQUIRE(std::get<std::string>(*compiled.getStatistics()->find("backend.name")) == "asmjit");
+}
+#endif
 
 } // namespace nautilus::engine

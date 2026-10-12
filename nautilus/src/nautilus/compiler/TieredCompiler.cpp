@@ -54,8 +54,14 @@ TieredJITCompiler::TieredJITCompiler(engine::Options options, common::ArenaPool&
     : pipeline_(options, traceArenaPool, irArenaPool) {
 	// An explicitly selected backend pins single-tier compilation: the engine
 	// compiles synchronously with exactly this backend and never promotes.
-	// It takes precedence over the tier options.
+	// It takes precedence over the tier options. NAUTILUS_BACKEND, when set,
+	// replaces the application's choice, so an embedding application's
+	// workload can run on another backend without changing its code.
 	auto explicitBackend = options.getOptionOrDefault<std::string>("engine.backend", "");
+	if (const char* forcedBackend = std::getenv("NAUTILUS_BACKEND");
+	    forcedBackend != nullptr && *forcedBackend != '\0') {
+		explicitBackend = forcedBackend;
+	}
 	if (!explicitBackend.empty()) {
 		config_.tier1.backend = explicitBackend;
 		config_.backgroundPromotion = false;
