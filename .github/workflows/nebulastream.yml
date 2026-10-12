@@ -27,6 +27,8 @@ on:
         description: 'NebulaStream branch, tag or commit to build against'
         required: false
         default: 'main'
+permissions:
+  contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -79,7 +81,7 @@ jobs:
         with:
           images: ${{ steps.image.outputs.image }}
       - name: Restore compiler caches
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .cache
           key: nebulastream-${{ steps.image.outputs.sha }}-${{ github.sha }}
@@ -115,6 +117,14 @@ jobs:
         run: |
           docker exec "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -L Systest \
             --output-on-failure --timeout 4800
+      - name: Save compiler caches
+        # A manual run may build an arbitrary NebulaStream ref; its objects must
+        # not land in the cache every later run on main restores.
+        if: ${{ !cancelled() && github.event_name != 'workflow_dispatch' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cache
+          key: nebulastream-${{ steps.image.outputs.sha }}-${{ github.sha }}
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
