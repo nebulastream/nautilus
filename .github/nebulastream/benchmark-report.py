@@ -6,7 +6,7 @@ Reads, for each backend,
     execution time per query),
   * the JSON-lines file nautilus appends one compilation's statistics to when
     NAUTILUS_STATISTICS_FILE is set (one line per compiled pipeline), and
-  * the per-query records of run-query-shapes.py,
+  * the per-query records of run-benchmark.py,
 and writes a `customSmallerIsBetter` list of metrics, each named after its
 backend, plus a Markdown summary.
 
