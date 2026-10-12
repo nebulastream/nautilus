@@ -22,11 +22,6 @@ on:
     # up even on days nautilus itself does not change.
     - cron: '17 2 * * *'
   workflow_dispatch:
-    inputs:
-      nebulastream_ref:
-        description: 'NebulaStream branch, tag or commit to build against'
-        required: false
-        default: 'main'
 permissions:
   contents: read
 concurrency:
@@ -38,7 +33,7 @@ jobs:
     # label: a full NebulaStream build is too slow to gate every PR on.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'nebulastream')
     runs-on: ubuntu-24.04
-    name: Build and test NebulaStream (${{ inputs.nebulastream_ref || 'main' }})
+    name: Build and test NebulaStream main
     timeout-minutes: 150
     env:
       CONTAINER: nes
@@ -57,7 +52,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: nebulastream/nebulastream
-          ref: ${{ inputs.nebulastream_ref || 'main' }}
+          ref: main
           path: nebulastream
       - name: Resolve NebulaStream CI image
         id: image
@@ -118,9 +113,7 @@ jobs:
           docker exec "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -L Systest \
             --output-on-failure --timeout 4800
       - name: Save compiler caches
-        # A manual run may build an arbitrary NebulaStream ref; its objects must
-        # not land in the cache every later run on main restores.
-        if: ${{ !cancelled() && github.event_name != 'workflow_dispatch' }}
+        if: ${{ !cancelled() }}
         uses: actions/cache/save@v4
         with:
           path: .cache
