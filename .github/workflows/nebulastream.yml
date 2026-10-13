@@ -214,6 +214,9 @@ jobs:
     # Kept apart from the build so the job that may push to the `pages` branch
     # never runs NebulaStream's code or touches the compiler cache.
     needs: nebulastream
+    # Explicit: by default a job is skipped when any job upstream of it was,
+    # and `changes` is skipped on every run but the nightly one.
+    if: ${{ !cancelled() && needs.nebulastream.result == 'success' }}
     runs-on: ubuntu-24.04
     name: Track NebulaStream benchmark
     permissions:
