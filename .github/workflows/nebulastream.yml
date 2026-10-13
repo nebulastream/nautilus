@@ -16,17 +16,16 @@ run-name: NebulaStream against nautilus ${{ github.ref_name }}
 # and options, set at runtime through NAUTILUS_OPTIONS) and records compilation
 # and execution time per query. The `benchmark` job tracks them over nautilus'
 # history.
+#
+# A full run takes hours, so it runs once a night, and only when main has moved
+# since the last successful nightly run. It also runs on demand and on PRs
+# labeled `nebulastream`.
 on:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
       - main
     types: [ opened, reopened, synchronize, labeled ]
   schedule:
-    # Nightly, so NebulaStream-side changes that break against nautilus main show
-    # up even on days nautilus itself does not change.
     - cron: '17 2 * * *'
   workflow_dispatch:
 permissions:
@@ -35,10 +34,40 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  changes:
+    # Skips the nightly run when main is still at the commit the last successful
+    # nightly run built. A failed run does not count, so the next night retries;
+    # if the lookup itself fails, the run goes ahead.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    name: Check for changes on main
+    permissions:
+      actions: read
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/nebulastream.yml/runs?event=schedule&branch=main&status=success&per_page=1" \
+            --jq '.workflow_runs[0].head_sha // ""') || last=""
+          if [ "$last" = "$GITHUB_SHA" ]; then
+            echo "main is still at $GITHUB_SHA, which the last successful nightly run built; skipping." >> "$GITHUB_STEP_SUMMARY"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
   nebulastream:
-    # On pull requests this runs only when the PR carries the `nebulastream`
-    # label: a full NebulaStream build is too slow to gate every PR on.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'nebulastream')
+    needs: changes
+    # Nightly only when main changed (see `changes`). On pull requests only
+    # when the PR carries the `nebulastream` label: a full NebulaStream build is
+    # too slow to gate every PR on.
+    if: >-
+      !cancelled() && (
+        (github.event_name == 'schedule' && needs.changes.outputs.changed == 'true') ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebulastream')))
     runs-on: ubuntu-24.04
     name: Build and test NebulaStream main
     timeout-minutes: 240
@@ -194,10 +223,10 @@ jobs:
           # Its own directory: the UI in tools/benchmark-ui reads dev/bench and
           # expects only the tracing benchmark there.
           benchmark-data-dir-path: dev/nebulastream
-          # Only main's own commits extend the history; PRs and nightly runs
+          # Only runs on main (nightly or on demand) extend the history; PRs
           # compare against it.
-          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          auto-push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          save-data-file: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
           summary-always: true
           comment-on-alert: ${{ github.event_name == 'pull_request' }}
           # Hosted runners vary by tens of percent between runs, so only flag
