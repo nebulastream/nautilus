@@ -17,9 +17,9 @@ run-name: NebulaStream against nautilus ${{ github.ref_name }}
 # and execution time per query. The `benchmark` job tracks them over nautilus'
 # history.
 #
-# A full run takes hours, so it runs once a night, and only when main has moved
-# since the last successful nightly run. It also runs on demand and on PRs
-# labeled `nebulastream`.
+# A full run takes hours, so it runs once a night, and only when nautilus main
+# or NebulaStream main has moved since the last successful run on main. It also
+# runs on demand and on PRs labeled `nebulastream`.
 on:
   pull_request:
     branches:
@@ -35,9 +35,11 @@ concurrency:
   cancel-in-progress: true
 jobs:
   changes:
-    # Skips the nightly run when main is still at the commit the last successful
-    # nightly run built. A failed run does not count, so the next night retries;
-    # if the lookup itself fails, the run goes ahead.
+    # Skips the nightly run when neither nautilus main nor NebulaStream main has
+    # moved since the last successful run on main. Every such run records the
+    # pair it built in the `nebulastream-revisions` artifact (see `benchmark`).
+    # A failed run records nothing, so the next night retries; if a lookup
+    # fails, the run goes ahead.
     if: github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     name: Check for changes on main
@@ -45,22 +47,31 @@ jobs:
       actions: read
     outputs:
       changed: ${{ steps.check.outputs.changed }}
+      nebulastream: ${{ steps.check.outputs.nebulastream }}
     steps:
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/nebulastream.yml/runs?event=schedule&branch=main&status=success&per_page=1" \
-            --jq '.workflow_runs[0].head_sha // ""') || last=""
-          if [ "$last" = "$GITHUB_SHA" ]; then
-            echo "main is still at $GITHUB_SHA, which the last successful nightly run built; skipping." >> "$GITHUB_STEP_SUMMARY"
+          nebulastream=$(git ls-remote https://github.com/nebulastream/nebulastream.git refs/heads/main | cut -f1) || nebulastream=""
+          echo "nebulastream=$nebulastream" >> "$GITHUB_OUTPUT"
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=nebulastream-revisions&per_page=30" --jq '
+            [.artifacts[] | select((.expired | not) and .workflow_run.head_branch == "main"
+              and .workflow_run.head_repository_id == .workflow_run.repository_id)][0].workflow_run.id // ""') || run=""
+          built=""
+          if [ -n "$run" ] && gh run download "$run" -R "$GITHUB_REPOSITORY" -n nebulastream-revisions -D last; then
+            built=$(cat last/revisions.txt)
+          fi
+          if [ -n "$nebulastream" ] && [ "$built" = "$GITHUB_SHA $nebulastream" ]; then
+            echo "nautilus $GITHUB_SHA and NebulaStream $nebulastream are what run $run built; skipping." >> "$GITHUB_STEP_SUMMARY"
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
+            echo "Last built: ${built:-none}; now: $GITHUB_SHA ${nebulastream:-unknown}." >> "$GITHUB_STEP_SUMMARY"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
   nebulastream:
     needs: changes
-    # Nightly only when main changed (see `changes`). On pull requests only
+    # Nightly only when nautilus or NebulaStream main changed (see `changes`). On pull requests only
     # when the PR carries the `nebulastream` label: a full NebulaStream build is
     # too slow to gate every PR on.
     if: >-
@@ -71,6 +82,8 @@ jobs:
     runs-on: ubuntu-24.04
     name: Build and test NebulaStream main
     timeout-minutes: 240
+    outputs:
+      nebulastream: ${{ steps.image.outputs.sha }}
     env:
       CONTAINER: nes
       # Persisted between runs by actions/cache. NebulaStream's sources rarely
@@ -88,7 +101,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: nebulastream/nebulastream
-          ref: main
+          # Nightly, the commit `changes` compared, so the recorded pair is
+          # what was built.
+          ref: ${{ needs.changes.outputs.nebulastream || 'main' }}
           path: nebulastream
       - name: Resolve NebulaStream CI image
         id: image
@@ -233,3 +248,14 @@ jobs:
           # what that noise cannot explain.
           alert-threshold: '150%'
           max-items-in-chart: 200
+      - name: Record the built revisions
+        # Read by the `changes` job of later nightly runs.
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          NEBULASTREAM_SHA: ${{ needs.nebulastream.outputs.nebulastream }}
+        run: echo "$GITHUB_SHA $NEBULASTREAM_SHA" > revisions.txt
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        with:
+          name: nebulastream-revisions
+          path: revisions.txt
