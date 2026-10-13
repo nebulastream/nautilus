@@ -1,6 +1,6 @@
 # NebulaStream against nautilus
 
-`.github/workflows/nebulastream.yml` builds NebulaStream `main` against this nautilus, runs its tests, and benchmarks it. The files here do the work:
+`.github/workflows/nebulastream.yml` builds NebulaStream `main` against this nautilus, runs its tests, and benchmarks it. It runs nightly when nautilus `main` has changed since the last successful nightly run, on demand, and on PRs labeled `nebulastream`. The files here do the work:
 
 | File | Purpose |
 |---|---|
