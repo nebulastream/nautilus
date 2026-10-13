@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <fmt/format.h>
 #include <string_view>
+#include <type_traits>
+#include <variant>
 
 namespace nautilus::compiler {
 
@@ -71,6 +73,33 @@ std::pair<std::string_view, std::string_view> splitGroup(std::string_view key) {
 /// emphasised by being emitted first within their group.
 bool isTotalSubkey(std::string_view subkey) {
 	return subkey == "totalMs" || subkey == "total.ms" || subkey == "total";
+}
+
+void appendJsonString(std::string& out, std::string_view text) {
+	out += '"';
+	for (const char c : text) {
+		switch (c) {
+		case '"':
+			out += "\\\"";
+			break;
+		case '\\':
+			out += "\\\\";
+			break;
+		case '\n':
+			out += "\\n";
+			break;
+		case '\t':
+			out += "\\t";
+			break;
+		default:
+			if (static_cast<unsigned char>(c) < 0x20) {
+				out += fmt::format("\\u{:04x}", static_cast<unsigned>(c));
+			} else {
+				out += c;
+			}
+		}
+	}
+	out += '"';
 }
 
 } // namespace
@@ -145,6 +174,29 @@ std::string CompilationStatistics::toString() const {
 	for (const auto& [k, v] : entries_) {
 		out += fmt::format("{} = {}\n", k, formatValue(k, v));
 	}
+	return out;
+}
+
+std::string CompilationStatistics::toJson() const {
+	std::string out = "{";
+	for (const auto& [k, v] : entries_) {
+		if (out.size() > 1) {
+			out += ',';
+		}
+		appendJsonString(out, k);
+		out += ':';
+		std::visit(
+		    [&out](const auto& value) {
+			    using T = std::decay_t<decltype(value)>;
+			    if constexpr (std::is_same_v<T, std::string>) {
+				    appendJsonString(out, value);
+			    } else {
+				    out += fmt::format("{}", value);
+			    }
+		    },
+		    v);
+	}
+	out += '}';
 	return out;
 }
 

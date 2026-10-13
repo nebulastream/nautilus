@@ -3,6 +3,10 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
 #include <catch2/catch_all.hpp>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 namespace nautilus::engine {
 
@@ -216,6 +220,43 @@ TEST_CASE("CompilationStatistics: a two-tier compile optimizes the graph its bc 
 	}
 }
 #endif
+
+TEST_CASE("CompilationStatistics: NAUTILUS_STATISTICS_FILE receives one JSON line per compilation") {
+	auto backend = getAnyBackend();
+	if (backend.empty()) {
+		SKIP("No compilation backend available");
+	}
+
+	const auto path = std::filesystem::temp_directory_path() / "nautilus-statistics-test.jsonl";
+	std::filesystem::remove(path);
+	struct EnvironmentGuard {
+		explicit EnvironmentGuard(const char* value) {
+			setenv("NAUTILUS_STATISTICS_FILE", value, 1);
+		}
+		~EnvironmentGuard() {
+			unsetenv("NAUTILUS_STATISTICS_FILE");
+		}
+	};
+
+	Options options;
+	options.setOption("engine.backend", backend);
+	std::string reported;
+	{
+		const EnvironmentGuard guard(path.c_str());
+		NautilusEngine engine(options);
+		auto fn = engine.registerFunction(statsAddOne);
+		REQUIRE(fn(41) == 42);
+		reported = fn.getStatistics()->toJson();
+	}
+
+	std::ifstream in(path);
+	std::string line;
+	REQUIRE(std::getline(in, line));
+	REQUIRE(line == reported);
+	REQUIRE(line.find("\"compilation.totalMs\":") != std::string::npos);
+	REQUIRE_FALSE(std::getline(in, line));
+	std::filesystem::remove(path);
+}
 
 TEST_CASE("CompilationStatistics: interpreted module has no stats") {
 	Options options;

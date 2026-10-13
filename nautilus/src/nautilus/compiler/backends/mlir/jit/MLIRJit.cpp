@@ -114,7 +114,8 @@ MLIRJit::~MLIRJit() {
 // it, and both objects then run a destructor that withdraws the same ranges --
 // the second of which would be withdrawing live code's symbols.
 MLIRJit::MLIRJit(MLIRJit&& other) noexcept
-    : jit_(std::move(other.jit_)), moduleIndex_(std::exchange(other.moduleIndex_, NO_MODULE)) {
+    : jit_(std::move(other.jit_)), moduleIndex_(std::exchange(other.moduleIndex_, NO_MODULE)),
+      definedFunction_(std::move(other.definedFunction_)) {
 }
 
 MLIRJit& MLIRJit::operator=(MLIRJit&& other) noexcept {
@@ -122,6 +123,7 @@ MLIRJit& MLIRJit::operator=(MLIRJit&& other) noexcept {
 		JitSymbolRegistry::instance().remove(moduleIndex_);
 		jit_ = std::move(other.jit_);
 		moduleIndex_ = std::exchange(other.moduleIndex_, NO_MODULE);
+		definedFunction_ = std::move(other.definedFunction_);
 	}
 	return *this;
 }
@@ -217,6 +219,15 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 			return transformErr;
 		}
 	}
+	std::string definedFunction;
+	tsm.withModuleDo([&definedFunction](llvm::Module& m) {
+		for (const auto& function : m) {
+			if (!function.isDeclaration() && function.hasExternalLinkage()) {
+				definedFunction = function.getName().str();
+				break;
+			}
+		}
+	});
 	if (auto err = jit->addIRModule(std::move(tsm))) {
 		return err;
 	}
@@ -249,13 +260,23 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		}
 	}
 
-	return std::unique_ptr<MLIRJit>(new MLIRJit(std::move(jit), moduleIndex));
+	auto mlirJit = std::unique_ptr<MLIRJit>(new MLIRJit(std::move(jit), moduleIndex));
+	mlirJit->definedFunction_ = std::move(definedFunction);
+	return mlirJit;
 }
 
 void MLIRJit::registerSymbols(llvm::function_ref<llvm::orc::SymbolMap(llvm::orc::MangleAndInterner)> symbolMapFn) {
 	auto& mainJD = jit_->getMainJITDylib();
 	llvm::cantFail(mainJD.define(llvm::orc::absoluteSymbols(
 	    symbolMapFn(llvm::orc::MangleAndInterner(mainJD.getExecutionSession(), jit_->getDataLayout())))));
+}
+
+llvm::Error MLIRJit::materialize() {
+	// ORC materializes a module as a whole, so one defined symbol is enough.
+	if (definedFunction_.empty()) {
+		return llvm::Error::success();
+	}
+	return jit_->lookup(definedFunction_).takeError();
 }
 
 llvm::Expected<void*> MLIRJit::lookup(llvm::StringRef name) {

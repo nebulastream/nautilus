@@ -137,3 +137,12 @@ TEST_CASE("ScopedTimer: null stats pointer is a no-op") {
 	ScopedTimer timer(nullptr, "ignored");
 	(void) timer;
 }
+
+TEST_CASE("CompilationStatistics: toJson renders each value type and escapes text") {
+	CompilationStatistics stats;
+	REQUIRE(stats.toJson() == "{}");
+	stats.set("ir.operations", int64_t {42});
+	stats.set("tracing.ms", 1.5);
+	stats.set("compilation.unitId", std::string {"a\"b\\c\nd"});
+	REQUIRE(stats.toJson() == R"({"ir.operations":42,"tracing.ms":1.5,"compilation.unitId":"a\"b\\c\nd"})");
+}

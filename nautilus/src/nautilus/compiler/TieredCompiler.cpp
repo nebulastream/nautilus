@@ -11,6 +11,9 @@
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include <chrono>
+#include <cstdlib>
+#include <fstream>
+#include <mutex>
 #include <thread>
 
 namespace nautilus::compiler {
@@ -24,6 +27,24 @@ static std::string createPromotionUnitID() {
 	std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d_%02d-%02d-%02d_tier1", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 	              tm.tm_hour, tm.tm_min, tm.tm_sec);
 	return std::string(buf);
+}
+
+/// Appends @p statistics as one JSON line to the file named by the
+/// NAUTILUS_STATISTICS_FILE environment variable, if it is set. This measures
+/// an embedding application's compilations without changing how that
+/// application configures nautilus.
+static void appendStatisticsToFile(const CompilationStatistics& statistics) {
+	const char* path = std::getenv("NAUTILUS_STATISTICS_FILE");
+	if (path == nullptr || *path == '\0') {
+		return;
+	}
+	static std::mutex fileMutex;
+	const std::lock_guard<std::mutex> lock(fileMutex);
+	std::ofstream out(path, std::ios::app);
+	out << statistics.toJson() << '\n';
+	if (!out) {
+		log::warn("Could not append compilation statistics to {}", path);
+	}
 }
 
 // --- TieredJITCompiler ---
@@ -117,6 +138,7 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 		                    : std::string {};
 		log::info("\n{}", statistics->formatReport(id, backend));
 	}
+	appendStatisticsToFile(*statistics);
 
 	executable->setCompilationStatistics(std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
 
@@ -201,6 +223,7 @@ void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>
 			if (options.getOptionOrDefault("engine.logStatistics", false)) {
 				log::info("\n{}", statistics->formatReport(compilationId, config.tier1.backend));
 			}
+			appendStatisticsToFile(*statistics);
 
 			tier1Executable->setCompilationStatistics(
 			    std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
