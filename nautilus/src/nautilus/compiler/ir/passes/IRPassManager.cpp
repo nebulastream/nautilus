@@ -35,7 +35,8 @@ IRPassManager::IRPassManager(const engine::Options& options, compiler::DumpHandl
       verifyBeforePipeline(options.getOptionOrDefault("ir.verifyBeforePipeline", false)),
       verifyAfterEachPass(options.getOptionOrDefault("ir.verifyAfterEachPass", false)),
       failOnVerifyError(options.getOptionOrDefault("ir.failOnVerifyError", false)),
-      dumpAfterEachPass(options.getOptionOrDefault("ir.dumpAfterEachPass", false)), printOptions(printOptions) {
+      dumpAfterEachPass(options.getOptionOrDefault("ir.dumpAfterEachPass", false)),
+      passStatistics(options.getOptionOrDefault("ir.passStatistics", false)), printOptions(printOptions) {
 }
 
 void IRPassManager::addPass(std::unique_ptr<IRPass> pass) {
@@ -69,7 +70,9 @@ void IRPassManager::run(IRGraph& ir) {
 
 	const auto pipelineStart = std::chrono::steady_clock::now();
 
-	if (statistics != nullptr) {
+	const bool collectIRCounts = statistics != nullptr && passStatistics;
+
+	if (collectIRCounts) {
 		const auto baseline = computeStatistics(ir);
 		statistics->set("irPasses.baseline.functions", static_cast<int64_t>(baseline.numFunctions));
 		statistics->set("irPasses.baseline.blocks", static_cast<int64_t>(baseline.numBlocks));
@@ -87,11 +90,10 @@ void IRPassManager::run(IRGraph& ir) {
 				const auto name = pass->getName();
 
 				IRStatistics before;
-				std::chrono::steady_clock::time_point passStart;
-				if (statistics != nullptr) {
+				if (collectIRCounts) {
 					before = computeStatistics(ir);
-					passStart = std::chrono::steady_clock::now();
 				}
+				const auto passStart = std::chrono::steady_clock::now();
 
 				const bool changed = pass->apply(ir);
 				anyChangeThisRound = anyChangeThisRound || changed;
@@ -100,6 +102,9 @@ void IRPassManager::run(IRGraph& ir) {
 					const auto elapsedMs =
 					    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - passStart).count();
 					addMs(*statistics, "irPasses." + name + ".ms", elapsedMs);
+				}
+
+				if (collectIRCounts) {
 					auto after = computeStatistics(ir);
 					// `before - after` yields the signed-free delta representation
 					// used by IRStatistics: a positive "delta" means the pass
