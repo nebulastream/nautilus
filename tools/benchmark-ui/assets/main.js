@@ -5,11 +5,13 @@
 //   #/run/<sha>       #/runs        #/compare/<baseSha>..<targetSha>
 //   #/nes/trends/<phase>?w=<measurement>&hide=<configurations>&log=1
 //   #/nes/run/<sha>   #/nes/runs    #/nes/compare/<baseSha>..<targetSha>
+//   #/nes/passes?run=<sha>&hide=<configurations>&ms=1
 
 import { buildModel, TRACING_SCHEME, NES_SCHEME } from './model.js';
 import { renderTrends } from './views/trends.js';
 import { renderRun, renderRunList } from './views/run.js';
 import { renderCompare } from './views/compare.js';
+import { renderPasses } from './views/passes.js';
 
 const content = document.getElementById('content');
 const sidebar = document.getElementById('sidebar');
@@ -115,6 +117,9 @@ function parseHash() {
 	if (segments[0] === 'trends' && segments[1]) {
 		return { model, view: 'trends', phase: segments[1], params };
 	}
+	if (segments[0] === 'passes' && model.passBreakdown) {
+		return { model, view: 'passes', params };
+	}
 	return null;
 }
 
@@ -141,6 +146,19 @@ function renderSidebarSection(model, active) {
 			a.className = 'active';
 		}
 		sidebar.appendChild(a);
+	}
+	if (model.passBreakdown && model.catalog.has('query_compilation')) {
+		const breakdownTitle = document.createElement('div');
+		breakdownTitle.className = 'nav-title';
+		breakdownTitle.textContent = 'Breakdown';
+		sidebar.appendChild(breakdownTitle);
+		const passesLink = document.createElement('a');
+		passesLink.href = `#/${model.prefix}passes`;
+		passesLink.textContent = 'Compilation passes';
+		if (isActive && active.view === 'passes') {
+			passesLink.className = 'active';
+		}
+		sidebar.appendChild(passesLink);
 	}
 	const runsTitle = document.createElement('div');
 	runsTitle.className = 'nav-title';
@@ -195,6 +213,8 @@ function route() {
 		cleanup = renderRun(content, model, parsed.sha) || (() => {});
 	} else if (parsed.view === 'runs') {
 		cleanup = renderRunList(content, model) || (() => {});
+	} else if (parsed.view === 'passes') {
+		cleanup = renderPasses(content, model, parsed.params, navigate) || (() => {});
 	} else if (parsed.view === 'compare') {
 		cleanup = renderCompare(content, model, parsed.base, parsed.target, navigate) || (() => {});
 	}

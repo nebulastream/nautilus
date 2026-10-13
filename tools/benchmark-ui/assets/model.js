@@ -23,6 +23,7 @@ export const TRACING_SCHEME = {
 	seriesFilter: false,
 	defaultLog: false,
 	workloadRank: () => 0,
+	passBreakdown: false,
 };
 
 export const NES_SCHEME = {
@@ -40,6 +41,8 @@ export const NES_SCHEME = {
 	// whose values span less than 10x stay linear unless log is chosen.
 	defaultLog: true,
 	workloadRank: nesWorkloadRank,
+	// Query compilation metrics carry a per-pass breakdown (views/passes.js).
+	passBreakdown: true,
 };
 
 export function buildModel(data, scheme = TRACING_SCHEME) {

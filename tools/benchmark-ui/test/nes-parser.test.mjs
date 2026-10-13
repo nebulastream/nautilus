@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseNes, NES_PHASE_ORDER } from '../assets/nes-parser.js';
+import { parseNes, NES_PHASE_ORDER, splitExtra, passStage, PASS_STAGES } from '../assets/nes-parser.js';
 
 // Names exactly as .github/nebulastream/nes-bench.py `report` writes them.
 const cases = [
@@ -36,4 +36,44 @@ test('a query label may contain colons-free text with slashes and digits', () =>
 	const p = parseNes('tbc-jit query a/b 2: compilation');
 	assert.equal(p.workload, 'a/b 2');
 	assert.equal(p.seriesKey, 'tbc-jit');
+});
+
+test('splitExtra separates the detail from the per-pass breakdown', () => {
+	const { detail, passes } = splitExtra(
+		'benchmark_small/Nexmark:1, 1 pipelines, 5 rounds\npasses tracing=4.12 irPasses.noThrowInference=0.00987 jit.compile=29.2 other=1.21',
+	);
+	assert.equal(detail, 'benchmark_small/Nexmark:1, 1 pipelines, 5 rounds');
+	assert.deepEqual(passes, [
+		{ name: 'tracing', ms: 4.12 },
+		{ name: 'irPasses.noThrowInference', ms: 0.00987 },
+		{ name: 'jit.compile', ms: 29.2 },
+		{ name: 'other', ms: 1.21 },
+	]);
+});
+
+test('splitExtra without a breakdown keeps the detail', () => {
+	assert.deepEqual(splitExtra('Nexmark:1, 1 pipelines, 5 rounds'), { detail: 'Nexmark:1, 1 pipelines, 5 rounds', passes: null });
+	assert.deepEqual(splitExtra(undefined), { detail: '', passes: null });
+});
+
+test('every pass nes-bench.py reports falls into its stage', () => {
+	const stages = {
+		tracing: 'tracing',
+		ssaCreation: 'ssa',
+		irGeneration: 'ir',
+		'irPasses.exceptionRegionPreparation': 'irPasses',
+		'mlir.loweringFromIR': 'lowering',
+		'cpp.loweringFromIR': 'lowering',
+		'mlir.pipeline': 'optimization',
+		'llvm.optimizerBuild': 'optimization',
+		'jit.compile': 'codegen',
+		'asmjit.compile': 'codegen',
+		'cpp.compile': 'codegen',
+		backend: 'codegen',
+		other: 'other',
+	};
+	for (const [name, stage] of Object.entries(stages)) {
+		assert.equal(passStage(name), stage, name);
+	}
+	assert.equal(PASS_STAGES.length, 8);
 });

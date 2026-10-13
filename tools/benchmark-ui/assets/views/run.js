@@ -90,7 +90,7 @@ export function renderDeltaTables(container, model, run, baseRun, baseLabel) {
 			tr.appendChild(nameTd);
 
 			tr.appendChild(el('td', 'num', formatNs(bench.valueNs)));
-			tr.appendChild(el('td', 'num range', bench.range || bench.extra || ''));
+			tr.appendChild(el('td', 'num range', bench.range || firstLine(bench.extra)));
 			tr.appendChild(deltaCell(bench.valueNs, baseBench ? baseBench.valueNs : null));
 			tbody.appendChild(tr);
 		}

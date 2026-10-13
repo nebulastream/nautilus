@@ -302,7 +302,7 @@ export function renderTrends(container, model, phase, params, navigate) {
 							},
 							footer: (items) => {
 								const bench = model.runs[items[0].dataIndex].byName.get(items[0].dataset.benchName);
-								return bench && bench.extra ? [bench.extra, 'click for run details'] : 'click for run details';
+								return bench && bench.extra ? [firstLine(bench.extra), 'click for run details'] : 'click for run details';
 							},
 						},
 					},

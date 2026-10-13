@@ -50,3 +50,64 @@ export function nesWorkloadRank(workload) {
 	}
 	return 2;
 }
+
+// A query's compilation metric carries the median time of each compilation
+// pass as the second line of its `extra`: `passes tracing=4.1 ssaCreation=1.5
+// ...` in ms, adding up to the compilation time. The first line is the
+// human-readable detail (query, pipelines, rounds).
+export function splitExtra(extra) {
+	const [detail = '', ...rest] = (extra || '').split('\n');
+	const line = rest.find((l) => l.startsWith('passes '));
+	if (!line) {
+		return { detail, passes: null };
+	}
+	const passes = [];
+	for (const token of line.slice('passes '.length).split(' ')) {
+		const at = token.lastIndexOf('=');
+		const ms = Number(token.slice(at + 1));
+		if (at > 0 && isFinite(ms)) {
+			passes.push({ name: token.slice(0, at), ms });
+		}
+	}
+	return { detail, passes };
+}
+
+// The breakdown colors passes by compilation stage, in pipeline order, so the
+// eight stages fit the categorical palette; the tooltip names every pass.
+export const PASS_STAGES = [
+	{ key: 'tracing', label: 'Tracing' },
+	{ key: 'ssa', label: 'SSA creation' },
+	{ key: 'ir', label: 'IR generation' },
+	{ key: 'irPasses', label: 'IR passes' },
+	{ key: 'lowering', label: 'Lowering' },
+	{ key: 'optimization', label: 'MLIR / LLVM passes' },
+	{ key: 'codegen', label: 'Code generation' },
+	{ key: 'other', label: 'Other' },
+];
+
+export function passStage(name) {
+	if (name === 'tracing') {
+		return 'tracing';
+	}
+	if (name === 'ssaCreation') {
+		return 'ssa';
+	}
+	if (name === 'irGeneration') {
+		return 'ir';
+	}
+	if (name.startsWith('irPasses.')) {
+		return 'irPasses';
+	}
+	if (/lowering/i.test(name)) {
+		return 'lowering';
+	}
+	if (name === 'mlir.pipeline' || name.startsWith('llvm.')) {
+		return 'optimization';
+	}
+	// `backend` is backend time no pass of its own covers: all of it for the
+	// bytecode backends, whose backend is code generation.
+	if (name.endsWith('.compile') || name === 'backend') {
+		return 'codegen';
+	}
+	return 'other';
+}

@@ -278,6 +278,26 @@ a:hover {
 	opacity: 0.35;
 }
 
+/* Shared legend above a grid of charts. */
+.toolbar.legend {
+	gap: 4px 14px;
+	color: var(--ink-2);
+	font-size: 12px;
+}
+
+.legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.legend-item .swatch {
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	flex: none;
+}
+
 
 .chart-grid {
 	display: grid;
