@@ -14,16 +14,12 @@ rounds = 5
 # threads from adding ~30 ms jumps.
 worker_threads = 1
 
-# NebulaStream's own choice: MLIR, machine code generated on the first call.
+# MLIR generates machine code during compilation rather than on the first
+# call, so its compile time is measured as compilation, not as execution.
 [[configuration]]
 name = "mlir"
-options = { "engine.backend" = "mlir" }
-suite = true
-
-# MLIR with machine code generated during compilation.
-[[configuration]]
-name = "mlir-eager"
 options = { "engine.backend" = "mlir", "mlir.eager_compilation" = true }
+suite = true
 
 [[configuration]]
 name = "asmjit"
