@@ -3,6 +3,7 @@ include(Catch)
 
 add_executable(nautilus-builtin-tests
         prefetch/PrefetchExecutionTest.cpp
+        int128/Int128ExecutionTest.cpp
 )
 
 nautilus_inline(nautilus-builtin-tests)
@@ -18,6 +19,14 @@ target_include_directories(nautilus-builtin-tests PRIVATE
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 catch_discover_tests(nautilus-builtin-tests EXTRA_ARGS --allow-running-no-tests)
+
+# Differential int128 fuzz target against a native unsigned __int128 oracle
+if (ENABLE_FUZZING)
+    add_executable(nautilus-int128-fuzz int128/fuzz/Int128Fuzz.cpp)
+    target_link_libraries(nautilus-int128-fuzz PRIVATE nautilus-builtin)
+    target_compile_options(nautilus-int128-fuzz PRIVATE -fsanitize=fuzzer)
+    target_link_options(nautilus-int128-fuzz PRIVATE -fsanitize=fuzzer)
+endif ()
 
 # LLVM IR comparison tests: verify prefetch() lowers to llvm.prefetch on the MLIR backend
 if (ENABLE_MLIR_BACKEND AND ENABLE_LLVM_IR_TEST)
