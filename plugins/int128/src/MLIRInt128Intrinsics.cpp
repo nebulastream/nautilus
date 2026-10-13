@@ -6,7 +6,7 @@
 
 namespace nautilus::compiler::mlir {
 namespace {
-using Call = compiler::ir::ProxyCallOperation;
+using Call = compiler::ir::CallOperation;
 using Frame = MLIRLoweringProvider::ValueFrame;
 
 ::mlir::Value load(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame, unsigned index) {
