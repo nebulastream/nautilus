@@ -55,11 +55,11 @@ export function renderCompare(container, model, baseSha, targetSha, navigate) {
 	};
 	toolbar.appendChild(label('Baseline:'));
 	toolbar.appendChild(
-		mkSelect(baseIdx, (i) => navigate(`#/compare/${model.runs[i].commit.id}..${targetRun.commit.id}`)),
+		mkSelect(baseIdx, (i) => navigate(`#/${model.prefix}compare/${model.runs[i].commit.id}..${targetRun.commit.id}`)),
 	);
 	toolbar.appendChild(label('Target:'));
 	toolbar.appendChild(
-		mkSelect(targetIdx, (i) => navigate(`#/compare/${baseRun.commit.id}..${model.runs[i].commit.id}`)),
+		mkSelect(targetIdx, (i) => navigate(`#/${model.prefix}compare/${baseRun.commit.id}..${model.runs[i].commit.id}`)),
 	);
 	container.appendChild(toolbar);
 
