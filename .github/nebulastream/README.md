@@ -17,7 +17,7 @@
   - Several worker threads add idle jumps of about 30 ms.
   - With one node and one thread, a query's rounds stay within about ±20% of each other.
 - **What is reported.**
-  - Compilation is the median round, execution the best round. Execution is the worker's running-to-stopped time, which excludes compilation unless the configuration defers code generation to the first call (lazy MLIR).
+  - Compilation is the median round, execution the best round. Execution is the worker's running-to-stopped time, which excludes compilation. MLIR is measured with `mlir.eager_compilation=true`, so its machine code generation counts as compilation instead of landing in the first execution.
   - Configurations with `suite = true` also run every systest query once, which gives suite-wide compile phases and execution means.
 - **Pinned queries.** Each query is pinned by the start of its SQL, not its number, so NebulaStream renumbering a test file can't silently swap what a label measures. A query whose SQL changed is skipped with a warning.
 
@@ -28,7 +28,7 @@ Build NebulaStream against your nautilus as the workflow does (one build serves 
 ```sh
 nes-bench.py run --config benchmark.toml --container nes \
     --build-dir $NES/build --systest-dir $NES/nes-systests \
-    --configurations mlir-eager asmjit --queries 'join' --rounds 3 --no-suite --out head.json
+    --configurations mlir asmjit --queries 'join' --rounds 3 --no-suite --out head.json
 nes-bench.py compare base.json head.json
 ```
 
