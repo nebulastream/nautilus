@@ -19,6 +19,7 @@
 - **What is reported.**
   - Compilation is the median round, execution the best round. Execution is the worker's running-to-stopped time, which excludes compilation. MLIR is measured with `mlir.eager_compilation=true`, so its machine code generation counts as compilation instead of landing in the first execution.
   - Configurations with `suite = true` also run every systest query once, which gives suite-wide compile phases and execution means.
+  - Each query's compilation metric also carries the median time of every compilation pass, tracing first, in its `extra` as `passes name=ms ...`. The passes add up to the compilation time: `backend` is backend time no pass of its own covers (all of it for BC and TBC), `other` the rest. The benchmark UI draws them as a per-query breakdown. They ride along in `extra` rather than as metrics of their own, which would multiply the published history and alert on sub-millisecond passes.
 - **Pinned queries.** Each query is pinned by the start of its SQL, not its number, so NebulaStream renumbering a test file can't silently swap what a label measures. A query whose SQL changed is skipped with a warning.
 
 ## Running it locally

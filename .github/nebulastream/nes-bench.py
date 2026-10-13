@@ -226,13 +226,47 @@ def geometric_mean(values):
 
 
 def per_query(result):
-    """{(configuration, label): (query, compilation median, execution best, pipelines, rounds)}"""
+    """{(configuration, label): (query, compilation median, execution best, pipelines, rounds, passes)}"""
     grouped = {}
     for run in result["queries"]:
         grouped.setdefault((run["configuration"], run["label"]), []).append(run)
     return {key: (runs[0]["query"], statistics.median(r["compilation_ms"] for r in runs),
-                  min(r["execution_ms"] for r in runs), runs[0]["pipelines"], len(runs))
+                  min(r["execution_ms"] for r in runs), runs[0]["pipelines"], len(runs), pass_medians(runs))
             for key, runs in grouped.items()}
+
+
+FRONTEND_TOTAL, BACKEND_TOTAL, TOTAL = "frontend.totalMs", "backend.totalMs", "compilation.totalMs"
+FRONTEND_PASSES = ("tracing", "ssaCreation", "irGeneration", "irPasses.")
+
+
+def passes(phases):
+    """Splits a compilation's time into its passes, tracing first, so they add up
+    to its total: every `.ms` statistic, plus `backend` for backend time no
+    statistic of its own covers (all of it for bc and tbc), plus `other` for the
+    rest."""
+    leaves = {k.removesuffix(".ms"): v for k, v in phases.items() if k.endswith(".ms")}
+    frontend = sum(v for k, v in leaves.items() if k.startswith(FRONTEND_PASSES))
+    backend = sum(leaves.values()) - frontend
+    leaves["backend"] = max(0.0, phases.get(BACKEND_TOTAL, 0.0) - backend)
+    leaves["other"] = max(0.0, phases.get(TOTAL, 0.0) - phases.get(FRONTEND_TOTAL, 0.0) - phases.get(BACKEND_TOTAL, 0.0)) + \
+        max(0.0, phases.get(FRONTEND_TOTAL, 0.0) - frontend)
+    return leaves
+
+
+def pass_medians(runs):
+    """The median of each pass over a query's rounds."""
+    split = [passes(r["phases_ms"]) for r in runs]
+    names = list(dict.fromkeys(name for s in split for name in s))
+    return {name: statistics.median(s.get(name, 0.0) for s in split) for name in names}
+
+
+def passes_extra(medians):
+    """The per-pass breakdown as the second line of a compilation metric's
+    `extra`, where tools/benchmark-ui reads it: `passes name=ms ...`. It rides
+    along with the compilation metric rather than being metrics of its own,
+    which would multiply the published history and alert on sub-millisecond
+    passes."""
+    return "passes " + " ".join(f"{name}={value:.3g}" for name, value in medians.items() if value >= 0.005)
 
 
 def report(args):
@@ -248,9 +282,9 @@ def report(args):
     for configuration in configurations:
         for label in labels:
             if (configuration, label) in queries:
-                query, compilation, execution, pipelines, rounds = queries[(configuration, label)]
+                query, compilation, execution, pipelines, rounds, medians = queries[(configuration, label)]
                 extra = f"{query}, {pipelines} pipelines, {rounds} rounds"
-                add(f"{configuration} query {label}: compilation", "ms", compilation, extra)
+                add(f"{configuration} query {label}: compilation", "ms", compilation, f"{extra}\n{passes_extra(medians)}")
                 add(f"{configuration} query {label}: execution", "ms", execution, extra)
     for suite in result["suites"]:
         name, extra = suite["configuration"], f"{suite['pipelines']} pipelines"
