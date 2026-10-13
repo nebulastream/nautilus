@@ -1,7 +1,6 @@
 // Trends view: one line chart per workload of the selected phase, commits on
 // the x-axis, one line per variation (tracer, backend, or backend/flag).
 
-import { PHASE_LABELS } from '../parser.js';
 import { pickDisplayUnit, formatValue, shortHash, firstLine, formatDate } from '../format.js';
 
 const SLOT_VARS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6', '--s7', '--s8'];
@@ -33,17 +32,18 @@ function compareSeriesKeys(a, b) {
 	return ra.variant < rb.variant ? -1 : ra.variant > rb.variant ? 1 : 0;
 }
 
-// Fixed slot assignment per phase: a series keeps its color on every chart of
-// the phase (color follows the entity). Past 8 series the hue repeats with a
-// dash pattern as secondary encoding rather than generating new hues.
-function buildSlotMap(workloads) {
+// Fixed slot assignment: a series keeps its color on every chart of the phase
+// (color follows the entity), or on every chart of the dataset when the model
+// fixes the series order. Past 8 series the hue repeats with a dash pattern as
+// secondary encoding rather than generating new hues.
+function buildSlotMap(model, workloads) {
 	const keys = new Set();
 	for (const seriesMap of workloads.values()) {
 		for (const key of seriesMap.keys()) {
 			keys.add(key);
 		}
 	}
-	const sorted = [...keys].sort(compareSeriesKeys);
+	const sorted = model.fixedSeriesOrder ? model.seriesOrder : [...keys].sort(compareSeriesKeys);
 	const slots = new Map();
 	sorted.forEach((key, i) => {
 		slots.set(key, { colorVar: SLOT_VARS[i % 8], dashed: i >= 8 });
@@ -68,7 +68,7 @@ export function renderTrends(container, model, phase, params, navigate) {
 	const workloads = model.catalog.get(phase);
 	container.innerHTML = '';
 	const title = document.createElement('h2');
-	title.textContent = `${PHASE_LABELS[phase] || phase} — trends`;
+	title.textContent = `${model.phaseLabels[phase] || phase} — trends`;
 	container.appendChild(title);
 
 	if (!workloads || workloads.size === 0 || model.runs.length === 0) {
@@ -81,9 +81,11 @@ export function renderTrends(container, model, phase, params, navigate) {
 
 	const subtitle = document.createElement('p');
 	subtitle.className = 'subtitle';
-	subtitle.textContent =
-		`${model.runs.length} runs on main · one chart per workload, one line per variation · ` +
-		'click a point for the full run.';
+	subtitle.textContent = model.fixedSeriesOrder
+		? `${model.runs.length} runs on main · one chart per measurement, one line per nautilus configuration · ` +
+			'click a point for the full run.'
+		: `${model.runs.length} runs on main · one chart per workload, one line per variation · ` +
+			'click a point for the full run.';
 	container.appendChild(subtitle);
 
 	// Toolbar: variant chips (only for phases with A/B flag variants) + log toggle.
@@ -108,19 +110,56 @@ export function renderTrends(container, model, phase, params, navigate) {
 					selected.add(variant);
 				}
 				const v = [...selected].join(',');
-				navigate(hashFor(phase, { ...params, v: v || 'default' }));
+				navigate(hashFor(model, phase, { ...params, v: v || 'default' }));
 			};
 			toolbar.appendChild(chip);
 		}
 	}
+	// Series chips: show or hide a series on every chart; hidden ones keep
+	// their slot, so the visible ones never change color.
+	const hidden = new Set(params.hide ? params.hide.split(',') : []);
+	if (model.seriesFilter) {
+		const label = document.createElement('span');
+		label.className = 'label';
+		label.textContent = 'Configurations:';
+		toolbar.appendChild(label);
+		const present = new Set();
+		for (const seriesMap of workloads.values()) {
+			for (const key of seriesMap.keys()) {
+				present.add(key);
+			}
+		}
+		for (const key of model.seriesOrder.filter((k) => present.has(k))) {
+			const chip = document.createElement('button');
+			chip.type = 'button';
+			chip.className = 'chip series' + (hidden.has(key) ? '' : ' on');
+			const swatch = document.createElement('span');
+			swatch.className = 'swatch';
+			chip.appendChild(swatch);
+			chip.appendChild(document.createTextNode(key));
+			chip.dataset.series = key;
+			chip.onclick = () => {
+				if (hidden.has(key)) {
+					hidden.delete(key);
+				} else {
+					hidden.add(key);
+				}
+				navigate(hashFor(model, phase, { ...params, hide: [...hidden].join(',') }));
+			};
+			toolbar.appendChild(chip);
+		}
+	}
+	// `log` is explicit in the URL once toggled; otherwise the dataset decides.
+	const logScale = params.log !== undefined && params.log !== '' ? params.log === '1' : !!model.defaultLog;
 	const logLabel = document.createElement('label');
-	logLabel.className = 'chip' + (params.log ? ' on' : '');
+	logLabel.className = 'chip' + (logScale ? ' on' : '');
 	logLabel.style.userSelect = 'none';
 	const logBox = document.createElement('input');
 	logBox.type = 'checkbox';
-	logBox.checked = !!params.log;
+	logBox.checked = logScale;
 	logBox.style.display = 'none';
-	logBox.onchange = () => navigate(hashFor(phase, { ...params, log: logBox.checked ? '1' : '' }));
+	logBox.onchange = () =>
+		navigate(hashFor(model, phase, { ...params, log: logBox.checked === !!model.defaultLog ? '' : logBox.checked ? '1' : '0' }));
 	logLabel.appendChild(logBox);
 	logLabel.appendChild(document.createTextNode('log scale'));
 	toolbar.appendChild(logLabel);
@@ -130,7 +169,10 @@ export function renderTrends(container, model, phase, params, navigate) {
 	grid.className = 'chart-grid';
 	container.appendChild(grid);
 
-	const slots = buildSlotMap(workloads);
+	const slots = buildSlotMap(model, workloads);
+	for (const chip of toolbar.querySelectorAll('.chip.series')) {
+		chip.querySelector('.swatch').style.background = cssVar(slots.get(chip.dataset.series).colorVar);
+	}
 	const labels = model.runs.map((r) => shortHash(r.commit.id));
 	const charts = [];
 	const ink2 = cssVar('--ink-2');
@@ -139,10 +181,21 @@ export function renderTrends(container, model, phase, params, navigate) {
 	const baselineColor = cssVar('--baseline');
 	const surfaceColor = cssVar('--surface');
 
-	const workloadNames = [...workloads.keys()].sort();
+	const workloadNames = [...workloads.keys()].sort((a, b) =>
+		model.workloadRank(a) !== model.workloadRank(b) ? model.workloadRank(a) - model.workloadRank(b) : a < b ? -1 : a > b ? 1 : 0,
+	);
 	for (const workload of workloadNames) {
 		const seriesMap = workloads.get(workload);
-		let entries = [...seriesMap.entries()].sort((a, b) => compareSeriesKeys(a[0], b[0]));
+		let entries = [...seriesMap.entries()]
+			.filter(([key]) => !hidden.has(key))
+			.sort((a, b) =>
+				model.fixedSeriesOrder
+					? model.seriesOrder.indexOf(a[0]) - model.seriesOrder.indexOf(b[0])
+					: compareSeriesKeys(a[0], b[0]),
+			);
+		if (entries.length === 0) {
+			continue;
+		}
 		if (variants.length > 1) {
 			const filtered = entries.filter(([, benchName]) => {
 				const parsed = model.names.get(benchName);
@@ -154,14 +207,21 @@ export function renderTrends(container, model, phase, params, navigate) {
 		}
 
 		let maxNs = 0;
+		let minNs = Infinity;
 		for (const [, benchName] of entries) {
 			for (const v of model.series(benchName)) {
 				if (v !== null && v > maxNs) {
 					maxNs = v;
 				}
+				if (v !== null && v > 0 && v < minNs) {
+					minNs = v;
+				}
 			}
 		}
 		const unit = pickDisplayUnit(maxNs);
+		// Left to the dataset, log applies only where values span 10x or more: on
+		// a narrower range it adds nothing but a dense band of grid lines.
+		const chartLog = logScale && (params.log === '1' || maxNs >= 10 * minNs);
 
 		const card = document.createElement('div');
 		card.className = 'card';
@@ -237,9 +297,13 @@ export function renderTrends(container, model, phase, params, navigate) {
 								if (!bench) {
 									return `${item.dataset.label}: —`;
 								}
-								return `${item.dataset.label}: ${formatValue(item.parsed.y)} ${unit.label} (raw ${bench.range})`;
+								const detail = bench.range ? ` (raw ${bench.range})` : '';
+								return `${item.dataset.label}: ${formatValue(item.parsed.y)} ${unit.label}${detail}`;
 							},
-							footer: () => 'click for run details',
+							footer: (items) => {
+								const bench = model.runs[items[0].dataIndex].byName.get(items[0].dataset.benchName);
+								return bench && bench.extra ? [bench.extra, 'click for run details'] : 'click for run details';
+							},
 						},
 					},
 				},
@@ -250,18 +314,18 @@ export function renderTrends(container, model, phase, params, navigate) {
 						ticks: { color: mutedColor, maxRotation: 60, autoSkip: true, font: { size: 10 } },
 					},
 					y: {
-						type: params.log ? 'logarithmic' : 'linear',
-						beginAtZero: !params.log,
+						type: chartLog ? 'logarithmic' : 'linear',
+						beginAtZero: !chartLog,
 						grid: { color: gridColor },
 						border: { display: false },
 						title: { display: true, text: unit.label, color: mutedColor },
-						ticks: { color: mutedColor },
+						ticks: { color: mutedColor, autoSkip: true, autoSkipPadding: 10 },
 					},
 				},
 				onClick: (event, elements) => {
 					if (elements.length > 0) {
 						const run = model.runs[elements[0].index];
-						navigate(`#/run/${run.commit.id}`);
+						navigate(`#/${model.prefix}run/${run.commit.id}`);
 					}
 				},
 			},
@@ -276,7 +340,7 @@ export function renderTrends(container, model, phase, params, navigate) {
 	return () => charts.forEach((c) => c.destroy());
 }
 
-export function hashFor(phase, params) {
+export function hashFor(model, phase, params) {
 	const q = new URLSearchParams();
 	if (params.w) {
 		q.set('w', params.w);
@@ -285,8 +349,11 @@ export function hashFor(phase, params) {
 		q.set('v', params.v);
 	}
 	if (params.log) {
-		q.set('log', '1');
+		q.set('log', params.log);
+	}
+	if (params.hide) {
+		q.set('hide', params.hide);
 	}
 	const qs = q.toString();
-	return `#/trends/${phase}${qs ? '?' + qs : ''}`;
+	return `#/${model.prefix}trends/${phase}${qs ? '?' + qs : ''}`;
 }

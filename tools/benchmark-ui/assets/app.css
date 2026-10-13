@@ -132,6 +132,22 @@ a:hover {
 	min-height: calc(100vh - 45px);
 }
 
+/* One heading per dataset (Nautilus, NebulaStream) above its own Trends and
+ * Runs groups. */
+.sidebar .nav-dataset {
+	margin: 20px 8px 2px;
+	padding-top: 14px;
+	border-top: 1px solid var(--border);
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--ink);
+}
+.sidebar .nav-dataset:first-child {
+	margin-top: 4px;
+	padding-top: 0;
+	border-top: none;
+}
+
 @media (max-width: 800px) {
 	.layout {
 		grid-template-columns: 1fr;
@@ -153,6 +169,13 @@ a:hover {
 		margin: 0 6px 0 4px;
 	}
 
+	.sidebar .nav-dataset {
+		flex-basis: 100%;
+		margin: 6px 4px 0;
+		padding-top: 6px;
+	}
+
+
 	.sidebar a {
 		padding: 4px 10px;
 		border-radius: 999px;
@@ -171,6 +194,7 @@ a:hover {
 	color: var(--muted);
 	margin: 14px 8px 4px;
 }
+
 
 .sidebar a {
 	display: block;
@@ -234,6 +258,26 @@ a:hover {
 	font-weight: 600;
 	background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
+
+/* Configuration chips carry their series color, so the legend reads the same
+ * on every chart; a hidden configuration's swatch fades with the chip. */
+.chip.series {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.chip.series .swatch {
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	flex: none;
+}
+
+.chip.series:not(.on) .swatch {
+	opacity: 0.35;
+}
+
 
 .chart-grid {
 	display: grid;
@@ -323,6 +367,7 @@ table.bench tr:last-child td {
 table.bench td.num,
 table.bench th.num {
 	text-align: right;
+	white-space: nowrap;
 }
 
 table.bench td.range {
