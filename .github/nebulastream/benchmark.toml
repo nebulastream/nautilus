@@ -1,0 +1,219 @@
+# Benchmark of NebulaStream's systests against this nautilus, run by nes-bench.py.
+#
+# Every query runs on its own, as a fresh `systest -b` process, once per
+# configuration and round. A configuration is a set of nautilus options that
+# nes-bench.py passes in NAUTILUS_OPTIONS, layered over the options NebulaStream
+# sets itself, so every configuration runs the same NebulaStream build.
+
+[run]
+# Rounds per query and configuration; compilation is reported as the median
+# round, execution as the best.
+rounds = 5
+# NebulaStream runs on a single node: on two nodes a query's execution includes
+# the channel registration backoff between them. One worker thread keeps idle
+# threads from adding ~30 ms jumps.
+worker_threads = 1
+
+# MLIR generates machine code during compilation rather than on the first
+# call, so its compile time is measured as compilation, not as execution.
+[[configuration]]
+name = "mlir"
+options = { "engine.backend" = "mlir", "mlir.eager_compilation" = true }
+suite = true
+
+[[configuration]]
+name = "asmjit"
+options = { "engine.backend" = "asmjit" }
+suite = true
+
+# The bytecode interpreter does not support every type NebulaStream's
+# aggregations and joins use yet; its failures are warnings, not errors.
+[[configuration]]
+name = "bc"
+options = { "engine.backend" = "bc" }
+optional = true
+
+[[configuration]]
+name = "tbc"
+options = { "engine.backend" = "tbc" }
+suite = true
+
+[[configuration]]
+name = "tbc-jit"
+options = { "engine.backend" = "tbc", "tbc.mode" = "jit" }
+
+[[configuration]]
+name = "cpp"
+options = { "engine.backend" = "cpp" }
+suite = true
+
+# Tiered: AsmJit code right away, MLIR code promoted in the background. The
+# empty engine.backend clears NebulaStream's single-backend choice.
+[[configuration]]
+name = "tiered-asmjit-mlir"
+options = { "engine.backend" = "", "engine.tier0.backend" = "asmjit", "engine.tier1.backend" = "mlir" }
+
+# The queries, each pinned by the start of its SQL, so NebulaStream renumbering a
+# test file does not silently swap what a label measures.
+
+[[query]]
+label = "nexmark scan"
+file = "benchmark_small/Nexmark.test"
+sql = "SELECT * FROM bid INTO q2CheckSum;"
+
+[[query]]
+label = "nexmark q1 map"
+file = "benchmark_small/Nexmark.test"
+sql = "SELECT price * 89 / 100 AS price FROM bid INTO q1CheckSum;"
+
+[[query]]
+label = "nexmark q2 filter"
+file = "benchmark_small/Nexmark.test"
+sql = "SELECT * FROM bid WHERE auctionId % 123 = 0 INTO q2CheckSum;"
+
+[[query]]
+label = "nexmark q5 sliding aggregation join"
+file = "benchmark_small/Nexmark.test"
+sql = "SELECT start, end, auctionId, num, max_tmp FROM (SELECT auct"
+
+[[query]]
+label = "nexmark q8 tumbling join"
+file = "benchmark_small/Nexmark.test"
+sql = "SELECT start, end, bid_timestamp, auctionId, bidder, datetim"
+
+[[query]]
+label = "nexmark q8 tumbling join varsized"
+file = "benchmark_small/Nexmark_with_varsized.test"
+sql = "SELECT start, end, bid_timestamp, auctionId, bidder, price,"
+
+[[query]]
+label = "ysb filter group sum"
+file = "benchmark_small/YahooStreamingBenchmark.test"
+sql = "SELECT start, end, campaign_id, SUM(user_id) AS sum_user_id FROM ysb1k WHERE eve"
+
+[[query]]
+label = "ysb varsized filter group count"
+file = "benchmark_small/YahooStreamingBenchmark_with_varsized.test"
+sql = "SELECT start, end, campaign_id, COUNT(user_id) AS count_user_id FROM ysb1k WHERE"
+
+[[query]]
+label = "lrb sliding group avg"
+file = "benchmark_small/LinearRoadBenchmark.test"
+sql = "SELECT start, end, highway, direction, positionDiv5280, AVG("
+
+[[query]]
+label = "lrb sliding group count"
+file = "benchmark_small/LinearRoadBenchmark.test"
+sql = "SELECT start, end, vehicle, highway, direction, positionDiv5"
+
+[[query]]
+label = "cluster monitoring sliding group sum"
+file = "benchmark_small/ClusterMonitoring.test"
+sql = "SELECT start, end, SUM(cpu) AS totalCpu, jobId FROM monitori"
+
+[[query]]
+label = "manufacturing sliding multi aggregate"
+file = "benchmark_small/Manufacturing.test"
+sql = "SELECT start, end, AVG(mf01) AS avg_mf01, SUM(mf02) AS sum_m"
+
+[[query]]
+label = "debs range filter"
+file = "benchmark_small/DEBS.test"
+sql = "SELECT * FROM consumers WHERE consumedPower >= 400 INTO cons"
+
+[[query]]
+label = "debs union"
+file = "benchmark_small/DEBS.test"
+sql = "SELECT source, producerId, groupId, producedPower, timestamp"
+
+[[query]]
+label = "wide arithmetic expression"
+file = "operator/projection/Filter_Map_Queries.test"
+sql = "SELECT id * 3 / value + value * 2 AS id_new, value * 25 - (i"
+
+[[query]]
+label = "nested maps"
+file = "operator/map/Map_Add.test"
+sql = "SELECT *, NEW + VALUE AS NEW2 FROM ( SELECT *, ID + VALUE AS"
+
+[[query]]
+label = "round all integer widths"
+file = "function/arithmetical/FunctionRound.test"
+sql = "SELECT ROUND(i8) AS i8, ROUND(i16) AS i16, ROUND(i32) AS i32"
+
+[[query]]
+label = "string concat"
+file = "operator/selection/SelectionNull.test"
+sql = "SELECT id, CONCAT(text, '_x') AS text_suffix FROM stream2 IN"
+
+[[query]]
+label = "filter on string concat"
+file = "operator/selection/Selection_NotEquals.test"
+sql = "SELECT * FROM streamWithText WHERE CONCAT(text1, text2) != 'test1test1' INTO sin"
+
+[[query]]
+label = "varsized in list filter"
+file = "parser/VarSizedSupport.test"
+sql = "SELECT id, value, text1, text2 FROM streamWithText WHERE tex"
+
+[[query]]
+label = "nested json scan"
+file = "formatter/JSON/NestedJSON.test"
+sql = "SELECT \"id\", \"user/name\", \"user/email\", \"meta/tag\" FROM Mult"
+
+[[query]]
+label = "widest schema scan"
+file = "formatter/MaxNumberOfSupportedFields.test"
+sql = "SELECT * FROM multiBuffer INTO sinkMultiBuffer;"
+# Tracing it takes ~20 s on every backend; two rounds are enough.
+rounds = 2
+
+[[query]]
+label = "tumbling all aggregates"
+file = "operator/aggregation/ColumnNames.test"
+sql = "SELECT start, end,COUNT(i), MIN(i), MAX(i), SUM(i), AVG(i),"
+
+[[query]]
+label = "tumbling median of expression"
+file = "operator/aggregation/ExpressionInsideAggregation.test"
+sql = "SELECT start, end, MEDIAN(a * b) AS out1, MAX(a) AS out2 FRO"
+
+[[query]]
+label = "sliding group count"
+file = "operator/aggregation/WindowAggregationCount.test"
+sql = "SELECT start, end, id, COUNT(*) AS rowCount, COUNT(value) AS valueCount FROM stream GROUP BY (id) WINDOW SLIDING(ts, siz"
+
+[[query]]
+label = "aggregation of union"
+file = "operator/aggregation/AggregationOfUnion.test"
+sql = "SELECT MAX(id) as max_id FROM ( SELECT * FROM stream UNION S"
+
+[[query]]
+label = "tumbling left outer join"
+file = "operator/join/LeftOuterJoin.test"
+sql = "SELECT * FROM (SELECT * FROM stream) LEFT OUTER JOIN (SELECT * FROM stream2) ON (id = id2) WINDOW TUMBLING (timestamp, timestamp2, size 10 s"
+
+[[query]]
+label = "tumbling full outer join"
+file = "operator/join/FullOuterJoin.test"
+sql = "SELECT * FROM (SELECT * FROM stream) FULL OUTER JOIN (SELECT * FROM stream2) ON (id = id2) WINDOW TUMBLING (timestamp, timestamp2, size 10 s"
+
+[[query]]
+label = "sliding right outer join"
+file = "operator/join/SlidingWindowRightOuterJoin.test"
+sql = "SELECT * FROM (SELECT * FROM stream) RIGHT OUTER JOIN (SELEC"
+
+[[query]]
+label = "sliding inner join"
+file = "guide/guide12.test"
+sql = "SELECT order_id, customer_id, amount FROM (SELECT * FROM ord"
+
+[[query]]
+label = "nested join quoted identifiers"
+file = "datatype/QuotedIdentifiers.test"
+sql = "SELECT \"leftId\" AS \"leftResult\", \"rightId\" AS \"rightResult\""
+
+[[query]]
+label = "medical cast filter"
+file = "medical/MedicalUseCase.test"
+sql = "SELECT LabVal_ID, mlife_FallNr, Zeitpunkt, Bez, CASTTOTYPE(Wert AS FLOAT64) AS wert_double, Einheit, Wertebereich, SampleNr, TSFail, TSLog, Lab_ID FROM medical_data_source WHERE Bez = 'PO2' AND NOT(is"

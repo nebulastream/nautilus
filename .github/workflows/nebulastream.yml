@@ -1,0 +1,235 @@
+name: NebulaStream
+run-name: NebulaStream against nautilus ${{ github.ref_name }}
+# Builds NebulaStream against this nautilus checkout and runs its tests, so API
+# and behaviour breaks surface here instead of in NebulaStream's next nautilus bump.
+#
+# NebulaStream ships every dependency prebuilt in its nebulastream/nes-ci image
+# (vcpkg export under /vcpkg). The job runs NebulaStream's own image for its
+# current main, rebuilds nautilus inside it with the toolchain of NebulaStream's
+# nautilus port and every backend enabled, swaps that build in for the prebuilt
+# package, and then builds and tests NebulaStream as its CI does. Its compiled
+# systests also run on the AsmJit, TBC and C++ backends. Nothing but nautilus is
+# rebuilt, and the container's own state is thrown away afterwards.
+#
+# Once the tests pass, .github/nebulastream/nes-bench.py runs the systest
+# queries of benchmark.toml under each of its nautilus configurations (backends
+# and options, set at runtime through NAUTILUS_OPTIONS) and records compilation
+# and execution time per query. The `benchmark` job tracks them over nautilus'
+# history.
+#
+# A full run takes hours, so it runs once a night, and only when main has moved
+# since the last successful nightly run. It also runs on demand and on PRs
+# labeled `nebulastream`.
+on:
+  pull_request:
+    branches:
+      - main
+    types: [ opened, reopened, synchronize, labeled ]
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  changes:
+    # Skips the nightly run when main is still at the commit the last successful
+    # nightly run built. A failed run does not count, so the next night retries;
+    # if the lookup itself fails, the run goes ahead.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    name: Check for changes on main
+    permissions:
+      actions: read
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/nebulastream.yml/runs?event=schedule&branch=main&status=success&per_page=1" \
+            --jq '.workflow_runs[0].head_sha // ""') || last=""
+          if [ "$last" = "$GITHUB_SHA" ]; then
+            echo "main is still at $GITHUB_SHA, which the last successful nightly run built; skipping." >> "$GITHUB_STEP_SUMMARY"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+  nebulastream:
+    needs: changes
+    # Nightly only when main changed (see `changes`). On pull requests only
+    # when the PR carries the `nebulastream` label: a full NebulaStream build is
+    # too slow to gate every PR on.
+    if: >-
+      !cancelled() && (
+        (github.event_name == 'schedule' && needs.changes.outputs.changed == 'true') ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebulastream')))
+    runs-on: ubuntu-24.04
+    name: Build and test NebulaStream main
+    timeout-minutes: 240
+    env:
+      CONTAINER: nes
+      # Persisted between runs by actions/cache. NebulaStream's sources rarely
+      # change between two nautilus commits, so most translation units hit; the
+      # ones including a changed nautilus header recompile, as they must.
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      SCCACHE_CACHE_SIZE: 6G
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+    steps:
+      - name: Check out nautilus
+        uses: actions/checkout@v4
+        with:
+          path: nautilus
+      - name: Check out NebulaStream
+        uses: actions/checkout@v4
+        with:
+          repository: nebulastream/nebulastream
+          ref: main
+          path: nebulastream
+      - name: Resolve NebulaStream CI image
+        id: image
+        working-directory: nebulastream
+        run: |
+          # Same tag NebulaStream's own CI derives (get_dev_images.yml): a hash
+          # over its dependency definitions.
+          tag=$(scripts/hash_dependencies.sh)
+          image="nebulastream/nes-ci:${tag}-libcxx-none"
+          if ! docker manifest inspect "$image" > /dev/null; then
+            echo "::error::$image does not exist (yet). NebulaStream's CI publishes it when its dependencies change; re-run once that is done."
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "NebulaStream $(git rev-parse HEAD), image $image" >> "$GITHUB_STEP_SUMMARY"
+      - name: Free disk space and pull image
+        # NebulaStream's own runner preparation: drops preinstalled toolchains
+        # the job does not need while pulling the image.
+        uses: ./nebulastream/.github/steps/prepare-github
+        with:
+          images: ${{ steps.image.outputs.image }}
+      - name: Restore compiler caches
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache
+          key: nebulastream-${{ steps.image.outputs.sha }}-${{ github.sha }}
+          restore-keys: |
+            nebulastream-${{ steps.image.outputs.sha }}-
+            nebulastream-
+      - name: Start container
+        run: |
+          mkdir -p "$SCCACHE_DIR" "$CCACHE_DIR"
+          docker run -d --name "$CONTAINER" \
+            -v "$PWD:$PWD" -w "$PWD/nebulastream" -e "HOME=$PWD" -u "$(id -u):$(id -g)" \
+            -e SCCACHE_DIR -e SCCACHE_CACHE_SIZE -e CCACHE_DIR \
+            "${{ steps.image.outputs.image }}" sleep infinity
+      - name: Build nautilus and swap it into the image's vcpkg tree
+        run: docker exec "$CONTAINER" ../nautilus/.github/nebulastream/build-nautilus.sh ../nautilus . ../nautilus-build
+      - name: Configure NebulaStream
+        run: docker exec "$CONTAINER" cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release -DNES_LOG_LEVEL=DEBUG -DNES_SPLIT_TEST_BINARIES=OFF
+      - name: Build NebulaStream
+        run: |
+          docker exec "$CONTAINER" bash -c '
+            sccache --start-server
+            status=0
+            cmake --build build -j -- -k 0 || status=$?
+            sccache --show-stats
+            sccache --stop-server
+            exit $status'
+      - name: Run unit tests
+        run: |
+          docker exec "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -LE "Systest|DockerCompose" \
+            --output-on-failure --timeout 2400
+      - name: Run system tests
+        if: ${{ !cancelled() }}
+        run: |
+          docker exec "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" -L Systest \
+            --output-on-failure --timeout 4800
+      - name: Run system tests on the other backends
+        # NebulaStream compiles with MLIR; NAUTILUS_OPTIONS moves every compiled
+        # suite onto each other backend in turn. The interpreter suites never
+        # reach a backend. The bytecode interpreter is left out: it does not
+        # support every type NebulaStream's aggregations and joins use yet.
+        if: ${{ !cancelled() }}
+        run: |
+          for options in "engine.backend=asmjit" "engine.backend=tbc" "engine.backend=tbc;tbc.mode=jit" "engine.backend=cpp"; do
+            echo "::group::systests with $options"
+            docker exec -e NAUTILUS_OPTIONS="$options" "$CONTAINER" ctest --test-dir build --no-tests=error -j "$(nproc)" \
+              -L Systest -E interpreter --output-on-failure --timeout 4800
+            echo "::endgroup::"
+          done
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebulastream-test-logs
+          path: |
+            nebulastream/build/**/*.log
+            nebulastream/build/**/*.stats
+          if-no-files-found: ignore
+      - name: Run systests as benchmark
+        # The queries and nautilus configurations of benchmark.toml, every
+        # combination on a single node with a single worker thread (see
+        # nes-bench.py). It reuses the test build: its DEBUG logging changes
+        # neither compile nor execution times beyond the run-to-run noise.
+        run: |
+          python3 nautilus/.github/nebulastream/nes-bench.py run --config nautilus/.github/nebulastream/benchmark.toml \
+            --container "$CONTAINER" --build-dir "$PWD/nebulastream/build" \
+            --systest-dir "$PWD/nebulastream/nes-systests" --out "$PWD/benchmark/results.json"
+          python3 nautilus/.github/nebulastream/nes-bench.py report benchmark/results.json \
+            --metrics benchmark-metrics.json --summary benchmark-summary.md
+          cat benchmark-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebulastream-benchmark
+          path: |
+            benchmark-metrics.json
+            benchmark/results.json
+      - name: Save compiler caches
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cache
+          key: nebulastream-${{ steps.image.outputs.sha }}-${{ github.sha }}
+  benchmark:
+    # Kept apart from the build so the job that may push to the `pages` branch
+    # never runs NebulaStream's code or touches the compiler cache.
+    needs: nebulastream
+    runs-on: ubuntu-24.04
+    name: Track NebulaStream benchmark
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # github-action-benchmark reads and writes the history through the
+      # checkout's `pages` branch.
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: nebulastream-benchmark
+          path: benchmark-results
+      - name: Compare with and record into nautilus' benchmark history
+        uses: benchmark-action/github-action-benchmark@v1.20.7
+        with:
+          name: NebulaStream Systests
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-results/benchmark-metrics.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          gh-pages-branch: pages
+          # Its own directory: the UI in tools/benchmark-ui reads dev/bench and
+          # expects only the tracing benchmark there.
+          benchmark-data-dir-path: dev/nebulastream
+          # Only runs on main (nightly or on demand) extend the history; PRs
+          # compare against it.
+          auto-push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          save-data-file: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          summary-always: true
+          comment-on-alert: ${{ github.event_name == 'pull_request' }}
+          # Hosted runners vary by tens of percent between runs, so only flag
+          # what that noise cannot explain.
+          alert-threshold: '150%'
+          max-items-in-chart: 200
