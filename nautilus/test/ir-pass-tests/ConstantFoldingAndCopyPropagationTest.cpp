@@ -603,6 +603,17 @@ struct SingleBlock {
 	}
 };
 
+/// What a fold helper returns: the folded value together with the graph that
+/// owns it. The helpers build their graph locally, so returning the bare
+/// `Operation*` would leave it pointing into a freed arena.
+struct Folded {
+	std::shared_ptr<IRGraph> ir;
+	Operation* op;
+	Operation* operator->() const {
+		return op;
+	}
+};
+
 int64_t intValue(Operation* op) {
 	auto* c = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(op);
 	REQUIRE(c != nullptr);
@@ -621,41 +632,60 @@ bool boolValue(Operation* op) {
 	return c->getValue();
 }
 
+int64_t intValue(const Folded& f) {
+	return intValue(f.op);
+}
+
+double floatValue(const Folded& f) {
+	return floatValue(f.op);
+}
+
+bool boolValue(const Folded& f) {
+	return boolValue(f.op);
+}
+
 template <typename T>
-Operation* foldIntBinary(Type stamp, int64_t l, int64_t r) {
+Folded foldIntBinary(Type stamp, int64_t l, int64_t r) {
 	SingleBlock g("cf-int-binary");
-	return g.foldReturn(g.op<T>(g.i(l, stamp), g.i(r, stamp)));
+	auto* result = g.foldReturn(g.op<T>(g.i(l, stamp), g.i(r, stamp)));
+	return {g.ir, result};
 }
 
-Operation* foldShift(Type stamp, int64_t l, int64_t r, ShiftOperation::ShiftType type) {
+Folded foldShift(Type stamp, int64_t l, int64_t r, ShiftOperation::ShiftType type) {
 	SingleBlock g("cf-shift");
-	return g.foldReturn(g.op<ShiftOperation>(g.i(l, stamp), g.i(r, stamp), type));
+	auto* result = g.foldReturn(g.op<ShiftOperation>(g.i(l, stamp), g.i(r, stamp), type));
+	return {g.ir, result};
 }
 
-Operation* foldIntCompare(Type stamp, int64_t l, int64_t r, CompareOperation::Comparator cmp) {
+Folded foldIntCompare(Type stamp, int64_t l, int64_t r, CompareOperation::Comparator cmp) {
 	SingleBlock g("cf-int-compare");
-	return g.foldReturn(g.op<CompareOperation>(g.i(l, stamp), g.i(r, stamp), cmp));
+	auto* result = g.foldReturn(g.op<CompareOperation>(g.i(l, stamp), g.i(r, stamp), cmp));
+	return {g.ir, result};
 }
 
-Operation* foldFloatCompare(double l, double r, CompareOperation::Comparator cmp) {
+Folded foldFloatCompare(double l, double r, CompareOperation::Comparator cmp) {
 	SingleBlock g("cf-float-compare");
-	return g.foldReturn(g.op<CompareOperation>(g.f(l, Type::f64), g.f(r, Type::f64), cmp));
+	auto* result = g.foldReturn(g.op<CompareOperation>(g.f(l, Type::f64), g.f(r, Type::f64), cmp));
+	return {g.ir, result};
 }
 
 template <typename T>
-Operation* foldFloatBinary(Type stamp, double l, double r) {
+Folded foldFloatBinary(Type stamp, double l, double r) {
 	SingleBlock g("cf-float-binary");
-	return g.foldReturn(g.op<T>(g.f(l, stamp), g.f(r, stamp)));
+	auto* result = g.foldReturn(g.op<T>(g.f(l, stamp), g.f(r, stamp)));
+	return {g.ir, result};
 }
 
-Operation* foldIntCast(int64_t value, Type from, Type to) {
+Folded foldIntCast(int64_t value, Type from, Type to) {
 	SingleBlock g("cf-int-cast");
-	return g.foldReturn(g.op<compiler::ir::CastOperation>(g.i(value, from), to));
+	auto* result = g.foldReturn(g.op<compiler::ir::CastOperation>(g.i(value, from), to));
+	return {g.ir, result};
 }
 
-Operation* foldFloatCast(double value, Type from, Type to) {
+Folded foldFloatCast(double value, Type from, Type to) {
 	SingleBlock g("cf-float-cast");
-	return g.foldReturn(g.op<compiler::ir::CastOperation>(g.f(value, from), to));
+	auto* result = g.foldReturn(g.op<compiler::ir::CastOperation>(g.f(value, from), to));
+	return {g.ir, result};
 }
 
 constexpr int64_t I64_MIN = std::numeric_limits<int64_t>::min();
@@ -695,9 +725,9 @@ TEST_CASE("ConstantFolding: signed MIN / -1 and MIN % -1 are not folded") {
 	for (auto [stamp, min] : {std::pair {Type::i64, I64_MIN}, std::pair {Type::i32, I32_MIN},
 	                          std::pair {Type::i16, int64_t {-32768}}, std::pair {Type::i8, int64_t {-128}}}) {
 		INFO("stamp " << toString(stamp));
-		auto* div = foldIntBinary<compiler::ir::DivOperation>(stamp, min, -1);
+		auto div = foldIntBinary<compiler::ir::DivOperation>(stamp, min, -1);
 		CHECK(div->getOperationType() == OpType::DivOp);
-		auto* mod = foldIntBinary<compiler::ir::ModOperation>(stamp, min, -1);
+		auto mod = foldIntBinary<compiler::ir::ModOperation>(stamp, min, -1);
 		CHECK(mod->getOperationType() == OpType::ModOp);
 	}
 	// Neighbours of the overflow still fold.
@@ -799,7 +829,7 @@ TEST_CASE("ConstantFolding: f32 arithmetic rounds to float (#542)") {
 	CHECK(floatValue(foldFloatBinary<compiler::ir::MulOperation>(
 	          Type::f32, static_cast<double>(-2.5353030138451882e+30f),
 	          static_cast<double>(7.5557863725914323e+22f))) == -std::numeric_limits<double>::infinity());
-	auto* quotient = foldFloatBinary<compiler::ir::DivOperation>(Type::f32, 1.0, 3.0);
+	auto quotient = foldFloatBinary<compiler::ir::DivOperation>(Type::f32, 1.0, 3.0);
 	CHECK(floatValue(quotient) == static_cast<double>(1.0f / 3.0f));
 	CHECK(quotient->getStamp() == Type::f32);
 }
@@ -875,7 +905,7 @@ TEST_CASE("ConstantFolding: integer casts extend by source signedness and wrap t
 	CHECK(intValue(foldIntCast(0x100000001, Type::i64, Type::i32)) == 1); // truncate
 	CHECK(intValue(foldIntCast(-129, Type::i32, Type::i8)) == 127);
 	CHECK(intValue(foldIntCast(-1, Type::i64, Type::ui64)) == -1); // bit pattern kept
-	auto* stamped = foldIntCast(7, Type::i32, Type::i16);
+	auto stamped = foldIntCast(7, Type::i32, Type::i16);
 	CHECK(stamped->getStamp() == Type::i16);
 }
 
@@ -886,7 +916,7 @@ TEST_CASE("ConstantFolding: integer to float casts round once") {
 	// directly; going through f64 first loses the +1 and then ties to even,
 	// giving 2^60.
 	const int64_t x = (int64_t {1} << 60) + (int64_t {1} << 36) + 1;
-	auto* f32 = foldIntCast(x, Type::i64, Type::f32);
+	auto f32 = foldIntCast(x, Type::i64, Type::f32);
 	CHECK(floatValue(f32) == static_cast<double>(static_cast<float>(x)));
 	CHECK(floatValue(f32) == std::ldexp(1.0, 60) + std::ldexp(1.0, 37));
 	CHECK(f32->getStamp() == Type::f32);
