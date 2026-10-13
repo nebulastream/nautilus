@@ -33,7 +33,7 @@ test('counts such as generated code size are not charted', () => {
 });
 
 test('a query label may contain colons-free text with slashes and digits', () => {
-	const p = parseNes('mlir-eager query a/b 2: compilation');
+	const p = parseNes('tbc-jit query a/b 2: compilation');
 	assert.equal(p.workload, 'a/b 2');
-	assert.equal(p.seriesKey, 'mlir-eager');
+	assert.equal(p.seriesKey, 'tbc-jit');
 });
