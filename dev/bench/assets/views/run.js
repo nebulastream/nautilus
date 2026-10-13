@@ -2,7 +2,6 @@
 // phase, with deltas against a baseline run (the chronologically previous one
 // by default; the compare view swaps in an arbitrary baseline).
 
-import { PHASE_ORDER, PHASE_LABELS } from '../parser.js';
 import { formatNs, formatPercent, shortHash, firstLine, formatDate } from '../format.js';
 
 // A run counts as regressed/improved beyond this percentage.
@@ -44,7 +43,7 @@ export function renderDeltaTables(container, model, run, baseRun, baseLabel) {
 		byPhase.get(parsed.phase).push(parsed);
 	}
 
-	for (const phase of PHASE_ORDER) {
+	for (const phase of model.phaseOrder) {
 		const parsedList = byPhase.get(phase);
 		if (!parsedList) {
 			continue;
@@ -59,7 +58,7 @@ export function renderDeltaTables(container, model, run, baseRun, baseLabel) {
 					: 1,
 		);
 
-		container.appendChild(el('h2', null, PHASE_LABELS[phase] || phase));
+		container.appendChild(el('h2', null, model.phaseLabels[phase] || phase));
 		const wrap = el('div', 'table-wrap');
 		const table = el('table', 'bench');
 		const thead = el('thead');
@@ -67,7 +66,7 @@ export function renderDeltaTables(container, model, run, baseRun, baseLabel) {
 		for (const [text, cls] of [
 			['benchmark', null],
 			['value', 'num'],
-			['± (raw)', 'num'],
+			[model.prefix ? 'measured' : '± (raw)', 'num'],
 			[`Δ vs ${baseLabel}`, 'num'],
 		]) {
 			headRow.appendChild(el('th', cls, text));
@@ -83,7 +82,7 @@ export function renderDeltaTables(container, model, run, baseRun, baseLabel) {
 
 			const nameTd = el('td');
 			const link = el('a', 'mono', parsed.name);
-			link.href = `#/trends/${parsed.phase}?w=${encodeURIComponent(parsed.workload)}`;
+			link.href = `#/${model.prefix}trends/${parsed.phase}?w=${encodeURIComponent(parsed.workload)}`;
 			nameTd.appendChild(link);
 			if (baseRun && !baseBench) {
 				nameTd.appendChild(el('span', 'badge', 'new'));
@@ -91,7 +90,7 @@ export function renderDeltaTables(container, model, run, baseRun, baseLabel) {
 			tr.appendChild(nameTd);
 
 			tr.appendChild(el('td', 'num', formatNs(bench.valueNs)));
-			tr.appendChild(el('td', 'num range', bench.range || ''));
+			tr.appendChild(el('td', 'num range', bench.range || firstLine(bench.extra)));
 			tr.appendChild(deltaCell(bench.valueNs, baseBench ? baseBench.valueNs : null));
 			tbody.appendChild(tr);
 		}
@@ -130,16 +129,16 @@ function runHeader(model, run, idx) {
 	const nav = el('div', 'run-nav');
 	if (idx > 0) {
 		const prev = el('a', null, `← ${shortHash(model.runs[idx - 1].commit.id)} (older)`);
-		prev.href = `#/run/${model.runs[idx - 1].commit.id}`;
+		prev.href = `#/${model.prefix}run/${model.runs[idx - 1].commit.id}`;
 		nav.appendChild(prev);
 	}
 	if (idx < model.runs.length - 1) {
 		const next = el('a', null, `${shortHash(model.runs[idx + 1].commit.id)} (newer) →`);
-		next.href = `#/run/${model.runs[idx + 1].commit.id}`;
+		next.href = `#/${model.prefix}run/${model.runs[idx + 1].commit.id}`;
 		nav.appendChild(next);
 	}
 	const compare = el('a', null, 'compare against another run');
-	compare.href = idx > 0 ? `#/compare/${model.runs[idx - 1].commit.id}..${run.commit.id}` : '#/compare/';
+	compare.href = idx > 0 ? `#/${model.prefix}compare/${model.runs[idx - 1].commit.id}..${run.commit.id}` : `#/${model.prefix}compare/`;
 	nav.appendChild(compare);
 	header.appendChild(nav);
 	return header;
@@ -155,7 +154,7 @@ export function renderRun(container, model, sha) {
 		p.appendChild(el('span', 'mono', sha));
 		p.append('. See the ');
 		const a = el('a', null, 'run list');
-		a.href = '#/runs';
+		a.href = `#/${model.prefix}runs`;
 		p.appendChild(a);
 		p.append('.');
 		container.appendChild(p);
@@ -167,7 +166,9 @@ export function renderRun(container, model, sha) {
 	const note = el('p', 'section-note');
 	note.textContent = baseRun
 		? `Deltas vs previous run ${shortHash(baseRun.commit.id)}; green/red beyond ±${DELTA_THRESHOLD_PCT}%. ` +
-			'The raw ± column is catch2 std-dev as published (unitless).'
+			(model.prefix
+				? 'The measured column names the query, its pipelines and rounds.'
+				: 'The raw ± column is catch2 std-dev as published (unitless).')
 		: 'First recorded run — no baseline for deltas.';
 	container.appendChild(note);
 	renderDeltaTables(container, model, run, baseRun, baseRun ? shortHash(baseRun.commit.id) : 'previous');
@@ -222,7 +223,7 @@ export function renderRunList(container, model) {
 		tr.appendChild(el('td', null, formatDate(run.commit.timestamp)));
 		const shaTd = el('td');
 		const link = el('a', 'mono', shortHash(run.commit.id));
-		link.href = `#/run/${run.commit.id}`;
+		link.href = `#/${model.prefix}run/${run.commit.id}`;
 		shaTd.appendChild(link);
 		tr.appendChild(shaTd);
 		tr.appendChild(el('td', null, firstLine(run.commit.message)));
