@@ -2,7 +2,8 @@
 #include <cstdint>
 #include <cstring>
 #include <nautilus/Engine.hpp>
-#include <nautilus/int128.hpp>
+#include <nautilus/builtin/int128/int128.hpp>
+#include <nautilus/builtin/plugin.hpp>
 
 namespace {
 using I128 = nautilus::val<nautilus::detail::int128_t>;

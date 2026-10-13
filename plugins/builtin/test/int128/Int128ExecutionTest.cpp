@@ -3,7 +3,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cstring>
 #include <nautilus/Engine.hpp>
-#include <nautilus/int128.hpp>
+#include <nautilus/builtin/int128/int128.hpp>
+#include <nautilus/builtin/plugin.hpp>
 
 namespace {
 using I128 = nautilus::val<nautilus::detail::int128_t>;
@@ -116,8 +117,8 @@ void exercise(const nautilus::engine::NautilusEngine& engine) {
 		REQUIRE(multiplyHighFn(widened) == widened);
 	}
 
-	alignas(16) nautilus::detail::int128_data input {UINT64_MAX, 4};
-	alignas(16) nautilus::detail::int128_data output {};
+	alignas(16) nautilus::builtin::detail::int128_data input {UINT64_MAX, 4};
+	alignas(16) nautilus::builtin::detail::int128_data output {};
 	REQUIRE(memoryFn(&output, &input) == 5);
 	REQUIRE(output.low == 0);
 	REQUIRE(output.high == 5);

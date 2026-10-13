@@ -1,20 +1,7 @@
 #include <cstring>
-#include <nautilus/config.hpp>
-#include <nautilus/int128.hpp>
+#include <nautilus/builtin/int128/int128.hpp>
 
-#ifdef ENABLE_MLIR_BACKEND
-#include "MLIRInt128Intrinsics.hpp"
-namespace {
-struct Int128IntrinsicRegistrar {
-	Int128IntrinsicRegistrar() {
-		nautilus::compiler::mlir::RegisterMLIRInt128IntrinsicPlugin();
-	}
-};
-static Int128IntrinsicRegistrar registrar;
-} // namespace
-#endif
-
-namespace nautilus::detail {
+namespace nautilus::builtin::detail {
 namespace {
 __extension__ typedef __int128 native_int;
 __extension__ typedef unsigned __int128 native_uint;
@@ -85,4 +72,4 @@ int128_data* int128_load_impl(const void* ptr) {
 void int128_store_impl(void* ptr, int128_data* value) {
 	std::memcpy(ptr, value, sizeof(*value));
 }
-} // namespace nautilus::detail
+} // namespace nautilus::builtin::detail

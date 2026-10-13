@@ -6,7 +6,7 @@
 
 namespace nautilus {
 
-namespace detail {
+namespace builtin::detail {
 struct int128_data {
 	uint64_t low;
 	int64_t high;
@@ -31,19 +31,19 @@ uint64_t int128_low_impl(int128_data*);
 int64_t int128_high_impl(int128_data*);
 int128_data* int128_load_impl(const void*);
 void int128_store_impl(void*, int128_data*);
-} // namespace detail
+} // namespace builtin::detail
 
 /// A first-class traceable signed 128-bit integer as a `val<detail::int128_t>`.
 ///
 /// The value travels through the Nautilus IR as an opaque pointer. Every
-/// operation is recorded as a traced `invoke` to a runtime helper in `detail`;
+/// operation is recorded as a traced `invoke` to a runtime helper in `builtin::detail`;
 /// when the MLIR backend is enabled its intrinsic plugin replaces those calls
 /// with native LLVM `i128` operations. Scalar backends (C++, BC, TBC, AsmJit)
 /// fall back to the portable runtime helpers.
 template <>
 class val<detail::int128_t> : public val_base {
 public:
-	using storage_type = detail::int128_data;
+	using storage_type = builtin::detail::int128_data;
 	using basic_type = detail::int128_t;
 
 	/// Wraps an existing boxed value (a runtime helper result).
@@ -51,7 +51,7 @@ public:
 	}
 
 	/// Constructs from explicit low and high halves.
-	val(val<uint64_t> low, val<int64_t> high = 0) : val(invoke(detail::int128_make_impl, low, high)) {
+	val(val<uint64_t> low, val<int64_t> high = 0) : val(invoke(builtin::detail::int128_make_impl, low, high)) {
 	}
 
 	/// Constructs from a raw host `__int128`.
@@ -83,18 +83,18 @@ public:
 
 	/// Loads 16 bytes without imposing an alignment requirement on ptr.
 	static val<detail::int128_t> Load(val<const void*> ptr) {
-		return val<detail::int128_t>(invoke(detail::int128_load_impl, ptr));
+		return val<detail::int128_t>(invoke(builtin::detail::int128_load_impl, ptr));
 	}
 	/// Stores 16 bytes without imposing an alignment requirement on ptr.
 	void Store(val<void*> ptr) const {
-		invoke(detail::int128_store_impl, ptr, box_);
+		invoke(builtin::detail::int128_store_impl, ptr, box_);
 	}
 
 	val<uint64_t> low() const {
-		return invoke(detail::int128_low_impl, box_);
+		return invoke(builtin::detail::int128_low_impl, box_);
 	}
 	val<int64_t> high() const {
-		return invoke(detail::int128_high_impl, box_);
+		return invoke(builtin::detail::int128_high_impl, box_);
 	}
 	/// Exposes the underlying opaque boxed pointer.
 	val<storage_type*> data() const {
@@ -111,13 +111,13 @@ public:
 	}
 
 	val<detail::int128_t> operator-() const {
-		return val<detail::int128_t>(invoke(detail::int128_neg_impl, box_));
+		return val<detail::int128_t>(invoke(builtin::detail::int128_neg_impl, box_));
 	}
 	val<detail::int128_t> operator<<(val<uint32_t> amount) const {
-		return val<detail::int128_t>(invoke(detail::int128_shl_impl, box_, amount));
+		return val<detail::int128_t>(invoke(builtin::detail::int128_shl_impl, box_, amount));
 	}
 	val<detail::int128_t> operator>>(val<uint32_t> amount) const {
-		return val<detail::int128_t>(invoke(detail::int128_shr_impl, box_, amount));
+		return val<detail::int128_t>(invoke(builtin::detail::int128_shr_impl, box_, amount));
 	}
 
 	[[nodiscard]] Type getType() const override {
@@ -139,7 +139,7 @@ private:
 // binary arithmetic operators (free, preferred over the val_arith generic)
 #define NAUTILUS_INT128_FREE_BINARY(OP, FN)                                                                            \
 	inline val<detail::int128_t> operator OP(const val<detail::int128_t>& lhs, const val<detail::int128_t>& rhs) {     \
-		return val<detail::int128_t>(invoke(detail::FN, lhs.data(), rhs.data()));                                      \
+		return val<detail::int128_t>(invoke(builtin::detail::FN, lhs.data(), rhs.data()));                             \
 	}
 NAUTILUS_INT128_FREE_BINARY(+, int128_add_impl)
 NAUTILUS_INT128_FREE_BINARY(-, int128_sub_impl)
@@ -153,18 +153,18 @@ NAUTILUS_INT128_FREE_BINARY(^, int128_xor_impl)
 
 // bitwise NOT
 inline val<detail::int128_t> operator~(const val<detail::int128_t>& value) {
-	return val<detail::int128_t>(invoke(detail::int128_not_impl, value.data()));
+	return val<detail::int128_t>(invoke(builtin::detail::int128_not_impl, value.data()));
 }
 
 // comparisons
 inline val<bool> operator==(const val<detail::int128_t>& lhs, const val<detail::int128_t>& rhs) {
-	return invoke(detail::int128_eq_impl, lhs.data(), rhs.data());
+	return invoke(builtin::detail::int128_eq_impl, lhs.data(), rhs.data());
 }
 inline val<bool> operator!=(const val<detail::int128_t>& lhs, const val<detail::int128_t>& rhs) {
 	return !(lhs == rhs);
 }
 inline val<bool> operator<(const val<detail::int128_t>& lhs, const val<detail::int128_t>& rhs) {
-	return invoke(detail::int128_lt_impl, lhs.data(), rhs.data());
+	return invoke(builtin::detail::int128_lt_impl, lhs.data(), rhs.data());
 }
 inline val<bool> operator>(const val<detail::int128_t>& lhs, const val<detail::int128_t>& rhs) {
 	return rhs < lhs;

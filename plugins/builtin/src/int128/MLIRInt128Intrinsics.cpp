@@ -2,7 +2,7 @@
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
-#include <nautilus/int128.hpp>
+#include <nautilus/builtin/int128/int128.hpp>
 
 namespace nautilus::compiler::mlir {
 namespace {
@@ -155,7 +155,7 @@ bool memoryStore(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame&
 class Plugin final : public MLIRIntrinsicPlugin {
 public:
 	void registerIntrinsics(MLIRIntrinsicManager& m) override {
-#define ADD(FN, HANDLER) m.addIntrinsic(reinterpret_cast<void*>(::nautilus::detail::FN), HANDLER)
+#define ADD(FN, HANDLER) m.addIntrinsic(reinterpret_cast<void*>(::nautilus::builtin::detail::FN), HANDLER)
 		ADD(int128_make_impl, make);
 		ADD(int128_add_impl, binary<::mlir::LLVM::AddOp>);
 		ADD(int128_sub_impl, binary<::mlir::LLVM::SubOp>);
