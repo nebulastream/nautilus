@@ -1005,6 +1005,12 @@ void MLIRLoweringProvider::visitCall(ir::CallOperation* callOp, ValueFrame& fram
 		}
 		const auto& intrinsicFunction = *intrinsic;
 		if (intrinsicFunction(builder, callOp, frame)) {
+			// Handlers bind their result into the block-scoped frame only;
+			// record it in `definedValues` too so a later block can resolve
+			// it as a cross-block operand, as `bind` does for regular ops.
+			if (frame.contains(callOp->getIdentifier())) {
+				definedValues[callOp] = frame.getValue(callOp->getIdentifier());
+			}
 			return;
 		}
 	}
