@@ -4,6 +4,7 @@ add_library(nautilus-builtin)
 set(BUILTIN_SOURCES
         src/prefetch/prefetch.cpp
         src/int128/int128.cpp
+        src/popcount/popcount.cpp
 )
 
 if (ENABLE_MLIR_BACKEND OR ENABLE_ASMJIT_BACKEND)
@@ -14,11 +15,15 @@ if (ENABLE_MLIR_BACKEND)
     list(APPEND BUILTIN_SOURCES
             src/prefetch/MLIRPrefetchIntrinsics.cpp
             src/int128/MLIRInt128Intrinsics.cpp
+            src/popcount/MLIRPopcountIntrinsics.cpp
     )
 endif ()
 
 if (ENABLE_ASMJIT_BACKEND)
-    list(APPEND BUILTIN_SOURCES src/prefetch/AsmJitPrefetchIntrinsics.cpp)
+    list(APPEND BUILTIN_SOURCES
+            src/prefetch/AsmJitPrefetchIntrinsics.cpp
+            src/popcount/AsmJitPopcountIntrinsics.cpp
+    )
 endif ()
 
 target_sources(nautilus-builtin PRIVATE ${BUILTIN_SOURCES})

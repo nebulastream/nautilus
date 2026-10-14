@@ -4,6 +4,7 @@ include(Catch)
 add_executable(nautilus-builtin-tests
         prefetch/PrefetchExecutionTest.cpp
         int128/Int128ExecutionTest.cpp
+        popcount/PopcountExecutionTest.cpp
 )
 
 nautilus_inline(nautilus-builtin-tests)
@@ -28,10 +29,11 @@ if (ENABLE_FUZZING)
     target_link_options(nautilus-int128-fuzz PRIVATE -fsanitize=fuzzer)
 endif ()
 
-# LLVM IR comparison tests: verify prefetch() lowers to llvm.prefetch on the MLIR backend
+# LLVM IR comparison tests: verify prefetch() lowers to llvm.prefetch and popcount() to llvm.ctpop on the MLIR backend
 if (ENABLE_MLIR_BACKEND AND ENABLE_LLVM_IR_TEST)
     add_executable(nautilus-builtin-llvm-ir-test
             prefetch/PrefetchLLVMIRTest.cpp
+            popcount/PopcountLLVMIRTest.cpp
     )
 
     nautilus_inline(nautilus-builtin-llvm-ir-test)

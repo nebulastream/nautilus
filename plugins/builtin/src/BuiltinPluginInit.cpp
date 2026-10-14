@@ -9,10 +9,12 @@
 
 #ifdef ENABLE_MLIR_BACKEND
 #include "int128/MLIRInt128Intrinsics.hpp"
+#include "popcount/MLIRPopcountIntrinsics.hpp"
 #include "prefetch/MLIRPrefetchIntrinsics.hpp"
 #endif
 
 #ifdef ENABLE_ASMJIT_BACKEND
+#include "popcount/AsmJitPopcountIntrinsics.hpp"
 #include "prefetch/AsmJitPrefetchIntrinsics.hpp"
 #endif
 
@@ -22,9 +24,11 @@ struct BuiltinIntrinsicRegistrar {
 #ifdef ENABLE_MLIR_BACKEND
 		nautilus::compiler::mlir::RegisterMLIRPrefetchIntrinsicPlugin();
 		nautilus::compiler::mlir::RegisterMLIRInt128IntrinsicPlugin();
+		nautilus::compiler::mlir::RegisterMLIRPopcountIntrinsicPlugin();
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
 		nautilus::compiler::asmjit::RegisterAsmJitPrefetchIntrinsicPlugin();
+		nautilus::compiler::asmjit::RegisterAsmJitPopcountIntrinsicPlugin();
 #endif
 	}
 };

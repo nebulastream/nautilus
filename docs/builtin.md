@@ -42,6 +42,30 @@ val<int64_t> sum(val<int64_t*> data, val<int64_t> count) {
 | AsmJit AArch64 | `PRFM PLDL1KEEP/PLDL2KEEP/PLDL3KEEP/PLDL1STRM` for reads, `PST*` for writes |
 | C++, bytecode, interpreter | call to a `__builtin_prefetch` wrapper |
 
+## Population count
+
+```cpp
+#include <nautilus/builtin/plugin.hpp>
+#include <nautilus/builtin/popcount/popcount.hpp>
+
+val<uint64_t> setBits(val<uint64_t> mask) {
+    return nautilus::builtin::popcount(mask);
+}
+```
+
+`popcount(x)` returns the number of set bits in `x`, like `__builtin_popcount`. It is overloaded for `val<T>` of every signed and unsigned 8/16/32/64-bit integer, returns a value of the same type, and counts the two's-complement bits at the width of `T` (`popcount(val<int8_t>(-1)) == 8`).
+
+### Lowering
+
+| Backend | Lowering |
+|---------|----------|
+| MLIR | `llvm.ctpop` at the operand's width |
+| AsmJit x86-64 | `POPCNT` (falls back to the call on CPUs without `POPCNT`) |
+| AsmJit AArch64 | `FMOV` + `CNT` + `ADDV` + `FMOV` |
+| C++, bytecode, interpreter | call to a `std::popcount` wrapper |
+
+The bytecode backend (and tbc on Apple arm64) passes `uint8_t`/`uint16_t` call arguments sign-extended, so `popcount` of a `val<uint8_t>`/`val<uint16_t>` with the top bit set is wrong there, like any other call taking a narrow unsigned argument.
+
 ## 128-bit integers
 
 ```cpp

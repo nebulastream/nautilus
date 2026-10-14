@@ -17,7 +17,7 @@
 //
 // Usage: #include <nautilus/builtin/plugin.hpp> in any TU that links against
 // nautilus-builtin as a static archive and needs the native MLIR/AsmJit
-// builtin lowering (e.g. prefetch, int128).
+// builtin lowering (e.g. prefetch, int128, popcount).
 
 #include "nautilus/config.hpp"
 
@@ -27,6 +27,8 @@ namespace nautilus::compiler::mlir {
 void RegisterMLIRPrefetchIntrinsicPlugin();
 // Defined in plugins/builtin/src/int128/MLIRInt128Intrinsics.cpp
 void RegisterMLIRInt128IntrinsicPlugin();
+// Defined in plugins/builtin/src/popcount/MLIRPopcountIntrinsics.cpp
+void RegisterMLIRPopcountIntrinsicPlugin();
 } // namespace nautilus::compiler::mlir
 
 namespace {
@@ -37,6 +39,7 @@ struct NautilusBuiltinMlirPluginRegistrar {
 	NautilusBuiltinMlirPluginRegistrar() {
 		nautilus::compiler::mlir::RegisterMLIRPrefetchIntrinsicPlugin();
 		nautilus::compiler::mlir::RegisterMLIRInt128IntrinsicPlugin();
+		nautilus::compiler::mlir::RegisterMLIRPopcountIntrinsicPlugin();
 	}
 };
 [[maybe_unused]] static NautilusBuiltinMlirPluginRegistrar nautilus_builtin_mlir_plugin_registrar_;
@@ -47,12 +50,15 @@ struct NautilusBuiltinMlirPluginRegistrar {
 namespace nautilus::compiler::asmjit {
 // Defined in plugins/builtin/src/prefetch/AsmJitPrefetchIntrinsics.cpp
 void RegisterAsmJitPrefetchIntrinsicPlugin();
+// Defined in plugins/builtin/src/popcount/AsmJitPopcountIntrinsics.cpp
+void RegisterAsmJitPopcountIntrinsicPlugin();
 } // namespace nautilus::compiler::asmjit
 
 namespace {
 struct NautilusBuiltinAsmJitPluginRegistrar {
 	NautilusBuiltinAsmJitPluginRegistrar() {
 		nautilus::compiler::asmjit::RegisterAsmJitPrefetchIntrinsicPlugin();
+		nautilus::compiler::asmjit::RegisterAsmJitPopcountIntrinsicPlugin();
 	}
 };
 [[maybe_unused]] static NautilusBuiltinAsmJitPluginRegistrar nautilus_builtin_asmjit_plugin_registrar_;

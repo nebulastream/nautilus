@@ -139,7 +139,7 @@ Common build options (see `CMakeLists.txt` for the full list):
 | `ENABLE_C_BACKEND` | ON | Enable the C++ code generation backend |
 | `ENABLE_BC_BACKEND` | ON | Enable the bytecode interpreter backend |
 | `ENABLE_ASMJIT_BACKEND` | ON | Enable the AsmJit backend |
-| `ENABLE_BUILTIN_PLUGIN` | ON | Enable the compiler builtins plugin (memory prefetch) |
+| `ENABLE_BUILTIN_PLUGIN` | ON | Enable the compiler builtins plugin (memory prefetch, popcount, 128-bit integers) |
 | `ENABLE_GPU_PLUGIN` | OFF | Enable the GPU plugin (CUDA + Metal backends) |
 
 More runnable examples, including backend selection, runtime calls, and
@@ -164,7 +164,7 @@ The [`docs/`](docs) directory has in-depth guides:
 | [Graphs](docs/graphs.md) | The IR control-flow graph and SSA representation |
 | [Hardware Performance Monitoring](docs/perf.md) | The profiling plugin: in-process hardware counters and a JIT-aware sampling profiler |
 | [SIMD](docs/simd.md) | The SIMD vector plugin |
-| [Builtins](docs/builtin.md) | The compiler builtins plugin (memory prefetch) |
+| [Builtins](docs/builtin.md) | The compiler builtins plugin (memory prefetch, popcount, 128-bit integers) |
 | [Standard Library Plugin](docs/std-plugin.md) | Wrapping C++ standard library functions |
 
 ## Project Layout
