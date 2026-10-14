@@ -827,6 +827,67 @@ void vectorTests(engine::NautilusEngine& engine) {
 			REQUIRE(out[i] == base[i * 2 % IL]);
 	}
 
+	SECTION("shuffle int32") {
+		// interleave the two sources' low halves, then their high halves reversed
+		for (size_t i = 0; i < IL; i++) {
+			shuffleIdx[i] = static_cast<int32_t>(i % 2 == 0 ? i / 2 : IL + (IL - 1 - i / 2));
+		}
+		auto f = engine.registerFunction(vectorShuffleInt);
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], out[IL_MAX] = {};
+		for (size_t i = 0; i < IL; i++) {
+			a[i] = static_cast<int32_t>(100 + i);
+			b[i] = static_cast<int32_t>(200 + i);
+		}
+		f(a, b, out);
+		for (size_t i = 0; i < IL; i++) {
+			const int32_t k = shuffleIdx[i];
+			REQUIRE(out[i] == (k < static_cast<int32_t>(IL) ? a[k] : b[k - IL]));
+		}
+	}
+
+	SECTION("shuffle float") {
+		for (size_t i = 0; i < FL; i++) {
+			shuffleIdx[i] = static_cast<int32_t>((i * 3 + 1) % (2 * FL));
+		}
+		auto f = engine.registerFunction(vectorShuffleFloat);
+		alignas(64) float a[FL_MAX], b[FL_MAX], out[FL_MAX] = {};
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i) + 0.5f;
+			b[i] = -static_cast<float>(i) - 0.25f;
+		}
+		f(a, b, out);
+		for (size_t i = 0; i < FL; i++) {
+			const int32_t k = shuffleIdx[i];
+			REQUIRE(out[i] == (k < static_cast<int32_t>(FL) ? a[k] : b[k - FL]));
+		}
+	}
+
+	SECTION("logical shift right int32") {
+		auto f = engine.registerFunction(vectorShrLogicalInt);
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], out[IL_MAX] = {};
+		for (size_t i = 0; i < IL; i++) {
+			a[i] = i % 2 == 0 ? -static_cast<int32_t>(i + 1) * 1000 : static_cast<int32_t>(i) * 977;
+			b[i] = static_cast<int32_t>(i % 32);
+		}
+		f(a, b, out);
+		for (size_t i = 0; i < IL; i++) {
+			REQUIRE(out[i] == static_cast<int32_t>(static_cast<uint32_t>(a[i]) >> b[i]));
+		}
+	}
+
+	SECTION("loop-invariant vectors used in a loop") {
+		auto f = engine.registerFunction(vectorLoopInvariantInt);
+		constexpr size_t N = 64;
+		alignas(64) int32_t in[N], out[N] = {};
+		for (size_t i = 0; i < N; i++) {
+			in[i] = static_cast<int32_t>(i) - 20;
+		}
+		f(in, out, static_cast<int64_t>(N));
+		for (size_t i = 0; i < N; i++) {
+			REQUIRE(out[i] == in[i] * 3 + 7);
+		}
+	}
+
 	SECTION("gather + reduce float") {
 		auto f = engine.registerFunction(vectorGatherReduceFloat);
 		float base[] = {10.0f, 20.0f,  30.0f,  40.0f,  50.0f,  60.0f,  70.0f,  80.0f,

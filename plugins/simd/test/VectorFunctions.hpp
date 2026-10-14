@@ -496,4 +496,31 @@ void vectorCompoundShiftInt(val<const int32_t*> a, val<int32_t*> out) {
 	((va << shift_left) >> shift_right).Store(out);
 }
 
+// Two-source constant shuffle: lane i of the result is lane shuffleIdx[i] of (a, b). The table is
+// host memory read at trace / compile time (tests fill it before registering the function).
+inline int32_t shuffleIdx[64];
+
+void vectorShuffleInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> out) {
+	val<vec<int32_t>>::Shuffle(val<vec<int32_t>>::Load(a), val<vec<int32_t>>::Load(b), shuffleIdx).Store(out);
+}
+
+void vectorShuffleFloat(val<const float*> a, val<const float*> b, val<float*> out) {
+	val<vec<float>>::Shuffle(val<vec<float>>::Load(a), val<vec<float>>::Load(b), shuffleIdx).Store(out);
+}
+
+// Logical (zero-filling) right shift, also of negative lanes
+void vectorShrLogicalInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> out) {
+	val<vec<int32_t>>::Load(a).ShrLogical(val<vec<int32_t>>::Load(b)).Store(out);
+}
+
+// Vectors built before a loop and used inside it (they cross basic blocks)
+void vectorLoopInvariantInt(val<const int32_t*> in, val<int32_t*> out, val<int64_t> n) {
+	auto add = val<vec<int32_t>>::Broadcast(val<int32_t>(7));
+	auto mul = val<vec<int32_t>>::Broadcast(val<int32_t>(3));
+	const auto lanes = static_cast<int64_t>(vec<int32_t>::Lanes());
+	for (val<int64_t> i = 0; i < n; i = i + lanes) {
+		(val<vec<int32_t>>::Load(in + i) * mul + add).Store(out + i);
+	}
+}
+
 } // namespace nautilus::engine

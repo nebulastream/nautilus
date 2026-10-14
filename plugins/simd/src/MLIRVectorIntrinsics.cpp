@@ -1,6 +1,7 @@
 
 #include "MLIRVectorIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
+#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "vector_impl.hpp"
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
@@ -51,6 +52,11 @@ static ::mlir::Value loadVecFromPtr(std::unique_ptr<::mlir::OpBuilder>& builder,
 
 // ============================================================================
 // Helper: alloca + store a vector result, return pointer
+//
+// The alloca goes into the function's entry block: a vector produced inside a loop body would
+// otherwise be a fresh dynamic stack allocation on every iteration, which mem2reg / SROA never
+// promote (they only promote static entry-block allocas) — every vector op then round-trips
+// through memory.
 // ============================================================================
 
 static ::mlir::Value storeVecToAlloca(std::unique_ptr<::mlir::OpBuilder>& builder, ::mlir::Value vec,
@@ -60,10 +66,16 @@ static ::mlir::Value storeVecToAlloca(std::unique_ptr<::mlir::OpBuilder>& builde
 	auto elemTy = vecTy.getElementType();
 	auto numElements = vecTy.getNumElements();
 	auto byteSize = numElements * (elemTy.getIntOrFloatBitWidth() / 8);
-	auto sizeVal = ::mlir::LLVM::ConstantOp::create(*builder, builder->getUnknownLoc(), i64Ty,
-	                                                builder->getI64IntegerAttr(byteSize));
-	auto alloca =
-	    ::mlir::LLVM::AllocaOp::create(*builder, builder->getUnknownLoc(), ptrTy, builder->getI8Type(), sizeVal, 0u);
+	::mlir::Value alloca;
+	{
+		::mlir::OpBuilder::InsertionGuard guard(*builder);
+		auto* region = builder->getInsertionBlock()->getParent();
+		builder->setInsertionPointToStart(&region->front());
+		auto sizeVal = ::mlir::LLVM::ConstantOp::create(*builder, builder->getUnknownLoc(), i64Ty,
+		                                                builder->getI64IntegerAttr(byteSize));
+		alloca = ::mlir::LLVM::AllocaOp::create(*builder, builder->getUnknownLoc(), ptrTy, builder->getI8Type(),
+		                                        sizeVal, 0u);
+	}
 	::mlir::LLVM::StoreOp::create(*builder, builder->getUnknownLoc(), vec, alloca);
 	return alloca;
 }
@@ -555,16 +567,18 @@ bool vectorGatherIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	// Load all indices as a vector<Nxi32>
 	auto indices = ::mlir::LLVM::LoadOp::create(*builder, loc, idxVecTy, idxPtr);
 
-	// Build result element by element: extract index, GEP, load, insert
-	::mlir::Value result = ::mlir::LLVM::UndefOp::create(*builder, loc, vecTy);
-	for (int64_t i = 0; i < N; i++) {
-		::mlir::Value iConst = ::mlir::LLVM::ConstantOp::create(*builder, loc, i32Ty, builder->getI32IntegerAttr(i));
-		::mlir::Value idx = ::mlir::LLVM::ExtractElementOp::create(*builder, loc, indices, iConst);
-		auto elemPtr = ::mlir::LLVM::GEPOp::create(*builder, loc, ptrTy, elemTy, basePtr,
-		                                           llvm::ArrayRef<::mlir::LLVM::GEPArg> {idx});
-		::mlir::Value elem = ::mlir::LLVM::LoadOp::create(*builder, loc, elemTy, elemPtr);
-		result = ::mlir::LLVM::InsertElementOp::create(*builder, loc, result, elem, iConst);
-	}
+	// One vector GEP (base + indices) and an unmasked llvm.masked.gather: LLVM selects the target's
+	// gather instruction (AVX2 / AVX-512 vpgatherdd, SVE ld1) or scalarizes it where there is none.
+	auto ptrVecTy = getVecType(ptrTy, N);
+	::mlir::Value indexVec = indices;
+	auto elemPtrs = ::mlir::LLVM::GEPOp::create(*builder, loc, ptrVecTy, elemTy, basePtr,
+	                                            llvm::ArrayRef<::mlir::LLVM::GEPArg> {indexVec});
+	auto allTrue =
+	    ::mlir::LLVM::ConstantOp::create(*builder, loc, getVecType(builder->getI1Type(), N),
+	                                     ::mlir::DenseElementsAttr::get(getVecType(builder->getI1Type(), N), true));
+	::mlir::Value result =
+	    ::mlir::LLVM::masked_gather::create(*builder, loc, vecTy, elemPtrs, allTrue, ::mlir::ValueRange {},
+	                                        builder->getI32IntegerAttr(static_cast<int32_t>(sizeof(ElemT))));
 
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
 	frame.setValue(call->getIdentifier(), resultPtr);
@@ -604,6 +618,41 @@ bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 	}
 
 	frame.setValue(call->getIdentifier(), basePtr);
+	return true;
+}
+
+// ============================================================================
+// Shuffle: lane i of the result is lane idx[i] of the concatenation (a, b), idx[i] < 2N
+//
+// The index table is host memory the traced code passes as a constant pointer: its contents are
+// read here and become the constant mask of an LLVM shufflevector (x86: vpermt2d / vpermi2d,
+// AArch64: tbl). A table that is not a trace-time constant pointer is not lowered (the call to the
+// C++ implementation remains).
+// ============================================================================
+
+template <typename ElemT, int64_t N>
+bool vectorShuffleIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
+                            MLIRLoweringProvider::ValueFrame& frame) {
+	const auto* table = compiler::ir::dyn_cast<compiler::ir::ConstPtrOperation>(call->getInputArguments()[2]);
+	if (table == nullptr || table->getValue() == nullptr) {
+		return false;
+	}
+	const auto* idx = static_cast<const int32_t*>(table->getValue());
+	llvm::SmallVector<int32_t, 64> mask;
+	for (int64_t i = 0; i < N; i++) {
+		if (idx[i] < 0 || idx[i] >= 2 * N) {
+			return false;
+		}
+		mask.push_back(idx[i]);
+	}
+	auto aPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto bPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto loc = builder->getUnknownLoc();
+	auto vecTy = getVecType(getElemType<ElemT>(*builder), N);
+	auto a = loadVecFromPtr(builder, aPtr, vecTy);
+	auto b = loadVecFromPtr(builder, bPtr, vecTy);
+	auto result = ::mlir::LLVM::ShuffleVectorOp::create(*builder, loc, a, b, mask);
+	frame.setValue(call->getIdentifier(), storeVecToAlloca(builder, result, vecTy));
 	return true;
 }
 
@@ -880,7 +929,14 @@ bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	manager.addIntrinsic(reinterpret_cast<void*>(&vector_shl_##SUFFIX##_impl),                                       \
 	                     vectorBinaryIntrinsic<::mlir::LLVM::ShlOp, T, N>);                                          \
 	manager.addIntrinsic(reinterpret_cast<void*>(&vector_shr_##SUFFIX##_impl),                                       \
-	                     vectorBinaryIntrinsic<::mlir::LLVM::AShrOp, T, N>);
+	                     vectorBinaryIntrinsic<::mlir::LLVM::AShrOp, T, N>);                                         \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_lshr_##SUFFIX##_impl),                                      \
+	                     vectorBinaryIntrinsic<::mlir::LLVM::LShrOp, T, N>);
+
+// Register two-source constant shuffle
+#define REGISTER_VECTOR_SHUFFLE(manager, T, N, SUFFIX)                                                               \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_shuffle_##SUFFIX##_impl),                                   \
+	                     (vectorShuffleIntrinsic<T, N>));
 
 // Full registration for float type/width
 #define REGISTER_VECTOR_FLOAT_ALL(manager, T, N, SUFFIX)                                                             \
@@ -899,7 +955,8 @@ bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	REGISTER_VECTOR_SCATTER(manager, T, N, SUFFIX)                                                                   \
 	REGISTER_VECTOR_COMPRESS_STORE(manager, T, N, SUFFIX)                                                            \
 	REGISTER_VECTOR_EXTRACT(manager, T, N, SUFFIX)                                                                   \
-	REGISTER_VECTOR_INSERT(manager, T, N, SUFFIX)
+	REGISTER_VECTOR_INSERT(manager, T, N, SUFFIX)                                                                    \
+	REGISTER_VECTOR_SHUFFLE(manager, T, N, SUFFIX)
 
 // Full registration for int type/width
 #define REGISTER_VECTOR_INT_ALL(manager, T, N, SUFFIX)                                                               \
@@ -918,6 +975,7 @@ bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	REGISTER_VECTOR_COMPRESS_STORE(manager, T, N, SUFFIX)                                                            \
 	REGISTER_VECTOR_EXTRACT(manager, T, N, SUFFIX)                                                                   \
 	REGISTER_VECTOR_INSERT(manager, T, N, SUFFIX)                                                                    \
+	REGISTER_VECTOR_SHUFFLE(manager, T, N, SUFFIX)                                                                   \
 	REGISTER_VECTOR_SHIFT_INT(manager, T, N, SUFFIX)
 
 // clang-format on

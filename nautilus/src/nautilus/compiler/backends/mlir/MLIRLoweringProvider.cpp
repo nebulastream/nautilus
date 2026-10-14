@@ -1005,6 +1005,11 @@ void MLIRLoweringProvider::visitCall(ir::CallOperation* callOp, ValueFrame& fram
 		}
 		const auto& intrinsicFunction = *intrinsic;
 		if (intrinsicFunction(builder, callOp, frame)) {
+			// The handler bound its result in the block-scoped frame only; record it for uses in
+			// the blocks this one dominates too (e.g. a vector built before a loop, used inside).
+			if (frame.contains(callOp->getIdentifier())) {
+				definedValues[callOp] = frame.getValue(callOp->getIdentifier());
+			}
 			return;
 		}
 	}
