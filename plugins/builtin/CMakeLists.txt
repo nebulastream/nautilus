@@ -4,6 +4,7 @@ add_library(nautilus-builtin)
 set(BUILTIN_SOURCES
         src/prefetch/prefetch.cpp
         src/int128/int128.cpp
+        src/overflow/overflow.cpp
 )
 
 if (ENABLE_MLIR_BACKEND OR ENABLE_ASMJIT_BACKEND)
@@ -14,6 +15,7 @@ if (ENABLE_MLIR_BACKEND)
     list(APPEND BUILTIN_SOURCES
             src/prefetch/MLIRPrefetchIntrinsics.cpp
             src/int128/MLIRInt128Intrinsics.cpp
+            src/overflow/MLIROverflowIntrinsics.cpp
     )
 endif ()
 

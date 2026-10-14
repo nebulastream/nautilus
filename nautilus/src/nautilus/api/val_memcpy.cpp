@@ -31,4 +31,8 @@ val<void*> memset(val<void*> s, val<int> c, val<size_t> n) {
 	return invoke(noUnwindAttrs(), std::memset, s, c, n);
 }
 
+val<int> memcmp(val<const void*> s1, val<const void*> s2, val<size_t> n) {
+	return invoke(noUnwindAttrs(), std::memcmp, s1, s2, n);
+}
+
 } // namespace nautilus

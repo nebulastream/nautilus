@@ -4,6 +4,7 @@
 #include <cstring>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/BuiltinOps.h>
 
 namespace nautilus::compiler::mlir {
 
@@ -76,6 +77,33 @@ bool replaceWithMemsetIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, con
 	return true;
 }
 
+/// Helper for memcmp (3 arguments: s1, s2, count): a call to the C library's `memcmp` by name.
+/// There is no LLVM memcmp intrinsic, but LLVM knows the library function: it expands a compare
+/// of a constant length, or an equality test against zero (via bcmp), into loads and compares.
+/// A call through the runtime address (the default lowering) would hide the function from it.
+/// The JIT resolves the symbol from the process.
+bool replaceWithMemcmpCall(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
+                           MLIRLoweringProvider::ValueFrame& frame) {
+	auto loc = builder->getUnknownLoc();
+	auto* block = builder->getInsertionBlock();
+	auto module = block->getParentOp()->getParentOfType<::mlir::ModuleOp>();
+	auto ptrType = ::mlir::LLVM::LLVMPointerType::get(builder->getContext());
+	auto i32 = builder->getI32Type();
+	auto i64 = builder->getI64Type();
+	auto fnType = ::mlir::LLVM::LLVMFunctionType::get(i32, {ptrType, ptrType, i64});
+	if (!module.lookupSymbol<::mlir::LLVM::LLVMFuncOp>("memcmp")) {
+		::mlir::OpBuilder::InsertionGuard guard(*builder);
+		builder->setInsertionPointToStart(module.getBody());
+		::mlir::LLVM::LLVMFuncOp::create(*builder, loc, "memcmp", fnType, ::mlir::LLVM::Linkage::External);
+	}
+	auto s1 = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto s2 = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+	auto result = ::mlir::LLVM::CallOp::create(*builder, loc, fnType, "memcmp", ::mlir::ValueRange {s1, s2, count});
+	frame.setValue(call->getIdentifier(), result.getResult());
+	return true;
+}
+
 // ============================================================================
 // Intrinsic Registration
 // ============================================================================
@@ -92,6 +120,10 @@ void MLIRMemoryIntrinsicPlugin::registerIntrinsics(MLIRIntrinsicManager& manager
 	// Register memset
 	manager.addIntrinsic(reinterpret_cast<void*>(static_cast<void* (*) (void*, int, size_t)>(&std::memset)),
 	                     replaceWithMemsetIntrinsic, "memset");
+
+	// Register memcmp (a named library call LLVM can expand)
+	manager.addIntrinsic(reinterpret_cast<void*>(static_cast<int (*)(const void*, const void*, size_t)>(&std::memcmp)),
+	                     replaceWithMemcmpCall, "memcmp");
 }
 
 void RegisterMLIRMemoryIntrinsicPlugin() {
