@@ -87,10 +87,8 @@ With `ENABLE_FUZZING=ON`, the `nautilus-int128-fuzz` target differentially check
 #include <nautilus/builtin/plugin.hpp>
 #include <nautilus/builtin/overflow/overflow.hpp>
 
-val<int64_t> checkedProduct(val<int64_t> a, val<int64_t> b, val<bool*> overflowed) {
-    auto result = nautilus::details::nautilus_alloca<int64_t>();
-    *overflowed = nautilus::builtin::mul_overflow(a, b, result);
-    return *result;
+val<bool> checkedProduct(val<int64_t> a, val<int64_t> b, val<int64_t*> result) {
+    return nautilus::builtin::mul_overflow(a, b, result);
 }
 ```
 

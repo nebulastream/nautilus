@@ -6,16 +6,14 @@
 #include <nautilus/Engine.hpp>
 #include <nautilus/builtin/overflow/overflow.hpp>
 #include <nautilus/builtin/plugin.hpp>
-#include <nautilus/val_std.hpp>
 
 namespace {
 using nautilus::val;
 namespace builtin = nautilus::builtin;
 
-// Each kernel returns the wrapped result and writes the overflow flag to `flag`.
+// Each kernel returns the wrapped result (written through `slot`) and writes the overflow flag to `flag`.
 template <class T, val<bool> (*OP)(val<T>, val<T>, val<T*>)>
-val<T> checked(val<T> a, val<T> b, val<bool*> flag) {
-	auto slot = nautilus::details::nautilus_alloca<T>();
+val<T> checked(val<T> a, val<T> b, val<T*> slot, val<bool*> flag) {
 	val<bool> o = OP(a, b, slot);
 	*flag = o;
 	return *slot;
@@ -27,9 +25,8 @@ val<bool> checkedWide(val<const void*> a, val<const void*> b, val<void*> out) {
 }
 
 // The flag feeding control flow (what kernels do: count overflowing rows).
-val<int64_t> countOverflows(val<int64_t*> xs, val<int64_t> n, val<int64_t> factor) {
+val<int64_t> countOverflows(val<int64_t*> xs, val<int64_t> n, val<int64_t> factor, val<int64_t*> slot) {
 	val<int64_t> overflows(0);
-	auto slot = nautilus::details::nautilus_alloca<int64_t>();
 	for (val<int64_t> i(0); i < n; i = i + val<int64_t>(1)) {
 		if (builtin::mul_overflow(*(xs + i), factor, slot)) {
 			overflows = overflows + val<int64_t>(1);
@@ -43,7 +40,8 @@ void expectScalar(F& fn, T a, T b, R reference) {
 	T expected;
 	bool expectedOverflow = reference(a, b, &expected);
 	bool flag = false;
-	T got = fn(a, b, &flag);
+	T slot = 0;
+	T got = fn(a, b, &slot, &flag);
 	REQUIRE(flag == expectedOverflow);
 	REQUIRE(got == expected);
 }
@@ -108,7 +106,8 @@ void exercise(Engine& engine) {
 	exerciseWide(engine);
 	auto count = engine.registerFunction(countOverflows);
 	int64_t xs[] = {1, 1LL << 40, -(1LL << 40), 3, INT64_MAX, 0};
-	REQUIRE(count(xs, (int64_t) 6, (int64_t) (1LL << 30)) == 3);
+	int64_t slot = 0;
+	REQUIRE(count(xs, (int64_t) 6, (int64_t) (1LL << 30), &slot) == 3);
 }
 } // namespace
 
