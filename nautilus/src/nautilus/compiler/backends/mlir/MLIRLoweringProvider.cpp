@@ -143,6 +143,76 @@ mlir::Value MLIRLoweringProvider::getConstBool(const std::string& location, bool
 	                                      builder->getIntegerAttr(builder->getIndexType(), value));
 }
 
+mlir::LLVM::IntegerOverflowFlags MLIRLoweringProvider::getOverflowFlags(Type stamp) const {
+	// Only int32_t/int64_t: C++ promotes narrower operands to int, so int8_t and
+	// int16_t arithmetic cannot overflow and truncating its result wraps.
+	if ((stamp == Type::i32 || stamp == Type::i64) && options->getOptionOrDefault("mlir.noSignedWrap", true)) {
+		return mlir::LLVM::IntegerOverflowFlags::nsw;
+	}
+	return mlir::LLVM::IntegerOverflowFlags::none;
+}
+
+unsigned MLIRLoweringProvider::getNaturalAlignment(Type stamp) {
+	switch (stamp) {
+	case Type::i16:
+	case Type::ui16:
+		return 2;
+	case Type::i32:
+	case Type::ui32:
+	case Type::f32:
+		return 4;
+	case Type::i64:
+	case Type::ui64:
+	case Type::f64:
+	case Type::ptr:
+		return 8;
+	default:
+		return 1;
+	}
+}
+
+mlir::ArrayAttr MLIRLoweringProvider::getTBAATags(Type stamp) const {
+	if (!options->getOptionOrDefault("mlir.typeBasedAliasAnalysis", true)) {
+		return {};
+	}
+	// The names are clang's, which makes the IR easy to compare with the cpp
+	// backend's. Attributes are uniqued by the context, so rebuilding the tree
+	// per access costs a hash lookup.
+	auto root = mlir::LLVM::TBAARootAttr::get(context, mlir::StringAttr::get(context, "Nautilus TBAA"));
+	auto charType =
+	    mlir::LLVM::TBAATypeDescriptorAttr::get(context, "omnipotent char", {mlir::LLVM::TBAAMemberAttr::get(root, 0)});
+	auto scalarType = [&](llvm::StringRef name) {
+		return mlir::LLVM::TBAATypeDescriptorAttr::get(context, name, {mlir::LLVM::TBAAMemberAttr::get(charType, 0)});
+	};
+	mlir::LLVM::TBAATypeDescriptorAttr type = charType;
+	switch (stamp) {
+	case Type::i16:
+	case Type::ui16:
+		type = scalarType("short");
+		break;
+	case Type::i32:
+	case Type::ui32:
+		type = scalarType("int");
+		break;
+	case Type::i64:
+	case Type::ui64:
+		type = scalarType("long long");
+		break;
+	case Type::f32:
+		type = scalarType("float");
+		break;
+	case Type::f64:
+		type = scalarType("double");
+		break;
+	case Type::ptr:
+		type = scalarType("any pointer");
+		break;
+	default:
+		break;
+	}
+	return mlir::ArrayAttr::get(context, {mlir::LLVM::TBAATagAttr::get(type, type, 0)});
+}
+
 mlir::LocationAttr MLIRLoweringProvider::getRegionScopeLoc(uint32_t index) {
 	if (locationMap_ == nullptr || index == ir::IRLocationMap::NO_CHAIN) {
 		return {};
@@ -661,17 +731,28 @@ void MLIRLoweringProvider::visitSelect(ir::SelectOperation* selectOperation, Val
 	bind(frame, selectOperation, mlirSelectOp);
 }
 
+// Logical `or`/`and` are lowered as `select` (`a ? true : b`, `a ? b : false`), the
+// form clang emits for `||`/`&&`, rather than as bitwise `or i1`/`and i1`. LLVM
+// treats the bitwise form as commutative: InstCombine may reorder its operands,
+// and the branch it then becomes tests whichever condition ends up first. For a
+// conjunctive filter that can be the least selective one, a branch that
+// mispredicts on every other row (TPC-H Q6 ran 5x slower than with `select`).
+// `select` keeps the traced order, so the chain lowers to one cmp/ccmp sequence
+// and a single branch. Both operands are already evaluated, so nothing else
+// changes.
 void MLIRLoweringProvider::visitOr(ir::OrOperation* orOperation, ValueFrame& frame) {
 	auto leftInput = resolveOperand(orOperation->getLeftInput(), frame);
 	auto rightInput = resolveOperand(orOperation->getRightInput(), frame);
-	auto mlirOrOp = mlir::LLVM::OrOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput);
+	auto mlirOrOp = mlir::LLVM::SelectOp::create(*builder, getNameLoc("binOpResult"), leftInput,
+	                                             getConstBool("loc", true), rightInput);
 	bind(frame, orOperation, mlirOrOp);
 }
 
 void MLIRLoweringProvider::visitAnd(ir::AndOperation* andOperation, ValueFrame& frame) {
 	auto leftInput = resolveOperand(andOperation->getLeftInput(), frame);
 	auto rightInput = resolveOperand(andOperation->getRightInput(), frame);
-	auto mlirAndOp = mlir::LLVM::AndOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput);
+	auto mlirAndOp = mlir::LLVM::SelectOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput,
+	                                              getConstBool("loc", false));
 	bind(frame, andOperation, mlirAndOp);
 }
 
@@ -830,8 +911,11 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 
 void MLIRLoweringProvider::visitLoad(ir::LoadOperation* loadOp, ValueFrame& frame) {
 	auto address = resolveOperand(loadOp->getAddress(), frame);
-	auto mlirLoadOp =
-	    mlir::LLVM::LoadOp::create(*builder, getNameLoc("loadedValue"), getMLIRType(loadOp->getStamp()), address);
+	auto mlirLoadOp = mlir::LLVM::LoadOp::create(*builder, getNameLoc("loadedValue"), getMLIRType(loadOp->getStamp()),
+	                                             address, getNaturalAlignment(loadOp->getStamp()));
+	if (auto tags = getTBAATags(loadOp->getStamp())) {
+		mlirLoadOp.setTbaaAttr(tags);
+	}
 	bind(frame, loadOp, mlirLoadOp);
 }
 
@@ -865,10 +949,12 @@ void MLIRLoweringProvider::visitAdd(ir::AddOperation* addOp, ValueFrame& frame) 
 	auto leftInput = resolveOperand(addOp->getLeftInput(), frame);
 	auto rightInput = resolveOperand(addOp->getRightInput(), frame);
 	if (addOp->getLeftInput()->getStamp() == Type::ptr) {
-		// if we add something to a ptr we have to use a llvm getelementptr
-		mlir::Value elementAddress =
-		    mlir::LLVM::GEPOp::create(*builder, getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context),
-		                              builder->getI8Type(), leftInput, mlir::ArrayRef<mlir::Value>({rightInput}));
+		// if we add something to a ptr we have to use a llvm getelementptr. It is
+		// `inbounds`, like C++ pointer arithmetic: the result stays within (or one
+		// past) the object the pointer points into.
+		mlir::Value elementAddress = mlir::LLVM::GEPOp::create(
+		    *builder, getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context), builder->getI8Type(),
+		    leftInput, mlir::ArrayRef<mlir::Value>({rightInput}), mlir::LLVM::GEPNoWrapFlags::inbounds);
 		bind(frame, addOp, elementAddress);
 	} else if (isFloat(addOp->getStamp())) {
 		auto mlirAddOp = mlir::LLVM::FAddOp::create(*builder, getNameLoc("binOpResult"), leftInput.getType(), leftInput,
@@ -876,13 +962,9 @@ void MLIRLoweringProvider::visitAdd(ir::AddOperation* addOp, ValueFrame& frame) 
 		bind(frame, addOp, mlirAddOp);
 	} else {
 		if (!inductionVars.contains(addOp->getLeftInput()->getIdentifier())) {
-			if (!frame.contains(addOp->getIdentifier())) {
-				auto mlirAddOp = mlir::LLVM::AddOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput);
-				bind(frame, addOp, mlirAddOp);
-			} else {
-				auto mlirAddOp = mlir::LLVM::AddOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput);
-				bind(frame, addOp, mlirAddOp);
-			}
+			auto mlirAddOp = mlir::LLVM::AddOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput,
+			                                           getOverflowFlags(addOp->getStamp()));
+			bind(frame, addOp, mlirAddOp);
 		}
 	}
 }
@@ -891,10 +973,12 @@ void MLIRLoweringProvider::visitSub(ir::SubOperation* subIntOp, ValueFrame& fram
 	auto leftInput = resolveOperand(subIntOp->getLeftInput(), frame);
 	auto rightInput = resolveOperand(subIntOp->getRightInput(), frame);
 	if (subIntOp->getLeftInput()->getStamp() == Type::ptr) {
-		// if we add something to a ptr we have to use a llvm getelementptr
-		mlir::Value elementAddress =
-		    mlir::LLVM::GEPOp::create(*builder, getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context),
-		                              builder->getI8Type(), leftInput, mlir::ArrayRef<mlir::Value>({rightInput}));
+		// if we add something to a ptr we have to use a llvm getelementptr. It is
+		// `inbounds`, like C++ pointer arithmetic: the result stays within (or one
+		// past) the object the pointer points into.
+		mlir::Value elementAddress = mlir::LLVM::GEPOp::create(
+		    *builder, getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context), builder->getI8Type(),
+		    leftInput, mlir::ArrayRef<mlir::Value>({rightInput}), mlir::LLVM::GEPNoWrapFlags::inbounds);
 		bind(frame, subIntOp, elementAddress);
 	} else if (isFloat(subIntOp->getStamp())) {
 		auto mlirSubOp =
@@ -902,7 +986,8 @@ void MLIRLoweringProvider::visitSub(ir::SubOperation* subIntOp, ValueFrame& fram
 		                               mlir::LLVM::FastmathFlagsAttr::get(context, mlir::LLVM::FastmathFlags::none));
 		bind(frame, subIntOp, mlirSubOp);
 	} else {
-		auto mlirSubOp = mlir::LLVM::SubOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput);
+		auto mlirSubOp = mlir::LLVM::SubOp::create(*builder, getNameLoc("binOpResult"), leftInput, rightInput,
+		                                           getOverflowFlags(subIntOp->getStamp()));
 		bind(frame, subIntOp, mlirSubOp);
 	}
 }
@@ -916,8 +1001,8 @@ void MLIRLoweringProvider::visitMul(ir::MulOperation* mulOp, ValueFrame& frame) 
 		                                            rightInput, mlir::LLVM::FastmathFlags::none);
 		bind(frame, mulOp, mlirMulOp);
 	} else {
-		auto mlirMulOp =
-		    mlir::LLVM::MulOp::create(*builder, getNameLoc("binOpResult"), resultType, leftInput, rightInput);
+		auto mlirMulOp = mlir::LLVM::MulOp::create(*builder, getNameLoc("binOpResult"), resultType, leftInput,
+		                                           rightInput, getOverflowFlags(mulOp->getStamp()));
 		bind(frame, mulOp, mlirMulOp);
 	}
 }
@@ -967,7 +1052,11 @@ void MLIRLoweringProvider::visitMod(ir::ModOperation* modIntOp, ValueFrame& fram
 void MLIRLoweringProvider::visitStore(ir::StoreOperation* storeOp, ValueFrame& frame) {
 	auto value = resolveOperand(storeOp->getValue(), frame);
 	auto address = resolveOperand(storeOp->getAddress(), frame);
-	mlir::LLVM::StoreOp::create(*builder, getNameLoc("outputStore"), value, address);
+	auto mlirStoreOp = mlir::LLVM::StoreOp::create(*builder, getNameLoc("outputStore"), value, address,
+	                                               getNaturalAlignment(storeOp->getValue()->getStamp()));
+	if (auto tags = getTBAATags(storeOp->getValue()->getStamp())) {
+		mlirStoreOp.setTbaaAttr(tags);
+	}
 }
 
 void MLIRLoweringProvider::visitReturn(ir::ReturnOperation* returnOp, ValueFrame& frame) {

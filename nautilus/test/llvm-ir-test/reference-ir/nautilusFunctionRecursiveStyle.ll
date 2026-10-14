@@ -5,7 +5,7 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
-  %2 = add i32 %0, 3
+  %2 = add nsw i32 %0, 3
   ret i32 %2
 }
 
@@ -13,7 +13,7 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
 define signext i32 @recursiveHelper(i32 %0, i32 %1) local_unnamed_addr #0 {
   %3 = icmp sgt i32 %1, 0
   %4 = zext i1 %3 to i32
-  %spec.select = add i32 %0, %4
+  %spec.select = add nsw i32 %0, %4
   ret i32 %spec.select
 }
 

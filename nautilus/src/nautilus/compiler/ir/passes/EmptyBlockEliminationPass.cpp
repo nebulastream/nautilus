@@ -6,7 +6,9 @@
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
+#include "nautilus/compiler/ir/passes/RewriterCache.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
+#include <algorithm>
 #include <unordered_set>
 
 namespace nautilus::compiler::ir {
@@ -70,8 +72,7 @@ std::vector<Operation*> substitutedArguments(const BasicBlockInvocation& predInv
 	return result;
 }
 
-bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+bool applyToFunction(FunctionOperation& fn, FunctionRewriter& rewriter) {
 
 	bool anyChanged = false;
 	bool changed = true;
@@ -99,9 +100,10 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 			// block since one predecessor's terminator may hold more than
 			// one invocation targeting `block` (both arms of an `if`).
 			auto preds = block->getPredecessors();
-			std::unordered_set<BasicBlock*> visitedPreds;
-			for (auto* pred : preds) {
-				if (pred == nullptr || !visitedPreds.insert(pred).second) {
+			for (size_t p = 0; p < preds.size(); ++p) {
+				auto* pred = preds[p];
+				// A handful of predecessors: a linear look-back beats a set.
+				if (pred == nullptr || std::find(preds.begin(), preds.begin() + p, pred) != preds.begin() + p) {
 					continue;
 				}
 				auto* predTerminator = pred->getTerminatorOp();
@@ -135,11 +137,15 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 } // namespace
 
 bool EmptyBlockEliminationPass::apply(IRGraph& ir) {
-	common::Arena& arena = ir.getArena();
+	RewriterCache rewriters(ir);
+	return apply(ir, rewriters);
+}
+
+bool EmptyBlockEliminationPass::apply(IRGraph& ir, RewriterCache& rewriters) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn, arena);
+			changed |= applyToFunction(*fn, rewriters.rewriterFor(*fn));
 		}
 	}
 	return changed;

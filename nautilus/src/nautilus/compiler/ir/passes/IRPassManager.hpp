@@ -53,7 +53,9 @@ namespace nautilus::compiler::ir {
  * during a full round or `maxIterations` rounds have run (whichever comes
  * first) -- this is what lets e.g. constant folding and empty-block
  * elimination feed each other's follow-up opportunities within one
- * `IRPassManager::run()` call.
+ * `IRPassManager::run()` call. Within a group, a pass whose last run
+ * reported no change is skipped until another pass changes the graph: the
+ * graph it would see is the one it already found nothing to do on.
  */
 class IRPassManager {
 public:

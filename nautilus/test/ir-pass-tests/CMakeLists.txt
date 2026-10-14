@@ -5,6 +5,7 @@ add_executable(nautilus-ir-pass-tests
         EmptyBlockEliminationTest.cpp
         IRVerifierTest.cpp
         IRPassManagerTest.cpp
+        FlatPointerMapTest.cpp
         ConstantFoldingAndCopyPropagationTest.cpp
         DominatorsTest.cpp
         IRGraphFixturesTest.cpp

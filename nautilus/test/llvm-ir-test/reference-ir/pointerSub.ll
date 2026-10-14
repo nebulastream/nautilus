@@ -5,11 +5,11 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 define signext i32 @execute(ptr readonly %0, i32 %1) local_unnamed_addr #0 {
-  %3 = sub i32 0, %1
+  %3 = sub nsw i32 0, %1
   %4 = sext i32 %3 to i64
   %5 = shl nsw i64 %4, 2
-  %6 = getelementptr i8, ptr %0, i64 %5
-  %7 = load i32, ptr %6, align 4
+  %6 = getelementptr inbounds i8, ptr %0, i64 %5
+  %7 = load i32, ptr %6, align 4, !tbaa !1
   ret i32 %7
 }
 
@@ -18,3 +18,7 @@ attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memor
 !llvm.module.flags = !{!0}
 
 !0 = !{i32 2, !"Debug Info Version", i32 3}
+!1 = !{!2, !2, i64 0}
+!2 = !{!"int", !3, i64 0}
+!3 = !{!"omnipotent char", !4, i64 0}
+!4 = !{!"Nautilus TBAA"}

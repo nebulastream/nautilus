@@ -6,6 +6,8 @@
 
 namespace nautilus::compiler::ir {
 
+class RewriterCache;
+
 /**
  * @brief Abstract base for a pass that transforms or analyses an `IRGraph`.
  *
@@ -31,6 +33,13 @@ public:
 	/// converged (a round where every pass in the group returns `false`
 	/// stops the group early, before `maxIterations` is reached).
 	virtual bool apply(IRGraph& ir) = 0;
+
+	/// What `IRPassManager` calls: @p rewriters holds the `FunctionRewriter`
+	/// sessions earlier passes of the run built. The default runs `apply(ir)`
+	/// and, when it changed the graph, drops them, since it may have mutated
+	/// the graph outside them. A pass that makes every mutation through a
+	/// rewriter overrides this to take its sessions from @p rewriters.
+	virtual bool apply(IRGraph& ir, RewriterCache& rewriters);
 
 	/// A short identifier used for logging and for the per-pass IR-dump
 	/// stage name (`after_<name>`). Lower-camel-case preferred.

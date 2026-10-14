@@ -156,6 +156,12 @@ inline engine::NautilusEngine makeEngine(const std::string& backend, const Optio
 	} else {
 		options.setOption("engine.backend", backend);
 	}
+	// The oracle computes signed arithmetic with wraparound (README.md
+	// "Soundness model"); by default the MLIR backend marks int32_t/int64_t
+	// add/sub/mul `nsw`, which makes that overflow undefined, as in C++.
+	if (backend == "mlir") {
+		options.setOption("mlir.noSignedWrap", false);
+	}
 	// Triage aid: NAUTILUS_FUZZ_DUMP=1 dumps every compilation stage to the
 	// console while replaying a saved finding, so the IR a mismatching
 	// backend actually saw can be inspected without editing the harness.

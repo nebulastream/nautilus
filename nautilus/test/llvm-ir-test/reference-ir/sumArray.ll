@@ -10,65 +10,67 @@ define signext i32 @execute(ptr readonly %0, i32 %1) local_unnamed_addr #0 {
 
 .lr.ph.preheader:                                 ; preds = %2
   %wide.trip.count = zext nneg i32 %1 to i64
-  %min.iters.check = icmp ult i32 %1, 8
-  br i1 %min.iters.check, label %.lr.ph.preheader7, label %vector.ph
+  %min.iters.check = icmp eq i32 %1, 1
+  br i1 %min.iters.check, label %.lr.ph.preheader6, label %vector.ph
 
 vector.ph:                                        ; preds = %.lr.ph.preheader
-  %n.vec = and i64 %wide.trip.count, 2147483640
+  %n.vec = and i64 %wide.trip.count, 2147483646
   br label %vector.body
 
 vector.body:                                      ; preds = %vector.body, %vector.ph
   %index = phi i64 [ 0, %vector.ph ], [ %index.next, %vector.body ]
-  %vec.phi = phi <4 x i32> [ zeroinitializer, %vector.ph ], [ %7, %vector.body ]
-  %vec.phi5 = phi <4 x i32> [ zeroinitializer, %vector.ph ], [ %8, %vector.body ]
+  %vec.phi = phi i32 [ 0, %vector.ph ], [ %11, %vector.body ]
+  %vec.phi5 = phi i32 [ 0, %vector.ph ], [ %12, %vector.body ]
   %4 = shl nuw nsw i64 %index, 2
-  %5 = getelementptr i8, ptr %0, i64 %4
-  %6 = getelementptr i8, ptr %5, i64 16
-  %wide.load = load <4 x i32>, ptr %5, align 4
-  %wide.load6 = load <4 x i32>, ptr %6, align 4
-  %7 = add <4 x i32> %wide.load, %vec.phi
-  %8 = add <4 x i32> %wide.load6, %vec.phi5
-  %index.next = add nuw i64 %index, 8
-  %9 = icmp eq i64 %index.next, %n.vec
-  br i1 %9, label %middle.block, label %vector.body, !llvm.loop !1
+  %5 = shl i64 %index, 2
+  %6 = getelementptr inbounds nuw i8, ptr %0, i64 %4
+  %7 = getelementptr inbounds nuw i8, ptr %0, i64 %5
+  %8 = getelementptr inbounds nuw i8, ptr %7, i64 4
+  %9 = load i32, ptr %6, align 4, !tbaa !1
+  %10 = load i32, ptr %8, align 4, !tbaa !1
+  %11 = add i32 %9, %vec.phi
+  %12 = add i32 %10, %vec.phi5
+  %index.next = add nuw i64 %index, 2
+  %13 = icmp eq i64 %index.next, %n.vec
+  br i1 %13, label %middle.block, label %vector.body, !llvm.loop !5
 
 middle.block:                                     ; preds = %vector.body
-  %bin.rdx = add <4 x i32> %8, %7
-  %10 = tail call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> %bin.rdx)
+  %bin.rdx = add i32 %12, %11
   %cmp.n = icmp eq i64 %n.vec, %wide.trip.count
-  br i1 %cmp.n, label %._crit_edge, label %.lr.ph.preheader7
+  br i1 %cmp.n, label %._crit_edge, label %.lr.ph.preheader6
 
-.lr.ph.preheader7:                                ; preds = %.lr.ph.preheader, %middle.block
+.lr.ph.preheader6:                                ; preds = %.lr.ph.preheader, %middle.block
   %indvars.iv.ph = phi i64 [ 0, %.lr.ph.preheader ], [ %n.vec, %middle.block ]
-  %.ph = phi i32 [ 0, %.lr.ph.preheader ], [ %10, %middle.block ]
+  %.ph = phi i32 [ 0, %.lr.ph.preheader ], [ %bin.rdx, %middle.block ]
   br label %.lr.ph
 
-.lr.ph:                                           ; preds = %.lr.ph.preheader7, %.lr.ph
-  %indvars.iv = phi i64 [ %indvars.iv.next, %.lr.ph ], [ %indvars.iv.ph, %.lr.ph.preheader7 ]
-  %11 = phi i32 [ %15, %.lr.ph ], [ %.ph, %.lr.ph.preheader7 ]
-  %12 = shl nuw nsw i64 %indvars.iv, 2
-  %13 = getelementptr i8, ptr %0, i64 %12
-  %14 = load i32, ptr %13, align 4
-  %15 = add i32 %14, %11
+.lr.ph:                                           ; preds = %.lr.ph.preheader6, %.lr.ph
+  %indvars.iv = phi i64 [ %indvars.iv.next, %.lr.ph ], [ %indvars.iv.ph, %.lr.ph.preheader6 ]
+  %14 = phi i32 [ %18, %.lr.ph ], [ %.ph, %.lr.ph.preheader6 ]
+  %15 = shl nuw nsw i64 %indvars.iv, 2
+  %16 = getelementptr inbounds nuw i8, ptr %0, i64 %15
+  %17 = load i32, ptr %16, align 4, !tbaa !1
+  %18 = add nsw i32 %17, %14
   %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
   %exitcond.not = icmp eq i64 %indvars.iv.next, %wide.trip.count
-  br i1 %exitcond.not, label %._crit_edge, label %.lr.ph, !llvm.loop !4
+  br i1 %exitcond.not, label %._crit_edge, label %.lr.ph, !llvm.loop !8
 
 ._crit_edge:                                      ; preds = %.lr.ph, %middle.block, %2
-  %.lcssa = phi i32 [ 0, %2 ], [ %10, %middle.block ], [ %15, %.lr.ph ]
+  %.lcssa = phi i32 [ 0, %2 ], [ %bin.rdx, %middle.block ], [ %18, %.lr.ph ]
   ret i32 %.lcssa
 }
 
-; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
-declare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>) #1
-
 attributes #0 = { nofree norecurse nosync nounwind memory(argmem: read) }
-attributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #1 = { nofree norecurse nosync nounwind memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 
 !0 = !{i32 2, !"Debug Info Version", i32 3}
-!1 = distinct !{!1, !2, !3}
-!2 = !{!"llvm.loop.isvectorized", i32 1}
-!3 = !{!"llvm.loop.unroll.runtime.disable"}
-!4 = distinct !{!4, !3, !2}
+!1 = !{!2, !2, i64 0}
+!2 = !{!"int", !3, i64 0}
+!3 = !{!"omnipotent char", !4, i64 0}
+!4 = !{!"Nautilus TBAA"}
+!5 = distinct !{!5, !6, !7}
+!6 = !{!"llvm.loop.isvectorized", i32 1}
+!7 = !{!"llvm.loop.unroll.runtime.disable"}
+!8 = distinct !{!8, !6}

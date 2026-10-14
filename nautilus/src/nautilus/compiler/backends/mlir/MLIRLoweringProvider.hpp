@@ -326,6 +326,28 @@ private:
 	::mlir::Value getConstBool(const std::string& location, bool value);
 
 	/**
+	 * @brief Overflow flags for an integer add/sub/mul producing @p stamp:
+	 * `nsw` for int32_t/int64_t, whose overflow is undefined as in C++; none
+	 * for unsigned and narrower signed integers, which wrap.
+	 * `mlir.noSignedWrap=false` makes all signed arithmetic wrap.
+	 */
+	::mlir::LLVM::IntegerOverflowFlags getOverflowFlags(Type stamp) const;
+
+	/**
+	 * @brief Natural alignment in bytes of a value of type @p stamp: its size,
+	 * as for a C++ object of the matching type.
+	 */
+	static unsigned getNaturalAlignment(Type stamp);
+
+	/**
+	 * @brief Type-based alias analysis tag for a load or store of type @p stamp,
+	 * following C++'s strict-aliasing rules as clang encodes them: signed and
+	 * unsigned variants share a type, one-byte types are `char` and may alias
+	 * anything. Null when `mlir.typeBasedAliasAnalysis=false`.
+	 */
+	::mlir::ArrayAttr getTBAATags(Type stamp) const;
+
+	/**
 	 * @brief Get the Bit Width from a basic NES type.
 	 * @param type: Basic NES type.
 	 * @return int8_t: Bit width.

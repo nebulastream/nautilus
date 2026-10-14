@@ -11,7 +11,7 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %3 = phi i32 [ %7, %2 ], [ %0, %1 ]
   %4 = phi i32 [ %6, %2 ], [ 0, %1 ]
   %5 = srem i32 %3, 10
-  %6 = add i32 %4, %5
+  %6 = add nsw i32 %4, %5
   %7 = udiv i32 %3, 10
   %8 = icmp sgt i32 %3, 9
   br i1 %8, label %2, label %9

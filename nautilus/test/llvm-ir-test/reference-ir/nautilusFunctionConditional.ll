@@ -5,14 +5,14 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @conditionalHelper(i32 %0) local_unnamed_addr #0 {
-  %2 = add i32 %0, 100
+  %2 = add nsw i32 %0, 100
   ret i32 %2
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp sgt i32 %0, 10
-  %3 = add i32 %0, 100
+  %3 = add nsw i32 %0, 100
   %spec.select = select i1 %2, i32 %3, i32 %0
   ret i32 %spec.select
 }

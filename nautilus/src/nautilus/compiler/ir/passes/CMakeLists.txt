@@ -5,6 +5,7 @@ add_source_files(nautilus
         IRPassManager.cpp
         Dominators.cpp
         FunctionRewriter.cpp
+        RewriterCache.cpp
         LoopInfo.cpp
         EmptyBlockEliminationPass.cpp
         ConstantFoldingAndCopyPropagationPass.cpp

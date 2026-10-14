@@ -5,17 +5,17 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define signext i32 @execute(ptr %0) local_unnamed_addr #0 {
-  %2 = load i32, ptr %0, align 4
-  %3 = add i32 %2, 10
-  store i32 %3, ptr %0, align 4
+  %2 = load i32, ptr %0, align 4, !tbaa !1
+  %3 = add nsw i32 %2, 10
+  store i32 %3, ptr %0, align 4, !tbaa !1
   ret i32 %3
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @voidHelper(ptr %0) local_unnamed_addr #0 {
-  %2 = load i32, ptr %0, align 4
-  %3 = add i32 %2, 10
-  store i32 %3, ptr %0, align 4
+  %2 = load i32, ptr %0, align 4, !tbaa !1
+  %3 = add nsw i32 %2, 10
+  store i32 %3, ptr %0, align 4, !tbaa !1
   ret void
 }
 
@@ -24,3 +24,7 @@ attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memor
 !llvm.module.flags = !{!0}
 
 !0 = !{i32 2, !"Debug Info Version", i32 3}
+!1 = !{!2, !2, i64 0}
+!2 = !{!"int", !3, i64 0}
+!3 = !{!"omnipotent char", !4, i64 0}
+!4 = !{!"Nautilus TBAA"}

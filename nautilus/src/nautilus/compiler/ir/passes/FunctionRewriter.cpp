@@ -4,9 +4,12 @@
 #include "nautilus/compiler/ir/operations/DestructorOperands.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
+#include "nautilus/compiler/ir/passes/FlatPointerMap.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <algorithm>
+#include <new>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace nautilus::compiler::ir {
@@ -20,9 +23,11 @@ namespace {
 /// discover every one of those edges).
 std::vector<BasicBlockInvocation*> invocationsTargeting(BasicBlock* block) {
 	std::vector<BasicBlockInvocation*> result;
-	std::unordered_set<BasicBlock*> visitedPreds;
-	for (auto* pred : block->getPredecessors()) {
-		if (pred == nullptr || !visitedPreds.insert(pred).second) {
+	const auto& preds = block->getPredecessors();
+	for (size_t p = 0; p < preds.size(); ++p) {
+		auto* pred = preds[p];
+		// A block has a handful of predecessors: a linear look-back beats a set.
+		if (pred == nullptr || std::find(preds.begin(), preds.begin() + p, pred) != preds.begin() + p) {
 			continue;
 		}
 		auto* terminator = pred->getTerminatorOp();
@@ -42,7 +47,7 @@ std::vector<BasicBlockInvocation*> invocationsTargeting(BasicBlock* block) {
 
 namespace {
 
-/// Block arguments plus operations: the number of `defBlock_` entries, and an
+/// Block arguments plus operations: the number of defined values, and an
 /// upper bound on the number of distinct values with a use list.
 size_t countDefinitions(const FunctionOperation& fn) {
 	size_t count = 0;
@@ -64,22 +69,91 @@ size_t initialTableBytes(size_t definitions) {
 
 } // namespace
 
+void FunctionRewriter::UseList::grow(std::pmr::memory_resource& memory) {
+	const uint32_t capacity = capacity_ * 2;
+	auto* storage = static_cast<Use*>(memory.allocate(capacity * sizeof(Use), alignof(Use)));
+	std::copy_n(data(), size_, storage);
+	heap_ = storage;
+	capacity_ = capacity;
+}
+
+FunctionRewriter::ValueTable::ValueTable(std::pmr::memory_resource& memory, size_t expectedValues) : memory_(memory) {
+	size_t capacity = 16;
+	while (capacity < expectedValues * 2) {
+		capacity *= 2;
+	}
+	rehash(capacity);
+}
+
+size_t FunctionRewriter::ValueTable::slotOf(const Operation* value) const {
+	// Arena objects are at least 8-byte aligned; the multiply spreads the
+	// remaining bits over the high end, which the mask then would drop -- so
+	// fold them back down first.
+	auto hash = (reinterpret_cast<uintptr_t>(value) >> 3) * 0x9E3779B97F4A7C15ull;
+	return static_cast<size_t>(hash ^ (hash >> 32)) & (capacity_ - 1);
+}
+
+FunctionRewriter::Entry* FunctionRewriter::ValueTable::find(const Operation* value) const {
+	for (size_t slot = slotOf(value);; slot = (slot + 1) & (capacity_ - 1)) {
+		Entry* entry = slots_[slot];
+		if (entry == nullptr || entry->key == value) {
+			return entry;
+		}
+	}
+}
+
+FunctionRewriter::Entry& FunctionRewriter::ValueTable::operator[](const Operation* value) {
+	if (Entry* entry = find(value)) {
+		return *entry;
+	}
+	if ((count_ + 1) * 2 > capacity_) {
+		rehash(capacity_ * 2);
+	}
+	size_t slot = slotOf(value);
+	while (slots_[slot] != nullptr) {
+		slot = (slot + 1) & (capacity_ - 1);
+	}
+	auto* entry = new (memory_.allocate(sizeof(Entry), alignof(Entry))) Entry {value, nullptr, {}};
+	slots_[slot] = entry;
+	++count_;
+	return *entry;
+}
+
+void FunctionRewriter::ValueTable::rehash(size_t capacity) {
+	Entry** old = slots_;
+	const size_t oldCapacity = capacity_;
+	slots_ = static_cast<Entry**>(memory_.allocate(capacity * sizeof(Entry*), alignof(Entry*)));
+	std::fill_n(slots_, capacity, nullptr);
+	capacity_ = capacity;
+	for (size_t i = 0; i < oldCapacity; ++i) {
+		if (Entry* entry = old[i]) {
+			size_t slot = slotOf(entry->key);
+			while (slots_[slot] != nullptr) {
+				slot = (slot + 1) & (capacity_ - 1);
+			}
+			slots_[slot] = entry;
+		}
+	}
+}
+
+void FunctionRewriter::forget(const Operation* value) {
+	if (Entry* entry = table_.find(value)) {
+		entry->block = nullptr;
+		entry->uses.clear();
+	}
+}
+
 FunctionRewriter::FunctionRewriter(FunctionOperation& fn, common::Arena& arena, const IRGraph* ir)
-    : fn_(fn), arena_(arena), ir_(ir), tableMemory_(initialTableBytes(countDefinitions(fn))), uses_(&tableMemory_),
-      defBlock_(&tableMemory_) {
-	const size_t definitions = countDefinitions(fn);
-	// Sized once: a rehash would abandon the old bucket array inside the
-	// monotonic buffer.
-	uses_.reserve(definitions);
-	defBlock_.reserve(definitions);
+    : fn_(fn), arena_(arena), ir_(ir), tableMemory_(initialTableBytes(countDefinitions(fn))),
+      table_(tableMemory_, countDefinitions(fn)) {
 	uint32_t maxId = 0;
 	for (auto* block : fn_.getBasicBlocks()) {
 		for (auto* arg : block->getArguments()) {
-			defBlock_[arg] = block;
+			defBlockOf(arg) = block;
 			maxId = std::max(maxId, arg->getIdentifier().getId());
 		}
 		for (auto* op : block->getOperations()) {
-			defBlock_[op] = block;
+			defBlockOf(op) = block;
 			maxId = std::max(maxId, op->getIdentifier().getId());
 			registerUses(op);
 			for (auto* inv : getSuccessorInvocations(*op)) {
@@ -119,7 +193,7 @@ void setOperand(Operation* user, uint32_t operandIndex, Operation* value) {
 void FunctionRewriter::registerUses(Operation* user) {
 	forEachOperand(user, [&](uint32_t i, Operation* operand) {
 		if (operand != nullptr) {
-			uses_[operand].push_back(Use {user, i});
+			table_[operand].uses.push_back(Use {user, i}, tableMemory_);
 		}
 	});
 }
@@ -129,31 +203,26 @@ void FunctionRewriter::unregisterUser(Operation* user) {
 		if (operand == nullptr) {
 			return;
 		}
-		auto it = uses_.find(operand);
-		if (it == uses_.end()) {
+		Entry* entry = table_.find(operand);
+		if (entry == nullptr) {
 			return;
 		}
-		auto& vec = it->second;
-		vec.erase(
-		    std::remove_if(vec.begin(), vec.end(), [&](const Use& u) { return u.user == user && u.operandIndex == i; }),
-		    vec.end());
-		if (vec.empty()) {
-			uses_.erase(it);
-		}
+		auto& uses = entry->uses;
+		Use* begin = uses.data();
+		Use* end = std::remove_if(begin, begin + uses.size(),
+		                          [&](const Use& u) { return u.user == user && u.operandIndex == i; });
+		uses.truncate(static_cast<uint32_t>(end - begin));
 	});
 }
 
 std::span<const FunctionRewriter::Use> FunctionRewriter::usesOf(const Operation* op) const {
-	auto it = uses_.find(op);
-	if (it == uses_.end()) {
-		return {};
-	}
-	return std::span<const Use>(it->second);
+	const Entry* entry = table_.find(op);
+	return entry == nullptr ? std::span<const Use> {} : entry->uses.span();
 }
 
 size_t FunctionRewriter::useCount(const Operation* op) const {
-	auto it = uses_.find(op);
-	return it == uses_.end() ? 0 : it->second.size();
+	const Entry* entry = table_.find(op);
+	return entry == nullptr ? 0 : entry->uses.size();
 }
 
 bool FunctionRewriter::hasUses(const Operation* op) const {
@@ -161,23 +230,25 @@ bool FunctionRewriter::hasUses(const Operation* op) const {
 }
 
 BasicBlock* FunctionRewriter::definingBlock(const Operation* op) const {
-	auto it = defBlock_.find(op);
-	return it == defBlock_.end() ? nullptr : it->second;
+	const Entry* entry = table_.find(op);
+	return entry == nullptr ? nullptr : entry->block;
 }
 
 void FunctionRewriter::replaceAllUses(Operation* from, Operation* to) {
-	auto it = uses_.find(from);
-	if (it == uses_.end()) {
+	Entry* fromEntry = table_.find(from);
+	if (fromEntry == nullptr || fromEntry->uses.empty()) {
 		return;
 	}
-	auto moved = std::move(it->second);
-	uses_.erase(it);
+	std::vector<Use> moved(fromEntry->uses.span().begin(), fromEntry->uses.span().end());
+	fromEntry->uses.clear();
 	for (auto& u : moved) {
 		setOperand(u.user, u.operandIndex, to);
 	}
 	if (to != nullptr) {
-		auto& toUses = uses_[to];
-		toUses.insert(toUses.end(), moved.begin(), moved.end());
+		auto& toUses = table_[to].uses;
+		for (const auto& u : moved) {
+			toUses.push_back(u, tableMemory_);
+		}
 	}
 }
 
@@ -194,31 +265,35 @@ void FunctionRewriter::erase(Operation* op) {
 		throw RuntimeException("FunctionRewriter::erase: operation " + op->getIdentifier().toString() + " still has " +
 		                       std::to_string(useCount(op)) + " use(s)");
 	}
-	auto it = defBlock_.find(op);
-	if (it == defBlock_.end()) {
+	BasicBlock* block = definingBlock(op);
+	if (block == nullptr) {
 		throw RuntimeException("FunctionRewriter::erase: operation " + op->getIdentifier().toString() +
 		                       " is not tracked by this rewriter session");
 	}
 	unregisterUser(op);
-	it->second->removeOperation(op);
-	defBlock_.erase(it);
-	uses_.erase(op);
+	block->removeOperation(op);
+	forget(op);
 }
 
-size_t FunctionRewriter::eraseIfDead(Operation* op) {
+size_t FunctionRewriter::eraseIfDead(Operation* op, const IRGraph* module) {
+	// Most operations a sweep asks about are live: answer that without the
+	// worklist's allocations.
+	if (op == nullptr || useCount(op) != 0) {
+		return 0;
+	}
 	size_t erasedCount = 0;
 	std::vector<Operation*> worklist {op};
 	while (!worklist.empty()) {
 		Operation* cur = worklist.back();
 		worklist.pop_back();
-		if (cur == nullptr || !defBlock_.contains(cur)) {
+		if (cur == nullptr || definingBlock(cur) == nullptr) {
 			continue; // not tracked: already erased, or never part of the function.
 		}
 		// Purity per operation: a call whose callee provably touches no memory
 		// and returns is removable when its result is unused; every other
 		// opcode gets the same answer isPureOp(type) gave.
 		if (useCount(cur) != 0 ||
-		    (ir_ != nullptr ? !isPureOperation(*ir_, *cur) : !isPureOp(cur->getOperationType()))) {
+		    (module != nullptr ? !isPureOperation(*module, *cur) : !isPureOp(cur->getOperationType()))) {
 			continue;
 		}
 		std::vector<Operation*> operands;
@@ -239,7 +314,7 @@ void FunctionRewriter::removeBlockArguments(std::span<const BlockArgumentSlot> s
 	// Group by block, in first-seen order, so the result does not depend on
 	// hash iteration.
 	std::vector<BasicBlock*> blocks;
-	std::unordered_map<BasicBlock*, std::vector<size_t>> indicesOf;
+	FlatPointerMap<BasicBlock, std::vector<size_t>> indicesOf(slots.size());
 	for (const auto& slot : slots) {
 		const auto& args = slot.block->getArguments();
 		if (slot.index >= args.size()) {
@@ -253,11 +328,11 @@ void FunctionRewriter::removeBlockArguments(std::span<const BlockArgumentSlot> s
 			                       std::to_string(slot.block->getIdentifier().getId()) + " still has " +
 			                       std::to_string(useCount(arg)) + " use(s)");
 		}
-		auto [it, inserted] = indicesOf.try_emplace(slot.block);
+		auto [indices, inserted] = indicesOf.tryEmplace(slot.block);
 		if (inserted) {
 			blocks.push_back(slot.block);
 		}
-		it->second.push_back(slot.index);
+		indices->push_back(slot.index);
 	}
 
 	static constexpr uint32_t removedSlot = ~0u;
@@ -265,10 +340,10 @@ void FunctionRewriter::removeBlockArguments(std::span<const BlockArgumentSlot> s
 	// `removedSlot`. Shared by every invocation targeting the same block.
 	std::vector<std::vector<uint32_t>> remaps;
 	remaps.reserve(blocks.size());
-	std::unordered_map<const Operation*, const std::vector<uint32_t>*> remapOf;
+	FlatPointerMap<Operation, const std::vector<uint32_t>*> remapOf;
 	// Every value some rewritten invocation passes, in first-seen order.
 	std::vector<const Operation*> touched;
-	std::unordered_set<const Operation*> touchedSet;
+	FlatPointerSet<Operation> touchedSet;
 
 	for (auto* block : blocks) {
 		auto& indices = indicesOf[block];
@@ -297,18 +372,16 @@ void FunctionRewriter::removeBlockArguments(std::span<const BlockArgumentSlot> s
 
 		for (auto* inv : targetInvocations) {
 			for (auto* value : inv->getArguments()) {
-				if (value != nullptr && touchedSet.insert(value).second) {
+				if (value != nullptr && touchedSet.insert(value)) {
 					touched.push_back(value);
 				}
 			}
-			remapOf.emplace(inv, &remap);
+			remapOf[inv] = &remap;
 			inv->removeArguments(indices);
 		}
 
 		for (const size_t index : indices) {
-			BasicBlockArgument* arg = block->getArguments()[index];
-			defBlock_.erase(arg);
-			uses_.erase(arg);
+			forget(block->getArguments()[index]);
 		}
 		block->removeArguments(indices);
 	}
@@ -317,16 +390,16 @@ void FunctionRewriter::removeBlockArguments(std::span<const BlockArgumentSlot> s
 	// invocation move to their new index or disappear with their slot; every
 	// other entry is untouched.
 	for (const auto* value : touched) {
-		auto it = uses_.find(value);
-		if (it == uses_.end()) {
+		Entry* entry = table_.find(value);
+		if (entry == nullptr) {
 			continue;
 		}
-		auto& vec = it->second;
-		size_t kept = 0;
+		auto& vec = entry->uses;
+		uint32_t kept = 0;
 		for (size_t i = 0; i < vec.size(); ++i) {
 			Use use = vec[i];
-			if (auto remapIt = remapOf.find(use.user); remapIt != remapOf.end()) {
-				const auto& remap = *remapIt->second;
+			if (const auto* const* remapPtr = remapOf.find(use.user)) {
+				const auto& remap = **remapPtr;
 				const uint32_t mapped = use.operandIndex < remap.size() ? remap[use.operandIndex] : removedSlot;
 				if (mapped == removedSlot) {
 					continue;
@@ -335,10 +408,7 @@ void FunctionRewriter::removeBlockArguments(std::span<const BlockArgumentSlot> s
 			}
 			vec[kept++] = use;
 		}
-		vec.resize(kept);
-		if (vec.empty()) {
-			uses_.erase(it);
-		}
+		vec.truncate(kept);
 	}
 }
 
@@ -347,7 +417,7 @@ FunctionRewriter::addBlockArgument(BasicBlock* block, Type stamp,
                                    const std::function<Operation*(BasicBlockInvocation&)>& valueForEdge) {
 	auto* newArg = arena_.create<BasicBlockArgument>(freshId(), stamp);
 	block->addArgument(newArg);
-	defBlock_[newArg] = block;
+	defBlockOf(newArg) = block;
 
 	auto targetInvocations = invocationsTargeting(block);
 	for (auto* inv : targetInvocations) {
@@ -355,7 +425,7 @@ FunctionRewriter::addBlockArgument(BasicBlock* block, Type stamp,
 		const auto newIndex = static_cast<uint32_t>(inv->getArguments().size());
 		inv->addArgument(arena_, value);
 		if (value != nullptr) {
-			uses_[value].push_back(Use {inv, newIndex});
+			table_[value].uses.push_back(Use {inv, newIndex}, tableMemory_);
 		}
 	}
 	return newArg;
@@ -415,13 +485,12 @@ void FunctionRewriter::replaceTerminator(BasicBlock* block, Operation* newTermin
 		for (auto* inv : getSuccessorInvocations(*oldTerminator)) {
 			unregisterUser(inv);
 		}
-		defBlock_.erase(oldTerminator);
-		uses_.erase(oldTerminator);
+		forget(oldTerminator);
 	}
 	// Handles predecessor-list consistency for both the old and new
 	// terminator's successors.
 	block->replaceTerminatorOperation(newTerminator);
-	defBlock_[newTerminator] = block;
+	defBlockOf(newTerminator) = block;
 	registerUses(newTerminator);
 	for (auto* inv : getSuccessorInvocations(*newTerminator)) {
 		registerUses(inv);
@@ -438,8 +507,7 @@ void FunctionRewriter::eraseBlock(BasicBlock* block) {
 	}
 
 	for (auto* arg : block->getArguments()) {
-		defBlock_.erase(arg);
-		uses_.erase(arg);
+		forget(arg);
 	}
 	for (auto* op : block->getOperations()) {
 		unregisterUser(op);
@@ -452,8 +520,7 @@ void FunctionRewriter::eraseBlock(BasicBlock* block) {
 				target->removePredecessor(block);
 			}
 		}
-		defBlock_.erase(op);
-		uses_.erase(op);
+		forget(op);
 	}
 	fn_.detachBasicBlock(block);
 }
@@ -504,16 +571,14 @@ void FunctionRewriter::mergeIntoPredecessor(BasicBlock* pred, BasicBlock* succ) 
 	for (size_t i = 0; i < args.size(); ++i) {
 		BasicBlockArgument* arg = args[i];
 		replaceAllUses(arg, invocationArgs[i]);
-		defBlock_.erase(arg);
-		uses_.erase(arg);
+		forget(arg);
 	}
 
 	// Detach pred's branch. `removeOperation` does no CFG bookkeeping, so the
 	// pred -> succ edge is unlisted explicitly.
 	unregisterUser(branch);
 	unregisterUser(&inv);
-	defBlock_.erase(branch);
-	uses_.erase(branch);
+	forget(branch);
 	pred->removeOperation(branch);
 	succ->removePredecessor(pred);
 
@@ -530,7 +595,7 @@ void FunctionRewriter::mergeIntoPredecessor(BasicBlock* pred, BasicBlock* succ) 
 	for (auto* op : ops) {
 		succ->removeOperation(op);
 		pred->addOperation(op);
-		defBlock_[op] = pred;
+		defBlockOf(op) = pred;
 	}
 
 	// The adopted terminator's targets list succ as a predecessor, once per

@@ -5,6 +5,7 @@
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
+#include "nautilus/compiler/ir/passes/RewriterCache.hpp"
 
 namespace nautilus::compiler::ir {
 
@@ -45,8 +46,7 @@ BasicBlock* mergeableSuccessor(BasicBlock& block, const FunctionRewriter& rewrit
 	return succ;
 }
 
-bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+bool applyToFunction(FunctionOperation& fn, FunctionRewriter& rewriter) {
 
 	bool anyChanged = false;
 	bool changed = true;
@@ -76,11 +76,15 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 } // namespace
 
 bool BlockMergingPass::apply(IRGraph& ir) {
-	common::Arena& arena = ir.getArena();
+	RewriterCache rewriters(ir);
+	return apply(ir, rewriters);
+}
+
+bool BlockMergingPass::apply(IRGraph& ir, RewriterCache& rewriters) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn, arena);
+			changed |= applyToFunction(*fn, rewriters.rewriterFor(*fn));
 		}
 	}
 	return changed;

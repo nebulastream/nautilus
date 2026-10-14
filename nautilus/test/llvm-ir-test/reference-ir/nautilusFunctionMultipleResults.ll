@@ -13,7 +13,7 @@ define signext i32 @execute(i32 %0, i32 %1, i32 %2) local_unnamed_addr #0 {
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @multiply(i32 %0, i32 %1) local_unnamed_addr #0 {
-  %3 = mul i32 %1, %0
+  %3 = mul nsw i32 %1, %0
   ret i32 %3
 }
 

@@ -21,18 +21,20 @@ class IRGraph;
  * interpreters and the assembler backend -- where every operation and block
  * argument removed is a dispatch or a register saved at run time. A backend
  * with an optimizing pipeline of its own (MLIR, through LLVM) performs the
- * same folding, simplification and dead-code removal itself, and running
- * those passes first only costs compile time. Block arguments are the
- * exception: LLVM turns them into phis and pays for every one the trace
- * left behind (measured on the #492 repro, MLIR compilation of a graph with
- * unpruned arguments was 7-18% slower end to end than with them pruned, while
- * the other passes made no difference to it), so a self-optimizing backend
- * still wants them pruned.
+ * same folding, simplification and dead-code removal itself. It still wants
+ * block arguments pruned: LLVM turns them into phis and pays for every one
+ * the trace left behind (measured on the #492 repro, MLIR compilation of a
+ * graph with unpruned arguments was 7-18% slower end to end than with them
+ * pruned). And it still wants the CFG cleaned up: LLVM keeps a loop with a
+ * leftover forwarding block as two loop headers and does not if-convert it
+ * (binarySearch in tools/backend-explorer ran 3x slower), while the whole
+ * pipeline costs about 1% of an MLIR compile.
  */
 enum class IROptimizationLevel : uint8_t {
 	/// Nothing beyond the analyses every backend needs (`ir.runOptimizationPasses=false`).
 	None,
-	/// Block-argument pruning only.
+	/// Block-argument pruning only. No backend asks for this level today: the
+	/// MLIR backend did until its CFG cleanups proved to pay for themselves.
 	ArgumentPruning,
 	/// Every optimization pass.
 	Full,

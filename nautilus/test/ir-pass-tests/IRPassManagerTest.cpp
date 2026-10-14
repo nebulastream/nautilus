@@ -139,6 +139,33 @@ TEST_CASE("IRPassManager: fixed-point group converges before maxIterations") {
 	REQUIRE(callCount == 3);
 }
 
+TEST_CASE("IRPassManager: fixed-point group skips passes that have nothing new to see") {
+	auto ir = IRGraphFixtures::makeSingleBlockGraph();
+	std::vector<std::string> log;
+	size_t changingCalls = 0;
+
+	engine::Options opts;
+	compiler::ir::IRPassManager mgr(opts);
+	auto quietBefore = std::make_unique<RecordingPass>("quiet-before", log);
+	quietBefore->setChangesOnApply(false);
+	auto quietAfter = std::make_unique<RecordingPass>("quiet-after", log);
+	quietAfter->setChangesOnApply(false);
+	std::vector<std::unique_ptr<compiler::ir::IRPass>> group;
+	group.push_back(std::move(quietBefore));
+	group.push_back(std::make_unique<ChangesForNApplications>("changes-once", 1, changingCalls));
+	group.push_back(std::move(quietAfter));
+	mgr.addFixedPointGroup(std::move(group), 10);
+
+	mgr.run(*ir);
+
+	// Round 1 runs all three; "changes-once" changes the graph. Round 2 reruns
+	// "quiet-before" (it ran before that change) and "changes-once" (its last
+	// run changed something), but skips "quiet-after", which already found
+	// nothing on the current graph. Nothing changes, so the group stops.
+	REQUIRE(log == std::vector<std::string> {"quiet-before", "quiet-after", "quiet-before"});
+	REQUIRE(changingCalls == 2);
+}
+
 TEST_CASE("IRPassManager: fixed-point group respects the maxIterations bound") {
 	auto ir = IRGraphFixtures::makeSingleBlockGraph();
 	size_t callCount = 0;

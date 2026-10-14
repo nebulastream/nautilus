@@ -48,7 +48,7 @@ middle.block:                                     ; preds = %vector.body
 .lr.ph:                                           ; preds = %.lr.ph.preheader5, %.lr.ph
   %9 = phi i32 [ %12, %.lr.ph ], [ %.ph, %.lr.ph.preheader5 ]
   %10 = phi i32 [ %11, %.lr.ph ], [ %.ph6, %.lr.ph.preheader5 ]
-  %11 = mul i32 %9, %10
+  %11 = mul nuw nsw i32 %9, %10
   %12 = add nsw i32 %9, -1
   %13 = icmp samesign ugt i32 %9, 2
   br i1 %13, label %.lr.ph, label %._crit_edge, !llvm.loop !4

@@ -41,6 +41,7 @@ namespace nautilus::compiler::ir {
 class ConstantFoldingAndCopyPropagationPass : public IRPass {
 public:
 	bool apply(IRGraph& ir) override;
+	bool apply(IRGraph& ir, RewriterCache& rewriters) override;
 	std::string getName() const override {
 		return "ConstantFoldingAndCopyPropagation";
 	}
