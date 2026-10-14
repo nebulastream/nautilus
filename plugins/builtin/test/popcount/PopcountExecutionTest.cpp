@@ -58,8 +58,15 @@ T expectedPopcount(T x) {
 template <typename T>
 std::vector<T> interestingValues() {
 	using Limits = std::numeric_limits<T>;
-	std::vector<T> values = {0, 1, 2, 3, Limits::max(), Limits::min(), static_cast<T>(Limits::max() - 1),
-	                         static_cast<T>(0x55), static_cast<T>(0xAA)};
+	std::vector<T> values = {0,
+	                         1,
+	                         2,
+	                         3,
+	                         Limits::max(),
+	                         Limits::min(),
+	                         static_cast<T>(Limits::max() - 1),
+	                         static_cast<T>(0x55),
+	                         static_cast<T>(0xAA)};
 	if constexpr (std::is_signed_v<T>) {
 		values.push_back(-1);
 		values.push_back(-2);
@@ -93,8 +100,8 @@ template <typename T>
 void checkPopcountOfSum(engine::NautilusEngine& engine) {
 	using Limits = std::numeric_limits<T>;
 	auto f = engine.registerFunction(popcountOfSum<T>);
-	const T pairs[][2] = {{Limits::max(), 1}, {Limits::max(), Limits::max()}, {Limits::min(), Limits::min()},
-	                      {Limits::max(), 2},  {static_cast<T>(-1), static_cast<T>(-1)}, {5, 6}};
+	const T pairs[][2] = {{Limits::max(), 1}, {Limits::max(), Limits::max()},           {Limits::min(), Limits::min()},
+	                      {Limits::max(), 2}, {static_cast<T>(-1), static_cast<T>(-1)}, {5, 6}};
 	for (const auto& pair : pairs) {
 		INFO("a = " << static_cast<int64_t>(pair[0]) << ", b = " << static_cast<int64_t>(pair[1]));
 		REQUIRE(f(pair[0], pair[1]) == expectedPopcount(static_cast<T>(pair[0] + pair[1])));
