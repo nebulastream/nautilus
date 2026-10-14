@@ -513,7 +513,8 @@ void vectorShrLogicalInt(val<const int32_t*> a, val<const int32_t*> b, val<int32
 	val<vec<int32_t>>::Load(a).ShrLogical(val<vec<int32_t>>::Load(b)).Store(out);
 }
 
-// Vectors built before a loop and used inside it (they cross basic blocks)
+// Vectors built before a loop and used inside it (they cross basic blocks). The scalar fallback
+// keeps a vector value for 32 further vector values (docs/simd.md): callers keep n small.
 void vectorLoopInvariantInt(val<const int32_t*> in, val<int32_t*> out, val<int64_t> n) {
 	auto add = val<vec<int32_t>>::Broadcast(val<int32_t>(7));
 	auto mul = val<vec<int32_t>>::Broadcast(val<int32_t>(3));

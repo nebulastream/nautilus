@@ -32,6 +32,10 @@ struct alignas(sizeof(T) * N) vector_data {
 /// Type tag representing a SIMD vector of type T.
 /// The lane count is determined at runtime from CPU capabilities.
 /// Use as val<vec<float>>, val<vec<int32_t>>, etc.
+///
+/// On backends without the vector intrinsics (interpreter, bytecode, C++, AsmJit for operations it
+/// does not lower), vector values live in a per-thread ring of 32 slots per type and lane count: a
+/// value stays valid for 32 further vector values of its type (docs/simd.md).
 template <typename T>
 struct vec {
 	static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type");

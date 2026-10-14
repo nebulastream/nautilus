@@ -877,13 +877,14 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("loop-invariant vectors used in a loop") {
 		auto f = engine.registerFunction(vectorLoopInvariantInt);
-		constexpr size_t N = 64;
-		alignas(64) int32_t in[N], out[N] = {};
-		for (size_t i = 0; i < N; i++) {
+		// 4 iterations x 3 vector values: within the scalar fallback's 32-value lifetime
+		const size_t n = 4 * IL;
+		alignas(64) int32_t in[4 * IL_MAX], out[4 * IL_MAX] = {};
+		for (size_t i = 0; i < n; i++) {
 			in[i] = static_cast<int32_t>(i) - 20;
 		}
-		f(in, out, static_cast<int64_t>(N));
-		for (size_t i = 0; i < N; i++) {
+		f(in, out, static_cast<int64_t>(n));
+		for (size_t i = 0; i < n; i++) {
 			REQUIRE(out[i] == in[i] * 3 + 7);
 		}
 	}
