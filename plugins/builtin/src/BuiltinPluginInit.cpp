@@ -9,6 +9,7 @@
 
 #ifdef ENABLE_MLIR_BACKEND
 #include "int128/MLIRInt128Intrinsics.hpp"
+#include "overflow/MLIROverflowIntrinsics.hpp"
 #include "prefetch/MLIRPrefetchIntrinsics.hpp"
 #endif
 
@@ -22,6 +23,7 @@ struct BuiltinIntrinsicRegistrar {
 #ifdef ENABLE_MLIR_BACKEND
 		nautilus::compiler::mlir::RegisterMLIRPrefetchIntrinsicPlugin();
 		nautilus::compiler::mlir::RegisterMLIRInt128IntrinsicPlugin();
+		nautilus::compiler::mlir::RegisterMLIROverflowIntrinsicPlugin();
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
 		nautilus::compiler::asmjit::RegisterAsmJitPrefetchIntrinsicPlugin();

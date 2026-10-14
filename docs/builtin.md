@@ -80,3 +80,23 @@ Nautilus's type system and IR carry at most 64-bit values, so `val<__int128>` tr
 Because a raw `__int128` does not fit the 64-bit invocation ABI, traced functions should take and return 64-bit values (for example via `low()` / `high()`) at their boundary rather than a bare `__int128`.
 
 With `ENABLE_FUZZING=ON`, the `nautilus-int128-fuzz` target differentially checks randomized arithmetic, division, remainder, bitwise and shift kernels against a native `unsigned __int128` oracle.
+
+## Overflow-checked arithmetic
+
+```cpp
+#include <nautilus/builtin/plugin.hpp>
+#include <nautilus/builtin/overflow/overflow.hpp>
+
+val<bool> checkedProduct(val<int64_t> a, val<int64_t> b, val<int64_t*> result) {
+    return nautilus::builtin::mul_overflow(a, b, result);
+}
+```
+
+`add_overflow`, `sub_overflow` and `mul_overflow` (for `val<int32_t>` and `val<int64_t>`) behave like `__builtin_{add,sub,mul}_overflow`: they write the wrapped result through the pointer and return whether the exact result does not fit. `add_overflow_i128`, `sub_overflow_i128` and `mul_overflow_i128` do the same for signed 128-bit integers held in memory (16 bytes, any alignment; the result may alias an operand).
+
+### Lowering
+
+| Backend | Lowering |
+|---------|----------|
+| MLIR | `llvm.s{add,sub,mul}.with.overflow` on `i32` / `i64` / `i128` (no division or widening to detect a multiply overflow) |
+| AsmJit, C++, bytecode, interpreter | call to the portable runtime helper |

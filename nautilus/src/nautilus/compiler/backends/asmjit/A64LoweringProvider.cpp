@@ -68,11 +68,9 @@ bool isLogicalImm64(int64_t value) {
 // `#(value >> 12), lsl #12`. Callers check isAddSubImm first.
 template <typename Emit>
 void withAddSubImm(uint64_t value, Emit&& emit) {
-	if (value <= 0xFFFu) {
-		emit(Imm(value), std::optional<Imm> {});
-	} else {
-		emit(Imm(value >> 12), std::optional<Imm> {Imm(arm::lsl(12))});
-	}
+	// AsmJit's encoder picks the `lsl #12` form itself for a multiple of 4096 above 0xFFF; an
+	// explicit shift operand is rejected (InvalidInstruction) by the add/sub/cmp/cmn encodings.
+	emit(Imm(value), std::optional<arm::Shift> {});
 }
 } // anonymous namespace
 
@@ -878,12 +876,12 @@ void AsmJitLoweringProvider::LoweringContext::emitAddImmediate(Gp dst, Gp src, i
 	const auto magnitude = static_cast<uint64_t>(value);
 	const auto negated = uint64_t {0} - magnitude;
 	if (isAddSubImm(magnitude)) {
-		withAddSubImm(magnitude, [&](const Imm& imm, const std::optional<Imm>& shift) {
+		withAddSubImm(magnitude, [&](const Imm& imm, const std::optional<arm::Shift>& shift) {
 			shift ? cc.add(dst, src, imm, *shift) : cc.add(dst, src, imm);
 		});
 		foldedImmediates_++;
 	} else if (isAddSubImm(negated)) {
-		withAddSubImm(negated, [&](const Imm& imm, const std::optional<Imm>& shift) {
+		withAddSubImm(negated, [&](const Imm& imm, const std::optional<arm::Shift>& shift) {
 			shift ? cc.sub(dst, src, imm, *shift) : cc.sub(dst, src, imm);
 		});
 		foldedImmediates_++;
@@ -1632,12 +1630,12 @@ arm::CondCode AsmJitLoweringProvider::LoweringContext::emitCompareFlags(const ir
 	const uint64_t k = rightImm.has_value() ? static_cast<uint64_t>(*rightImm) & widthMask : 0;
 	const uint64_t negK = (uint64_t {0} - k) & widthMask;
 	if (rightImm.has_value() && isAddSubImm(k)) {
-		withAddSubImm(k, [&](const Imm& imm, const std::optional<Imm>& shift) {
+		withAddSubImm(k, [&](const Imm& imm, const std::optional<arm::Shift>& shift) {
 			shift ? cc.cmp(left, imm, *shift) : cc.cmp(left, imm);
 		});
 		foldedImmediates_++;
 	} else if (rightImm.has_value() && k != 0 && isAddSubImm(negK)) {
-		withAddSubImm(negK, [&](const Imm& imm, const std::optional<Imm>& shift) {
+		withAddSubImm(negK, [&](const Imm& imm, const std::optional<arm::Shift>& shift) {
 			shift ? cc.cmn(left, imm, *shift) : cc.cmn(left, imm);
 		});
 		foldedImmediates_++;

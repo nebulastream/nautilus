@@ -45,6 +45,9 @@ namespace nautilus {
 #define DECLARE_VECTOR_INSERT(T, N, SUFFIX)                                \
 	extern "C" vector_data<T, N>* vector_insert_##SUFFIX##_impl(vector_data<T, N>*, T, int32_t);
 
+#define DECLARE_VECTOR_SHUFFLE(T, N, SUFFIX)                               \
+	extern "C" vector_data<T, N>* vector_shuffle_##SUFFIX##_impl(vector_data<T, N>*, vector_data<T, N>*, const int32_t*);
+
 #define DECLARE_VECTOR_ALL(T, N, SUFFIX)                                   \
 	DECLARE_VECTOR_LOAD_STORE(T, N, SUFFIX)                                \
 	DECLARE_VECTOR_BINARY(T, N, SUFFIX, add)                               \
@@ -73,7 +76,8 @@ namespace nautilus {
 	DECLARE_VECTOR_SCATTER(T, N, SUFFIX)                                   \
 	DECLARE_VECTOR_COMPRESS_STORE(T, N, SUFFIX)                            \
 	DECLARE_VECTOR_EXTRACT(T, N, SUFFIX)                                   \
-	DECLARE_VECTOR_INSERT(T, N, SUFFIX)
+	DECLARE_VECTOR_INSERT(T, N, SUFFIX)                                    \
+	DECLARE_VECTOR_SHUFFLE(T, N, SUFFIX)
 
 #define DECLARE_VECTOR_FLOAT_ALL(T, N, SUFFIX)                             \
 	DECLARE_VECTOR_ALL(T, N, SUFFIX)                                       \
@@ -97,8 +101,11 @@ DECLARE_VECTOR_BINARY(int32_t, 4, i32x4, shl)
 DECLARE_VECTOR_BINARY(int32_t, 8, i32x8, shl)
 DECLARE_VECTOR_BINARY(int32_t, 16, i32x16, shl)
 DECLARE_VECTOR_BINARY(int32_t, 4, i32x4, shr)
+DECLARE_VECTOR_BINARY(int32_t, 4, i32x4, lshr)
 DECLARE_VECTOR_BINARY(int32_t, 8, i32x8, shr)
+DECLARE_VECTOR_BINARY(int32_t, 8, i32x8, lshr)
 DECLARE_VECTOR_BINARY(int32_t, 16, i32x16, shr)
+DECLARE_VECTOR_BINARY(int32_t, 16, i32x16, lshr)
 
 // int64_t
 DECLARE_VECTOR_ALL(int64_t, 2, i64x2)
@@ -108,8 +115,11 @@ DECLARE_VECTOR_BINARY(int64_t, 2, i64x2, shl)
 DECLARE_VECTOR_BINARY(int64_t, 4, i64x4, shl)
 DECLARE_VECTOR_BINARY(int64_t, 8, i64x8, shl)
 DECLARE_VECTOR_BINARY(int64_t, 2, i64x2, shr)
+DECLARE_VECTOR_BINARY(int64_t, 2, i64x2, lshr)
 DECLARE_VECTOR_BINARY(int64_t, 4, i64x4, shr)
+DECLARE_VECTOR_BINARY(int64_t, 4, i64x4, lshr)
 DECLARE_VECTOR_BINARY(int64_t, 8, i64x8, shr)
+DECLARE_VECTOR_BINARY(int64_t, 8, i64x8, lshr)
 
 // clang-format on
 
