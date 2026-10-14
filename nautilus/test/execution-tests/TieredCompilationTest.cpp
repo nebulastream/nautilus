@@ -5,6 +5,7 @@
 #include "nautilus/compiler/TieredCompiler.hpp"
 #include "nautilus/config.hpp"
 #include <catch2/catch_all.hpp>
+#include <cstdlib>
 #include <thread>
 #include <vector>
 
@@ -470,5 +471,55 @@ TEST_CASE("Tiered Compilation - Explicit Backend Runs Single-Tier") {
 		}
 	}
 }
+
+namespace {
+/// Sets NAUTILUS_OPTIONS for the scope of one test.
+struct NautilusOptionsGuard {
+	explicit NautilusOptionsGuard(const char* value) {
+		setenv("NAUTILUS_OPTIONS", value, 1);
+	}
+	~NautilusOptionsGuard() {
+		unsetenv("NAUTILUS_OPTIONS");
+	}
+};
+} // namespace
+
+TEST_CASE("Tiered Compilation - NAUTILUS_OPTIONS Layers Typed Options Over The Engine's") {
+	const NautilusOptionsGuard guard("dump.all=true;ir.maxPipelineIterations=7;custom.ratio=0.5;custom.name=x;;");
+	Options options;
+	options.setOption("dump.all", false);
+	options.setOption("custom.kept", 3);
+	auto engine = NautilusEngine(options);
+	const auto module = engine.createModule();
+	const auto& applied = module.getOptions();
+	REQUIRE(applied.getOptionOrDefault("dump.all", false) == true);
+	REQUIRE(applied.getOptionOrDefault("ir.maxPipelineIterations", 0) == 7);
+	REQUIRE(applied.getOptionOrDefault("custom.ratio", 0.0) == 0.5);
+	REQUIRE(applied.getOptionOrDefault<std::string>("custom.name", "") == "x");
+	REQUIRE(applied.getOptionOrDefault("custom.kept", 0) == 3);
+}
+
+TEST_CASE("Tiered Compilation - NAUTILUS_OPTIONS Rejects An Entry Without A Value") {
+	const NautilusOptionsGuard guard("engine.backend");
+	REQUIRE_THROWS(NautilusEngine(Options()));
+}
+
+#if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND) && defined(ENABLE_ASMJIT_BACKEND)
+TEST_CASE("Tiered Compilation - NAUTILUS_OPTIONS Replaces The Selected Backend") {
+	// The environment wins over the application's own choice, so a workload can
+	// be moved to another backend without touching its code.
+	const NautilusOptionsGuard guard("engine.backend=asmjit");
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	auto engine = NautilusEngine(options);
+	REQUIRE(engine.getNameOfBackend() == "asmjit");
+
+	auto module = engine.createModule();
+	module.registerFunction("add_one", tieredAddOne);
+	auto compiled = module.compile();
+	REQUIRE(compiled.getFunction<int32_t(int32_t)>("add_one")(5) == 6);
+	REQUIRE(std::get<std::string>(*compiled.getStatistics()->find("backend.name")) == "asmjit");
+}
+#endif
 
 } // namespace nautilus::engine

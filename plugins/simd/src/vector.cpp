@@ -254,6 +254,30 @@ static vector_data<T, N>* nextSlot() {
 		return result;                                                                                      \
 	}
 
+// Logical (zero-filling) right shift; `shr` is arithmetic for the signed lane types.
+#define VECTOR_IMPL_LSHR(T, N, SUFFIX)                                                                          \
+	extern "C" vector_data<T, N>* vector_lshr_##SUFFIX##_impl(vector_data<T, N>* a, vector_data<T, N>* b) {    \
+		using U = std::make_unsigned_t<T>;                                                                  \
+		auto* result = nextSlot<T, N>();                                                                    \
+		for (size_t i = 0; i < N; i++)                                                                      \
+			result->data[i] = static_cast<T>(static_cast<U>(a->data[i]) >> static_cast<U>(b->data[i]));     \
+		return result;                                                                                      \
+	}
+
+// Two-source shuffle: lane i of the result is lane idx[i] of the concatenation (a, b).
+#define VECTOR_IMPL_SHUFFLE(T, N, SUFFIX)                                                                       \
+	extern "C" vector_data<T, N>* vector_shuffle_##SUFFIX##_impl(vector_data<T, N>* a, vector_data<T, N>* b,  \
+	                                                             const int32_t* idx) {                       \
+		T in[2 * N];                                                                                        \
+		for (size_t i = 0; i < N; i++) {                                                                    \
+			in[i] = a->data[i];                                                                             \
+			in[N + i] = b->data[i];                                                                         \
+		}                                                                                                   \
+		auto* result = nextSlot<T, N>();                                                                    \
+		for (size_t i = 0; i < N; i++) result->data[i] = in[idx[i]];                                        \
+		return result;                                                                                      \
+	}
+
 #define VECTOR_IMPL_ALL_OPS(T, N, SUFFIX)                         \
 	VECTOR_IMPL_LOAD(T, N, SUFFIX)                                \
 	VECTOR_IMPL_STORE(T, N, SUFFIX)                               \
@@ -280,7 +304,8 @@ static vector_data<T, N>* nextSlot() {
 	VECTOR_IMPL_SCATTER(T, N, SUFFIX)                             \
 	VECTOR_IMPL_COMPRESS_STORE(T, N, SUFFIX)                      \
 	VECTOR_IMPL_EXTRACT(T, N, SUFFIX)                             \
-	VECTOR_IMPL_INSERT(T, N, SUFFIX)
+	VECTOR_IMPL_INSERT(T, N, SUFFIX)                              \
+	VECTOR_IMPL_SHUFFLE(T, N, SUFFIX)
 
 #define VECTOR_IMPL_FLOAT_OPS(T, N, SUFFIX)                       \
 	VECTOR_IMPL_ALL_OPS(T, N, SUFFIX)                             \
@@ -295,7 +320,8 @@ static vector_data<T, N>* nextSlot() {
 	VECTOR_IMPL_REDUCE_FUNC(T, N, SUFFIX, min, a->data[0], std::min) \
 	VECTOR_IMPL_REDUCE_FUNC(T, N, SUFFIX, max, a->data[0], std::max) \
 	VECTOR_IMPL_SHL(T, N, SUFFIX)                                \
-	VECTOR_IMPL_SHR(T, N, SUFFIX)
+	VECTOR_IMPL_SHR(T, N, SUFFIX)                                \
+	VECTOR_IMPL_LSHR(T, N, SUFFIX)
 
 // clang-format on
 
@@ -410,6 +436,14 @@ namespace detail {
 		    vector_insert_##SUFFIX##_impl, v, value, idx);                                               \
 	}
 
+#define VEC_INVOKE_SHUFFLE(T, N, SUFFIX)                                                                  \
+	template <>                                                                                          \
+	val<vector_data<T, N>*> vec_shuffle<T, N>(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b,      \
+	                                          const int32_t* idx) {                                      \
+		return invoke<vector_data<T, N>*, vector_data<T, N>*, vector_data<T, N>*, const int32_t*>(       \
+		    vector_shuffle_##SUFFIX##_impl, a, b, val<const int32_t*>(idx));                             \
+	}
+
 #define VEC_INVOKE_ALL(T, N, SUFFIX)                                                                     \
 	VEC_INVOKE_LOAD(T, N, SUFFIX)                                                                        \
 	VEC_INVOKE_STORE(T, N, SUFFIX)                                                                       \
@@ -439,7 +473,8 @@ namespace detail {
 	VEC_INVOKE_SCATTER(T, N, SUFFIX)                                                                     \
 	VEC_INVOKE_COMPRESS_STORE(T, N, SUFFIX)                                                              \
 	VEC_INVOKE_EXTRACT(T, N, SUFFIX)                                                                     \
-	VEC_INVOKE_INSERT(T, N, SUFFIX)
+	VEC_INVOKE_INSERT(T, N, SUFFIX)                                                                      \
+	VEC_INVOKE_SHUFFLE(T, N, SUFFIX)
 
 #define VEC_INVOKE_FLOAT_ALL(T, N, SUFFIX)                                                               \
 	VEC_INVOKE_ALL(T, N, SUFFIX)                                                                         \
@@ -454,8 +489,10 @@ VEC_INVOKE_ALL(int32_t, 4, i32x4)
 VEC_INVOKE_ALL(int64_t, 2, i64x2)
 VEC_INVOKE_BINARY(int32_t, 4, i32x4, shl)
 VEC_INVOKE_BINARY(int32_t, 4, i32x4, shr)
+VEC_INVOKE_BINARY(int32_t, 4, i32x4, lshr)
 VEC_INVOKE_BINARY(int64_t, 2, i64x2, shl)
 VEC_INVOKE_BINARY(int64_t, 2, i64x2, shr)
+VEC_INVOKE_BINARY(int64_t, 2, i64x2, lshr)
 
 // 256-bit (AVX / AVX2)
 VEC_INVOKE_FLOAT_ALL(float, 8, f32x8)
@@ -464,8 +501,10 @@ VEC_INVOKE_ALL(int32_t, 8, i32x8)
 VEC_INVOKE_ALL(int64_t, 4, i64x4)
 VEC_INVOKE_BINARY(int32_t, 8, i32x8, shl)
 VEC_INVOKE_BINARY(int32_t, 8, i32x8, shr)
+VEC_INVOKE_BINARY(int32_t, 8, i32x8, lshr)
 VEC_INVOKE_BINARY(int64_t, 4, i64x4, shl)
 VEC_INVOKE_BINARY(int64_t, 4, i64x4, shr)
+VEC_INVOKE_BINARY(int64_t, 4, i64x4, lshr)
 
 // 512-bit (AVX-512)
 VEC_INVOKE_FLOAT_ALL(float, 16, f32x16)
@@ -474,8 +513,10 @@ VEC_INVOKE_ALL(int32_t, 16, i32x16)
 VEC_INVOKE_ALL(int64_t, 8, i64x8)
 VEC_INVOKE_BINARY(int32_t, 16, i32x16, shl)
 VEC_INVOKE_BINARY(int32_t, 16, i32x16, shr)
+VEC_INVOKE_BINARY(int32_t, 16, i32x16, lshr)
 VEC_INVOKE_BINARY(int64_t, 8, i64x8, shl)
 VEC_INVOKE_BINARY(int64_t, 8, i64x8, shr)
+VEC_INVOKE_BINARY(int64_t, 8, i64x8, lshr)
 
 } // namespace detail
 

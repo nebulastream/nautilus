@@ -1,2 +1,3 @@
-# Local development copy of the published benchmark data (see fetch-data.sh).
+# Local development copies of the published benchmark data (see fetch-data.sh).
 data.js
+nebulastream-data.js

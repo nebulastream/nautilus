@@ -17,7 +17,7 @@
 //
 // Usage: #include <nautilus/builtin/plugin.hpp> in any TU that links against
 // nautilus-builtin as a static archive and needs the native MLIR/AsmJit
-// builtin lowering (e.g. prefetch).
+// builtin lowering (e.g. prefetch, int128).
 
 #include "nautilus/config.hpp"
 
@@ -25,6 +25,8 @@
 namespace nautilus::compiler::mlir {
 // Defined in plugins/builtin/src/prefetch/MLIRPrefetchIntrinsics.cpp
 void RegisterMLIRPrefetchIntrinsicPlugin();
+// Defined in plugins/builtin/src/int128/MLIRInt128Intrinsics.cpp
+void RegisterMLIRInt128IntrinsicPlugin();
 } // namespace nautilus::compiler::mlir
 
 namespace {
@@ -34,6 +36,7 @@ namespace {
 struct NautilusBuiltinMlirPluginRegistrar {
 	NautilusBuiltinMlirPluginRegistrar() {
 		nautilus::compiler::mlir::RegisterMLIRPrefetchIntrinsicPlugin();
+		nautilus::compiler::mlir::RegisterMLIRInt128IntrinsicPlugin();
 	}
 };
 [[maybe_unused]] static NautilusBuiltinMlirPluginRegistrar nautilus_builtin_mlir_plugin_registrar_;

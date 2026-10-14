@@ -284,6 +284,28 @@ val<uint32_t> u32WrapSubThenCompare(val<uint32_t> x, val<uint32_t> y) {
 	return result;
 }
 
+// Issue #542: constant folding computed f32 arithmetic in double without rounding back to float, so an f32 product
+// that underflows to 0 stayed nonzero and one that overflows to inf stayed finite. Operands are all constants, so the
+// whole expression is folded before any backend sees it.
+inline val<bool> f32ConstProductUnderflowIsNonZero() {
+	val<float> a = 9.1834094859526887e-41f;
+	val<float> b = 2.9427267750821158e-44f;
+	return (a * b) != val<float>(0.0f);
+}
+
+inline val<bool> f32ConstQuotientUnderflowIsNonZero() {
+	val<float> a = 1.2830050170821365e-22f;
+	val<float> b = -1.0425157298336919e+34f;
+	return (a / b) != val<float>(0.0f);
+}
+
+inline val<float> f32ConstProductOverflowThenScale() {
+	val<float> a = -2.5353030138451882e+30f;
+	val<float> b = 7.5557863725914323e+22f;
+	val<float> c = 9.0033426332869497e-41f;
+	return (a * b) * c;
+}
+
 // Issue #517: a literal is traced as a constant of the type the operator converts it to, where that conversion is
 // exact for every value of the literal's type.
 inline val<int64_t> addInt64AndLiteral(val<int64_t> x) {

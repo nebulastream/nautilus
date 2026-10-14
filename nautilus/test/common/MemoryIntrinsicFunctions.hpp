@@ -24,6 +24,16 @@ val<void*> memsetFunction(val<void*> dest, val<int> value, val<size_t> count) {
 	return memset(dest, value, count);
 }
 
+// Test function for memcmp
+val<int> memcmpFunction(val<const void*> a, val<const void*> b, val<size_t> count) {
+	return memcmp(a, b, count);
+}
+
+// memcmp of a constant length as an equality test (LLVM expands it inline)
+val<bool> memcmpEq5Function(val<const void*> a, val<const void*> b) {
+	return memcmp(a, b, 5) == val<int>(0);
+}
+
 // Test function for memcpy with byte arrays
 val<void*> memcpyBytesFunction(val<void*> dest, val<const void*> src, val<size_t> count) {
 	return memcpy(dest, src, count);

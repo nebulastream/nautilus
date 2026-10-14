@@ -1057,3 +1057,26 @@ symbols (as it always did while developing this change) -- the smoke corpus
 aborted on the very first pre-existing finding it hit instead of tolerating
 it. Fixed by switching to prefix matching (`std::string::starts_with`),
 consistent with how the "Key $" case already worked.
+
+A one-hour libFuzzer soak found a constant-folding bug in the f32 domain --
+now fixed (nebulastream/nautilus#542): `ConstantFoldingAndCopyPropagationPass`
+folded f32 `+ - * /` in `double` and stored the result in `ConstFloatOperation`
+(which holds a `double` for both float stamps) without rounding it back to
+`float`. A folded f32 constant could therefore keep precision and range f32
+does not have, and every later fold saw the unrounded value:
+
+```
+(9.1834094859526887e-41f32 * 2.9427267750821158e-44f32) != 0               // expected false
+((-2.5353030138451882e+30f32 * 7.5557863725914323e+22f32) * 9.0033426332869497e-41f32)  // expected -inf
+```
+
+The first product underflows to `0` in f32 but is about `2.7e-84` in `double`;
+the inner product of the second overflows to `-inf` in f32 but stays finite in
+`double`, so scaling it back down gave `-17246990630912`. Every compiling
+backend inherited the miscompile; the interpreter, which runs no IR passes,
+was correct. Fixed by computing f32 folds in `float`, and by rounding every
+f32 constant the pass creates (`makeFloatConst`). Pinned by
+`f32ConstProductUnderflowIsNonZero`, `f32ConstQuotientUnderflowIsNonZero` and
+`f32ConstProductOverflowThenScale` in `test/common/ExpressionFunctions.hpp`,
+and seeded by `mul-underflow-then-compare-f32` / `mul-overflow-then-scale-f32`
+in `corpus/`.

@@ -619,6 +619,9 @@ void ARMRAPass::onInit() noexcept {
 
   makeUnavailable(RegGroup::kGp, Gp::kIdSp);
   makeUnavailable(RegGroup::kGp, Gp::kIdOs); // OS-specific use, usually TLS.
+  // The link register is listed as preserved by the calling convention (the prologue saves it), but every
+  // BLR / BL overwrites it, so a value allocated to it does not survive a function call.
+  makeUnavailable(RegGroup::kGp, Gp::kIdLr);
 
   _sp = sp;
   _fp = x29;

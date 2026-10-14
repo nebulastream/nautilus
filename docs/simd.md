@@ -89,6 +89,17 @@ Load elements from non-contiguous memory locations using an index array. Loads `
 val<vec<float>> v = val<vec<float>>::Gather(base_ptr, index_ptr);
 ```
 
+On the MLIR backend this is one `llvm.masked.gather` (AVX2 / AVX-512 `vpgatherdd`).
+
+### Shuffle
+
+Pick lanes from two vectors: lane `i` of the result is lane `idx[i]` of the concatenation `(a, b)` — `a[idx[i]]` for `idx[i] < Lanes()`, else `b[idx[i] - Lanes()]`. `idx` is a host table of at least `Lanes()` entries in `[0, 2 * Lanes())`; it is read when the function is compiled and becomes the constant mask of an LLVM `shufflevector` (x86 `vpermt2d`, AArch64 `tbl`), so it must stay valid and unchanged until then.
+
+```cpp
+static int32_t interleave[64]; // filled for the lane count before tracing
+val<vec<int32_t>> v = val<vec<int32_t>>::Shuffle(va, vb, interleave);
+```
+
 ### Scatter
 
 Store elements to non-contiguous memory locations. Stores lane `i` to `base[indices[i]]`.
@@ -220,7 +231,8 @@ val<vec<int32_t>> va = val<vec<int32_t>>::Load(a);
 val<vec<int32_t>> vb = val<vec<int32_t>>::Load(b);
 
 auto lshift = va << vb;   // element-wise left shift
-auto rshift = va >> vb;   // element-wise right shift
+auto rshift = va >> vb;   // element-wise right shift (arithmetic for signed lanes)
+auto ushift = va.ShrLogical(vb);   // element-wise zero-filling right shift
 
 va <<= vb;   // shift left in place
 va >>= vb;   // shift right in place
@@ -282,6 +294,8 @@ The lane count is detected at runtime via CPU feature detection (cpuid on x86, f
 
 When the MLIR backend is not available, all vector operations fall back to portable scalar C++ implementations that produce correct results on any platform, without requiring hardware SIMD support.
 
+**Lifetime of vector values in the scalar fallback.** The fallback implementations return their results in a per-thread ring of 32 slots per element type and lane count. A vector value therefore stays valid only until 32 further vector values of the same type are produced. Code that may run on a backend without the vector intrinsics (the interpreter, bytecode, C++, AsmJit for operations it does not lower) must keep that bound — for example, build loop-invariant vectors inside the loop body instead of before the loop (the MLIR backend, where vectors are SSA values, hoists them out again).
+
 ## API Reference
 
 ### Static Methods on val\<vec\<T\>\>
@@ -291,6 +305,7 @@ When the MLIR backend is not available, all vector operations fall back to porta
 | `Load(val<const T*> ptr)` | Load a vector from contiguous memory |
 | `Broadcast(val<T> scalar)` | Create a vector with all lanes set to the same value |
 | `Gather(val<const T*> base, val<const int32_t*> idx)` | Load from non-contiguous memory |
+| `Shuffle(val a, val b, const int32_t* idx)` | Lane `i` = lane `idx[i]` of `(a, b)`; constant host table |
 
 ### Member Methods
 
@@ -302,6 +317,7 @@ When the MLIR backend is not available, all vector operations fall back to porta
 | `Get(val<int32_t> idx)` | `val<T>` | Extract a single lane |
 | `Set(val<int32_t> idx, val<T> value)` | `val<vec<T>>` | Return vector with one lane replaced |
 | `Abs()` | `val<vec<T>>` | Element-wise absolute value |
+| `ShrLogical(val<vec<T>> b)` | `val<vec<T>>` | Zero-filling right shift (integer types) |
 | `ReduceAdd()` | `val<T>` | Sum all lanes |
 | `ReduceMin()` | `val<T>` | Minimum across all lanes |
 | `ReduceMax()` | `val<T>` | Maximum across all lanes |

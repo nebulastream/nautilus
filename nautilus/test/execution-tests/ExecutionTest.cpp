@@ -437,6 +437,20 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f(0u, 15252585u) == 0u);
 		REQUIRE(f(0u, 15252586u) == 1u);
 	}
+	// Regression (differential fuzzer, issue #542): f32 constant folding must
+	// round to float; see f32ConstProductUnderflowIsNonZero in ExpressionFunctions.hpp.
+	SECTION("f32ConstProductUnderflowIsNonZero") {
+		auto f = engine.registerFunction(f32ConstProductUnderflowIsNonZero);
+		REQUIRE(f() == false);
+	}
+	SECTION("f32ConstQuotientUnderflowIsNonZero") {
+		auto f = engine.registerFunction(f32ConstQuotientUnderflowIsNonZero);
+		REQUIRE(f() == false);
+	}
+	SECTION("f32ConstProductOverflowThenScale") {
+		auto f = engine.registerFunction(f32ConstProductOverflowThenScale);
+		REQUIRE(f() == -std::numeric_limits<float>::infinity());
+	}
 }
 
 void controlFlowTest(engine::NautilusEngine& engine) {

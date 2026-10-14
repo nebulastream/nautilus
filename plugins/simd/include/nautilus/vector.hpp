@@ -32,6 +32,10 @@ struct alignas(sizeof(T) * N) vector_data {
 /// Type tag representing a SIMD vector of type T.
 /// The lane count is determined at runtime from CPU capabilities.
 /// Use as val<vec<float>>, val<vec<int32_t>>, etc.
+///
+/// On backends without the vector intrinsics (interpreter, bytecode, C++, AsmJit for operations it
+/// does not lower), vector values live in a per-thread ring of 32 slots per type and lane count: a
+/// value stays valid for 32 further vector values of its type (docs/simd.md).
 template <typename T>
 struct vec {
 	static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type");
@@ -117,6 +121,10 @@ template <typename T, size_t N>
 val<vector_data<T, N>*> vec_shl(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
 val<vector_data<T, N>*> vec_shr(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
+template <typename T, size_t N>
+val<vector_data<T, N>*> vec_lshr(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
+template <typename T, size_t N>
+val<vector_data<T, N>*> vec_shuffle(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b, const int32_t* idx);
 
 // ============================================================================
 // dispatch_by_lanes — runtime dispatch to the correct N-parameterized function.
@@ -270,6 +278,18 @@ public:
 			return detail::vec_compress_store<T, N_tag.value>(dst, detail::vec_from_max<T, N_tag.value>(mask.Data()),
 			                                                  detail::vec_from_max<T, N_tag.value>(ptr_));
 		});
+	}
+
+	/// Two-source shuffle: lane i of the result is lane idx[i] of the concatenation (a, b), i.e.
+	/// a[idx[i]] for idx[i] < Lanes(), else b[idx[i] - Lanes()]. `idx` is a host table of at least
+	/// Lanes() entries in [0, 2 * Lanes()); it is read when the function is compiled (it becomes the
+	/// constant mask of an LLVM shufflevector on the MLIR backend: vpermt2d / tbl), so it must stay
+	/// valid and unchanged until then.
+	static val Shuffle(val a, val b, const int32_t* idx) {
+		return val(detail::dispatch_by_lanes<T>([&](auto N_tag) {
+			return detail::vec_to_max<T, N_tag.value>(detail::vec_shuffle<T, N_tag.value>(
+			    detail::vec_from_max<T, N_tag.value>(a.ptr_), detail::vec_from_max<T, N_tag.value>(b.ptr_), idx));
+		}));
 	}
 
 	// -- Lane access ---------------------------------------------------------
@@ -456,6 +476,16 @@ public:
 		return val(detail::dispatch_by_lanes<T>([&](auto N_tag) {
 			return detail::vec_to_max<T, N_tag.value>(detail::vec_shl<T, N_tag.value>(
 			    detail::vec_from_max<T, N_tag.value>(a.ptr_), detail::vec_from_max<T, N_tag.value>(b.ptr_)));
+		}));
+	}
+
+	/// Logical (zero-filling) right shift by per-lane amounts; `>>` is arithmetic for signed lanes.
+	val ShrLogical(val b) const
+	    requires std::is_integral_v<T>
+	{
+		return val(detail::dispatch_by_lanes<T>([&](auto N_tag) {
+			return detail::vec_to_max<T, N_tag.value>(detail::vec_lshr<T, N_tag.value>(
+			    detail::vec_from_max<T, N_tag.value>(ptr_), detail::vec_from_max<T, N_tag.value>(b.ptr_)));
 		}));
 	}
 

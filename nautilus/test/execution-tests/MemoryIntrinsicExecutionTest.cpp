@@ -104,6 +104,26 @@ void memoryIntrinsicTest(engine::NautilusEngine& engine) {
 		REQUIRE(buf[2] == 0);
 		REQUIRE(buf[3] == 0);
 	}
+
+	SECTION("memcmp order and equality") {
+		auto f = engine.registerFunction(memcmpFunction);
+		const char a[] = "abcdef";
+		const char b[] = "abcxef";
+		REQUIRE(f((const void*) a, (const void*) a, (size_t) 6) == 0);
+		REQUIRE(f((const void*) a, (const void*) b, (size_t) 6) < 0);
+		REQUIRE(f((const void*) b, (const void*) a, (size_t) 6) > 0);
+		REQUIRE(f((const void*) a, (const void*) b, (size_t) 3) == 0);
+		REQUIRE(f((const void*) a, (const void*) b, (size_t) 0) == 0);
+	}
+
+	SECTION("memcmp constant length equality") {
+		auto f = engine.registerFunction(memcmpEq5Function);
+		const char a[] = "PROMO BURNISHED";
+		const char b[] = "PROMOTION";
+		const char c[] = "PROMPT";
+		REQUIRE(f((const void*) a, (const void*) b));
+		REQUIRE_FALSE(f((const void*) a, (const void*) c));
+	}
 }
 
 TEST_CASE("Memory Intrinsic Test") {

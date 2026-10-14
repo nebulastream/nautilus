@@ -14,7 +14,9 @@
 #include "nautilus/compiler/ir/IRLocationMap.hpp"
 #include "nautilus/compiler/ir/passes/IRLocationPass.hpp"
 #include <chrono>
+#include <fmt/format.h>
 #include <fstream>
+#include <llvm/Support/Error.h>
 #include <llvm/Support/TargetSelect.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
@@ -179,10 +181,12 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	    loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel, debugInfo.enableDebug, debugInfo.enablePerf,
 	    debugInfo.perfEmitDebugInfo, debugInfo.perfEmitUnwindInfo, debugInfo.perfRegionSymbols,
 	    debugInfo.enableSampleSymbols, ir->getId());
+	// ORC generates machine code on the first lookup of a symbol, i.e. on the
+	// first call of a compiled function. With eager compilation it is
+	// generated here instead, inside the compile and its statistics.
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
-		auto result = engine->lookup("execute");
-		if (!result) {
-			llvm::errs() << "Could not compile function" << result.takeError() << "\n";
+		if (auto err = engine->materialize()) {
+			throw RuntimeException(fmt::format("Could not generate machine code: {}", llvm::toString(std::move(err))));
 		}
 	}
 	if (statistics != nullptr) {

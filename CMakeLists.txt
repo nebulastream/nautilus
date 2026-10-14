@@ -42,7 +42,7 @@ option(ENABLE_STD_PLUGIN "Enable the standard library wrapper plugin" ON)
 option(ENABLE_SPECIALIZATION_PLUGIN "Enable the code specialization hint plugin (profile + assume)" ON)
 option(ENABLE_INLINING_PLUGIN "Enable the LLVM function inlining plugin" ON)
 option(ENABLE_GPU_PLUGIN "Enable the GPU plugin (CUDA + Metal backends)" OFF)
-option(ENABLE_BUILTIN_PLUGIN "Enable the compiler builtins plugin (memory prefetch)" ON)
+option(ENABLE_BUILTIN_PLUGIN "Enable the compiler builtins plugin (memory prefetch, 128-bit integers)" ON)
 option(ENABLE_PROFILING_PLUGIN "Enable the in-process hardware performance monitoring plugin (perf counters + sampling)" ON)
 
 set(CMAKE_CXX_STANDARD 20)
