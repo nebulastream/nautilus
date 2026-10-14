@@ -21,6 +21,7 @@
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include <cstdint>
 #include <deque>
+#include <optional>
 #include <unordered_set>
 #include <vector>
 
@@ -106,8 +107,15 @@ Operation* makeIntConst(FunctionRewriter& rewriter, Operation* anchor, Operation
 	return rewriter.createBefore<ConstIntOperation>(anchor, id, truncateToStamp(value, stamp), stamp);
 }
 
+/// `ConstFloatOperation` stores a `double` for both float stamps, so an f32
+/// constant must be rounded to `float` here; otherwise it keeps precision and
+/// range f32 does not have (an f32 underflow staying nonzero, an f32 overflow
+/// staying finite) and every later fold sees the unrounded value.
 Operation* makeFloatConst(FunctionRewriter& rewriter, Operation* anchor, OperationIdentifier id, double value,
                           Type stamp) {
+	if (stamp == Type::f32) {
+		value = static_cast<double>(static_cast<float>(value));
+	}
 	return rewriter.createBefore<ConstFloatOperation>(anchor, id, value, stamp);
 }
 
@@ -160,31 +168,42 @@ Operation* foldIntArithmetic(FunctionRewriter& rewriter, const Operation& op, Op
 	}
 }
 
-Operation* foldFloatArithmetic(FunctionRewriter& rewriter, const Operation& op, Operation::OperationType kind, double l,
-                               double r) {
-	const auto stamp = op.getStamp();
-	const auto id = op.getIdentifier();
-	auto* anchor = const_cast<Operation*>(&op);
+/// Computes `l OP r` in `T`, so an f32 fold rounds (and over/underflows)
+/// exactly like the f32 operation it replaces.
+template <typename T>
+std::optional<double> computeFloatArithmetic(Operation::OperationType kind, T l, T r) {
 	switch (kind) {
 	case Operation::OperationType::AddOp:
-		return makeFloatConst(rewriter, anchor, id, l + r, stamp);
+		return static_cast<double>(l + r);
 	case Operation::OperationType::SubOp:
-		return makeFloatConst(rewriter, anchor, id, l - r, stamp);
+		return static_cast<double>(l - r);
 	case Operation::OperationType::MulOp:
-		return makeFloatConst(rewriter, anchor, id, l * r, stamp);
+		return static_cast<double>(l * r);
 	case Operation::OperationType::DivOp:
-		if (r == 0.0) {
-			return nullptr;
+		if (r == T(0)) {
+			return std::nullopt;
 		}
-		return makeFloatConst(rewriter, anchor, id, l / r, stamp);
+		return static_cast<double>(l / r);
 	case Operation::OperationType::ModOp:
 		// Float modulo is not folded: it is rarely worth the complexity and
 		// keeping it out avoids introducing IEEE-edge-case differences in
 		// reference dumps.
-		return nullptr;
+		return std::nullopt;
 	default:
+		return std::nullopt;
+	}
+}
+
+Operation* foldFloatArithmetic(FunctionRewriter& rewriter, const Operation& op, Operation::OperationType kind, double l,
+                               double r) {
+	const auto stamp = op.getStamp();
+	const auto result = stamp == Type::f32
+	                        ? computeFloatArithmetic<float>(kind, static_cast<float>(l), static_cast<float>(r))
+	                        : computeFloatArithmetic<double>(kind, l, r);
+	if (!result) {
 		return nullptr;
 	}
+	return makeFloatConst(rewriter, const_cast<Operation*>(&op), op.getIdentifier(), *result, stamp);
 }
 
 Operation* foldCompareInt(FunctionRewriter& rewriter, const Operation& op, CompareOperation::Comparator cmp, int64_t l,

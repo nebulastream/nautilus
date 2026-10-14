@@ -3,6 +3,7 @@ add_library(nautilus-builtin)
 
 set(BUILTIN_SOURCES
         src/prefetch/prefetch.cpp
+        src/int128/int128.cpp
 )
 
 if (ENABLE_MLIR_BACKEND OR ENABLE_ASMJIT_BACKEND)
@@ -10,7 +11,10 @@ if (ENABLE_MLIR_BACKEND OR ENABLE_ASMJIT_BACKEND)
 endif ()
 
 if (ENABLE_MLIR_BACKEND)
-    list(APPEND BUILTIN_SOURCES src/prefetch/MLIRPrefetchIntrinsics.cpp)
+    list(APPEND BUILTIN_SOURCES
+            src/prefetch/MLIRPrefetchIntrinsics.cpp
+            src/int128/MLIRInt128Intrinsics.cpp
+    )
 endif ()
 
 if (ENABLE_ASMJIT_BACKEND)
@@ -42,6 +46,7 @@ if (ENABLE_MLIR_BACKEND)
     target_link_libraries(nautilus-builtin PRIVATE
             MLIRIR
             MLIRLLVMDialect
+            MLIRArithDialect
     )
 endif ()
 
