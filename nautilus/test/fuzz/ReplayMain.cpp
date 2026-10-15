@@ -1,8 +1,10 @@
 #include "Harness.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <map>
@@ -14,20 +16,24 @@
 // for replaying a saved crash input.
 //
 // Usage:
-//   nautilus-fuzz-replay <file> [<file> ...]   replay specific input(s)
+//   nautilus-fuzz-replay <path> [<path> ...]   replay specific input(s); a
+//                                              directory replays every regular
+//                                              file in it (e.g. corpus/)
 //   nautilus-fuzz-replay                       run a built-in deterministic
 //                                              corpus of N pseudo-random inputs
 //                                              (N = NAUTILUS_FUZZ_ITERATIONS env
 //                                              var if set, else 2000)
+//   nautilus-fuzz-replay --survey [N]          run N inputs without aborting and
+//                                              print findings bucketed by
+//                                              signature (see Harness.hpp)
 //
 // Any mismatch aborts with a full report (see Harness.hpp), so this also works
 // as a self-checking smoke test: exit 0 means every generated program agreed
-// across all backends and the interpreter (the deterministic built-in corpus
-// additionally tolerates a small, fixed set of specific, pre-existing,
-// already-diagnosed tracer/IR exceptions -- see isKnownPreExistingFinding
-// below and README.md "Known findings" -- without treating them as a
-// pass/fail signal for anything else; any other exception, or any value
-// mismatch, still aborts immediately).
+// across all backends and the interpreter. Like the libFuzzer driver, a small,
+// fixed set of pre-existing, already-diagnosed tracer/IR exceptions is
+// tolerated (see isKnownFinding in Harness.hpp and README.md "Known findings";
+// NAUTILUS_FUZZ_STRICT=1 turns that off); any other exception, or any value
+// mismatch, still aborts immediately.
 
 namespace {
 
@@ -126,10 +132,12 @@ std::vector<uint8_t> randomBuffer() {
 	return buf;
 }
 
-// Pre-existing, already-diagnosed tracer/IR exceptions the deterministic smoke
-// corpus tolerates (see README.md "Known findings"), so a known, tracked bug
-// does not block the regression signal this corpus exists to catch. There are
-// currently no open entries; the history of the ones since fixed follows.
+// Known findings are tolerated by every driver through
+// nautilus::fuzz::isKnownFinding (Harness.hpp), which lists the open entries
+// (currently none); `--survey` still buckets each occurrence by
+// backend/type/exception text so they stay individually visible. The entries
+// below have since been fixed and removed from that list -- the smoke corpus
+// now actively guards against their recurrence.
 //
 // Finding "Key $N does not exists in frame." is no longer tolerated: a
 // Frame<K,V> (compiler/Frame.hpp) lookup miss for an SSA value merged across
@@ -140,7 +148,7 @@ std::vector<uint8_t> randomBuffer() {
 // RunctimeCallFunctions.hpp.
 //
 // Finding "Invalid trace. This is maybe caused by a constant loop." is no
-// longer tolerated either (issue #381): Tag identity is a raw
+// longer tolerated (issue #381): Tag identity is a raw
 // __builtin_return_address chain (TagRecorder.cpp) that depends only on the
 // *sequence of call sites* used to reach a traced operation -- not on which
 // logical operation it is, so it cannot distinguish two logically-unrelated
@@ -202,9 +210,6 @@ std::vector<uint8_t> randomBuffer() {
 // TraceContext.cpp (issue #384) by having follow() recognize the
 // reconciliation ASSIGN by its shared tag and transparently skip it; the
 // smoke corpus now actively guards against its recurrence.
-bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& /*f*/) {
-	return false;
-}
 
 // Default corpus size for the PR-gate smoke run. Overridable via
 // NAUTILUS_FUZZ_ITERATIONS so the same deterministic driver can also serve a
@@ -226,7 +231,7 @@ int builtinCorpus() {
 	for (int it = 0; it < iterations; ++it) {
 		const std::vector<uint8_t> buf = randomBuffer();
 		for (const auto& finding : nautilus::fuzz::checkOne(buf.data(), buf.size())) {
-			if (!isKnownPreExistingFinding(finding)) {
+			if (!nautilus::fuzz::isKnownFinding(finding)) {
 				nautilus::fuzz::printFinding(finding);
 				std::abort();
 			}
@@ -268,8 +273,8 @@ int survey(int iterations) {
 		const std::vector<uint8_t> buf = randomBuffer();
 		for (const auto& f : nautilus::fuzz::checkOne(buf.data(), buf.size())) {
 			++totalFindings;
-			const std::string key = f.backend + "|" + f.config + "|" + f.typeName + "|" + f.shape +
-			                        (f.exception ? "|exception|" + f.what : (f.hasParam ? "|has-param" : "|all-const"));
+			const std::string key =
+			    nautilus::fuzz::signature(f) + (f.exception ? "" : (f.hasParam ? "|has-param" : "|all-const"));
 			counts[key]++;
 			if (!buckets.count(key)) {
 				buckets.emplace(key, f);
@@ -302,6 +307,35 @@ int survey(int iterations) {
 	return 0;
 }
 
+// Expands the command-line paths into the list of inputs to replay: a regular
+// file is replayed as-is, a directory contributes its regular files in sorted
+// order (so a corpus replay is deterministic). A path that does not exist is an
+// error rather than an empty input -- replaying a mistyped crash file must not
+// report "OK".
+bool collectInputs(int argc, char** argv, std::vector<std::filesystem::path>& inputs) {
+	namespace fs = std::filesystem;
+	for (int i = 1; i < argc; ++i) {
+		const fs::path path(argv[i]);
+		std::error_code ec;
+		if (fs::is_directory(path, ec)) {
+			std::vector<fs::path> files;
+			for (const auto& entry : fs::directory_iterator(path)) {
+				if (entry.is_regular_file()) {
+					files.push_back(entry.path());
+				}
+			}
+			std::sort(files.begin(), files.end());
+			inputs.insert(inputs.end(), files.begin(), files.end());
+		} else if (fs::is_regular_file(path, ec)) {
+			inputs.push_back(path);
+		} else {
+			std::fprintf(stderr, "error: %s is neither a file nor a directory\n", argv[i]);
+			return false;
+		}
+	}
+	return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -311,12 +345,16 @@ int main(int argc, char** argv) {
 		return survey(n);
 	}
 	if (argc > 1) {
-		for (int i = 1; i < argc; ++i) {
-			std::printf("replaying %s\n", argv[i]);
-			const std::vector<uint8_t> buf = readFile(argv[i]);
-			nautilus::fuzz::runOne(buf.data(), buf.size());
-			std::printf("  OK: all backends agreed\n");
+		std::vector<std::filesystem::path> inputs;
+		if (!collectInputs(argc, argv, inputs)) {
+			return 2;
 		}
+		for (const auto& input : inputs) {
+			std::printf("replaying %s\n", input.string().c_str());
+			const std::vector<uint8_t> buf = readFile(input.string().c_str());
+			nautilus::fuzz::runOne(buf.data(), buf.size());
+		}
+		std::printf("OK: %zu input(s) agreed across all backends + interpreter\n", inputs.size());
 		return 0;
 	}
 	return builtinCorpus();

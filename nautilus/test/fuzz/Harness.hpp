@@ -179,6 +179,15 @@ inline engine::NautilusEngine makeEngine(const std::string& backend, const Optio
 	return engine::NautilusEngine(options);
 }
 
+/// configs() computed once per process. The matrix only depends on the build
+/// and on NAUTILUS_FUZZ_BACKENDS, neither of which changes mid-run, so there
+/// is no reason to re-read the environment and rebuild the option closures for
+/// every one of the (many) inputs a long libFuzzer session executes.
+inline const std::vector<Config>& activeConfigs() {
+	static const std::vector<Config> cached = configs();
+	return cached;
+}
+
 /// A single backend disagreeing with the native oracle (or throwing). All
 /// value fields are pre-formatted strings (built where the concrete type T
 /// is still known, inside the checkOne* functions below) so this struct
@@ -198,6 +207,35 @@ struct Finding {
 	std::string what; // exception message, when exception == true
 	bool hasParam = false;
 };
+
+/// Stable one-line bucket key for a finding, used to deduplicate crash inputs
+/// (run-fuzz.sh triage, the weekly workflow's issue titles, --survey). It
+/// carries only what identifies the bug class -- never the program text, the
+/// arguments, or a buffer address -- and normalizes the parts of an exception
+/// message that vary run to run: everything from the first newline on is
+/// dropped (RuntimeException appends a stack trace) and every run of digits
+/// collapses to `N` (SSA ids such as "Key $123", register numbers, sizes).
+inline std::string signature(const Finding& f) {
+	std::string key = f.backend + "|" + f.config + "|" + f.typeName + "|" + f.shape + "|";
+	if (!f.exception) {
+		return key + "mismatch";
+	}
+	key += "exception: ";
+	const std::string firstLine = f.what.substr(0, f.what.find('\n'));
+	bool inDigits = false;
+	for (char c : firstLine) {
+		if (c >= '0' && c <= '9') {
+			if (!inDigits) {
+				key += 'N';
+			}
+			inDigits = true;
+			continue;
+		}
+		inDigits = false;
+		key += c;
+	}
+	return key;
+}
 
 inline void printMemory(const std::vector<std::string>& memory) {
 	std::fprintf(stderr, "memory   : [");
@@ -225,6 +263,7 @@ inline void printFinding(const Finding& f) {
 		std::fprintf(stderr, "program  : %s\n", f.program.c_str());
 		printMemory(f.memory);
 		std::fprintf(stderr, "what()   : %s\n", f.what.c_str());
+		std::fprintf(stderr, "signature: %s\n", signature(f).c_str());
 		std::fprintf(stderr, "=================================================\n");
 	} else {
 		std::fprintf(stderr, "\n==== Nautilus differential fuzzer: MISMATCH ====\n");
@@ -237,6 +276,7 @@ inline void printFinding(const Finding& f) {
 		printMemory(f.memory);
 		std::fprintf(stderr, "expected : %s (native oracle)\n", f.expected.c_str());
 		std::fprintf(stderr, "got      : %s\n", f.got.c_str());
+		std::fprintf(stderr, "signature: %s\n", signature(f).c_str());
 		std::fprintf(stderr, "================================================\n");
 	}
 	std::fflush(stderr);
@@ -379,7 +419,7 @@ std::vector<Finding> checkOneArity(ByteReader& reader) {
 	const std::string shapeName = "arity" + std::to_string(N);
 
 	std::vector<Finding> findings;
-	for (const auto& cfg : configs()) {
+	for (const auto& cfg : activeConfigs()) {
 		try {
 			auto engine = makeEngine(cfg.backend, cfg.tweak);
 			std::function<ArityKernelSignature<T, N>> kernel = [&ast](val<T*> mem, auto... a) {
@@ -435,7 +475,7 @@ std::vector<Finding> checkOneMixed(ByteReader& reader) {
 	}
 
 	std::vector<Finding> findings;
-	for (const auto& cfg : configs()) {
+	for (const auto& cfg : activeConfigs()) {
 		try {
 			auto engine = makeEngine(cfg.backend, cfg.tweak);
 			std::function<MixedKernelSignature<T>> kernel = [&ast](val<T*> mem, val<S> p0, val<T> p1, val<T> p2) {
@@ -492,7 +532,7 @@ std::vector<Finding> checkOneNarrowReturn(ByteReader& reader) {
 	}
 
 	std::vector<Finding> findings;
-	for (const auto& cfg : configs()) {
+	for (const auto& cfg : activeConfigs()) {
 		try {
 			auto engine = makeEngine(cfg.backend, cfg.tweak);
 			std::function<NarrowReturnKernelSignature<T>> kernel = [&ast](val<T*> mem, val<T> a, val<T> b, val<T> c) {
@@ -556,7 +596,7 @@ std::vector<Finding> checkOneVoidReturn(ByteReader& reader) {
 	}
 
 	std::vector<Finding> findings;
-	for (const auto& cfg : configs()) {
+	for (const auto& cfg : activeConfigs()) {
 		try {
 			auto engine = makeEngine(cfg.backend, cfg.tweak);
 			std::function<VoidReturnKernelSignature<T>> kernel = [&ast](val<T*> mem, val<T> a, val<T> b, val<T> c) {
@@ -670,7 +710,7 @@ inline std::vector<Finding> checkOneEnum(ByteReader& reader) {
 	}
 
 	std::vector<Finding> findings;
-	for (const auto& cfg : configs()) {
+	for (const auto& cfg : activeConfigs()) {
 		try {
 			auto engine = makeEngine(cfg.backend, cfg.tweak);
 			// The kernel returns val<Underlying>, not val<FuzzEnum>: unlike
@@ -721,13 +761,40 @@ inline std::vector<Finding> checkOne(const uint8_t* data, size_t size) {
 	return dispatchRootType(ty, [&]<typename T>() { return checkOneTyped<T>(reader, shape); });
 }
 
+/// Pre-existing, already-diagnosed findings that every driver tolerates so a
+/// known, tracked bug does not mask new ones: without this, a long libFuzzer
+/// sweep stops at the first input reaching a known bug and never gets to
+/// anything else. See README.md "Known findings" for the write-up of each
+/// entry, and ReplayMain.cpp for the history of the entries since removed.
+/// Only exceptions are ever tolerated -- a value mismatch never is.
+///
+/// There are currently no open entries. To add one, match the exception's
+/// message on prefix: RuntimeException
+/// (nautilus/exceptions/RuntimeException.cpp) appends a full stack trace.
+///
+/// Setting NAUTILUS_FUZZ_STRICT=1 disables the filter, e.g. to reproduce or
+/// minimize a known finding, or to check whether one has been fixed.
+inline bool isKnownFinding(const Finding& f) {
+	static const bool strict = [] {
+		const char* env = std::getenv("NAUTILUS_FUZZ_STRICT");
+		return env != nullptr && std::string(env) == "1";
+	}();
+	if (strict || !f.exception) {
+		return false;
+	}
+	// No open entries; add `f.what.starts_with("<message prefix>")` checks here.
+	return false;
+}
+
 /// libFuzzer behavior: abort (so the input is captured as a reproducer) on the
-/// first backend that disagrees or throws.
+/// first backend that disagrees or throws, skipping known findings (see
+/// isKnownFinding).
 inline void runOne(const uint8_t* data, size_t size) {
-	const std::vector<Finding> findings = checkOne(data, size);
-	if (!findings.empty()) {
-		printFinding(findings.front());
-		std::abort();
+	for (const Finding& finding : checkOne(data, size)) {
+		if (!isKnownFinding(finding)) {
+			printFinding(finding);
+			std::abort();
+		}
 	}
 }
 

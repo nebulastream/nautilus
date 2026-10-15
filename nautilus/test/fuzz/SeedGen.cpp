@@ -1,11 +1,13 @@
 #include "Ast.hpp"
 #include "Types.hpp"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <vector>
@@ -520,9 +522,72 @@ std::vector<Seed> buildAllSeeds() {
 
 } // namespace nautilus::fuzz::seedgen
 
+namespace {
+
+std::string seedFileName(int index, const std::string& name) {
+	// Sized for any int, so GCC's -Wformat-truncation (an error under the
+	// project's -Werror flags) can prove the write fits.
+	char prefix[32];
+	std::snprintf(prefix, sizeof(prefix), "seed-%03d-", index);
+	return prefix + name + ".bin";
+}
+
+std::vector<uint8_t> readFile(const std::filesystem::path& path) {
+	std::ifstream in(path, std::ios::binary);
+	return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+/// --check: verifies that `dir` holds exactly the seeds this generator would
+/// write -- same seed-*.bin names, same bytes, nothing missing, nothing extra.
+/// CI runs this so a change to Ast.hpp's generator that shifts byte offsets
+/// cannot silently leave the committed corpus decoding to different programs
+/// than the ones it was designed to exercise.
+int checkCorpus(const std::filesystem::path& dir) {
+	const auto seeds = nautilus::fuzz::seedgen::buildAllSeeds();
+	int problems = 0;
+	std::vector<std::string> expectedNames;
+	int index = 0;
+	for (const auto& seed : seeds) {
+		const std::string fileName = seedFileName(index++, seed.name);
+		expectedNames.push_back(fileName);
+		const std::filesystem::path path = dir / fileName;
+		if (!std::filesystem::is_regular_file(path)) {
+			std::fprintf(stderr, "missing: %s\n", fileName.c_str());
+			++problems;
+		} else if (readFile(path) != seed.bytes) {
+			std::fprintf(stderr, "differs: %s\n", fileName.c_str());
+			++problems;
+		}
+	}
+	if (std::filesystem::is_directory(dir)) {
+		for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+			const std::string fileName = entry.path().filename().string();
+			if (fileName.starts_with("seed-") &&
+			    std::find(expectedNames.begin(), expectedNames.end(), fileName) == expectedNames.end()) {
+				std::fprintf(stderr, "stale: %s\n", fileName.c_str());
+				++problems;
+			}
+		}
+	}
+	if (problems > 0) {
+		std::fprintf(stderr,
+		             "%d seed file(s) out of date in %s; regenerate with: nautilus-fuzz-seedgen <corpus-dir> "
+		             "(after deleting the old seed-*.bin files)\n",
+		             problems, dir.string().c_str());
+		return 1;
+	}
+	std::printf("corpus %s is up to date (%zu seeds)\n", dir.string().c_str(), seeds.size());
+	return 0;
+}
+
+} // namespace
+
 int main(int argc, char** argv) {
+	if (argc == 3 && std::strcmp(argv[1], "--check") == 0) {
+		return checkCorpus(argv[2]);
+	}
 	if (argc != 2) {
-		std::fprintf(stderr, "usage: %s <output-dir>\n", argv[0]);
+		std::fprintf(stderr, "usage: %s <output-dir>\n       %s --check <corpus-dir>\n", argv[0], argv[0]);
 		return 1;
 	}
 	const std::filesystem::path outDir(argv[1]);
@@ -531,9 +596,7 @@ int main(int argc, char** argv) {
 	const auto seeds = nautilus::fuzz::seedgen::buildAllSeeds();
 	int index = 0;
 	for (const auto& seed : seeds) {
-		char prefix[16];
-		std::snprintf(prefix, sizeof(prefix), "seed-%03d-", index++);
-		const std::filesystem::path path = outDir / (prefix + seed.name + ".bin");
+		const std::filesystem::path path = outDir / seedFileName(index++, seed.name);
 		std::ofstream out(path, std::ios::binary);
 		out.write(reinterpret_cast<const char*>(seed.bytes.data()), static_cast<std::streamsize>(seed.bytes.size()));
 	}

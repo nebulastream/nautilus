@@ -320,7 +320,18 @@ jobs:
       - name: build
         shell: bash
         run: |
-          cmake --build build --target nautilus-fuzz-replay
+          cmake --build build --target nautilus-fuzz-replay nautilus-fuzz-seedgen
+      - name: check the committed seed corpus is up to date
+        shell: bash
+        run: |
+          # Fails if a generator change shifted the byte layout the committed
+          # seeds were encoded against (see README.md "Seed corpus and
+          # dictionary" for how to regenerate).
+          ./build/nautilus/test/fuzz/nautilus-fuzz-seedgen --check nautilus/test/fuzz/corpus
+      - name: replay the committed seed corpus
+        shell: bash
+        run: |
+          ./build/nautilus/test/fuzz/nautilus-fuzz-replay nautilus/test/fuzz/corpus
       - name: run deterministic smoke corpus
         shell: bash
         run: |
@@ -330,6 +341,56 @@ jobs:
           # nautilus/test/fuzz/README.md "Known findings" / "Build & run").
           # A larger, coverage-guided sweep runs weekly (fuzz-weekly.yml).
           ./build/nautilus/test/fuzz/nautilus-fuzz-replay
+  fuzz-libfuzzer-smoke:
+    runs-on: ubuntu-24.04
+    name: libFuzzer build + crash-pipeline canary (clang-21)
+    env:
+      CC: clang-21
+      CXX: clang++-21
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Force apt to use IPv4
+        run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: Cache MLIR binaries
+        uses: actions/cache@v4
+        with:
+          path: build/mlir-*
+          key: mlir-22.1.8-${{ runner.os }}-${{ runner.arch }}
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-fuzz-libfuzzer-smoke
+      - name: Install clang + LLVM 21
+        uses: ./.github/actions/install-llvm
+        with:
+          llvm-version: "21"
+      - name: cmake
+        shell: bash
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_FUZZING=ON -DENABLE_TESTS=OFF -G Ninja -S . -B build
+      - name: build
+        shell: bash
+        run: |
+          cmake --build build --target nautilus-fuzz
+      - name: crash-pipeline canary
+        shell: bash
+        run: |
+          # Keeps the coverage-guided binary that the weekly sweep depends on
+          # building, and proves a finding still turns into a saved, replayable
+          # crash input (see README.md "Continuous fuzzing").
+          ./nautilus/test/fuzz/run-fuzz.sh --fuzzer build/nautilus/test/fuzz/nautilus-fuzz --work fuzz-work --selftest
+      - name: run the seed corpus through libFuzzer
+        shell: bash
+        run: |
+          # Deterministic: -runs=0 only executes the seeds (no mutation), so this
+          # checks corpus loading and the dictionary without making the PR gate
+          # depend on what random mutation happens to find.
+          cp -r nautilus/test/fuzz/corpus fuzz-work/seeds
+          ./build/nautilus/test/fuzz/nautilus-fuzz -runs=0 -print_funcs=0 \
+            -dict=nautilus/test/fuzz/dictionary fuzz-work/seeds
   llvm-ir-test:
     runs-on: ubuntu-24.04
     name: LLVM IR Test (clang-22)
