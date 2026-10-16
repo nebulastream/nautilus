@@ -2,35 +2,35 @@ nautilus {
 execute($1:i32) :bool {
 Block_0($1:i32):
 	$2 = true :bool
-	if $2 ? Block_1($1) : Block_2($1) :void
+	if $2 ? Block_1() : Block_2() :void
 
-Block_1($1:i32):
+Block_1():
 	$4 = 42 :i64
 	$5 = $1 cast_to i64 :i64
 	$6 = $5 == $4 :bool
-	if $6 ? Block_3($1) : Block_4($1) :void
+	if $6 ? Block_3() : Block_4() :void
 
-Block_3($1:i32):
+Block_3():
 	$8 = true :bool
-	br Block_13($1, $8) :void
+	br Block_13($8) :void
 
-Block_13($1:i32, $2:bool):
-	if $2 ? Block_5($1) : Block_6($1) :void
+Block_13($2:bool):
+	if $2 ? Block_5() : Block_6() :void
 
-Block_5($1:i32):
+Block_5():
 	$10 = 42 :i64
 	$11 = $1 cast_to i64 :i64
 	$12 = $11 == $10 :bool
-	if $12 ? Block_7($1) : Block_8($1) :void
+	if $12 ? Block_7() : Block_8() :void
 
-Block_7($1:i32):
+Block_7():
 	$14 = true :bool
-	br Block_15($1, $14) :void
+	br Block_15($14) :void
 
-Block_15($1:i32, $2:bool):
-	if $2 ? Block_9($1) : Block_10() :void
+Block_15($2:bool):
+	if $2 ? Block_9() : Block_10() :void
 
-Block_9($1:i32):
+Block_9():
 	$16 = 42 :i64
 	$17 = $1 cast_to i64 :i64
 	$18 = $17 == $16 :bool
@@ -51,20 +51,20 @@ Block_10():
 	$30 = false :bool
 	br Block_18($30) :void
 
-Block_8($1:i32):
+Block_8():
 	$28 = false :bool
-	br Block_15($1, $28) :void
+	br Block_15($28) :void
 
-Block_6($1:i32):
+Block_6():
 	$26 = false :bool
-	br Block_15($1, $26) :void
+	br Block_15($26) :void
 
-Block_4($1:i32):
+Block_4():
 	$24 = false :bool
-	br Block_13($1, $24) :void
+	br Block_13($24) :void
 
-Block_2($1:i32):
+Block_2():
 	$22 = false :bool
-	br Block_13($1, $22) :void
+	br Block_13($22) :void
 }
 } //nautilus

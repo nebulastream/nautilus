@@ -6,13 +6,13 @@ execute($1:i32) :i64 {
 Block_0($1:i32):
 	$2 = 0 :i64
 	$3 = 0 :i32
-	br Block_3($2, $3, $1) :void
+	br Block_3($3, $2) :void
 
-Block_3($2:i64, $3:i32, $1:i32):
+Block_3($3:i32, $2:i64):
 	$4 = $3 < $1 :bool
-	if $4 ? Block_1($1, $2, $3) : Block_2($2) :void
+	if $4 ? Block_1() : Block_2() :void
 
-Block_1($1:i32, $2:i64, $3:i32):
+Block_1():
 	$6 = 0 :i32
 	$7 = alloca[0] :ptr
 	call func_*#0($7) :void
@@ -25,9 +25,9 @@ Block_1($1:i32, $2:i64, $3:i32):
 	$19 = $17 + $18 :i64
 	$20 = 1 :i32
 	$21 = $3 + $20 :i32
-	br Block_3($19, $21, $1) :void
+	br Block_3($21, $19) :void
 
-Block_2($2:i64):
+Block_2():
 	return ($2) :i64
 }
 } //nautilus

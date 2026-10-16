@@ -1,7 +1,7 @@
 nautilus {
 execute($1:bool, $2:bool) :bool {
 Block_0($1:bool, $2:bool):
-	if $1 ? Block_1() : Block_2($2) :void
+	if $1 ? Block_1() : Block_2() :void
 
 Block_1():
 	$4 = true :bool
@@ -10,7 +10,7 @@ Block_1():
 Block_5($4:bool):
 	return ($4) :bool
 
-Block_2($2:bool):
+Block_2():
 	if $2 ? Block_3() : Block_4() :void
 
 Block_3():

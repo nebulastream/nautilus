@@ -1,6 +1,0 @@
-EXECUTE:
-B0($1:bool,$2:ptr,$3:ptr)
-	SELECT	$7	$1	$2	$3	:ptr
-	LOAD	$9	$7	:i32
-	RETURN	$0	$9	:i32
-

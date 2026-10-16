@@ -22,12 +22,12 @@
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
+#include "nautilus/compiler/ir/passes/IRVerifier.hpp"
+#include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/CopyAttribution.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
-#include "nautilus/tracing/phases/SSACreationPhase.hpp"
-#include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <algorithm>
@@ -83,25 +83,14 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 			DYNAMIC_SECTION("tracing") {
 				REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
 			}
-			auto ssaCreationPhase = tracing::SSACreationPhase();
-			auto afterSSA = ssaCreationPhase.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace)));
-			DYNAMIC_SECTION("after_ssa") {
-				REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
-			}
-			DYNAMIC_SECTION("ssa_verify") {
-				for (const auto& fnName : afterSSA->getFunctionNames()) {
-					auto ssaResult = tracing::VerifySSA(*afterSSA->getFunction(fnName));
-					if (!ssaResult.valid) {
-						for (const auto& error : ssaResult.errors) {
-							FAIL(error);
-						}
-					}
-				}
-			}
 			DYNAMIC_SECTION("ir") {
-				auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-				[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
+				auto ir = tracing::TraceToIRConversionPhase().apply(
+				    std::shared_ptr<tracing::TraceModule>(std::move(executionTrace)));
 				REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name, ".nautilus"));
+				compiler::ir::rebuildPredecessorLists(*ir);
+				const auto verification = compiler::ir::IRVerifier::verify(*ir);
+				INFO(verification.toString());
+				REQUIRE(verification.ok());
 			}
 			DYNAMIC_SECTION("after_constant_folding") {
 				// Re-run the tracing pipeline for this section since
@@ -111,11 +100,8 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 				functionsToTrace3.push_back(rootFunction3);
 				common::Arena arena3;
 				auto executionTrace3 = tracing::TraceContext::Trace(functionsToTrace3, engine::Options(), arena3);
-				auto ssaCreationPhase3 = tracing::SSACreationPhase();
-				auto afterSSA3 =
-				    ssaCreationPhase3.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace3)));
-				auto irGenerationPhase3 = tracing::TraceToIRConversionPhase();
-				auto ir3 = irGenerationPhase3.apply(std::move(afterSSA3));
+				auto ir3 = tracing::TraceToIRConversionPhase().apply(
+				    std::shared_ptr<tracing::TraceModule>(std::move(executionTrace3)));
 				engine::Options passOpts;
 				compiler::ir::IRPassManager passManager(passOpts);
 				passManager.addPass(std::make_unique<compiler::ir::ConstantFoldingAndCopyPropagationPass>());
@@ -123,19 +109,15 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 				REQUIRE(checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name, ".nautilus"));
 			}
 			DYNAMIC_SECTION("after_empty_block_elim") {
-				// Re-run the tracing pipeline: the previous section
-				// moved `afterSSA` into its IR conversion, so we
-				// need a fresh IR here.
+				// Re-run the tracing pipeline: the "ir" section moved
+				// the trace into its conversion, so we need a fresh one.
 				auto rootFunction2 = compiler::CompilableFunction("execute", func);
 				std::list<compiler::CompilableFunction> functionsToTrace2;
 				functionsToTrace2.push_back(rootFunction2);
 				common::Arena arena2;
 				auto executionTrace2 = tracing::TraceContext::Trace(functionsToTrace2, engine::Options(), arena2);
-				auto ssaCreationPhase2 = tracing::SSACreationPhase();
-				auto afterSSA2 =
-				    ssaCreationPhase2.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace2)));
-				auto irGenerationPhase2 = tracing::TraceToIRConversionPhase();
-				auto ir2 = irGenerationPhase2.apply(std::move(afterSSA2));
+				auto ir2 = tracing::TraceToIRConversionPhase().apply(
+				    std::shared_ptr<tracing::TraceModule>(std::move(executionTrace2)));
 				engine::Options passOpts;
 				compiler::ir::IRPassManager passManager(passOpts);
 				passManager.addPass(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
@@ -164,19 +146,13 @@ TEST_CASE("Exception handling call trace golden") {
 			traceDump.pop_back();
 			REQUIRE(checkTestFile(traceDump, "exception-handling-tests", "tracing", name));
 
-			auto afterSsa = tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace)));
-			auto afterSsaDump = afterSsa->toString();
-			afterSsaDump.pop_back();
-			REQUIRE(checkTestFile(afterSsaDump, "exception-handling-tests", "after_ssa", name));
-
 			DYNAMIC_SECTION("after_region_pass") {
 				common::Arena arena2;
 				std::list<compiler::CompilableFunction> functions2;
 				functions2.emplace_back("execute", function);
 				auto trace2 = tracing::TraceContext::Trace(functions2, engine::Options {}, arena2);
-				auto afterSsa2 =
-				    tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace2)));
-				auto ir = tracing::TraceToIRConversionPhase().apply(std::move(afterSsa2));
+				auto ir =
+				    tracing::TraceToIRConversionPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace2)));
 				engine::Options passOpts;
 				compiler::ir::IRPassManager passManager(passOpts);
 				passManager.addPass(std::make_unique<compiler::ir::ExceptionRegionPreparationPass>());
@@ -388,28 +364,6 @@ TEST_CASE("Static Trace Test") {
 	    {"staticEnumerateWeightedSum", details::createFunctionWrapper(staticEnumerateWeightedSum)},
 	    {"staticEnumerateSum", details::createFunctionWrapper(staticEnumerateSum)}};
 	runTraceTests("static-loop-tests", tests);
-}
-
-TEST_CASE("SSA creation reclaims scratch storage for a 4k static square sum") {
-	auto function = details::createFunctionWrapper(staticSquareSum<4000>);
-	common::Arena arena;
-	std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(function, engine::Options(), arena);
-	// Exhaust the current arena chunk so SSA's locality scratch allocation must
-	// grow the trace arena rather than fitting in unused tail space.
-	arena.allocate(common::Arena::MAX_CHUNK_SIZE, alignof(std::max_align_t));
-	const auto scratch_start = arena.checkpoint();
-
-	auto after_ssa = tracing::SSACreationPhase().apply(std::move(trace));
-	auto* allocation_after_ssa = arena.allocate(256, alignof(std::max_align_t));
-	arena.rewind(scratch_start);
-	auto* allocation_at_scratch_start = arena.allocate(256, alignof(std::max_align_t));
-	REQUIRE(allocation_after_ssa == allocation_at_scratch_start);
-	const auto verification = tracing::VerifySSA(*after_ssa);
-	REQUIRE(verification.valid);
-	for (const auto* block : after_ssa->getBlocks()) {
-		REQUIRE(std::none_of(block->operations.begin(), block->operations.end(),
-		                     [](const auto* operation) { return operation->op == tracing::Op::ASSIGN; }));
-	}
 }
 
 TEST_CASE("Value Trace Test") {

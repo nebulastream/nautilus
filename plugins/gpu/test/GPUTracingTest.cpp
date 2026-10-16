@@ -5,8 +5,6 @@
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
-#include "nautilus/tracing/phases/SSACreationPhase.hpp"
-#include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdio>
@@ -77,24 +75,9 @@ static void runTraceTests(const std::string& category,
 			DYNAMIC_SECTION("tracing") {
 				REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
 			}
-			auto ssaCreationPhase = tracing::SSACreationPhase();
-			auto afterSSA = ssaCreationPhase.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace)));
-			DYNAMIC_SECTION("after_ssa") {
-				REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
-			}
-			DYNAMIC_SECTION("ssa_verify") {
-				for (const auto& fnName : afterSSA->getFunctionNames()) {
-					auto ssaResult = tracing::VerifySSA(*afterSSA->getFunction(fnName));
-					if (!ssaResult.valid) {
-						for (const auto& error : ssaResult.errors) {
-							FAIL(error);
-						}
-					}
-				}
-			}
 			DYNAMIC_SECTION("ir") {
-				auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-				[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
+				auto ir = tracing::TraceToIRConversionPhase().apply(
+				    std::shared_ptr<tracing::TraceModule>(std::move(executionTrace)));
 				REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name, ".nautilus"));
 			}
 		}

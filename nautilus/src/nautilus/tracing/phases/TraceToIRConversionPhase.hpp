@@ -1,200 +1,53 @@
-
 #pragma once
 
 #include "nautilus/JITCompiler.hpp"
-#include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
-#include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
-#include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
-#include "nautilus/compiler/ir/operations/BranchOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
-#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
-#include "nautilus/compiler/ir/operations/IfOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
-#include "nautilus/compiler/ir/operations/Operation.hpp"
-#include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
-#include "nautilus/tracing/Block.hpp"
-#include "nautilus/tracing/ExecutionTrace.hpp"
-#include "nautilus/tracing/TraceOperation.hpp"
 #include <memory>
-#include <unordered_map>
+
+namespace nautilus::common {
+class ArenaPool;
+}
 
 namespace nautilus::tracing {
 
+class ExecutionTrace;
 class TraceModule;
 
 /**
- * @brief Translates a trace into a corresponding IR fragment.
+ * @brief Translates a trace into IR in SSA form.
+ *
+ * A traced value is either defined once -- every operation result -- or is a
+ * variable, a value some `ASSIGN` redefines. A value defined once needs no
+ * block argument anywhere: the trace only uses it where its definition
+ * dominates, so the IR refers to the defining operation directly. Variables
+ * get SSA form on the fly, following Braun et al., "Simple and Efficient
+ * Construction of Static Single Assignment Form" (CC 2013): a read looks for
+ * the variable's definition in the block, then walks to the predecessors, and
+ * only a block with several predecessors gets a block argument. An argument
+ * every edge passes the same value for is folded away as soon as its edges are
+ * known. The trace's CFG is complete before conversion starts, so a block is
+ * sealed exactly when all of its predecessors have been converted. Trace
+ * blocks that hold nothing but a jump are threaded rather than converted, so
+ * a loop the tracer split across two headers comes out with one.
  */
 class TraceToIRConversionPhase {
 public:
-	/**
-	 * @brief Performs the conversion and returns a IR fragment for the given trace module
-	 * @param traceModule Module containing all function traces
-	 * @return IR graph containing all functions
-	 */
 	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<TraceModule> traceModule,
 	                                             const compiler::CompilationUnitID& id = "");
 
-	/**
-	 * @brief Pool-backed variant of @ref apply.  The IR graph's arena is
-	 * acquired from @p pool and recycled into it when the IR graph dies,
-	 * amortising the per-IRGraph heap allocation across many compiles.
-	 */
+	/// Pool-backed variant of @ref apply. The IR graph's arena is acquired from
+	/// @p pool and recycled into it when the graph dies, amortising the
+	/// per-graph heap allocation across many compiles.
 	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<TraceModule> traceModule, common::ArenaPool& pool,
 	                                             const compiler::CompilationUnitID& id = "");
 
-	/**
-	 * @brief Performs the conversion and returns a IR fragment for the given trace (legacy method)
-	 * @param trace Single execution trace
-	 * @return IR graph containing a single function
-	 */
+	/// Converts a single trace into a module holding it as the entry function "execute".
 	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<ExecutionTrace> trace,
 	                                             const compiler::CompilationUnitID& id = "");
 
-	/**
-	 * @brief Pool-backed variant of the single-trace @ref apply.
-	 */
+	/// Pool-backed variant of the single-trace @ref apply.
 	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<ExecutionTrace> trace, common::ArenaPool& pool,
 	                                             const compiler::CompilationUnitID& id = "");
-
-private:
-	using ValueFrame = compiler::Frame<compiler::ir::OperationIdentifier, compiler::ir::Operation*>;
-
-	/**
-	 * @brief Internal context object, which maintains statue during IR creation.
-	 */
-	class IRConversionContext {
-	public:
-		IRConversionContext(ExecutionTrace* trace, std::shared_ptr<compiler::ir::IRGraph> ir,
-		                    const compiler::CompilationUnitID& id);
-
-		std::shared_ptr<compiler::ir::IRGraph> process();
-
-		/**
-		 * @brief Processes a single function trace and returns a FunctionOperation
-		 * @param functionName The name of the function being processed
-		 * @param attributes Generic key-value attributes to attach to the FunctionOperation
-		 * @param location Where this function was registered (docs/engine.md)
-		 * @return Arena-allocated pointer to the generated FunctionOperation
-		 */
-		compiler::ir::FunctionOperation*
-		processFunction(const std::string& functionName,
-		                const std::unordered_map<std::string, std::string>& attributes = {},
-		                const SourceLocation& location = {});
-
-	private:
-		compiler::ir::BasicBlock* processBlock(Block& block);
-
-		void processOperation(ValueFrame& frame, Block& currentBlock, compiler::ir::BasicBlock*& currentIRBlock,
-		                      TraceOperation& operation);
-
-		void processJMP(ValueFrame& frame, compiler::ir::BasicBlock* block, TraceOperation& operation);
-
-		void processCMP(ValueFrame& frame, Block& currentBlock, compiler::ir::BasicBlock* currentIRBlock,
-		                TraceOperation& operation);
-
-		void processLogicalComperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
-		                              TraceOperation& operation, compiler::ir::CompareOperation::Comparator comp);
-
-		void processNegate(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-		void processNot(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processShift(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation,
-		                  compiler::ir::ShiftOperation::ShiftType type);
-
-		void processBinaryComp(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation,
-		                       compiler::ir::BinaryCompOperation::Type type);
-
-		void processLoad(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processStore(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-		void processAlloca(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		/// Interns @p call in the module function table and returns its id.
-		/// Keyed on identity -- a code address, or the definition pointer for
-		/// an internal callee -- never on a name.
-		compiler::ir::FunctionId internCallee(const FunctionCall& call, Type resultType,
-		                                      const std::vector<compiler::ir::Operation*>& arguments);
-
-		void processCall(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processIndirectCall(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processFuncAddr(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processConst(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processCast(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		/// Snapshots the trace's central alloca table and converts each entry to
-		/// the IR-side `AllocaSpec` shape so it can be embedded on the
-		/// FunctionOperation.
-		std::vector<compiler::ir::AllocaSpec> collectAllocaSpecs() const;
-
-		/// Returns the provenance to stamp on every IR operation created from
-		/// @p operation: its trace-time call stack and its region.
-		compiler::ir::OperationProvenance provenanceOf(const TraceOperation& operation);
-
-		/// Applies @p operation's provenance to an IR operation built outside
-		/// `addTaggedOperation` (a branch terminator, an if).
-		void stampProvenance(compiler::ir::Operation& irOperation, const TraceOperation& operation);
-
-		/// Maps a region of the trace onto this function's region table, adding an entry
-		/// (and its enclosing chain) on first sight.
-		///
-		/// The mapping is many-to-one: the trace records one region per *engagement* of a
-		/// call site -- a region in an unrolled loop is entered once per iteration -- while
-		/// the IR wants one entry per call site, so engagements that agree on their
-		/// attributes and their enclosing region collapse into a single entry.
-		compiler::ir::RegionIndex mapRegion(RegionIndex traceRegion);
-
-		/// Key identifying one region() call site within an enclosing region: what the
-		/// call site said about itself, plus where it sits in the nesting.
-		struct RegionKey {
-			const char* name;
-			const char* file;
-			uint32_t line;
-			uint32_t column;
-			compiler::ir::RegionIndex parent;
-
-			bool operator==(const RegionKey&) const = default;
-		};
-
-		struct RegionKeyHash {
-			size_t operator()(const RegionKey& key) const noexcept;
-		};
-
-		void createBlockArguments(ValueFrame& frame, compiler::ir::BasicBlockInvocation& blockInvocation,
-		                          const BlockRef& val);
-
-		template <typename OpType>
-		void processBinaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
-		                           TraceOperation& operation);
-		template <typename OpType>
-		void processUnaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-		template <typename OpType>
-		void processTernaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
-		                            TraceOperation& operation);
-
-	private:
-		ExecutionTrace* trace;
-		Type returnType;
-		std::shared_ptr<compiler::ir::IRGraph> ir;
-		std::unordered_map<uint32_t, compiler::ir::BasicBlock*> blockMap;
-		std::vector<compiler::ir::BasicBlock*> currentBasicBlocks;
-		/// Region table of the function currently being built, and the two indexes into
-		/// it: by the trace region it came from, and by call site (see mapRegion). All
-		/// three are cleared per function, like blockMap.
-		std::vector<compiler::ir::RegionSpec> currentRegionSpecs;
-		std::unordered_map<RegionIndex, compiler::ir::RegionIndex> regionMap;
-		std::unordered_map<RegionKey, compiler::ir::RegionIndex, RegionKeyHash> regionKeys;
-	};
 };
 
 } // namespace nautilus::tracing

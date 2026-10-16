@@ -1,7 +1,0 @@
-EXECUTE:
-B0($1:i32)
-	ALLOCA	$2	:ptr
-	CALL	$4	func_*($2,$1,$1)	:void
-	LOAD	$6	$2	:i32
-	RETURN	$0	$6	:i32
-

@@ -1,14 +1,12 @@
 nautilus {
 execute($1:i64) :i64 {
 Block_0($1:i64):
-	$2 = 0 :i64
 	$3 = 0 :i64  ; region #0
 	$4 = $1 > $3 :bool  ; region #0
-	if $4 ? Block_1($2) : Block_2($2) :void  ; region #0
+	if $4 ? Block_1() : Block_2() :void  ; region #0
 
-Block_1($2:i64): ; region #0
-	$6 = 10 :i64
-	$7 = $2 + $6 :i64
+Block_1(): ; region #0
+	$7 = 10 :i64
 	br Block_3($7) :void
 
 Block_3($2:i64):
@@ -16,9 +14,8 @@ Block_3($2:i64):
 	$11 = $2 + $10 :i64
 	return ($11) :i64
 
-Block_2($2:i64): ; region #0
-	$8 = 20 :i64
-	$9 = $2 + $8 :i64
+Block_2(): ; region #0
+	$9 = 20 :i64
 	br Block_3($9) :void
 }
 ; region #0 = "branching"

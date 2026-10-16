@@ -3,9 +3,9 @@ execute($1:i64) :i64 {
 Block_0($1:i64):
 	$2 = 0 :i64
 	$3 = $1 > $2 :bool
-	if $3 ? Block_1($1) : Block_2($1) :void
+	if $3 ? Block_1() : Block_2() :void
 
-Block_1($1:i64):
+Block_1():
 	$5 = alloca[0] :ptr
 	$6 = 1 :i8
 	store($6, $5) :void
@@ -32,7 +32,7 @@ Block_1($1:i64):
 Block_3($26:i64):
 	return ($26) :i64
 
-Block_2($1:i64):
+Block_2():
 	br Block_3($1) :void
 }
 } //nautilus

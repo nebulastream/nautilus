@@ -21,7 +21,6 @@
 #include <nautilus/region.hpp>
 #include <nautilus/tracing/TraceContext.hpp>
 #include <nautilus/tracing/TracingUtil.hpp>
-#include <nautilus/tracing/phases/SSACreationPhase.hpp>
 #include <nautilus/tracing/phases/TraceToIRConversionPhase.hpp>
 #include <nautilus/val_std.hpp>
 #include <stdexcept>
@@ -768,8 +767,7 @@ std::shared_ptr<compiler::ir::IRGraph> traceIndirectThrowIR() {
 		tracing::traceReturnOperation(Type::v, tracing::TypedValueRef {});
 	});
 	auto module = tracing::TraceContext::Trace(functions, engine::Options {}, arena);
-	auto afterSSA = tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(module)));
-	auto ir = tracing::TraceToIRConversionPhase().apply(std::move(afterSSA));
+	auto ir = tracing::TraceToIRConversionPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(module)));
 	engine::Options passOpts;
 	compiler::ir::IRPassManager passManager(passOpts);
 	passManager.addPass(std::make_unique<compiler::ir::ExceptionRegionPreparationPass>());

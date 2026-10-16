@@ -1,7 +1,0 @@
-EXECUTE:
-B0($1:ptr,$2:ptr)
-	LOAD	$5	$2	:i32
-	LOAD	$7	$1	:i32
-	ADD	$8	$5	$7	:i32
-	RETURN	$0	$8	:i32
-

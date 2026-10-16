@@ -403,8 +403,8 @@ uint32_t issue382_sum3(uint32_t a, uint32_t b, uint32_t c) noexcept {
 // TraceContext::traceAssignment treated any tag match as a genuine
 // control-flow re-entry and forced a control-flow merge back into the if's
 // own condition block, discarding the call and the return that should have
-// followed; SSACreationPhase::getReturnBlock then found no Return operation
-// at all ("Invalid trace: no Return operation was recorded.").
+// followed; SSA construction then found no Return operation at all
+// ("Invalid trace: no Return operation was recorded.").
 val<int8_t> issue382_siblingArgAssignCollision(val<uint32_t*> mem, val<uint32_t> p0) {
 	val<uint32_t> args[3] = {val<uint32_t>(0u), val<uint32_t>(0u), val<uint32_t>(0u)};
 	for (int i = 0; i < 3; ++i) {

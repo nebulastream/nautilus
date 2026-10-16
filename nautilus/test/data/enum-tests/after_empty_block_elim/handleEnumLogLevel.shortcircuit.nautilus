@@ -3,7 +3,7 @@ execute($1:ui8) :bool {
 Block_0($1:ui8):
 	$2 = 6 :ui8
 	$3 = $1 == $2 :bool
-	if $3 ? Block_1() : Block_2($1) :void
+	if $3 ? Block_1() : Block_2() :void
 
 Block_1():
 	$5 = true :bool
@@ -12,7 +12,7 @@ Block_1():
 Block_5($5:bool):
 	return ($5) :bool
 
-Block_2($1:ui8):
+Block_2():
 	$7 = 5 :ui8
 	$8 = $1 == $7 :bool
 	if $8 ? Block_3() : Block_4() :void

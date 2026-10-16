@@ -7,13 +7,13 @@ Block_0($1:i32):
 	store($3, $2) :void
 	$5 = 0 :i32
 	$6 = 0 :i32
-	br Block_3($5, $6, $1, $2) :void
+	br Block_3($6, $5) :void
 
-Block_3($5:i32, $6:i32, $1:i32, $2:ptr):
+Block_3($6:i32, $5:i32):
 	$7 = $6 < $1 :bool
-	if $7 ? Block_1($1, $2, $5, $6) : Block_2($5) :void
+	if $7 ? Block_1() : Block_2() :void
 
-Block_1($1:i32, $2:ptr, $5:i32, $6:i32):
+Block_1():
 	$9 = alloca[1] :ptr
 	$10 = 8 :ui64
 	$11 = call func_*#0($9,$2,$10) :ptr
@@ -21,9 +21,9 @@ Block_1($1:i32, $2:ptr, $5:i32, $6:i32):
 	$14 = $5 + $13 :i32
 	$15 = 1 :i32
 	$16 = $6 + $15 :i32
-	br Block_3($14, $16, $1, $2) :void
+	br Block_3($16, $14) :void
 
-Block_2($5:i32):
+Block_2():
 	return ($5) :i32
 }
 } //nautilus

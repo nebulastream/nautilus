@@ -19,6 +19,7 @@
 // Only the white-box tests below reach past the engine API into the tracer and the IR
 // pipeline, and they only exist when there is a tracer to drive.
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/passes/BlockMergingPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
@@ -27,7 +28,6 @@
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
-#include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <list>
 #include <map>
@@ -717,8 +717,7 @@ std::shared_ptr<compiler::ir::IRGraph> traceToRawIr(const std::function<void()>&
 	functionsToTrace.push_back(rootFunction);
 	common::Arena arena;
 	auto traceModule = tracing::TraceContext::Trace(functionsToTrace, engine::Options(), arena);
-	auto ssa = tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(traceModule)));
-	return tracing::TraceToIRConversionPhase().apply(std::move(ssa));
+	return tracing::TraceToIRConversionPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(traceModule)));
 }
 
 /// Traces @p func and returns its IR after the two block-level

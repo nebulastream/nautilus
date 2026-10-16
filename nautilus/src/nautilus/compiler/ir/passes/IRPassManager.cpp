@@ -76,6 +76,7 @@ void IRPassManager::run(IRGraph& ir) {
 		const auto baseline = computeStatistics(ir);
 		statistics->set("irPasses.baseline.functions", static_cast<int64_t>(baseline.numFunctions));
 		statistics->set("irPasses.baseline.blocks", static_cast<int64_t>(baseline.numBlocks));
+		statistics->set("irPasses.baseline.blockArguments", static_cast<int64_t>(baseline.numBlockArguments));
 		statistics->set("irPasses.baseline.operations", static_cast<int64_t>(baseline.numOperations));
 	}
 
@@ -114,6 +115,8 @@ void IRPassManager::run(IRGraph& ir) {
 					// a fixed-point group reports its total effect.
 					auto delta = before - after;
 					statistics->add("irPasses." + name + ".blocksDelta", static_cast<int64_t>(delta.numBlocks));
+					statistics->add("irPasses." + name + ".blockArgumentsDelta",
+					                static_cast<int64_t>(delta.numBlockArguments));
 					statistics->add("irPasses." + name + ".operationsDelta", static_cast<int64_t>(delta.numOperations));
 				}
 

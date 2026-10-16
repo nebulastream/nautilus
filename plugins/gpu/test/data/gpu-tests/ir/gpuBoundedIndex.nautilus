@@ -10,9 +10,9 @@ Block_0($1:ui32):
 	$5 = call func_*#2() :ui32
 	$6 = $4 + $5 :ui32
 	$7 = $6 < $1 :bool
-	if $7 ? Block_1($6) : Block_2() :void
+	if $7 ? Block_1() : Block_2() :void
 
-Block_1($6:ui32):
+Block_1():
 	br Block_3($6) :void
 
 Block_3($6:ui32):

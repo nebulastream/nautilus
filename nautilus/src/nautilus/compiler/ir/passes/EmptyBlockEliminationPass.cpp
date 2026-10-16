@@ -14,9 +14,11 @@ namespace nautilus::compiler::ir {
 namespace {
 
 /// Returns true iff @p block contains exactly one op, an unconditional
-/// branch to a target distinct from @p block itself, and @p block is not
-/// the entry block of @p fn.
-bool isRemovableEmptyBlock(BasicBlock& block, const FunctionOperation& fn) {
+/// branch to a target distinct from @p block itself, @p block is not the
+/// entry block of @p fn, and its arguments are used by nothing but that
+/// branch -- an argument read in a block it dominates would lose its
+/// definition with the block.
+bool isRemovableEmptyBlock(BasicBlock& block, const FunctionOperation& fn, const FunctionRewriter& rewriter) {
 	if (&block == fn.getEntryBlock()) {
 		return false;
 	}
@@ -29,8 +31,20 @@ bool isRemovableEmptyBlock(BasicBlock& block, const FunctionOperation& fn) {
 		return false;
 	}
 	const auto* branch = as<BranchOperation>(only);
-	const auto* target = branch->getNextBlockInvocation().getBlock();
-	return target != nullptr && target != &block;
+	const auto& outgoing = branch->getNextBlockInvocation();
+	const auto* target = outgoing.getBlock();
+	if (target == nullptr || target == &block) {
+		return false;
+	}
+	const auto outgoingArguments = outgoing.getArguments();
+	for (const auto* argument : block.getArguments()) {
+		const auto forwarded =
+		    static_cast<size_t>(std::count(outgoingArguments.begin(), outgoingArguments.end(), argument));
+		if (rewriter.useCount(argument) != forwarded) {
+			return false;
+		}
+	}
+	return true;
 }
 
 /// Computes the argument list @p predInv (currently targeting `victim`)
@@ -86,7 +100,7 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 		// vector.
 		auto blocks = fn.getBasicBlocks();
 		for (auto* block : blocks) {
-			if (!isRemovableEmptyBlock(*block, fn)) {
+			if (!isRemovableEmptyBlock(*block, fn, rewriter)) {
 				continue;
 			}
 			auto* terminator = block->getTerminatorOp();

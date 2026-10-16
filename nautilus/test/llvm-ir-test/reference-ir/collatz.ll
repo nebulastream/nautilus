@@ -9,15 +9,15 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   br i1 %.not1, label %._crit_edge, label %.lr.ph
 
 .lr.ph:                                           ; preds = %1, %.lr.ph
-  %2 = phi i32 [ %9, %.lr.ph ], [ %0, %1 ]
-  %3 = phi i32 [ %10, %.lr.ph ], [ 0, %1 ]
-  %4 = and i32 %2, 1
+  %2 = phi i32 [ %10, %.lr.ph ], [ 0, %1 ]
+  %3 = phi i32 [ %9, %.lr.ph ], [ %0, %1 ]
+  %4 = and i32 %3, 1
   %5 = icmp eq i32 %4, 0
-  %6 = mul i32 %2, 3
+  %6 = mul i32 %3, 3
   %7 = add i32 %6, 1
-  %8 = ashr exact i32 %2, 1
+  %8 = ashr exact i32 %3, 1
   %9 = select i1 %5, i32 %8, i32 %7
-  %10 = add i32 %3, 1
+  %10 = add i32 %2, 1
   %.not = icmp eq i32 %9, 1
   br i1 %.not, label %._crit_edge, label %.lr.ph
 

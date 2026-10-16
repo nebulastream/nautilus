@@ -3,157 +3,151 @@ execute($1:i32) :i32 {
 Block_0($1:i32):
 	$3 = 1 :i32
 	$4 = $1 == $3 :bool
-	if $4 ? Block_1() : Block_2($1) :void
+	if $4 ? Block_1() : Block_2() :void
 
 Block_1():
 	$6 = 1 :i32
 	$8 = false :bool
-	if $8 ? Block_3($6) : Block_4($6) :void
+	if $8 ? Block_3() : Block_4() :void
 
-Block_3($6:i32):
-	$10 = 1 :i32
-	$11 = $6 + $10 :i32
+Block_3():
+	$11 = 2 :i32
 	$13 = 1 :i32
 	br Block_17($11, $13) :void
 
 Block_17($12:i32, $13:i32):
 	$14 = $12 == $13 :bool
-	if $14 ? Block_5() : Block_6($12) :void
+	if $14 ? Block_5() : Block_6() :void
 
 Block_5():
 	$16 = 1 :i32
 	$18 = false :bool
-	if $18 ? Block_7($16) : Block_8($16) :void
+	if $18 ? Block_7() : Block_8() :void
 
-Block_7($16:i32):
-	$20 = 1 :i32
-	$21 = $16 + $20 :i32
+Block_7():
+	$21 = 2 :i32
 	br Block_44($21) :void
 
 Block_44($21:i32):
 	return ($21) :i32
 
-Block_8($16:i32):
+Block_8():
 	br Block_44($16) :void
 
-Block_6($12:i32):
+Block_6():
 	$46 = 10 :i32
 	$47 = $12 < $46 :bool
-	if $47 ? Block_18() : Block_19($12) :void
+	if $47 ? Block_18() : Block_19() :void
 
 Block_18():
 	$49 = 42 :i32
 	$51 = true :bool
-	if $51 ? Block_20($49) : Block_21($49) :void
+	if $51 ? Block_20() : Block_21() :void
 
-Block_20($49:i32):
-	$53 = 1 :i32
-	$54 = $49 + $53 :i32
+Block_20():
+	$54 = 43 :i32
 	br Block_44($54) :void
 
-Block_21($49:i32):
+Block_21():
 	br Block_44($49) :void
 
-Block_19($12:i32):
+Block_19():
 	$90 = $12 + $12 :i32
 	$91 = 1 :i32
 	$92 = $90 + $91 :i32
 	$93 = 42 :i32
 	$94 = $92 == $93 :bool
-	if $94 ? Block_33($92) : Block_34($92) :void
+	if $94 ? Block_33() : Block_34() :void
 
-Block_33($92:i32):
+Block_33():
 	$96 = 1 :i32
 	$97 = $92 + $96 :i32
 	br Block_44($97) :void
 
-Block_34($92:i32):
+Block_34():
 	br Block_44($92) :void
 
-Block_4($6:i32):
+Block_4():
 	$44 = 1 :i32
 	br Block_17($6, $44) :void
 
-Block_2($2:i32):
+Block_2():
 	$23 = 10 :i32
-	$24 = $2 < $23 :bool
-	if $24 ? Block_9() : Block_10($2) :void
+	$24 = $1 < $23 :bool
+	if $24 ? Block_9() : Block_10() :void
 
 Block_9():
 	$26 = 42 :i32
 	$28 = true :bool
-	if $28 ? Block_11($26) : Block_12($26) :void
+	if $28 ? Block_11() : Block_12() :void
 
-Block_11($26:i32):
-	$30 = 1 :i32
-	$31 = $26 + $30 :i32
+Block_11():
+	$31 = 43 :i32
 	$33 = 1 :i32
 	br Block_28($31, $33) :void
 
 Block_28($32:i32, $33:i32):
 	$34 = $32 == $33 :bool
-	if $34 ? Block_13() : Block_14($32) :void
+	if $34 ? Block_13() : Block_14() :void
 
 Block_13():
 	$36 = 1 :i32
 	$38 = false :bool
-	if $38 ? Block_15($36) : Block_16($36) :void
+	if $38 ? Block_15() : Block_16() :void
 
-Block_15($36:i32):
-	$40 = 1 :i32
-	$41 = $36 + $40 :i32
+Block_15():
+	$41 = 2 :i32
 	br Block_44($41) :void
 
-Block_16($36:i32):
+Block_16():
 	br Block_44($36) :void
 
-Block_14($32:i32):
+Block_14():
 	$79 = 10 :i32
 	$80 = $32 < $79 :bool
-	if $80 ? Block_29() : Block_30($32) :void
+	if $80 ? Block_29() : Block_30() :void
 
 Block_29():
 	$82 = 42 :i32
 	$84 = true :bool
-	if $84 ? Block_31($82) : Block_32($82) :void
+	if $84 ? Block_31() : Block_32() :void
 
-Block_31($82:i32):
-	$86 = 1 :i32
-	$87 = $82 + $86 :i32
+Block_31():
+	$87 = 43 :i32
 	br Block_44($87) :void
 
-Block_32($82:i32):
+Block_32():
 	br Block_44($82) :void
 
-Block_30($32:i32):
+Block_30():
 	$114 = $32 + $32 :i32
 	$115 = 1 :i32
 	$116 = $114 + $115 :i32
 	$117 = 42 :i32
 	$118 = $116 == $117 :bool
-	if $118 ? Block_40($116) : Block_41($116) :void
+	if $118 ? Block_40() : Block_41() :void
 
-Block_40($116:i32):
+Block_40():
 	$120 = 1 :i32
 	$121 = $116 + $120 :i32
 	br Block_44($121) :void
 
-Block_41($116:i32):
+Block_41():
 	br Block_44($116) :void
 
-Block_12($26:i32):
+Block_12():
 	$77 = 1 :i32
 	br Block_28($26, $77) :void
 
-Block_10($2:i32):
-	$57 = $2 + $2 :i32
+Block_10():
+	$57 = $1 + $1 :i32
 	$58 = 1 :i32
 	$59 = $57 + $58 :i32
 	$60 = 42 :i32
 	$61 = $59 == $60 :bool
-	if $61 ? Block_22($59) : Block_23($59) :void
+	if $61 ? Block_22() : Block_23() :void
 
-Block_22($59:i32):
+Block_22():
 	$63 = 1 :i32
 	$64 = $59 + $63 :i32
 	$66 = 1 :i32
@@ -161,56 +155,54 @@ Block_22($59:i32):
 
 Block_35($65:i32, $66:i32):
 	$67 = $65 == $66 :bool
-	if $67 ? Block_24() : Block_25($65) :void
+	if $67 ? Block_24() : Block_25() :void
 
 Block_24():
 	$69 = 1 :i32
 	$71 = false :bool
-	if $71 ? Block_26($69) : Block_27($69) :void
+	if $71 ? Block_26() : Block_27() :void
 
-Block_26($69:i32):
-	$73 = 1 :i32
-	$74 = $69 + $73 :i32
+Block_26():
+	$74 = 2 :i32
 	br Block_44($74) :void
 
-Block_27($69:i32):
+Block_27():
 	br Block_44($69) :void
 
-Block_25($65:i32):
+Block_25():
 	$103 = 10 :i32
 	$104 = $65 < $103 :bool
-	if $104 ? Block_36() : Block_37($65) :void
+	if $104 ? Block_36() : Block_37() :void
 
 Block_36():
 	$106 = 42 :i32
 	$108 = true :bool
-	if $108 ? Block_38($106) : Block_39($106) :void
+	if $108 ? Block_38() : Block_39() :void
 
-Block_38($106:i32):
-	$110 = 1 :i32
-	$111 = $106 + $110 :i32
+Block_38():
+	$111 = 43 :i32
 	br Block_44($111) :void
 
-Block_39($106:i32):
+Block_39():
 	br Block_44($106) :void
 
-Block_37($65:i32):
+Block_37():
 	$125 = $65 + $65 :i32
 	$126 = 1 :i32
 	$127 = $125 + $126 :i32
 	$128 = 42 :i32
 	$129 = $127 == $128 :bool
-	if $129 ? Block_42($127) : Block_43($127) :void
+	if $129 ? Block_42() : Block_43() :void
 
-Block_42($127:i32):
+Block_42():
 	$131 = 1 :i32
 	$132 = $127 + $131 :i32
 	br Block_44($132) :void
 
-Block_43($127:i32):
+Block_43():
 	br Block_44($127) :void
 
-Block_23($59:i32):
+Block_23():
 	$101 = 1 :i32
 	br Block_35($59, $101) :void
 }

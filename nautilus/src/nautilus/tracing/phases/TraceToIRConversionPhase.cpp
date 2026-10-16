@@ -1,164 +1,687 @@
-
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
-#include "nautilus/common/FunctionAttributes.hpp"
-#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
-#include "nautilus/compiler/ir/operations/CallOperation.hpp"
-#include "nautilus/compiler/ir/operations/CastOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
-#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
-#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
-#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/LoadOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
-#include "nautilus/compiler/ir/operations/SelectOperation.hpp"
-#include "nautilus/compiler/ir/operations/StoreOperation.hpp"
+#include "nautilus/common/Arena.hpp"
+#include "nautilus/compiler/ir/blocks/BasicBlockArgument.hpp"
+#include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
+#include "nautilus/compiler/ir/operations/BranchOperation.hpp"
+#include "nautilus/compiler/ir/operations/IfOperation.hpp"
+#include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
+#include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
-#include "nautilus/tracing/ExecutionTrace.hpp"
-#include "nautilus/tracing/TraceOperation.hpp"
-#include "nautilus/tracing/TracingUtil.hpp"
-#include <cassert>
-#include <vector>
+#include "nautilus/exceptions/RuntimeException.hpp"
+#include "nautilus/tracing/phases/IRConversionSupport.hpp"
+#include <algorithm>
+#include <deque>
+#include <fmt/format.h>
+#include <span>
+#include <unordered_map>
 
 namespace nautilus::tracing {
-using namespace compiler::ir;
-
-OperationIdentifier createValueIdentifier(const TypedValueRef& val) {
-	return {val.ref};
-}
-
-OperationIdentifier createValueIdentifier(const InputVariant& val) {
-	if (const auto* valRef = std::get_if<TypedValueRef>(&val)) {
-		return {valRef->ref};
-	}
-	throw NotImplementedException("wrong input variant");
-}
 
 namespace {
 
-/// Binds a traced body to the function-table entry its call sites minted.
-///
-/// A call to a Nautilus function is traced before that function's own body is,
-/// so by the time we get here the id usually already exists -- keyed on the
-/// definition pointer, never the name, so two functions sharing a name still
-/// resolve to two entries. Functions nobody calls (the entry point) simply
-/// intern here first.
-void bindDefinition(compiler::ir::IRGraph& ir, TraceModule& traceModule, const std::string& functionName,
-                    compiler::ir::FunctionOperation* functionOperation) {
-	const auto* traceDefinition = traceModule.getFunctionDefinition(functionName);
-	auto& table = ir.getFunctionTableMut();
+class SSAConversionContext;
 
-	// One body can be denoted by several identities: a NautilusFunction may
-	// share a name with a module-registered entry function, in which case the
-	// trace loop traced the body once and recorded both. Call sites have
-	// already minted an entry keyed on whichever identity they saw, so reuse
-	// that entry rather than minting a second one -- two entries would carry
-	// two emission names, and the call would look for a symbol the definition
-	// was not emitted under.
-	auto id = compiler::ir::INVALID_FUNCTION_ID;
-	if (traceDefinition != nullptr) {
-		for (const auto* definition : traceDefinition->definitions) {
-			if (const auto existing = table.find(const_cast<void*>(definition));
-			    existing != compiler::ir::INVALID_FUNCTION_ID) {
-				id = existing;
-				break;
+/// The current definition of each variable per block, keyed by
+/// `(block << 32) | variable`. Open addressing with linear probing; key 0
+/// marks a free slot (value ref 0 is never a variable). Entries are never
+/// removed.
+class DefinitionTable {
+public:
+	void reserve(size_t expected) {
+		size_t capacity = 16;
+		while (capacity < expected * 2) {
+			capacity *= 2;
+		}
+		slots.assign(capacity, Slot {});
+		size = 0;
+	}
+
+	[[nodiscard]] Operation* find(uint64_t key) const {
+		for (size_t slot = home(key);; slot = (slot + 1) & mask()) {
+			if (slots[slot].key == key) {
+				return slots[slot].value;
+			}
+			if (slots[slot].key == 0) {
+				return nullptr;
 			}
 		}
 	}
 
-	if (id == compiler::ir::INVALID_FUNCTION_ID) {
-		compiler::ir::CalleeDescriptor descriptor;
-		descriptor.kind = compiler::ir::CalleeDescriptor::Kind::Internal;
-		descriptor.customName = functionName;
-		if (traceDefinition != nullptr && !traceDefinition->definitions.empty()) {
-			descriptor.key = const_cast<void*>(traceDefinition->definitions.front());
+	void set(uint64_t key, Operation* value) {
+		if ((size + 1) * 2 > slots.size()) {
+			grow();
 		}
-		id = ir.internCallee(descriptor);
+		size_t slot = home(key);
+		while (slots[slot].key != 0 && slots[slot].key != key) {
+			slot = (slot + 1) & mask();
+		}
+		if (slots[slot].key == 0) {
+			slots[slot].key = key;
+			++size;
+		}
+		slots[slot].value = value;
 	}
 
-	// Point every remaining identity at that one entry.
-	if (traceDefinition != nullptr) {
-		for (const auto* definition : traceDefinition->definitions) {
-			table.alias(const_cast<void*>(definition), id);
+private:
+	struct Slot {
+		uint64_t key = 0;
+		Operation* value = nullptr;
+	};
+
+	[[nodiscard]] size_t mask() const {
+		return slots.size() - 1;
+	}
+
+	[[nodiscard]] size_t home(uint64_t key) const {
+		const auto hash = key * 0x9E3779B97F4A7C15ull;
+		return static_cast<size_t>(hash ^ (hash >> 32)) & mask();
+	}
+
+	void grow() {
+		std::vector<Slot> old(slots.size() * 2);
+		old.swap(slots);
+		size = 0;
+		for (const auto& entry : old) {
+			if (entry.key != 0) {
+				set(entry.key, entry.value);
+			}
 		}
 	}
-	ir.defineFunction(id, functionOperation);
+
+	std::vector<Slot> slots;
+	size_t size = 0;
+};
+
+/// The value frame of one block: reads and definitions go through the SSA
+/// construction of the context.
+struct SSAFrame {
+	SSAConversionContext& context;
+	uint32_t block;
+
+	Operation* getValue(OperationIdentifier identifier);
+	void setValue(OperationIdentifier identifier, Operation* value);
+};
+
+class SSAConversionContext : public IRConversionSupport {
+public:
+	SSAConversionContext(ExecutionTrace* trace, std::shared_ptr<IRGraph> ir)
+	    : IRConversionSupport(trace, std::move(ir)), arena(this->ir->getArena()) {
+	}
+
+	FunctionOperation* processFunction(const std::string& functionName,
+	                                   const std::unordered_map<std::string, std::string>& attributes,
+	                                   const SourceLocation& location);
+
+	Operation* read(uint32_t block, ValueRef ref);
+	void define(uint32_t block, ValueRef ref, Operation* value);
+
+private:
+	/// A control-flow edge into a block: the invocation that carries the
+	/// block's arguments, and the block it leaves from.
+	struct Edge {
+		BasicBlockInvocation* invocation;
+		uint32_t predecessor;
+	};
+
+	/// A block argument standing for the value of a variable where control
+	/// flow merges (a phi).
+	struct Phi {
+		BasicBlockArgument* argument;
+		uint32_t block;
+		uint32_t slot;
+		ValueRef variable;
+		/// Set once the argument turned out to be redundant: the value every
+		/// edge passes for it.
+		Operation* replacement = nullptr;
+		/// Whether every edge passes a value for it yet.
+		bool complete = false;
+		/// Phis that take this one as an incoming value.
+		std::vector<Phi*> users;
+	};
+
+	/// Every block argument this conversion creates -- function parameters,
+	/// the merged return value, phis -- so a phi's bookkeeping is one load away
+	/// from its argument. `phi` is null for the arguments that are not phis.
+	struct Argument : BasicBlockArgument {
+		Argument(OperationIdentifier identifier, Type stamp, Phi* phi)
+		    : BasicBlockArgument(identifier, stamp), phi(phi) {
+		}
+		Phi* phi;
+	};
+
+	struct BlockState {
+		BasicBlock* irBlock = nullptr;
+		uint32_t predecessorCount = 0;
+		uint32_t filledPredecessors = 0;
+		bool visited = false;
+		/// All predecessors are converted: no edge into the block is still missing.
+		bool sealed = false;
+		/// The block's incoming edges are `edges[firstEdge, firstEdge + edgeCount)`.
+		uint32_t firstEdge = 0;
+		uint32_t edgeCount = 0;
+		/// Phis created while the block was not sealed yet; their incoming
+		/// values are added when it is.
+		std::vector<Phi*> incompletePhis;
+	};
+
+	void scanTrace();
+	/// Where an edge to @p block really leads: past every block that holds
+	/// nothing but a jump.
+	uint32_t threadedTarget(uint32_t block);
+	BasicBlock* irBlockOf(uint32_t block);
+	void processBlock(uint32_t block);
+	void processJump(uint32_t block, TraceOperation& operation);
+	void processBranch(uint32_t block, TraceOperation& operation);
+	void processReturn(uint32_t block, TraceOperation& operation);
+	/// Records that @p block is converted, sealing the successors whose last
+	/// predecessor it was.
+	void addEdge(uint32_t from, uint32_t to, BasicBlockInvocation& invocation);
+	void fillPredecessor(uint32_t successor);
+
+	void writeVariable(ValueRef variable, uint32_t block, Operation* value);
+	Operation* readVariable(ValueRef variable, uint32_t block);
+	Operation* readVariableRecursive(ValueRef variable, uint32_t block);
+	Phi* createPhi(uint32_t block, ValueRef variable);
+	Operation* addPhiOperands(Phi* phi);
+	Operation* tryRemoveTrivialPhi(Phi* phi);
+	void sealBlock(uint32_t block);
+	Phi* phiOf(Operation* value);
+	Operation* resolve(Operation* value);
+	/// Points every use of a removed phi at its replacement and drops the
+	/// removed phis' argument slots.
+	void removeTrivialPhis();
+
+	std::span<Edge> incoming(uint32_t block) {
+		const auto& state = blocks[block];
+		return {edges.data() + state.firstEdge, state.edgeCount};
+	}
+
+	static uint64_t key(uint32_t block, ValueRef variable) {
+		return (static_cast<uint64_t>(block) << 32) | variable;
+	}
+
+	common::Arena& arena;
+	std::vector<BlockState> blocks;
+	/// Per trace block: the target of its jump if the jump is all it holds,
+	/// otherwise the block itself.
+	std::vector<uint32_t> forwardTo;
+	/// Every block's incoming edges, grouped by target block.
+	std::vector<Edge> edges;
+	std::vector<BasicBlock*> currentBasicBlocks;
+	/// What the conversion knows about one value ref.
+	struct ValueState {
+		/// The definition of a value defined once; unused for variables.
+		Operation* definition = nullptr;
+		/// Whether some ASSIGN redefines the value.
+		bool isVariable = false;
+		/// The variable's type, for the phis it gets.
+		Type type = Type::v;
+	};
+	std::vector<ValueState> valueStates;
+	/// The current definition of a variable at the end of a block.
+	DefinitionTable currentDefinitions;
+	std::deque<Phi> phis;
+	size_t removedPhis = 0;
+
+	/// Multiple returns branch to one return block taking the result as its argument.
+	bool mergeReturns = false;
+	uint32_t returnBlockId = 0;
+	BasicBlock* returnBlock = nullptr;
+	const TraceOperation* firstReturn = nullptr;
+	Type returnType = Type::v;
+};
+
+Operation* SSAFrame::getValue(OperationIdentifier identifier) {
+	return context.read(block, identifier.getId());
 }
 
-} // namespace
+void SSAFrame::setValue(OperationIdentifier identifier, Operation* value) {
+	context.define(block, identifier.getId(), value);
+}
 
-std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceModule> traceModule,
-                                                         const compiler::CompilationUnitID& id) {
-	auto ir = std::make_shared<compiler::ir::IRGraph>(id);
+void SSAConversionContext::scanTrace() {
+	auto& traceBlocks = trace->getBlocks();
+	const auto numberOfValueRefs = static_cast<size_t>(trace->lastValueRef) + 1;
+	valueStates.assign(numberOfValueRefs, ValueState {});
+	blocks.resize(traceBlocks.size() + 1);
 
-	// Process all functions in sorted order for deterministic IR output.
-	for (const auto& functionName : traceModule->getFunctionNames()) {
-		auto* trace = traceModule->getFunction(functionName);
-		auto& attrs = traceModule->getFunctionAttributes(functionName);
-		auto location = traceModule->getFunctionLocation(functionName);
-		auto phaseContext = IRConversionContext(trace, ir, id);
-		auto* functionOperation = phaseContext.processFunction(functionName, attrs, location);
-		ir->addFunctionOperation(functionOperation);
-		bindDefinition(*ir, *traceModule, functionName, functionOperation);
+	const auto returns = trace->getReturn();
+	if (returns.size() > 1) {
+		mergeReturns = true;
+		returnBlockId = static_cast<uint32_t>(traceBlocks.size());
+		firstReturn = trace->getBlock(returns.front().blockIndex).operations[returns.front().operationIndex];
 	}
 
+	auto checkBlock = [&](uint32_t id) {
+		if (id >= traceBlocks.size()) {
+			throw RuntimeException(
+			    fmt::format("Invalid trace: block id {} is outside the {}-block trace.", id, traceBlocks.size()));
+		}
+	};
+	auto checkRef = [&](ValueRef ref) {
+		if (ref >= numberOfValueRefs) {
+			throw RuntimeException(fmt::format("Invalid trace: value ref ${} exceeds the maximum value ref ${}.", ref,
+			                                   trace->lastValueRef));
+		}
+	};
+	for (const auto& argument : traceBlocks.front()->arguments) {
+		checkRef(argument.ref);
+	}
+
+	size_t assignments = 0;
+	// A trace block holding nothing but a jump -- what the tracer leaves where
+	// control flow from several places meets a loop header -- is threaded:
+	// edges into it lead straight to its target. Converting it would make it a
+	// second loop header whose phis the blocks behind it read directly, so it
+	// could not be cleaned up later, and LLVM leaves a loop with two headers
+	// alone (binarySearch in tools/backend-explorer runs 3x slower).
+	forwardTo.resize(traceBlocks.size());
+	const auto entryId = traceBlocks.front()->blockId;
+	for (const auto* block : traceBlocks) {
+		checkBlock(block->blockId);
+		const auto& operations = block->operations;
+		const bool onlyJump = block->blockId != entryId && operations.size() == 1 && operations.front()->op == Op::JMP;
+		forwardTo[block->blockId] =
+		    onlyJump ? std::get<BlockRef*>(operations.front()->input[0])->block : block->blockId;
+	}
+
+	// Only blocks reachable from the entry are converted, so only their edges count.
+	std::vector<uint32_t> worklist {traceBlocks.front()->blockId};
+	checkBlock(worklist.back());
+	std::vector<uint8_t> seen(traceBlocks.size(), 0);
+	seen[worklist.back()] = 1;
+	auto reach = [&](uint32_t rawTarget) {
+		checkBlock(rawTarget);
+		const auto target = threadedTarget(rawTarget);
+		++blocks[target].predecessorCount;
+		if (seen[target] == 0) {
+			seen[target] = 1;
+			worklist.push_back(target);
+		}
+	};
+	while (!worklist.empty()) {
+		auto& block = trace->getBlock(worklist.back());
+		worklist.pop_back();
+		for (const auto* operation : block.operations) {
+			if (operation->resultRef.ref != 0) {
+				checkRef(operation->resultRef.ref);
+			}
+			if (operation->op == Op::ASSIGN) {
+				++assignments;
+				valueStates[operation->resultRef.ref].isVariable = true;
+				valueStates[operation->resultRef.ref].type = operation->resultType;
+			}
+		}
+		if (block.operations.empty()) {
+			continue;
+		}
+		const auto& terminator = *block.operations.back();
+		if (terminator.op == Op::JMP) {
+			reach(std::get<BlockRef*>(terminator.input[0])->block);
+		} else if (terminator.op == Op::CMP) {
+			reach(std::get<BlockRef*>(terminator.input[1])->block);
+			reach(std::get<BlockRef*>(terminator.input[2])->block);
+		}
+	}
+	uint32_t edgeTotal = 0;
+	for (auto& state : blocks) {
+		state.sealed = state.predecessorCount == 0;
+		state.firstEdge = edgeTotal;
+		edgeTotal += state.predecessorCount;
+	}
+	edges.resize(edgeTotal);
+	currentDefinitions.reserve(assignments + blocks.size());
+}
+
+uint32_t SSAConversionContext::threadedTarget(uint32_t block) {
+	// A cycle of jump-only blocks never reaches anything else: stop after as
+	// many steps as there are blocks and keep the block reached.
+	auto target = block;
+	for (size_t steps = 0; forwardTo[target] != target && steps < forwardTo.size(); ++steps) {
+		target = forwardTo[target];
+		if (target >= forwardTo.size()) {
+			throw RuntimeException(
+			    fmt::format("Invalid trace: block id {} is outside the {}-block trace.", target, forwardTo.size()));
+		}
+	}
+	return target;
+}
+
+BasicBlock* SSAConversionContext::irBlockOf(uint32_t block) {
+	auto& state = blocks[block];
+	if (state.irBlock == nullptr) {
+		state.irBlock = arena.create<BasicBlock>(arena, block, std::vector<BasicBlockArgument*> {});
+	}
+	return state.irBlock;
+}
+
+FunctionOperation* SSAConversionContext::processFunction(const std::string& functionName,
+                                                         const std::unordered_map<std::string, std::string>& attributes,
+                                                         const SourceLocation& location) {
+	scanTrace();
+
+	// The entry block's arguments are the function's parameters, in value-ref order.
+	auto& entry = *trace->getBlocks().front();
+	auto parameters = entry.arguments;
+	std::sort(parameters.begin(), parameters.end());
+	std::vector<BasicBlockArgument*> entryArguments;
+	entryArguments.reserve(parameters.size());
+	for (const auto& parameter : parameters) {
+		entryArguments.push_back(arena.create<Argument>(createValueIdentifier(parameter), parameter.type, nullptr));
+	}
+	blocks[entry.blockId].irBlock = arena.create<BasicBlock>(arena, entry.blockId, std::move(entryArguments));
+	for (auto* argument : blocks[entry.blockId].irBlock->getArguments()) {
+		define(entry.blockId, argument->getIdentifier().getId(), argument);
+	}
+
+	processBlock(entry.blockId);
+	if (removedPhis != 0) {
+		removeTrivialPhis();
+	}
+
+	return arena.create<FunctionOperation>(functionName, std::move(currentBasicBlocks), std::vector<Type> {},
+	                                       std::vector<std::string> {}, returnType, collectAllocaSpecs(), attributes,
+	                                       std::move(currentRegionSpecs), location);
+}
+
+void SSAConversionContext::processBlock(uint32_t blockId) {
+	auto& traceBlock = trace->getBlock(blockId);
+	auto* irBlock = irBlockOf(blockId);
+	blocks[blockId].visited = true;
+	irBlock->setRegionIndex(mapRegion(traceBlock.regionIndex));
+	currentBasicBlocks.push_back(irBlock);
+
+	SSAFrame frame {*this, blockId};
+	for (auto* operation : traceBlock.operations) {
+		switch (operation->op) {
+		case Op::ASSIGN:
+			writeVariable(operation->resultRef.ref, blockId,
+			              read(blockId, std::get<TypedValueRef>(operation->input[0]).ref));
+			break;
+		case Op::JMP:
+			processJump(blockId, *operation);
+			break;
+		case Op::CMP:
+			processBranch(blockId, *operation);
+			break;
+		case Op::RETURN:
+			processReturn(blockId, *operation);
+			break;
+		default:
+			if (!convertValueOperation(frame, irBlock, *operation)) {
+				throw NotImplementedException("Operation type is not implemented.");
+			}
+		}
+	}
+}
+
+void SSAConversionContext::processJump(uint32_t block, TraceOperation& operation) {
+	const auto target = threadedTarget(std::get<BlockRef*>(operation.input[0])->block);
+	auto* branch = irBlockOf(block)->addNextBlock(irBlockOf(target), {});
+	stampProvenance(*branch, operation);
+	addEdge(block, target, static_cast<BranchOperation*>(branch)->getNextBlockInvocation());
+	fillPredecessor(target);
+	if (!blocks[target].visited) {
+		processBlock(target);
+	}
+}
+
+void SSAConversionContext::processBranch(uint32_t block, TraceOperation& operation) {
+	auto* condition = read(block, std::get<TypedValueRef>(operation.input[0]).ref);
+	const auto trueTarget = threadedTarget(std::get<BlockRef*>(operation.input[1])->block);
+	const auto falseTarget = threadedTarget(std::get<BlockRef*>(operation.input[2])->block);
+	auto probability = std::get<BranchProbability>(operation.input[3]);
+
+	auto* ifOperation = arena.create<IfOperation>(arena, condition, probability);
+	stampProvenance(*ifOperation, operation);
+	ifOperation->getTrueBlockInvocation().setBlock(irBlockOf(trueTarget));
+	ifOperation->getFalseBlockInvocation().setBlock(irBlockOf(falseTarget));
+	irBlockOf(block)->addOperation(ifOperation);
+	addEdge(block, trueTarget, ifOperation->getTrueBlockInvocation());
+	addEdge(block, falseTarget, ifOperation->getFalseBlockInvocation());
+	fillPredecessor(trueTarget);
+	fillPredecessor(falseTarget);
+	if (!blocks[trueTarget].visited) {
+		processBlock(trueTarget);
+	}
+	if (!blocks[falseTarget].visited) {
+		processBlock(falseTarget);
+	}
+}
+
+void SSAConversionContext::processReturn(uint32_t block, TraceOperation& operation) {
+	Operation* value =
+	    operation.input.empty() ? nullptr : read(block, createValueIdentifier(operation.input[0]).getId());
+	returnType = value == nullptr ? Type::v : value->getStamp();
+	if (!mergeReturns) {
+		if (value == nullptr) {
+			irBlockOf(block)->addTaggedOperation<ReturnOperation>(provenanceOf(operation));
+		} else {
+			irBlockOf(block)->addTaggedOperation<ReturnOperation>(provenanceOf(operation), value);
+		}
+		return;
+	}
+	if (returnBlock == nullptr) {
+		std::vector<BasicBlockArgument*> arguments;
+		if (value != nullptr) {
+			arguments.push_back(arena.create<Argument>(
+			    createValueIdentifier(std::get<TypedValueRef>(firstReturn->input[0])), value->getStamp(), nullptr));
+		}
+		returnBlock = arena.create<BasicBlock>(arena, returnBlockId, std::move(arguments));
+		currentBasicBlocks.push_back(returnBlock);
+		if (value == nullptr) {
+			returnBlock->addTaggedOperation<ReturnOperation>(provenanceOf(*firstReturn));
+		} else {
+			returnBlock->addTaggedOperation<ReturnOperation>(provenanceOf(*firstReturn),
+			                                                 returnBlock->getArguments().front());
+		}
+	}
+	if (value == nullptr) {
+		irBlockOf(block)->addNextBlock(returnBlock, {});
+	} else {
+		Operation* const arguments[] = {value};
+		irBlockOf(block)->addNextBlock(returnBlock, arguments);
+	}
+}
+
+void SSAConversionContext::addEdge(uint32_t from, uint32_t to, BasicBlockInvocation& invocation) {
+	auto& state = blocks[to];
+	edges[state.firstEdge + state.edgeCount++] = {&invocation, from};
+}
+
+void SSAConversionContext::fillPredecessor(uint32_t successor) {
+	auto& state = blocks[successor];
+	if (++state.filledPredecessors == state.predecessorCount) {
+		sealBlock(successor);
+	}
+}
+
+Operation* SSAConversionContext::read(uint32_t block, ValueRef ref) {
+	const auto& state = valueStates[ref];
+	if (state.isVariable) {
+		return readVariable(ref, block);
+	}
+	auto* value = state.definition;
+	if (value == nullptr) {
+		throw RuntimeException(fmt::format("Invalid trace: B{} uses ${} before its definition.", block, ref));
+	}
+	return value;
+}
+
+void SSAConversionContext::define(uint32_t block, ValueRef ref, Operation* value) {
+	auto& state = valueStates[ref];
+	if (state.isVariable) {
+		writeVariable(ref, block, value);
+	} else {
+		state.definition = value;
+	}
+}
+
+void SSAConversionContext::writeVariable(ValueRef variable, uint32_t block, Operation* value) {
+	currentDefinitions.set(key(block, variable), value);
+}
+
+Operation* SSAConversionContext::readVariable(ValueRef variable, uint32_t block) {
+	if (auto* value = currentDefinitions.find(key(block, variable))) {
+		return resolve(value);
+	}
+	return readVariableRecursive(variable, block);
+}
+
+Operation* SSAConversionContext::readVariableRecursive(ValueRef variable, uint32_t block) {
+	auto& state = blocks[block];
+	Operation* value;
+	if (!state.sealed) {
+		// Not every edge into the block exists yet: the incoming values are
+		// added once the last predecessor is converted.
+		auto* phi = createPhi(block, variable);
+		state.incompletePhis.push_back(phi);
+		value = phi->argument;
+	} else if (state.predecessorCount == 1) {
+		value = readVariable(variable, edges[state.firstEdge].predecessor);
+	} else if (state.predecessorCount == 0) {
+		throw RuntimeException(fmt::format("Invalid trace: B{} uses ${} before its definition.", block, variable));
+	} else {
+		auto* phi = createPhi(block, variable);
+		// Defined before its operands are read, so a cycle through the block finds it.
+		writeVariable(variable, block, phi->argument);
+		value = addPhiOperands(phi);
+	}
+	writeVariable(variable, block, value);
+	return value;
+}
+
+SSAConversionContext::Phi* SSAConversionContext::createPhi(uint32_t block, ValueRef variable) {
+	auto* irBlock = irBlockOf(block);
+	auto& phi = phis.emplace_back(
+	    Phi {nullptr, block, static_cast<uint32_t>(irBlock->getArguments().size()), variable, nullptr, false, {}});
+	phi.argument = arena.create<Argument>(OperationIdentifier(variable), valueStates[variable].type, &phi);
+	irBlock->addArgument(phi.argument);
+	return &phi;
+}
+
+Operation* SSAConversionContext::addPhiOperands(Phi* phi) {
+	for (const auto& edge : incoming(phi->block)) {
+		auto* value = readVariable(phi->variable, edge.predecessor);
+		edge.invocation->addArgument(arena, value);
+		if (auto* operandPhi = phiOf(value)) {
+			operandPhi->users.push_back(phi);
+		}
+	}
+	phi->complete = true;
+	return tryRemoveTrivialPhi(phi);
+}
+
+Operation* SSAConversionContext::tryRemoveTrivialPhi(Phi* phi) {
+	Operation* same = nullptr;
+	for (const auto& edge : incoming(phi->block)) {
+		auto* value = resolve(edge.invocation->getArguments()[phi->slot]);
+		if (value == same || value == phi->argument) {
+			continue;
+		}
+		if (same != nullptr) {
+			return phi->argument; // merges two different values
+		}
+		same = value;
+	}
+	if (same == nullptr) {
+		return phi->argument; // only ever passed itself: unreachable, keep it
+	}
+	phi->replacement = same;
+	++removedPhis;
+	// Phis that took this one as an operand may have become trivial too.
+	for (size_t i = 0; i < phi->users.size(); ++i) {
+		auto* user = phi->users[i];
+		if (user != phi && user->complete && user->replacement == nullptr) {
+			tryRemoveTrivialPhi(user);
+		}
+	}
+	return resolve(same);
+}
+
+void SSAConversionContext::sealBlock(uint32_t block) {
+	auto& state = blocks[block];
+	for (size_t i = 0; i < state.incompletePhis.size(); ++i) {
+		addPhiOperands(state.incompletePhis[i]);
+	}
+	state.incompletePhis.clear();
+	state.sealed = true;
+}
+
+SSAConversionContext::Phi* SSAConversionContext::phiOf(Operation* value) {
+	// Every block argument of the function under construction is an `Argument`.
+	if (value->getOperationType() != Operation::OperationType::BasicBlockArgument) {
+		return nullptr;
+	}
+	return static_cast<Argument*>(value)->phi;
+}
+
+Operation* SSAConversionContext::resolve(Operation* value) {
+	if (removedPhis == 0) {
+		return value;
+	}
+	while (auto* phi = phiOf(value)) {
+		if (phi->replacement == nullptr) {
+			break;
+		}
+		value = phi->replacement;
+	}
+	return value;
+}
+
+void SSAConversionContext::removeTrivialPhis() {
+	auto resolveInputs = [&](Operation& operation) {
+		const auto inputs = operation.getInputs();
+		for (size_t i = 0; i < inputs.size(); ++i) {
+			if (auto* replacement = resolve(inputs[i]); replacement != inputs[i]) {
+				operation.setInput(i, replacement);
+			}
+		}
+	};
+	for (auto* block : currentBasicBlocks) {
+		for (auto* operation : block->getOperations()) {
+			resolveInputs(*operation);
+		}
+		if (auto* terminator = block->getTerminatorOp()) {
+			for (auto* invocation : compiler::ir::getSuccessorInvocations(*terminator)) {
+				resolveInputs(*invocation);
+			}
+		}
+	}
+
+	std::unordered_map<uint32_t, std::vector<size_t>> removedSlots;
+	for (const auto& phi : phis) {
+		if (phi.replacement != nullptr) {
+			removedSlots[phi.block].push_back(phi.slot);
+		}
+	}
+	for (auto& [block, slots] : removedSlots) {
+		std::sort(slots.begin(), slots.end());
+		blocks[block].irBlock->removeArguments(slots);
+		for (const auto& edge : incoming(block)) {
+			edge.invocation->removeArguments(slots);
+		}
+	}
+}
+
+std::shared_ptr<IRGraph> convertModule(TraceModule& traceModule, std::shared_ptr<IRGraph> ir) {
+	for (const auto& functionName : traceModule.getFunctionNames()) {
+		auto* trace = traceModule.getFunction(functionName);
+		SSAConversionContext context(trace, ir);
+		auto* functionOperation = context.processFunction(functionName, traceModule.getFunctionAttributes(functionName),
+		                                                  traceModule.getFunctionLocation(functionName));
+		ir->addFunctionOperation(functionOperation);
+		bindDefinition(*ir, traceModule, functionName, functionOperation);
+	}
 	return ir;
 }
 
-std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceModule> traceModule,
-                                                         common::ArenaPool& pool,
-                                                         const compiler::CompilationUnitID& id) {
-	auto ir = std::make_shared<compiler::ir::IRGraph>(pool.acquire(), id);
-
-	for (const auto& functionName : traceModule->getFunctionNames()) {
-		auto* trace = traceModule->getFunction(functionName);
-		auto& attrs = traceModule->getFunctionAttributes(functionName);
-		auto location = traceModule->getFunctionLocation(functionName);
-		auto phaseContext = IRConversionContext(trace, ir, id);
-		auto* functionOperation = phaseContext.processFunction(functionName, attrs, location);
-		ir->addFunctionOperation(functionOperation);
-		bindDefinition(*ir, *traceModule, functionName, functionOperation);
-	}
-
-	return ir;
-}
-
-std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace,
-                                                         const compiler::CompilationUnitID& id) {
-	auto ir = std::make_shared<compiler::ir::IRGraph>(id);
-	auto phaseContext = IRConversionContext(trace.get(), ir, id);
-	return phaseContext.process();
-}
-
-std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace, common::ArenaPool& pool,
-                                                         const compiler::CompilationUnitID& id) {
-	auto ir = std::make_shared<compiler::ir::IRGraph>(pool.acquire(), id);
-	auto phaseContext = IRConversionContext(trace.get(), ir, id);
-	return phaseContext.process();
-}
-
-TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrace* trace,
-                                                                   std::shared_ptr<compiler::ir::IRGraph> ir,
-                                                                   const compiler::CompilationUnitID&)
-    : trace(trace), ir(std::move(ir)) {
-}
-
-std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
-	processBlock(*trace->getBlocks().front());
-	std::unordered_map<std::string, std::string> attributes = {{"entry", "true"}};
-	auto* functionOperation = ir->getArena().create<FunctionOperation>(
-	    "execute", std::move(currentBasicBlocks), std::vector<Type> {}, std::vector<std::string> {}, returnType,
-	    collectAllocaSpecs(), std::move(attributes), std::move(currentRegionSpecs));
+/// A lone trace becomes a module of one entry function, "execute". Nothing
+/// calls it, so it interns with a null identity key and gets a fresh entry.
+std::shared_ptr<IRGraph> convertTrace(ExecutionTrace& trace, std::shared_ptr<IRGraph> ir) {
+	SSAConversionContext context(&trace, ir);
+	auto* functionOperation = context.processFunction("execute", {{"entry", "true"}}, {});
 	ir->addFunctionOperation(functionOperation);
-	// Single-trace path: the entry function has no NautilusFunctionDefinition
-	// behind it (nothing calls it), so it interns with a null identity key and
-	// simply gets a fresh entry.
 	compiler::ir::CalleeDescriptor descriptor;
 	descriptor.kind = compiler::ir::CalleeDescriptor::Kind::Internal;
 	descriptor.customName = "execute";
@@ -166,548 +689,27 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process(
 	return ir;
 }
 
-FunctionOperation* TraceToIRConversionPhase::IRConversionContext::processFunction(
-    const std::string& functionName, const std::unordered_map<std::string, std::string>& attributes,
-    const SourceLocation& location) {
-	// Clear state for this function
-	currentBasicBlocks.clear();
-	blockMap.clear();
-	currentRegionSpecs.clear();
-	regionMap.clear();
-	regionKeys.clear();
-	returnType = Type::v;
+} // namespace
 
-	// Process all blocks starting from the first block
-	processBlock(*trace->getBlocks().front());
-
-	// Create and return the function operation
-	return ir->getArena().create<FunctionOperation>(functionName, std::move(currentBasicBlocks), std::vector<Type> {},
-	                                                std::vector<std::string> {}, returnType, collectAllocaSpecs(),
-	                                                attributes, std::move(currentRegionSpecs), location);
+std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceModule> traceModule,
+                                                         const compiler::CompilationUnitID& id) {
+	return convertModule(*traceModule, std::make_shared<IRGraph>(id));
 }
 
-size_t TraceToIRConversionPhase::IRConversionContext::RegionKeyHash::operator()(const RegionKey& key) const noexcept {
-	auto hash = std::hash<const void*> {}(key.name);
-	hash ^= std::hash<const void*> {}(key.file) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-	hash ^= std::hash<uint64_t> {}((static_cast<uint64_t>(key.line) << 32) | key.column) + 0x9e3779b9 + (hash << 6) +
-	        (hash >> 2);
-	hash ^= std::hash<uint32_t> {}(key.parent) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-	return hash;
+std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceModule> traceModule,
+                                                         common::ArenaPool& pool,
+                                                         const compiler::CompilationUnitID& id) {
+	return convertModule(*traceModule, std::make_shared<IRGraph>(pool.acquire(), id));
 }
 
-compiler::ir::RegionIndex TraceToIRConversionPhase::IRConversionContext::mapRegion(RegionIndex traceRegion) {
-	if (traceRegion == NO_REGION || traceRegion >= trace->getRegions().size()) {
-		return compiler::ir::NO_REGION;
-	}
-	if (auto it = regionMap.find(traceRegion); it != regionMap.end()) {
-		return it->second;
-	}
-	const auto& spec = trace->getRegions()[traceRegion];
-	// Resolve the enclosing chain first: a call site is only the same call site as
-	// another if it also sits in the same enclosing region.
-	const auto parent = mapRegion(spec.parent);
-	const RegionKey key {spec.attributes.name, spec.attributes.location.file, spec.attributes.location.line,
-	                     spec.attributes.location.column, parent};
-	compiler::ir::RegionIndex index;
-	if (auto it = regionKeys.find(key); it != regionKeys.end()) {
-		index = it->second;
-	} else if (currentRegionSpecs.size() >= compiler::ir::NO_REGION) {
-		// One short of the sentinel is the last usable index; beyond it an operation
-		// would have to claim a region it does not belong to, so it claims none.
-		return compiler::ir::NO_REGION;
-	} else {
-		index = static_cast<compiler::ir::RegionIndex>(currentRegionSpecs.size());
-		currentRegionSpecs.push_back(compiler::ir::RegionSpec {spec.attributes, parent, ir->nextRegionId()});
-		regionKeys[key] = index;
-	}
-	regionMap[traceRegion] = index;
-	return index;
+std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace,
+                                                         const compiler::CompilationUnitID& id) {
+	return convertTrace(*trace, std::make_shared<IRGraph>(id));
 }
 
-compiler::ir::OperationProvenance
-TraceToIRConversionPhase::IRConversionContext::provenanceOf(const TraceOperation& operation) {
-	return {operation.tag.getTag(), mapRegion(operation.regionIndex)};
-}
-
-void TraceToIRConversionPhase::IRConversionContext::stampProvenance(compiler::ir::Operation& irOperation,
-                                                                    const TraceOperation& operation) {
-	const auto provenance = provenanceOf(operation);
-	irOperation.setSourceTag(provenance.sourceTag);
-	irOperation.setRegionIndex(provenance.region);
-}
-
-std::vector<compiler::ir::AllocaSpec> TraceToIRConversionPhase::IRConversionContext::collectAllocaSpecs() const {
-	std::vector<compiler::ir::AllocaSpec> specs;
-	specs.reserve(trace->allocaSpecs.size());
-	for (const auto& spec : trace->allocaSpecs) {
-		specs.push_back({spec.size, spec.align});
-	}
-	return specs;
-}
-
-BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& block) {
-	// create new frame and block
-	auto& arena = ir->getArena();
-	ValueFrame blockFrame;
-	std::vector<BasicBlockArgument*> blockArguments;
-	blockArguments.reserve(block.arguments.size());
-	for (auto& arg : block.arguments) {
-		auto argumentIdentifier = createValueIdentifier(arg);
-		auto* blockArgument = arena.create<BasicBlockArgument>(argumentIdentifier, arg.type);
-		blockFrame.setValue(argumentIdentifier, blockArgument);
-		blockArguments.emplace_back(blockArgument);
-	}
-	auto* irBasicBlockPtr = arena.create<BasicBlock>(arena, block.blockId, std::move(blockArguments));
-	// The trace block already names the innermost region containing all of its code
-	// (the tracer merged the region seams away, widening the blocks it merged into),
-	// and mapRegion preserves the nesting, so the IR block can take it over as is. The
-	// block-cleanup passes widen it further when they merge blocks of different regions.
-	irBasicBlockPtr->setRegionIndex(mapRegion(block.regionIndex));
-	currentBasicBlocks.emplace_back(irBasicBlockPtr);
-
-	blockMap[block.blockId] = irBasicBlockPtr;
-	for (auto* operation : block.operations) {
-		processOperation(blockFrame, block, irBasicBlockPtr, *operation);
-	}
-	return irBasicBlockPtr;
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame& frame, Block& currentBlock,
-                                                                     BasicBlock*& currentIrBlock,
-                                                                     TraceOperation& operation) {
-
-	switch (operation.op) {
-	case Op::ADD: {
-		processBinaryOperator<AddOperation>(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::SUB: {
-		processBinaryOperator<SubOperation>(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::DIV: {
-		processBinaryOperator<DivOperation>(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::MUL: {
-		processBinaryOperator<MulOperation>(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::MOD: {
-		processBinaryOperator<ModOperation>(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::EQ: {
-		processLogicalComperator(frame, currentIrBlock, operation, CompareOperation::Comparator::EQ);
-		return;
-	}
-	case Op::LT: {
-		processLogicalComperator(frame, currentIrBlock, operation, CompareOperation::Comparator::LT);
-		return;
-	}
-	case Op::GT: {
-		processLogicalComperator(frame, currentIrBlock, operation, CompareOperation::Comparator::GT);
-		return;
-	}
-	case Op::NEQ: {
-		processLogicalComperator(frame, currentIrBlock, operation, CompareOperation::Comparator::NE);
-		return;
-	}
-	case Op::LTE: {
-		processLogicalComperator(frame, currentIrBlock, operation, CompareOperation::Comparator::LE);
-		return;
-	}
-	case Op::GTE: {
-		processLogicalComperator(frame, currentIrBlock, operation, CompareOperation::Comparator::GE);
-		return;
-	}
-	case Op::NEGATE: {
-		processUnaryOperator<NegateOperation>(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::NOT: {
-		processUnaryOperator<NotOperation>(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::AND: {
-		processBinaryOperator<AndOperation>(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::OR: {
-		processBinaryOperator<OrOperation>(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::CMP: {
-		processCMP(frame, currentBlock, currentIrBlock, operation);
-		return;
-	}
-	case Op::JMP: {
-		processJMP(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::CONST: {
-		processConst(frame, currentIrBlock, operation);
-		return;
-	}
-	case Op::RETURN: {
-		if (operation.input.empty()) {
-			currentIrBlock->addTaggedOperation<ReturnOperation>(provenanceOf(operation));
-			returnType = Type::v;
-		} else {
-			auto returnValue = frame.getValue(createValueIdentifier(operation.input[0]));
-			currentIrBlock->addTaggedOperation<ReturnOperation>(provenanceOf(operation), returnValue);
-			returnType = returnValue->getStamp();
-		}
-		return;
-	}
-	case Op::LOAD: {
-		processLoad(frame, currentIrBlock, operation);
-		return;
-	};
-	case Op::STORE: {
-		processStore(frame, currentIrBlock, operation);
-		return;
-	};
-	case Op::CAST: {
-		processCast(frame, currentIrBlock, operation);
-		return;
-	};
-	case Op::CALL:
-	case Op::CALL_WITH_EXCEPTION_HANDLING:
-		processCall(frame, currentIrBlock, operation);
-		return;
-	case Op::INDIRECT_CALL:
-	case Op::INDIRECT_CALL_WITH_EXCEPTION_HANDLING:
-		processIndirectCall(frame, currentIrBlock, operation);
-		return;
-	case LSH:
-		processShift(frame, currentIrBlock, operation, compiler::ir::ShiftOperation::LS);
-		return;
-	case RSH:
-		processShift(frame, currentIrBlock, operation, compiler::ir::ShiftOperation::RS);
-		return;
-	case BOR:
-		processBinaryComp(frame, currentIrBlock, operation, compiler::ir::BinaryCompOperation::Type::BOR);
-		return;
-	case BAND:
-		processBinaryComp(frame, currentIrBlock, operation, compiler::ir::BinaryCompOperation::BAND);
-		return;
-	case BXOR:
-		processBinaryComp(frame, currentIrBlock, operation, compiler::ir::BinaryCompOperation::XOR);
-		return;
-	case SELECT:
-		processTernaryOperator<SelectOperation>(frame, currentIrBlock, operation);
-		return;
-	case ALLOCA:
-		processAlloca(frame, currentIrBlock, operation);
-		return;
-	case FUNC_ADDR:
-		processFuncAddr(frame, currentIrBlock, operation);
-		return;
-	default: {
-		throw NotImplementedException("Operation type is not implemented.");
-	}
-	}
-}
-
-template <typename OpType>
-void TraceToIRConversionPhase::IRConversionContext::processBinaryOperator(ValueFrame& frame,
-                                                                          compiler::ir::BasicBlock* currentBlock,
-                                                                          TraceOperation& op) {
-	auto leftInput = frame.getValue(createValueIdentifier(op.input[0]));
-	auto rightInput = frame.getValue(createValueIdentifier(op.input[1]));
-	auto resultIdentifier = createValueIdentifier(op.resultRef);
-	auto operation =
-	    currentBlock->addTaggedOperation<OpType>(provenanceOf(op), resultIdentifier, leftInput, rightInput);
-	frame.setValue(resultIdentifier, operation);
-}
-
-template <typename OpType>
-void TraceToIRConversionPhase::IRConversionContext::processUnaryOperator(ValueFrame& frame,
-                                                                         compiler::ir::BasicBlock* currentBlock,
-                                                                         TraceOperation& op) {
-	auto input = frame.getValue(createValueIdentifier(op.input[0]));
-	auto resultIdentifier = createValueIdentifier(op.resultRef);
-	auto operation = currentBlock->addTaggedOperation<OpType>(provenanceOf(op), resultIdentifier, input);
-	frame.setValue(resultIdentifier, operation);
-}
-
-template <typename OpType>
-void TraceToIRConversionPhase::IRConversionContext::processTernaryOperator(ValueFrame& frame,
-                                                                           compiler::ir::BasicBlock* currentBlock,
-                                                                           TraceOperation& op) {
-	auto firstInput = frame.getValue(createValueIdentifier(op.input[0]));
-	auto secondInput = frame.getValue(createValueIdentifier(op.input[1]));
-	auto thirdInput = frame.getValue(createValueIdentifier(op.input[2]));
-	auto resultIdentifier = createValueIdentifier(op.resultRef);
-	auto operation = currentBlock->addTaggedOperation<OpType>(provenanceOf(op), resultIdentifier, firstInput,
-	                                                          secondInput, thirdInput, op.resultRef.type);
-	frame.setValue(resultIdentifier, operation);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processJMP(ValueFrame& frame, BasicBlock* block,
-                                                               TraceOperation& operation) {
-	const BlockRef& blockRef = *get<BlockRef*>(operation.input[0]);
-	BasicBlockInvocation blockInvocation;
-	createBlockArguments(frame, blockInvocation, blockRef);
-
-	BasicBlock* targetBlock = nullptr;
-	if (auto it = blockMap.find(blockRef.block); it != blockMap.end()) {
-		targetBlock = it->second;
-	} else {
-		targetBlock = processBlock(trace->getBlock(blockRef.block));
-		blockMap[blockRef.block] = targetBlock;
-	}
-	stampProvenance(*block->addNextBlock(targetBlock, blockInvocation.getArguments()), operation);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame, Block&, BasicBlock* currentIrBlock,
-                                                               TraceOperation& operation) {
-	assert(operation.input.size() == 4);
-	auto valueRef = get<TypedValueRef>(operation.input[0]);
-	const BlockRef& trueCaseBlockRef = *get<BlockRef*>(operation.input[1]);
-	const BlockRef& falseCaseBlockRef = *get<BlockRef*>(operation.input[2]);
-	auto probability = get<BranchProbability>(operation.input[3]);
-
-	auto booleanValue = frame.getValue(createValueIdentifier(valueRef));
-	auto& arena = ir->getArena();
-	auto* ifOperation = arena.create<IfOperation>(arena, booleanValue, probability);
-	stampProvenance(*ifOperation, operation);
-
-	// IfOperation needs its true/false invocations wired before being
-	// appended; we therefore can't use `addTaggedOperation` here without
-	// breaking that ordering.
-	auto trueCaseBlock = processBlock(trace->getBlock(trueCaseBlockRef.block));
-	ifOperation->getTrueBlockInvocation().setBlock(trueCaseBlock);
-	createBlockArguments(frame, ifOperation->getTrueBlockInvocation(), trueCaseBlockRef);
-
-	auto falseCaseBlock = processBlock(trace->getBlock(falseCaseBlockRef.block));
-	ifOperation->getFalseBlockInvocation().setBlock(falseCaseBlock);
-	createBlockArguments(frame, ifOperation->getFalseBlockInvocation(), falseCaseBlockRef);
-	currentIrBlock->addOperation(ifOperation);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::createBlockArguments(ValueFrame& frame,
-                                                                         BasicBlockInvocation& blockInvocation,
-                                                                         const BlockRef& val) {
-	auto& arena = ir->getArena();
-	for (const auto& arg : val.arguments) {
-		auto valueIdentifier = createValueIdentifier(arg);
-		blockInvocation.addArgument(arena, frame.getValue(valueIdentifier));
-	}
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processBinaryComp(ValueFrame& frame,
-                                                                      compiler::ir::BasicBlock* currentBlock,
-                                                                      nautilus::tracing::TraceOperation& operation,
-                                                                      compiler::ir::BinaryCompOperation::Type type) {
-	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
-	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
-	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto divOperation = currentBlock->addTaggedOperation<BinaryCompOperation>(provenanceOf(operation), resultIdentifier,
-	                                                                          leftInput, rightInput, type);
-	frame.setValue(resultIdentifier, divOperation);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processShift(ValueFrame& frame,
-                                                                 compiler::ir::BasicBlock* currentBlock,
-                                                                 nautilus::tracing::TraceOperation& operation,
-                                                                 compiler::ir::ShiftOperation::ShiftType type) {
-	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
-	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
-	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto divOperation = currentBlock->addTaggedOperation<ShiftOperation>(provenanceOf(operation), resultIdentifier,
-	                                                                     leftInput, rightInput, type);
-	frame.setValue(resultIdentifier, divOperation);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processLogicalComperator(ValueFrame& frame,
-                                                                             BasicBlock* currentBlock,
-                                                                             TraceOperation& operation,
-                                                                             CompareOperation::Comparator comp) {
-	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
-	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
-	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto compareOperation = currentBlock->addTaggedOperation<CompareOperation>(
-	    provenanceOf(operation), resultIdentifier, leftInput, rightInput, comp);
-	frame.setValue(resultIdentifier, compareOperation);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processLoad(ValueFrame& frame, BasicBlock* currentBlock,
-                                                                TraceOperation& operation) {
-	auto address = frame.getValue(createValueIdentifier(operation.input[0]));
-	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto* loadOperation = currentBlock->addTaggedOperation<LoadOperation>(provenanceOf(operation), resultIdentifier,
-	                                                                      address, operation.resultType);
-	frame.setValue(resultIdentifier, loadOperation);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processStore(ValueFrame& frame, BasicBlock* currentBlock,
-                                                                 TraceOperation& operation) {
-	auto address = frame.getValue(createValueIdentifier(operation.input[0]));
-	auto value = frame.getValue(createValueIdentifier(operation.input[1]));
-	currentBlock->addTaggedOperation<StoreOperation>(provenanceOf(operation), value, address);
-}
-
-compiler::ir::FunctionId
-TraceToIRConversionPhase::IRConversionContext::internCallee(const FunctionCall& call, Type resultType,
-                                                            const std::vector<Operation*>& arguments) {
-	// Interning is idempotent, but building the descriptor is not free: it
-	// copies three names and a parameter-type vector. Conversion walks every
-	// call site, and a hot loop calls the same handful of functions over and
-	// over, so resolve an already-known identity before paying for any of it.
-	if (call.ptr != nullptr) {
-		if (const auto existing = ir->getFunctionTable().find(call.ptr);
-		    existing != compiler::ir::INVALID_FUNCTION_ID) {
-			return existing;
-		}
-	}
-
-	compiler::ir::CalleeDescriptor descriptor;
-	descriptor.key = call.ptr;
-	descriptor.resultType = resultType;
-	descriptor.attrs = call.fnAttrs;
-	descriptor.paramTypes.reserve(arguments.size());
-	for (const auto* argument : arguments) {
-		descriptor.paramTypes.push_back(argument->getStamp());
-	}
-
-	if (call.kind == CalleeKind::Internal) {
-		// `ptr` is a NautilusFunctionDefinition, not code. Its name is one a
-		// user chose, so it is a custom name rather than a symbol.
-		descriptor.kind = compiler::ir::CalleeDescriptor::Kind::Internal;
-		descriptor.customName = call.functionName;
-	} else {
-		descriptor.kind = compiler::ir::CalleeDescriptor::Kind::External;
-		descriptor.mangledName = call.mangledName;
-		// `functionName` is already rendered per the engine's naming options
-		// (demangled, raw, or normalised), which is exactly the display name.
-		descriptor.demangledName = call.functionName;
-	}
-	return ir->internCallee(descriptor);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& frame, BasicBlock* currentBlock,
-                                                                TraceOperation& operation) {
-	const FunctionCall& functionCallTarget = *std::get<FunctionCall*>(operation.input[0]);
-	auto inputArguments = std::vector<Operation*> {};
-	for (const auto& argument : functionCallTarget.arguments) {
-		auto input = frame.getValue(createValueIdentifier(argument));
-		inputArguments.emplace_back(input);
-	}
-
-	auto resultType = operation.resultType;
-	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto destructors = std::vector<CallOperation::Destructor> {};
-	destructors.reserve(functionCallTarget.destructors.size());
-	for (const auto& destructor : functionCallTarget.destructors) {
-		destructors.push_back(CallOperation::Destructor {
-		    .address = frame.getValue(createValueIdentifier(destructor.address)),
-		    .functionSymbol = destructor.mangledName,
-		    .functionName = destructor.functionName,
-		    .functionPtr = destructor.ptr,
-		});
-	}
-	const auto calleeId = internCallee(functionCallTarget, resultType, inputArguments);
-	auto callOperation = currentBlock->addTaggedOperation<CallOperation>(
-	    provenanceOf(operation), functionCallTarget.mangledName, functionCallTarget.functionName,
-	    functionCallTarget.ptr, resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, calleeId,
-	    std::move(destructors), operation.op == Op::CALL_WITH_EXCEPTION_HANDLING, functionCallTarget.captureFunc,
-	    functionCallTarget.isNautilusCall);
-	if (resultType != Type::v) {
-		frame.setValue(resultIdentifier, callOperation);
-	}
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFrame& frame, BasicBlock* currentBlock,
-                                                                        TraceOperation& operation) {
-	const IndirectFunctionCall& indirectCall = *std::get<IndirectFunctionCall*>(operation.input[0]);
-	auto fnPtrOperand = frame.getValue(createValueIdentifier(indirectCall.fnPtr));
-	auto inputArguments = std::vector<Operation*> {};
-	for (const auto& argument : indirectCall.arguments) {
-		inputArguments.emplace_back(frame.getValue(createValueIdentifier(argument)));
-	}
-	auto resultType = operation.resultType;
-	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto destructors = std::vector<IndirectCallOperation::Destructor> {};
-	destructors.reserve(indirectCall.destructors.size());
-	for (const auto& destructor : indirectCall.destructors) {
-		destructors.push_back(IndirectCallOperation::Destructor {
-		    .address = frame.getValue(createValueIdentifier(destructor.address)),
-		    .functionSymbol = destructor.mangledName,
-		    .functionName = destructor.functionName,
-		    .functionPtr = destructor.ptr,
-		});
-	}
-	auto indirectCallOp = currentBlock->addTaggedOperation<IndirectCallOperation>(
-	    provenanceOf(operation), resultIdentifier, fnPtrOperand, inputArguments, resultType, indirectCall.fnAttrs,
-	    std::move(destructors), operation.op == Op::INDIRECT_CALL_WITH_EXCEPTION_HANDLING, indirectCall.captureFunc);
-	if (resultType != Type::v) {
-		frame.setValue(resultIdentifier, indirectCallOp);
-	}
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processFuncAddr(ValueFrame& frame, BasicBlock* currentBlock,
-                                                                    TraceOperation& operation) {
-	const FunctionCall& functionCallTarget = *std::get<FunctionCall*>(operation.input[0]);
-	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	// Taking an address interns the same target a call to it would, so the two
-	// share one table entry -- and so address-of resolves for every linkage,
-	// not just for functions defined in this module.
-	const auto calleeId = internCallee(functionCallTarget, Type::ptr, {});
-	auto funcAddrOp = currentBlock->addTaggedOperation<FunctionAddressOfOperation>(
-	    provenanceOf(operation), functionCallTarget.mangledName, functionCallTarget.functionName,
-	    functionCallTarget.ptr, resultIdentifier, calleeId);
-	frame.setValue(resultIdentifier, funcAddrOp);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& frame, BasicBlock* currentBlock,
-                                                                 TraceOperation& operation) {
-	auto constant = std::get<ConstantLiteral>(operation.input[0]);
-	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto resultType = operation.resultType;
-	const auto provenance = provenanceOf(operation);
-	Operation* constOperation;
-	std::visit(
-	    [&](auto&& value) {
-		    using T = std::decay_t<decltype(value)>;
-		    if constexpr (std::is_same_v<T, bool>) {
-			    constOperation =
-			        currentBlock->addTaggedOperation<ConstBooleanOperation>(provenance, resultIdentifier, value);
-		    } else if constexpr (std::is_integral_v<T>) {
-			    constOperation = currentBlock->addTaggedOperation<ConstIntOperation>(provenance, resultIdentifier,
-			                                                                         value, resultType);
-		    } else if constexpr (std::is_floating_point_v<T>) {
-			    constOperation = currentBlock->addTaggedOperation<ConstFloatOperation>(provenance, resultIdentifier,
-			                                                                           value, resultType);
-		    } else if constexpr (std::is_pointer_v<T>) {
-			    constOperation =
-			        currentBlock->addTaggedOperation<ConstPtrOperation>(provenance, resultIdentifier, value);
-		    } else {
-			    // static_assert(false, "non-exhaustive visitor!");
-		    }
-	    },
-	    constant);
-
-	frame.setValue(resultIdentifier, constOperation);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processCast(ValueFrame& frame, BasicBlock* currentBlock,
-                                                                TraceOperation& operation) {
-	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto input = frame.getValue(createValueIdentifier(operation.input[0]));
-	auto castOperation = currentBlock->addTaggedOperation<CastOperation>(provenanceOf(operation), resultIdentifier,
-	                                                                     input, operation.resultType);
-	frame.setValue(resultIdentifier, castOperation);
-}
-
-void TraceToIRConversionPhase::IRConversionContext::processAlloca(ValueFrame& frame, BasicBlock* currentBlock,
-                                                                  TraceOperation& operation) {
-	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	AllocaIndex index = std::get<AllocaIndex>(operation.input[0]);
-	auto allocaOperation =
-	    currentBlock->addTaggedOperation<AllocaOperation>(provenanceOf(operation), resultIdentifier, index);
-	frame.setValue(resultIdentifier, allocaOperation);
+std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace, common::ArenaPool& pool,
+                                                         const compiler::CompilationUnitID& id) {
+	return convertTrace(*trace, std::make_shared<IRGraph>(pool.acquire(), id));
 }
 
 } // namespace nautilus::tracing

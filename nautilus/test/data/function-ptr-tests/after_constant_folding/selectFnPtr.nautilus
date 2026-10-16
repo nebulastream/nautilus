@@ -2,18 +2,18 @@ nautilus {
 execute($1:bool, $2:i32, $3:i32) :i32 {
 Block_0($1:bool, $2:i32, $3:i32):
 	$4 = * :ptr
-	if $1 ? Block_1($2, $3) : Block_2($2, $3) :void
+	if $1 ? Block_1() : Block_2() :void
 
-Block_1($2:i32, $3:i32):
+Block_1():
 	$6 = * :ptr
-	br Block_3($6, $2, $3) :void
+	br Block_3($6) :void
 
-Block_3($4:ptr, $2:i32, $3:i32):
+Block_3($4:ptr):
 	$7 = call $4($2,$3) :i32
 	return ($7) :i32
 
-Block_2($2:i32, $3:i32):
+Block_2():
 	$11 = * :ptr
-	br Block_3($11, $2, $3) :void
+	br Block_3($11) :void
 }
 } //nautilus

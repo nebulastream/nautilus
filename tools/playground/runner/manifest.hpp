@@ -48,7 +48,6 @@ struct StageMeta {
 // change", so IRPassManager never dumps it.
 inline constexpr StageMeta STAGE_TABLE[] = {
     {"after_tracing", "frontend", "Execution trace", 0},
-    {"after_ssa", "frontend", "Trace (SSA form)", 1},
     {"after_ir_creation", "frontend", "IR (initial)", 2},
     {"mermaid", "graph", "CFG (Mermaid, initial IR)", 3},
     {"graphviz", "graph", "CFG (Graphviz, initial IR)", 4},

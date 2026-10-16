@@ -4,17 +4,17 @@ Block_0():
 	$1 = 1 :i32
 	$2 = 8 :i32
 	$3 = $1 == $2 :bool
-	if $3 ? Block_1($1) : Block_2($1) :void
+	if $3 ? Block_1() : Block_2() :void
 
-Block_1($1:i32):
+Block_1():
 	$5 = 1 :i32
-	br Block_5($1, $5) :void
+	br Block_5($5) :void
 
-Block_5($1:i32, $5:i32):
+Block_5($5:i32):
 	$6 = $1 == $5 :bool
-	if $6 ? Block_3($1) : Block_4($1) :void
+	if $6 ? Block_3() : Block_4() :void
 
-Block_3($1:i32):
+Block_3():
 	$8 = 20 :i32
 	$9 = $1 + $8 :i32
 	$10 = 2 :i32
@@ -24,12 +24,12 @@ Block_6($1:i32, $10:i32):
 	$11 = $1 + $10 :i32
 	return ($11) :i32
 
-Block_4($1:i32):
+Block_4():
 	$14 = 2 :i32
 	br Block_6($1, $14) :void
 
-Block_2($1:i32):
+Block_2():
 	$13 = 1 :i32
-	br Block_5($1, $13) :void
+	br Block_5($13) :void
 }
 } //nautilus

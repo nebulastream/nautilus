@@ -1,7 +1,0 @@
-EXECUTE:
-B0($1:ptr,$2:i32)
-	CAST	$3	$2	:ui64
-	ADD	$4	$1	$3	:ptr
-	LOAD	$6	$4	:i8
-	RETURN	$0	$6	:i8
-

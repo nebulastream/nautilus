@@ -23,12 +23,12 @@ vector.ph:                                        ; preds = %.lr.ph.preheader
 
 vector.body:                                      ; preds = %vector.body, %vector.ph
   %index = phi i32 [ 0, %vector.ph ], [ %index.next, %vector.body ]
-  %vec.ind = phi <4 x i32> [ %induction, %vector.ph ], [ %vec.ind.next, %vector.body ]
   %vec.phi = phi <4 x i32> [ splat (i32 1), %vector.ph ], [ %5, %vector.body ]
   %vec.phi4 = phi <4 x i32> [ splat (i32 1), %vector.ph ], [ %6, %vector.body ]
+  %vec.ind = phi <4 x i32> [ %induction, %vector.ph ], [ %vec.ind.next, %vector.body ]
   %step.add = add <4 x i32> %vec.ind, splat (i32 -4)
-  %5 = mul <4 x i32> %vec.ind, %vec.phi
-  %6 = mul <4 x i32> %step.add, %vec.phi4
+  %5 = mul <4 x i32> %vec.phi, %vec.ind
+  %6 = mul <4 x i32> %vec.phi4, %step.add
   %index.next = add nuw i32 %index, 8
   %vec.ind.next = add <4 x i32> %vec.ind, splat (i32 -8)
   %7 = icmp eq i32 %index.next, %n.vec
@@ -41,16 +41,16 @@ middle.block:                                     ; preds = %vector.body
   br i1 %cmp.n, label %._crit_edge, label %.lr.ph.preheader5
 
 .lr.ph.preheader5:                                ; preds = %.lr.ph.preheader, %middle.block
-  %.ph = phi i32 [ %0, %.lr.ph.preheader ], [ %4, %middle.block ]
-  %.ph6 = phi i32 [ 1, %.lr.ph.preheader ], [ %8, %middle.block ]
+  %.ph = phi i32 [ 1, %.lr.ph.preheader ], [ %8, %middle.block ]
+  %.ph6 = phi i32 [ %0, %.lr.ph.preheader ], [ %4, %middle.block ]
   br label %.lr.ph
 
 .lr.ph:                                           ; preds = %.lr.ph.preheader5, %.lr.ph
-  %9 = phi i32 [ %12, %.lr.ph ], [ %.ph, %.lr.ph.preheader5 ]
-  %10 = phi i32 [ %11, %.lr.ph ], [ %.ph6, %.lr.ph.preheader5 ]
+  %9 = phi i32 [ %11, %.lr.ph ], [ %.ph, %.lr.ph.preheader5 ]
+  %10 = phi i32 [ %12, %.lr.ph ], [ %.ph6, %.lr.ph.preheader5 ]
   %11 = mul i32 %9, %10
-  %12 = add nsw i32 %9, -1
-  %13 = icmp samesign ugt i32 %9, 2
+  %12 = add nsw i32 %10, -1
+  %13 = icmp samesign ugt i32 %10, 2
   br i1 %13, label %.lr.ph, label %._crit_edge, !llvm.loop !4
 
 ._crit_edge:                                      ; preds = %.lr.ph, %middle.block, %1

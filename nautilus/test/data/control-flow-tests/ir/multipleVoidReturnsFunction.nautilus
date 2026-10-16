@@ -4,9 +4,9 @@ Block_0($1:ptr):
 	$3 = load($1) :i32
 	$4 = 10 :i32
 	$5 = $3 > $4 :bool
-	if $5 ? Block_1($1) : Block_2($1) :void
+	if $5 ? Block_1() : Block_2() :void
 
-Block_1($1:ptr):
+Block_1():
 	$8 = 1 :i32
 	store($8, $1) :void
 	br Block_3() :void
@@ -14,7 +14,7 @@ Block_1($1:ptr):
 Block_3():
 	return :void
 
-Block_2($1:ptr):
+Block_2():
 	$12 = 42 :i32
 	store($12, $1) :void
 	br Block_3() :void

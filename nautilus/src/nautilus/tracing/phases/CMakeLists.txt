@@ -1,7 +1,4 @@
-
-
 add_source_files(nautilus
-        SSACreationPhase.cpp
-        SSAVerifier.cpp
+        IRConversionSupport.cpp
         TraceToIRConversionPhase.cpp
 )

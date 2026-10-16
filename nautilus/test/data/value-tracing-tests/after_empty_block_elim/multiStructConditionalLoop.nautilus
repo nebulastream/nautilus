@@ -3,18 +3,18 @@ execute($1:i32, $2:i64) :i64 {
 Block_0($1:i32, $2:i64):
 	$3 = 0 :i64
 	$4 = $2 > $3 :bool
-	if $4 ? Block_1($1) : Block_6($2) :void
+	if $4 ? Block_1() : Block_6($2) :void
 
-Block_1($1:i32):
+Block_1():
 	$6 = 0 :i64
 	$7 = 0 :i32
-	br Block_5($6, $7, $1) :void
+	br Block_5($7, $6) :void
 
-Block_5($6:i64, $7:i32, $1:i32):
+Block_5($7:i32, $6:i64):
 	$8 = $7 < $1 :bool
-	if $8 ? Block_3($1, $6, $7) : Block_6($6) :void
+	if $8 ? Block_3() : Block_6($6) :void
 
-Block_3($1:i32, $6:i64, $7:i32):
+Block_3():
 	$10 = alloca[0] :ptr
 	$11 = 7 :i64
 	$12 = 8 :ui64
@@ -31,7 +31,7 @@ Block_3($1:i32, $6:i64, $7:i32):
 	$24 = $21 + $23 :i64
 	$25 = 1 :i32
 	$26 = $7 + $25 :i32
-	br Block_5($24, $26, $1) :void
+	br Block_5($26, $24) :void
 
 Block_6($2:i64):
 	return ($2) :i64

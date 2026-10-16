@@ -152,7 +152,6 @@ nautilus/
 │   │   │   │   └── Call* - Function calls
 │   │   │   ├── blocks/      # Basic block structures
 │   │   │   ├── phases/      # Optimization passes (7+ optimization phases)
-│   │   │   │   ├── SSACreationPhase.hpp - Convert to SSA form
 │   │   │   │   ├── ConstantPropagationPhase.hpp - Constant folding
 │   │   │   │   ├── DeadCodeElimination.hpp - Remove unused code
 │   │   │   │   ├── LoopAnalysisPhase.hpp - Detect and analyze loops
@@ -167,7 +166,7 @@ nautilus/
 │   │       └── asmjit/      # Direct assembly generation (experimental)
 │   │
 │   ├── tracing/             # **MAJOR SUBSYSTEM** - Execution tracing
-│   │   ├── phases/          # Tracing phases (SSA creation, IR conversion)
+│   │   ├── phases/          # Trace-to-IR conversion (builds SSA form)
 │   │   ├── tag/             # Tag system for symbolic execution
 │   │   ├── symbolic_execution/ # Symbolic execution engine
 │   │   ├── exceptions/      # Exception handling during tracing
@@ -221,7 +220,7 @@ nautilus/
 │   │   ├── regressions/     # Regression tests for fixed bugs
 │   │   ├── runtime-call-tests/
 │   │   ├── static-loop-tests/
-│   │   └── [each category contains: tracing/, ir/, after_ssa/ subdirectories]
+│   │   └── [each category contains: tracing/, ir/, after_constant_folding/, after_empty_block_elim/ subdirectories]
 │   │
 │   └── CMakeLists.txt       # Test compilation configuration
 │
@@ -538,8 +537,9 @@ Tests use a structured data format with three representations:
 ```
 test-category/
 ├── tracing/           # Direct execution trace (raw trace output)
-├── ir/                # Generated IR representation (control flow graph)
-└── after_ssa/         # Post-SSA transformation (optimized IR)
+├── ir/                # Generated IR in SSA form (control flow graph)
+├── after_constant_folding/   # IR after constant folding
+└── after_empty_block_elim/   # IR after empty block elimination
 ```
 
 ### CI/CD Pipeline (.github/workflows/)
@@ -648,21 +648,19 @@ IRGraph
 ### 3. Optimization Phases
 
 **Available Phases** (in `src/nautilus/compiler/ir/phases/`):
-1. **SSA Creation** - Convert execution trace to SSA form
-2. **Constant Propagation** - Compute constants at compile time
-3. **Dead Code Elimination** - Remove unused operations
-4. **Loop Analysis** - Identify and analyze loops
-5. **Control Flow Analysis** - Simplify branch structure
-6. **DataFlow Analysis** - Track data dependencies
-7. **Memory Optimization** - Optimize load/store operations
+1. **Constant Propagation** - Compute constants at compile time
+2. **Dead Code Elimination** - Remove unused operations
+3. **Loop Analysis** - Identify and analyze loops
+4. **Control Flow Analysis** - Simplify branch structure
+5. **DataFlow Analysis** - Track data dependencies
+6. **Memory Optimization** - Optimize load/store operations
 
 **Phase Application Order:**
-1. SSA creation (required first)
-2. Constant propagation
-3. Dead code elimination
-4. Loop analysis
-5. Control flow analysis
-6. Backend-specific optimizations
+1. Constant propagation (the IR arrives in SSA form from trace conversion)
+2. Dead code elimination
+3. Loop analysis
+4. Control flow analysis
+5. Backend-specific optimizations
 
 **Key Principle:** Phases must be **idempotent** and **composable** (order shouldn't break correctness).
 
@@ -834,7 +832,7 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
 
 # 5. Compare generated IR:
 # - Look in nautilus/test/data/
-# - Compare tracing/, ir/, after_ssa/ outputs
+# - Compare tracing/, ir/, after_constant_folding/ outputs
 ```
 
 ---
@@ -934,7 +932,7 @@ cmake --build . --target nautilus -- VERBOSE=1 2>&1 | grep time
 ### Optimization Order Matters
 
 ```
-SSA Creation
+Trace-to-IR Conversion (SSA form)
     ↓
 Constant Propagation (catch easy wins)
     ↓

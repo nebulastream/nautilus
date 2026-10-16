@@ -8,6 +8,7 @@
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
@@ -38,7 +39,6 @@
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/CopyAttribution.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
-#include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #endif
@@ -56,29 +56,50 @@ CompilationPipeline::~CompilationPipeline() = default;
 #if defined(ENABLE_COMPILER) && defined(ENABLE_TRACING)
 
 std::string createCompilationUnitID() {
-	// Get the current time point
-	// Create a timestamp string from the current time
+	// `<local date and time to the clock's precision>_#<7 hex digits>`. Every
+	// compile makes two of these, so neither part may cost much: a
+	// std::random_device opens the system's entropy source each time it is
+	// constructed, and formatting the calendar part is most of the rest.
+	const auto now = std::chrono::system_clock::now();
+	const auto second = std::chrono::floor<std::chrono::seconds>(now);
+	thread_local std::chrono::sys_seconds formattedSecond {};
+	thread_local std::string formattedPrefix;
+	if (formattedPrefix.empty() || second != formattedSecond) {
+		formattedPrefix = fmt::format(fmt::runtime("{:%Y-%m-%d_%H-%M-%S}"), second);
+		formattedSecond = second;
+	}
+	// The sub-second digits, as many as fmt prints for the clock's period.
+	constexpr auto fractionDigits = [] {
+		int digits = 0;
+		for (auto den = std::chrono::system_clock::period::den; den > 1; den /= 10) {
+			++digits;
+		}
+		return digits;
+	}();
+	const auto fraction = (now - second).count();
 
-	auto now = std::chrono::system_clock::now();
-	std::string timestamp = fmt::format(fmt::runtime("{:%Y-%m-%d_%H-%M-%S}"), now);
-
-	// Create a random device and generator
-	std::random_device rd;
-	std::mt19937 generator(rd());
-	std::uniform_int_distribution<> distribution(0, 15);
-
-	// Generate a 7-character UUID
-	std::string uuid;
-	for (int i = 0; i < 7; ++i) {
-		int random_number = distribution(generator);
-		if (random_number < 10)
-			uuid += std::to_string(random_number);
-		else
-			uuid += char('A' + random_number - 10);
+	// One process-wide splitmix64 sequence, seeded once: distinct suffixes for
+	// every compile in this process, unpredictable across processes.
+	static std::atomic<uint64_t> state = [] {
+		std::random_device device;
+		return (static_cast<uint64_t>(device()) << 32) | device();
+	}();
+	uint64_t mixed = state.fetch_add(0x9E3779B97F4A7C15ull, std::memory_order_relaxed) + 0x9E3779B97F4A7C15ull;
+	mixed = (mixed ^ (mixed >> 30)) * 0xBF58476D1CE4E5B9ull;
+	mixed = (mixed ^ (mixed >> 27)) * 0x94D049BB133111EBull;
+	mixed ^= mixed >> 31;
+	char suffix[7];
+	for (auto& digit : suffix) {
+		digit = "0123456789ABCDEF"[mixed & 0xF];
+		mixed >>= 4;
 	}
 
-	// Concatenate timestamp and UUID
-	return timestamp + "_#" + uuid;
+	if constexpr (fractionDigits == 0) {
+		return fmt::format("{}_#{}", formattedPrefix, std::string_view(suffix, sizeof(suffix)));
+	} else {
+		return fmt::format("{}.{:0{}}_#{}", formattedPrefix, fraction, fractionDigits,
+		                   std::string_view(suffix, sizeof(suffix)));
+	}
 }
 
 namespace {
@@ -222,22 +243,16 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		dumpHandler.forceDump("copy_sites", "txt", tracing::formatCopySites(*traceModule, copySiteResolver));
 	}
 
-	const auto ssaStart = std::chrono::steady_clock::now();
-	auto ssaCreationPhase = tracing::SSACreationPhase();
-	auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
-	if (statistics != nullptr) {
-		statistics->recordTimingMs("ssaCreation.ms", ssaStart);
-	}
-	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSAModule->toString(); });
-
 	const auto irGenStart = std::chrono::steady_clock::now();
-	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-	auto ir = irGenerationPhase.apply(afterSSAModule, *irArenaPool_, compilationId);
+	auto ir = tracing::TraceToIRConversionPhase().apply(std::move(traceModule), *irArenaPool_, compilationId);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("irGeneration.ms", irGenStart);
+	}
+	if (statistics != nullptr) {
 		const auto snapshot = ir::computeStatistics(*ir);
 		statistics->set("ir.functions", static_cast<int64_t>(snapshot.numFunctions));
 		statistics->set("ir.blocks", static_cast<int64_t>(snapshot.numBlocks));
+		statistics->set("ir.blockArguments", static_cast<int64_t>(snapshot.numBlockArguments));
 		statistics->set("ir.operations", static_cast<int64_t>(snapshot.numOperations));
 	}
 	dumpHandler.dump("after_ir_creation", "nautilus", [&]() { return ir->toString(irPrintOptions); });

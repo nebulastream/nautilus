@@ -29,11 +29,9 @@ User Function (C++ with val<T>)
     |
 Tracing (symbolic execution, records all operations)
     |
-Execution Trace (linear sequence of recorded operations)
+Execution Trace (recorded operations, grouped into blocks)
     |
-SSA Creation (Static Single Assignment form)
-    |
-IR Generation (Control Flow Graph with basic blocks)
+IR Generation (Control Flow Graph in SSA form)
     |
 Optimization Phases
     |-- Constant Propagation
@@ -51,9 +49,7 @@ Executable Function
 
 **Tracing** executes the user function with symbolic `val<T>` arguments and captures every operation.
 
-**SSA Creation** converts the flat execution trace into Static Single Assignment form, where each variable is assigned exactly once. This representation makes subsequent analysis and optimization straightforward.
-
-**IR Generation** builds a control flow graph (CFG) from the SSA trace. The IR consists of basic blocks connected by branch and jump edges. Each block contains a sequence of IR operations (arithmetic, comparisons, loads, stores, function calls).
+**IR Generation** builds a control flow graph (CFG) in Static Single Assignment form from the trace: every value is defined exactly once, and where control flow merges different values of a variable, the merge block takes them as block arguments (the IR's phis). The IR consists of basic blocks connected by branch and jump edges. Each block contains a sequence of IR operations (arithmetic, comparisons, loads, stores, function calls).
 
 **Optimization Phases** transform the IR to produce more efficient code. Constant propagation evaluates operations on known constants at compile time. Dead code elimination removes operations whose results are never used. Loop analysis identifies loop structures and their properties. Control flow analysis simplifies branch structures and removes unreachable blocks.
 
@@ -176,7 +172,6 @@ options.setOption("dump.file", true);     // Write to temp folder (default: true
 
 // Individual compilation stages:
 options.setOption("dump.after_tracing", true);         // Raw execution trace
-options.setOption("dump.after_ssa", true);              // After SSA transformation
 options.setOption("dump.after_ir_creation", true);      // Nautilus IR (control flow graph)
 options.setOption("dump.after_mlir_generation", true);  // MLIR output (MLIR backend only)
 options.setOption("dump.after_llvm_generation", true);  // LLVM IR output (MLIR backend only)

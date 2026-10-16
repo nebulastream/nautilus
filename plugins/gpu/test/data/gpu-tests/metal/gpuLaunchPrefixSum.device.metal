@@ -16,8 +16,6 @@ uint var_$8;
 uint var_$9;
 uint var_$10;
 bool var_$11;
-device uchar* var_$5;
-device uchar* var_$4;
 uint var_$13;
 uint var_$14;
 bool var_$15;
@@ -45,12 +43,6 @@ var_$10 = var_$8+var_$9;
 var_$11 = var_$10 < var_$3;
 if (var_$11){
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$2;
-device uchar* temp_2 = var_$1;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$4 = temp_2;
 }
 __pc = 1; continue;
 }else{
@@ -62,16 +54,10 @@ case 1: {
 var_$13 = (uint)0;
 var_$14 = (uint)0;
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$5;
-uint temp_2 = var_$13;
-uint temp_3 = var_$14;
-device uchar* temp_4 = var_$4;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$13 = temp_2;
-var_$14 = temp_3;
-var_$4 = temp_4;
+uint temp_0 = var_$14;
+uint temp_1 = var_$13;
+var_$14 = temp_0;
+var_$13 = temp_1;
 }
 __pc = 2; continue;
 }
@@ -79,26 +65,10 @@ case 2: {
 var_$15 = var_$14 <= var_$10;
 if (var_$15){
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$5;
-uint temp_2 = var_$14;
-device uchar* temp_3 = var_$4;
-uint temp_4 = var_$13;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$14 = temp_2;
-var_$4 = temp_3;
-var_$13 = temp_4;
 }
 __pc = 3; continue;
 }else{
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$5;
-uint temp_2 = var_$13;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$13 = temp_2;
 }
 __pc = 4; continue;}
 }
@@ -106,22 +76,16 @@ case 3: {
 var_$17 = (ulong)4;
 var_$18 = (ulong)var_$14;
 var_$19 = var_$18*var_$17;
-var_$20 = var_$4+var_$19;
+var_$20 = var_$1+var_$19;
 var_$21 = *((device uint*)(var_$20));
 var_$22 = var_$13+var_$21;
 var_$23 = (uint)1;
 var_$24 = var_$14+var_$23;
 {
-uint temp_0 = var_$10;
-device uchar* temp_1 = var_$5;
-uint temp_2 = var_$22;
-uint temp_3 = var_$24;
-device uchar* temp_4 = var_$4;
-var_$10 = temp_0;
-var_$5 = temp_1;
-var_$13 = temp_2;
-var_$14 = temp_3;
-var_$4 = temp_4;
+uint temp_0 = var_$24;
+uint temp_1 = var_$22;
+var_$14 = temp_0;
+var_$13 = temp_1;
 }
 __pc = 2; continue;
 }
@@ -129,7 +93,7 @@ case 4: {
 var_$31 = (ulong)4;
 var_$32 = (ulong)var_$10;
 var_$33 = var_$32*var_$31;
-var_$34 = var_$5+var_$33;
+var_$34 = var_$2+var_$33;
 *((device uint*)(var_$34)) = var_$13;
 {
 }

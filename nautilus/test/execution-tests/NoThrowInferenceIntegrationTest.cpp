@@ -11,7 +11,6 @@
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
-#include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
@@ -59,8 +58,7 @@ std::shared_ptr<compiler::ir::IRGraph> traceToIR(const std::function<void()>& fu
 	std::list<compiler::CompilableFunction> functionsToTrace;
 	functionsToTrace.emplace_back("execute", func);
 	auto trace = tracing::TraceContext::Trace(functionsToTrace, engine::Options(), arena);
-	auto afterSSA = tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace)));
-	return tracing::TraceToIRConversionPhase().apply(std::move(afterSSA));
+	return tracing::TraceToIRConversionPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace)));
 }
 
 void runPass(compiler::ir::IRGraph& ir) {

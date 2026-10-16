@@ -1,7 +1,0 @@
-EXECUTE:
-B0($1:ptr)
-	CONST	$2	-1	:i64
-	CAST	$4	$2	:ui32
-	STORE	$5	$1	$4	:void
-	RETURN	$0	:void
-
