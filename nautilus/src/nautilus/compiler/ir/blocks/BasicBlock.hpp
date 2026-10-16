@@ -149,6 +149,14 @@ public:
 	/// enforces both of those as safety rails before calling this.
 	void removeOperation(Operation* operation);
 
+	/// Removes every operation for which @p pred returns true, in one linear
+	/// sweep that keeps the remaining operations in order. Same contract as
+	/// @ref removeOperation for each removed op.
+	template <typename Pred>
+	void removeOperationsIf(Pred&& pred) {
+		std::erase_if(operations, std::forward<Pred>(pred));
+	}
+
 	/// Inserts @p operation immediately before @p before in the operation
 	/// list (or appends it if @p before is not found). A plain positional
 	/// insert: since it only ever moves non-terminator operations earlier in

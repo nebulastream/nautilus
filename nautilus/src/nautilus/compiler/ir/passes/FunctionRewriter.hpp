@@ -12,6 +12,7 @@
 #include <memory_resource>
 #include <span>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nautilus::compiler::ir {
@@ -167,6 +168,42 @@ public:
 	/// operation is a no-op. Returns the number of operations erased.
 	size_t eraseIfDead(Operation* op);
 
+	// ── Batched replacement and erasure (no per-op list shifting) ──
+
+	/// Arena-allocates a `T` that takes over @p old's slot in its block:
+	/// every use of @p old moves to the new op, @p old's own operand uses
+	/// are dropped, and @p old leaves the session as if erased (its operands
+	/// are not touched -- pair with @ref eraseIfDeadDeferred to sweep the
+	/// ones it orphaned). Unlike `createBefore` followed by `erase`, nothing
+	/// is inserted into or removed from the block's operation list, so k
+	/// replacements in one block cost O(k + block size) in total instead of
+	/// O(k * block size). Throws `RuntimeException` (mutating nothing) if
+	/// @p old is a terminator or not tracked by this session.
+	template <typename T, typename... Args>
+	T* createReplacing(Operation* old, Args&&... args) {
+		checkReplaceable(old);
+		T* op = arena_.create<T>(arena_, std::forward<Args>(args)...);
+		replaceInSlot(old, op);
+		return op;
+	}
+
+	/// `eraseIfDead`, except that the erased operations stay in their
+	/// block's operation list until @ref compactErasedOperations removes
+	/// them all, in one sweep per block. The use table and `definingBlock`
+	/// are updated immediately, exactly as with `eraseIfDead`. Until the
+	/// sweep, a block's raw operation list still holds the erased ops, so
+	/// callers must not walk it in between.
+	size_t eraseIfDeadDeferred(Operation* op);
+
+	/// Removes every operation erased by @ref eraseIfDeadDeferred from its
+	/// block: one linear sweep per affected block. Also run by the
+	/// destructor, so a session never leaves erased ops behind.
+	void compactErasedOperations();
+
+	~FunctionRewriter();
+	FunctionRewriter(const FunctionRewriter&) = delete;
+	FunctionRewriter& operator=(const FunctionRewriter&) = delete;
+
 	// ── Block arguments (both sides of the arity invariant, atomically) ──
 
 	/// Precondition: the argument has no uses. Removes argument slot @p
@@ -262,6 +299,17 @@ private:
 	/// than patching indices in place).
 	void unregisterUser(Operation* user);
 
+	/// Shared body of `eraseIfDead` and `eraseIfDeadDeferred`.
+	size_t eraseIfDeadImpl(Operation* op, bool deferred);
+	/// Throws unless @p old is a live, non-terminator op of this session.
+	void checkReplaceable(const Operation* old) const;
+	/// Puts @p replacement into @p old's slot and moves @p old's uses to it.
+	void replaceInSlot(Operation* old, Operation* replacement);
+	/// Index of @p op in @p block's operation list, from a per-op cache that
+	/// is validated on every lookup and rebuilt for the whole block when an
+	/// insertion or removal elsewhere has shifted it.
+	size_t slotOf(BasicBlock* block, const Operation* op);
+
 	FunctionOperation& fn_;
 	common::Arena& arena_;
 	const IRGraph* ir_ = nullptr;
@@ -270,6 +318,16 @@ private:
 	std::pmr::unordered_map<const Operation*, std::pmr::vector<Use>> uses_;
 	std::pmr::unordered_map<const Operation*, BasicBlock*> defBlock_;
 	uint32_t nextId_ = 0;
+	/// Slot cache for `createReplacing`; built lazily, so sessions that never
+	/// replace in place pay nothing for it. Lives in `tableMemory_` like the
+	/// use table, which keeps a large batch of replacements off the heap.
+	std::pmr::unordered_map<const Operation*, size_t> slotIndex_ {&tableMemory_};
+	/// Operations erased by `eraseIfDeadDeferred` but still in their block's
+	/// list, and the blocks holding them, awaiting `compactErasedOperations`.
+	std::pmr::unordered_set<const Operation*> pendingErase_ {&tableMemory_};
+	std::vector<BasicBlock*> dirtyBlocks_;
+	/// Scratch for the erase cascade, reused across calls.
+	std::vector<Operation*> eraseWorklist_;
 };
 
 } // namespace nautilus::compiler::ir
