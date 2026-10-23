@@ -129,9 +129,12 @@ quadratic.
 | 1000 | 6.5 M instructions | 18% | 1.9 M |
 | 5000 | 132.7 M (20x for 5x calls) | 49% | 9.4 M (linear) |
 
-The superlinear call cost is AsmJit's liveness analysis, not our lowering's
-own work and not the local allocator. The test function has no exception
-branches.
+The superlinear call cost is in `buildLiveness()`, not in our lowering's
+own work or the local allocator. Its cause turned out to be Nautilus's own
+patch to that pass: a linear walk over all calls for every register. With
+a binary search, `buildLiveness()` takes 1.7 M / 9.0 M instructions at
+N = 1000 / 5000 (linear), the whole compile at 5000 calls drops by 46%, and
+the generated code is identical ([05 §4.3](05-backends.md)).
 
 ### MLIR (not built here)
 
@@ -174,9 +177,8 @@ representation and passes, T = tracing, B = backends.
    with many call sites (real operators). It is part of the frontend
    milestone (M2).
 4. **AsmJit's call handling is superlinear:** 70–76% of compile time on
-   call-heavy code, caused by `buildLiveness()`. `asmjit` keeps AsmJit's
-   allocator, and the liveness cost is isolated and fixed as a bounded task
-   (M4).
+   call-heavy code, caused by a quadratic loop in Nautilus's AsmJit liveness
+   patch. Fixed on `main`; `asmjit` keeps AsmJit's allocator.
 5. **The backend share is 11–30%.** AsmJit's allocator itself is ~40% of
    that on linear code. It stays, because it guarantees 0.3's code quality;
    the lowering around it gets cheaper with NIR. For small

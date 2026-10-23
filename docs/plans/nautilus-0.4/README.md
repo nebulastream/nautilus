@@ -89,7 +89,7 @@ from nautilus-duck.
 | **On TPC-H (#561), 61% of tracing is re-runs** (4,687 re-runs replaying 631,000 recorded ops), and **39% of recorded ops are `val` copies** | Cheaper follow and paused paths, early end of paused passes, fewer copies ([01 §4](01-tracing-frontend.md)) |
 | **Tag-trie fan-out costs about 3x tracing per op** with many distinct call sites | Hashed trie children ([01](01-tracing-frontend.md)) |
 | **3–5 heap allocations per IR op on linear code, 18–25 on branchy code;** every op materialized twice | Flat trace and NIR in recycled arrays ([02](02-nir.md)) |
-| **AsmJit is superlinear on call-heavy code** (~4 µs per call at 5000 calls); the cause is AsmJit's liveness analysis (quadratic in calls) | `asmjit` keeps AsmJit's allocator and fixes the call-heavy liveness cost; its other costs drop with NIR ([05](05-backends.md)) |
+| **AsmJit is superlinear on call-heavy code** (~4 µs per call at 5000 calls); the cause was a quadratic loop in Nautilus's own AsmJit liveness patch, now fixed (−46% compile time at 5000 calls, identical code) | `asmjit` keeps AsmJit's allocator; its remaining costs drop with NIR ([05](05-backends.md)) |
 | **MLIR has a fixed cost of 3–10 ms per compile** | #561's per-thread state reuse becomes part of the MLIR backend ([05](05-backends.md)) |
 
 ## 3. Architecture
@@ -193,7 +193,7 @@ releases and no temporary formats.
 | **M1 Foundations** | NIR format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; bridge `IRGraph` → NIR (internal, removed before release); latency corpus driver added and running in CI | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
 | **M2 Frontend** | Flat trace with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; TPC-H re-run share ≤ 35% of tracing; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
 | **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
-| **M4 Backends** | `bc`/`tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator, fewer virtual registers, and the call-heavy liveness cost fixed; decision D3 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
+| **M4 Backends** | `bc`/`tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; decision D3 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
 | **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold; every #527/#528 negative test ported and failing closed |
 | **M6 Semantics and extensions** | Declared call effects and cheaper exception handling; signless integers; extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
 | **M7 Release** | Remove `IRGraph`, the old passes and the bridge; migration guide; user documentation (§6.2); NebulaStream integration; x86-64 and AArch64; sanitizers | Release criteria below |
@@ -267,7 +267,6 @@ the migration guide from 0.3.
 | Region-based explicit control flow has corner cases | `region()`'s rules and diagnostics; fuzzer with mixed functions; #300's tests as the base |
 | In-memory = wire layout constrains evolution | Per-section strides and feature bits; derived data never serialized |
 | Provenance classes miss a raw-address path | Fail closed by default; #527's negative tests |
-| The call-heavy liveness cost is inside AsmJit | Isolate first (our lowering vs. AsmJit); fix in our lowering or upstream; MLIR or `tbc` for very large call-heavy functions until then |
 | Wrong `nothrow`/`pure` declarations | Debug-mode checks (terminate handler, shadow effect checks) ([06 §3.3](06-semantics.md)) |
 | L2 hash collisions | 128-bit hash plus a full image comparison on hit |
 

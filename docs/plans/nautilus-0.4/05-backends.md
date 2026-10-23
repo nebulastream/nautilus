@@ -59,7 +59,8 @@ selects single-tier compilation with exactly that backend.
 
 The 0.4 `asmjit` backend keeps AsmJit's `Compiler`, its register allocator
 and the post-RA peephole passes. What changes is everything around them:
-the input (NIR), the side tables, and the call-heavy liveness cost.
+the input (NIR) and the side tables. The call-heavy liveness cost was a bug in
+our own AsmJit patch and is already fixed (§4.3).
 
 Why not our own single-pass allocator (P0 and the profile in
 [p0-baseline.md](p0-baseline.md)):
@@ -71,9 +72,9 @@ Why not our own single-pass allocator (P0 and the profile in
   that.
 - **Keeping it guarantees no code-quality regression** and avoids writing
   and maintaining an allocator.
-- **The one real problem is contained:** `BaseRAPass::buildLiveness()`
-  grows quadratically on call-heavy functions (§4.3), and is investigated
-  as a bounded task.
+- **The one real problem was ours:** the quadratic liveness cost on
+  call-heavy functions came from Nautilus's patch to AsmJit's liveness pass,
+  and is fixed (§4.3).
 
 A custom linear-scan allocator on `Assembler` stays a possible later step,
 taken only if real workloads (TPC-H, NebulaStream) still show the allocator
@@ -102,31 +103,36 @@ landed.
 | Use counts, layout | recomputed (`ir::countUsages`) | from NIR (`useCount`, `BlockInfo`) |
 | Constants | constant-inlining special cases | `ConstPool` operands become immediates where the instruction allows |
 | Virtual registers | one per IR value | created on first use and reused after last use where the type allows, to shrink the allocator's work |
-| Call-heavy functions | quadratic liveness (§4.3) | fixed in how we emit code, or upstream |
+| Call-heavy functions | quadratic liveness in our AsmJit patch (§4.3) | fixed on `main` before 0.4 |
 
-### 4.3 The call-heavy liveness cost
+### 4.3 The call-heavy liveness cost (found and fixed)
 
-Measured on `calls` (N runtime calls in one function, `main`, callgrind):
+P0 measured `calls` (N runtime calls in one straight-line function) as
+superlinear: `BaseRAPass::buildLiveness()` grew 20x for 5x the calls and
+took 49% of the compile at N = 5000.
 
-| N | `buildLiveness()` instructions | Share of the compile | Local allocator |
-|---|---|---|---|
-| 1000 | 6.5 M | 18% | 1.9 M |
-| 5000 | 132.7 M (**20x** for 5x calls) | **49%** | 9.4 M (linear) |
+**Cause:** Nautilus's own patch to AsmJit's liveness pass
+(`third_party/asmjit/src/asmjit/core/rapass.cpp`, the `[Nautilus]` blocks).
+The patch marks registers whose live range spans a call, so that they get a
+callee-saved register. To find the first call inside a register's live
+range, it walked the call list from the start for every register: O(calls ×
+registers).
 
-The test function has no exception branches, so this is not one block per
-call. The cause is not yet isolated. Candidates, checked in this order:
-1. how long values stay live across calls (constants and arguments
-   materialized early);
-2. the number of virtual registers we create per call (argument and result
-   registers);
-3. AsmJit's liveness algorithm itself.
+**Fix** (a separate PR against `main`):
+- a binary search for the first call of each span;
+- an early exit once a register's survival mask covers the union of every
+  call's clobbers.
 
-The first two are fixable in our lowering. The third is reported upstream,
-with the reproducer from the latency corpus. Exit: `calls` linear in N, or
-a documented upstream issue with the measured bound.
+The generated code is byte-identical on every corpus case checked.
 
-TPC-H kernels are small (median 266 MLIR ops, #561), so this rarely shows
-up there. It matters for large generated functions.
+| `calls`, asmjit | `buildLiveness()` before | after | Whole compile before | after |
+|---|---|---|---|---|
+| N = 1000 | 6.5 M instructions | 1.7 M | 35.6 M | 30.8 M |
+| N = 5000 | 132.7 M | 9.0 M (linear) | 268.3 M | 144.7 M (−46%) |
+
+The rest of the call cost is our lowering (`AsmJitLoweringProvider::lower`,
+linear). NIR's array side tables and fewer virtual registers (§4.2) address
+it.
 
 ### 4.4 Targets
 
@@ -138,7 +144,7 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
   benchmark. It is a release criterion.
 - **Compile time:**
   - backend ≤ 0.25 µs/op on linear code (0.3: ~0.4 µs/op);
-  - `calls` linear in N (§4.3).
+  - `calls` linear in N (§4.3, already true after the fix).
 - **Coverage:** every `asmjit` test passes on x86-64 and AArch64, including
   exceptions and every in-tree extension.
 
@@ -148,8 +154,8 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
    `ConstPool` immediates.
 2. Reduce virtual-register churn (create on first use, reuse after last
    use).
-3. Isolate and fix the call-heavy liveness cost (§4.3), on x86-64 and
-   AArch64.
+3. Confirm the call-heavy fix (§4.3) on NIR on x86-64 and AArch64, with the
+   `calls` corpus case in CI.
 
 ## 5. MLIR → LLVM
 
@@ -196,9 +202,9 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
 
 ## 9. Risks
 
-- **The call-heavy liveness cost is inside AsmJit.** If our lowering does
-  not cause it, it needs an upstream fix. Until then it bounds very large
-  call-heavy functions; MLIR or `tbc` remain options for them.
+- **Other superlinear paths in our AsmJit patches.** The call-heavy case was
+  one. The corpus (`calls`, `straight`, `loopBody` at 10k+ ops) runs in CI
+  and guards against the next one.
 - **AsmJit's allocator stays a fixed cost** (~0.17 µs/op on linear code).
   If the frontend and conversion work makes it dominant, a custom allocator
   becomes the next step, decided on TPC-H and NebulaStream data.
