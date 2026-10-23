@@ -118,7 +118,7 @@ callee-saved register. To find the first call inside a register's live
 range, it walked the call list from the start for every register: O(calls ×
 registers).
 
-**Fix** (a separate PR against `main`):
+**Fix** (#565, against `main`):
 - a binary search for the first call of each span;
 - an early exit once a register's survival mask covers the union of every
   call's clobbers.
