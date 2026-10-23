@@ -199,44 +199,76 @@ What keeps the in-memory format free to evolve:
   maps, liveness and spill slots are all arrays. No hash map remains on a
   per-operand path.
 
-### 4.1 Arena management (to revisit)
+### 4.1 Arena management
 
 Trace and NIR memory comes from arenas, so arena policy decides how much
-memory a long-running engine keeps. 0.4 revisits it in M1, together with the
-NIR layout.
+memory a long-running engine keeps. 0.4 replaces 0.3's pool of whole arenas
+with a bounded pool of chunks (M1).
 
-**Today (0.3):**
-- **Pools:** each engine has one `ArenaPool` for traces and one for IR
-  graphs. Each pool keeps up to 8 spare arenas
-  (`ArenaPool::DEFAULT_MAX_SPARES`).
-- **Recycling keeps chunks:** a returned arena is `softReset()`, which keeps
-  its heap chunks, so the next compile allocates nothing.
-- **Effect:** the engine keeps the high-water mark of its largest compiles
-  for its lifetime, for up to 8 concurrent compiles per pool. **Measured:**
-  after one compile of about 20,000 ops, 22.5 MB of heap stays held with
-  `asmjit` or `tbc` and about 22 MB with MLIR. Freeing the chunks on release
-  instead brings that down to 0.3–1.4 MB.
+**0.3 and what it costs:**
+- **Pools of whole arenas:** each engine has one `ArenaPool` for traces and
+  one for IR graphs, each keeping up to 8 spare arenas
+  (`ArenaPool::DEFAULT_MAX_SPARES`). A returned arena is `softReset()` and
+  keeps its heap chunks, so the next compile allocates nothing.
+- **The high-water mark is pinned:** the engine keeps the chunks of its
+  largest compiles for its lifetime, for up to 8 concurrent compiles per
+  pool. **Measured:** after one compile of about 20,000 ops, 22.5 MB of heap
+  stays held with `asmjit` or `tbc` and about 22 MB with MLIR.
+- **Freeing to `malloc` is not enough:** with the chunks freed on release,
+  the heap drops to 0.3–1.4 MB, but RSS stays at about 35 MB, because glibc
+  keeps the memory. Bounding RSS needs chunks that go back to the OS.
 
-**To decide in M1** (measured on the latency corpus and the NebulaStream
-suite):
-- **A retention cap:** on release, keep chunks up to a per-arena byte budget
-  and free the rest. The budget is per engine
-  (`engine.arena.retainedBytes`), and the spare count stays configurable.
-- **Size-aware reuse:** hand large compiles an arena that already has large
-  chunks, instead of whichever spare is first.
-- **Lifetimes per level:**
-  - the trace arena is released right after conversion;
-  - an SSA-level NIR module stays alive only while a backend, a pending
-    promotion ([11](11-tiered-compilation.md)) or the serializer
-    ([07](07-serialization.md)) needs it.
-- **Arenas or sized arrays for NIR sections:** the flat sections (`insts`,
-  `extra`, side tables) may be better served by arrays reserved from the
-  trace's op count than by bump allocation.
-- **Visibility:** pool bytes held and peak arena bytes are reported in the
-  statistics ([10](10-observability.md)).
+**Design:**
 
-**Target:** memory held by idle pools stays bounded by the budget, and
-compile latency on the corpus does not regress.
+1. **Fixed chunk sizes.** Chunks grow from 64 KiB to 1 MiB, then stay at
+   1 MiB. A request above half a chunk gets a dedicated allocation that is
+   freed when its arena is released and never pooled, so a single huge
+   compile cannot pin its peak.
+2. **One chunk pool per engine, with a per-thread cache.** An arena is a
+   cheap object (header plus inline buffer). It takes chunks from a small
+   per-thread cache, then from the engine's shared pool, then from the OS,
+   and returns them the same way.
+   - The steady state stays allocation-free, as in 0.3.
+   - The common path takes no lock.
+   - The trace and IR pools of 0.3 become one pool of chunks.
+3. **A byte budget with decay.**
+   - The pool holds at most `engine.arena.retainedBytes`. The default is a
+     few MiB per active compile thread under a fixed total cap, set in M1
+     from the corpus and the NebulaStream suite.
+   - Chunks beyond the budget go back to the OS immediately.
+   - Chunks unused for a few seconds are trimmed lazily on acquire and
+     release, with no background thread.
+   - `NautilusEngine::trimMemory()` lets an embedder react to memory
+     pressure.
+4. **Page-backed chunks.** 1 MiB chunks are allocated with `mmap`. A retired
+   chunk is released with `madvise(MADV_DONTNEED)` on Linux
+   (`MADV_FREE_REUSABLE` on macOS), so RSS drops while the address range
+   stays reusable.
+5. **Transient and persistent memory are separate.**
+   - Tracing and conversion scratch memory uses the recycled arenas.
+   - At the end of conversion, the SSA-level NIR module is compacted into
+     exact-size flat buffers, reserved from the trace's op count. NIR
+     already rewrites by copying (§4), so this costs one copy that the
+     conversion makes anyway.
+   - Modules that outlive the compile (a pending promotion
+     ([11](11-tiered-compilation.md)), the L0 cache ([08](08-caching.md)),
+     serialization ([07](07-serialization.md))) therefore never hold arena
+     chunks. Retention only concerns memory that is reused all the time.
+   - The trace arena is returned right after conversion.
+6. **An embedder hook.** The engine accepts an optional chunk provider, so
+   NebulaStream can charge compiler memory to its own budget and limit it.
+7. **Accounting.** Atomic counters for bytes held, bytes in use, the peak per
+   compile and chunks trimmed, reported in the statistics
+   ([10](10-observability.md)) and the latency corpus.
+
+**Effect:** compile latency stays as in 0.3 (allocation-free steady state).
+After a large compile the engine holds at most the budget, and RSS actually
+drops. Compiler memory becomes predictable and, through the hook,
+enforceable by the embedder.
+
+**Prior art:** HotSpot's arena chunk pools (fixed chunk sizes, periodic
+pruning) and V8's compiler zones (pooled segments with a cap) solve the same
+problem the same way.
 
 ## 5. Cost comparison for one binary `add` (x86-64)
 
@@ -293,9 +325,8 @@ IR operation.
 - Every execution test's IR round-trips through bridge → printer →
   serializer → loader with byte-identical re-serialization.
 - No hash map on any NIR per-operand path.
-- The arena policy of §4.1 decided and measured: memory held by idle pools is
-  bounded by the retention budget, with no compile-latency regression on the
-  corpus.
+- The chunk pool of §4.1 in place: after a large compile, held memory and
+  RSS return to the budget; no compile-latency regression on the corpus.
 
 ## 9. Risks
 
@@ -304,5 +335,8 @@ IR operation.
   format.
 - **Dense-id drift.** The verifier checks it; ids are minted only by the
   builder or rewriter.
+- **Arena budget too small:** compiles allocate from the OS again and slow
+  down. The budget is configurable, its defaults come from the corpus, and
+  the trimmed-chunk counter makes it visible.
 - **Format churn shows up as dump churn.** Regenerate in isolated, reviewed
   commits.
