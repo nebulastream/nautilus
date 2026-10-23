@@ -85,7 +85,8 @@ std::vector<Operation*> substitutedArguments(const BasicBlockInvocation& predInv
 }
 
 bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+	ScopedRewriter scopedRewriter(fn, arena);
+	FunctionRewriter& rewriter = *scopedRewriter;
 
 	bool anyChanged = false;
 	bool changed = true;

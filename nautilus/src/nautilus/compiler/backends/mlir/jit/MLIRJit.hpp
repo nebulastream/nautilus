@@ -8,11 +8,29 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Support/CodeGen.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Target/TargetMachine.h>
 #include <memory>
 #include <mlir/IR/BuiltinOps.h>
 #include <string>
 
 namespace nautilus::compiler::mlir {
+
+/**
+ * A TargetMachine for the host, made once per thread for each (CPU, codegen
+ * level) and reused by every compile on that thread.
+ *
+ * Building a TargetMachine queries the host CPU, and the first function each
+ * one sees builds its subtarget (feature bits, scheduling model); for a small
+ * kernel the two cost more than optimizing and emitting it. A TargetMachine
+ * keeps its subtargets cached, so reusing one pays that once per thread
+ * instead of once or twice per compile. Per thread because a TargetMachine is
+ * not safe to share: building a subtarget mutates its cache.
+ *
+ * @param cpu pins the CPU, with a fixed baseline feature set, when not empty;
+ * the host CPU and features otherwise.
+ */
+llvm::Expected<llvm::TargetMachine*> threadLocalHostTargetMachine(llvm::CodeGenOptLevel level,
+                                                                  const std::string& cpu = "");
 
 /**
  * Nautilus-owned JIT engine for a single compiled MLIR module.

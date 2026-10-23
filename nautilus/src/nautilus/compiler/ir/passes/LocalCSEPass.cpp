@@ -119,7 +119,8 @@ ValueKey makeKey(Operation* op) {
 }
 
 bool applyToFunction(const IRGraph& ir, FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena, &ir);
+	ScopedRewriter scopedRewriter(fn, arena, &ir);
+	FunctionRewriter& rewriter = *scopedRewriter;
 	bool changed = false;
 
 	for (auto* block : fn.getBasicBlocks()) {

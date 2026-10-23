@@ -6,10 +6,13 @@
 #include "nautilus/compiler/ir/blocks/BasicBlockArgument.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include "nautilus/compiler/ir/passes/OperationTable.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <memory_resource>
+#include <optional>
 #include <span>
 #include <unordered_map>
 #include <unordered_set>
@@ -44,7 +47,8 @@ class FunctionOperation;
  * on a large function the table's own allocation would otherwise dominate
  * the pass (one heap node per value plus one heap vector per use list, and
  * the same number of frees at the end): the buffer turns that into a few
- * large allocations. Entries are never given back individually -- a use
+ * large allocations, and the open-addressing `OperationTable` keeps hashing
+ * and probing it cheap. Entries are never given back individually -- a use
  * list that grows leaves its old storage behind -- which is bounded by a
  * constant factor of the final table and is exactly what a per-pass
  * session can afford.
@@ -92,6 +96,12 @@ public:
 	///            it the rewriter falls back to the per-opcode answer, under
 	///            which no call is ever removable.
 	FunctionRewriter(FunctionOperation& fn, common::Arena& arena, const IRGraph* ir = nullptr);
+
+	/// Replaces the module the session resolves callees through (see the
+	/// constructor's @p ir), for a rewriter that outlives one pass.
+	void setModule(const IRGraph* ir) {
+		ir_ = ir;
+	}
 
 	// ── Use queries (uniform over operand edges AND invocation arguments) ──
 
@@ -315,8 +325,8 @@ private:
 	const IRGraph* ir_ = nullptr;
 	/// Backs `uses_` and `defBlock_`; declared before them so it outlives them.
 	std::pmr::monotonic_buffer_resource tableMemory_;
-	std::pmr::unordered_map<const Operation*, std::pmr::vector<Use>> uses_;
-	std::pmr::unordered_map<const Operation*, BasicBlock*> defBlock_;
+	OperationTable<std::pmr::vector<Use>> uses_;
+	OperationTable<BasicBlock*> defBlock_;
 	uint32_t nextId_ = 0;
 	/// Slot cache for `createReplacing`; built lazily, so sessions that never
 	/// replace in place pay nothing for it. Lives in `tableMemory_` like the
@@ -328,6 +338,65 @@ private:
 	std::vector<BasicBlock*> dirtyBlocks_;
 	/// Scratch for the erase cascade, reused across calls.
 	std::vector<Operation*> eraseWorklist_;
+};
+
+/**
+ * @brief Keeps one `FunctionRewriter` per function alive across every pass
+ * that runs on this thread while the session is open.
+ *
+ * Building a rewriter is O(function), and every pass of a fixed-point group
+ * builds one per function in every round -- on TPC-H kernels that was most
+ * of the IR passes' time. Since every mutation goes through the rewriter
+ * (its session discipline), its tables stay valid from one pass to the next,
+ * so the passes `IRPassManager` runs as a group share one per function
+ * instead, through `ScopedRewriter`.
+ *
+ * Sessions nest: opening one hides the enclosing session until it closes.
+ */
+class RewriterSession {
+public:
+	RewriterSession();
+	~RewriterSession();
+	RewriterSession(const RewriterSession&) = delete;
+	RewriterSession& operator=(const RewriterSession&) = delete;
+
+	/// The session open on this thread, or null.
+	static RewriterSession* current();
+
+	/// The session's rewriter for @p fn, built on first use.
+	FunctionRewriter& rewriterFor(FunctionOperation& fn, common::Arena& arena);
+
+private:
+	std::unordered_map<const FunctionOperation*, std::unique_ptr<FunctionRewriter>> rewriters_;
+	RewriterSession* enclosing_;
+};
+
+/**
+ * @brief A pass's rewriter for one function: the open `RewriterSession`'s,
+ * or a rewriter of its own when no session is open.
+ *
+ * Releasing it finishes what the pass started -- operations erased with
+ * `eraseIfDeadDeferred` leave their blocks -- so the next pass sees the same
+ * IR it would with a fresh rewriter.
+ */
+class ScopedRewriter {
+public:
+	/// @param ir  as `FunctionRewriter`'s constructor; applies for this pass.
+	ScopedRewriter(FunctionOperation& fn, common::Arena& arena, const IRGraph* ir = nullptr);
+	~ScopedRewriter();
+	ScopedRewriter(const ScopedRewriter&) = delete;
+	ScopedRewriter& operator=(const ScopedRewriter&) = delete;
+
+	FunctionRewriter& operator*() {
+		return *rewriter_;
+	}
+	FunctionRewriter* operator->() {
+		return rewriter_;
+	}
+
+private:
+	std::optional<FunctionRewriter> owned_;
+	FunctionRewriter* rewriter_;
 };
 
 } // namespace nautilus::compiler::ir
