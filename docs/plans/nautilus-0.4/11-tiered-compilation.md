@@ -1,7 +1,7 @@
 # Component: Tiered Compilation
 
 Part of the [Nautilus 0.4 design](README.md) · Milestone M4 (with the
-backends); the bug fixes in §5 can land on `main` first · Builds on
+backends); the 0.3 bug fixes of §5 are already on `main` (#566) · Builds on
 `TieredJITCompiler` (0.3), #561 (MLIR state reuse), [08](08-caching.md)
 
 ## 1. Purpose
@@ -36,25 +36,31 @@ tiers and on-stack replacement stay out of scope (§9).
 
 ## 3. Findings
 
-The measured findings use a probe on `main` (GCC 14, Release, no MLIR in the
-build, so `tbc` → `asmjit` with a 200-op function). It compiles N modules on
-one engine, calls each module once, and either drops it immediately or waits
-for its tier 1.
+The measured findings use a probe on `main` before #566 (GCC 14, Release,
+no MLIR in the build, so `tbc` → `asmjit` with a 200-op function). It
+compiles N modules on one engine, calls each module once, and either drops
+it immediately or waits for its tier 1.
+
+**F1, F2, F12 and the crash part of F7 are fixed on `main` by #566** (marked
+✅ below). With that fix, the same probe completes 40,000 modules at 235 MB
+virtual memory with at most 5 live threads (1,000 modules: 163 MB, against
+8,143 MB before). The 0.4 design (§4) still replaces the thread-per-promotion
+model, which keeps F3 and F4.
 
 | # | Finding | Evidence | Effect |
 |---|---|---|---|
-| **F1** | **Promotion threads are never reaped.** Each finished thread stays in `promotionThreads_` and is joined only in `waitForPendingPromotions()`, so its stack stays mapped until the engine is destroyed | **Measured:** after 1000 short-lived modules the process holds 8.1 GB virtual memory, which drops to 0.1–0.2 GB once the engine joins the threads. **At module 32,735, `module.compile()` throws `std::system_error` (EAGAIN)**: thread creation fails at the kernel's mapping limit (`vm.max_map_count` = 65530, two mappings per stack) | A long-running engine, such as a NebulaStream worker, eventually cannot compile at all |
-| F2 | `pendingPromotions_` is incremented before the thread is created | Code: when `emplace_back` throws (F1), the counter is never decremented | `allPromotionsComplete()` stays false for good |
+| **F1** ✅ | **Promotion threads were never reaped** (fixed in #566). Each finished thread stays in `promotionThreads_` and is joined only in `waitForPendingPromotions()`, so its stack stays mapped until the engine is destroyed | **Measured:** after 1000 short-lived modules the process holds 8.1 GB virtual memory, which drops to 0.1–0.2 GB once the engine joins the threads. **At module 32,735, `module.compile()` throws `std::system_error` (EAGAIN)**: thread creation fails at the kernel's mapping limit (`vm.max_map_count` = 65530, two mappings per stack) | A long-running engine, such as a NebulaStream worker, eventually cannot compile at all |
+| F2 ✅ | `pendingPromotions_` was incremented before the thread was created (fixed in #566: undone on failure, module stays on tier 0) | Code: when `emplace_back` throws (F1), the counter is never decremented | `allPromotionsComplete()` stays false for good |
 | F3 | **No bound on concurrent promotions:** one thread per module in flight | Code | N concurrent query compiles start N MLIR compiles (3–5 ms each, more for real kernels) that compete with query execution |
 | F4 | **Thread per promotion defeats MLIR state reuse.** #561 reuses `DialectRegistry`/`MLIRContext` per thread | Code: every promotion runs on a fresh thread | Tier 1 pays MLIR's full fixed cost (10.2 ms per TPC-H kernel without #561, 4.9 ms with it) on every promotion |
 | F5 | **No cancellation.** The promotion checks its `weak_ptr` to the module only when it swaps | Code | A module dropped right after tier 0 is still compiled to the end. Short NebulaStream queries pay a full tier-1 compile for nothing |
 | F6 | **Blocking waits.** The destructor waits for every promotion, including those of dead modules. `waitForPendingPromotions()` holds `threadsMutex_` while it joins, and `promoteAsync` takes the same mutex | Code | Engine shutdown waits for all queued MLIR work. Every `compileModule` on another thread stalls behind a wait, *after* its tier-0 compile, before it returns |
-| F7 | **Silent failure.** Only `std::exception` is caught; a failure is logged and the module stays on tier 0 | Code | Any other exception type terminates the process. Callers cannot see which tier runs, whether promotion failed, or wait for one module |
+| F7 | **Silent failure.** A failure is logged and the module stays on tier 0. Before #566 only `std::exception` was caught | Code | ✅ Other exception types no longer terminate the process (#566). Still open: callers cannot see which tier runs, whether promotion failed, or wait for one module |
 | F8 | **Promotion duplicates `CompilationPipeline::compileIR`** (dump handler, statistics, unit ID) | Code | Its unit ID has one-second resolution (`<date>_<time>_tier1`), so promotions within the same second share a dump directory. The tier-1 report is not linked to the tier-0 unit ID |
 | F9 | `engine.tier0.backend`/`engine.tier1.backend` take effect only when **both** are set | Code, `docs/options.md` | Setting only `engine.tier1.backend=cpp` is silently ignored |
 | F10 | **Always eager.** Every module is promoted immediately, however long it will live | Code | The same waste as F5, even for modules that stay alive but run only briefly |
 | F11 | Tier 1 starts only after tier-0 code generation returns, though the IR is ready before it | Code | Time to tier 1 includes the tier-0 backend time (small next to MLIR, but free to remove) |
-| F12 | **The `ENABLE_COMPILER=OFF` build does not compile.** The stub `compileTier` lacks the `IROptimizationLevel` parameter | **Verified:** compiling the stub branch fails with "no declaration matches" | That configuration is not built in CI |
+| F12 ✅ | **The `ENABLE_COMPILER=OFF` build did not compile.** The stub `compileTier` lacked the `IROptimizationLevel` parameter | **Verified:** compiling the stub branch failed with "no declaration matches" | Fixed in #566, which also adds a `gcc-14 -DENABLE_COMPILER=OFF` CI leg |
 | F13 | A two-tier compile runs the IR passes of `max(tier 0, tier 1)` | Code (`irOptimizationLevel`) | `asmjit` asks for the full pipeline on the critical path; solved in 0.4 by the optimizing conversion ([03](03-conversion-and-passes.md)) |
 
 Also measured: time to tier 1 for one 200-op module with tier 1 = `asmjit`
@@ -70,8 +76,9 @@ keeps it (§4.8).
   `engine.tiered.promotionThreads` workers (default
   `max(1, hardware_concurrency / 4)`), created lazily and kept for the
   engine's lifetime.
-- **Bounded thread count** whatever the number of modules compiled: F1 and
-  F2 disappear by construction.
+- **Bounded thread count** whatever the number of modules compiled. #566
+  already bounds the threads *held* (by reaping); the pool also bounds the
+  threads *running* (F3).
 - **Long-lived workers make #561's per-thread MLIR state reuse effective**
   for every promotion after the first one on each worker.
 - **Admission:** `engine.tiered.maxQueuedPromotions` (default unbounded). A
@@ -163,14 +170,14 @@ and the tier-0 executable is then discarded unused.
   is removed ([05 §6.1](05-backends.md)).
 - `engine.backend=<x>` keeps pinning single-tier compilation.
 
-### 4.8 One compile path (F8, F12)
+### 4.8 One compile path (F8)
 
 - **Promotion calls `CompilationPipeline::compileIR`,** so dumps,
   statistics and unit IDs come from one place. The tier-1 unit ID is the
   tier-0 unit ID plus `_tier1`, so the dumps of one module sit side by
   side.
-- **Stub fix:** the `ENABLE_COMPILER=OFF` stubs are fixed, and that
-  configuration joins the CI matrix as a configure-and-build job.
+- **Stubs:** the `ENABLE_COMPILER=OFF` stubs stay in step with the new
+  API; the CI leg added in #566 catches drift.
 - **Retention is unchanged:** superseded executables stay resident for as
   long as the handles that resolved them (#506). Releasing them earlier
   needs in-flight call tracking on the hot path and is not in 0.4.
@@ -179,9 +186,9 @@ and the tier-0 executable is then discarded unused.
 
 | Change | Target | Why |
 |---|---|---|
-| Reap finished promotion threads, or use a small pool; decrement the counter when thread creation fails (F1, F2) | **`main` now**, #566 | A 0.3 bug that makes long-running engines fail |
-| `catch (...)` in the promotion thread (F7, the crash part) | **`main` now**, #566 | Prevents process termination |
-| Stub signature fix and an `ENABLE_COMPILER=OFF` CI job (F12) | **`main` now**, #566 | The build is broken today |
+| Reap finished promotion threads; undo the counter and keep tier 0 when thread creation fails (F1, F2) | ✅ **`main`, merged in #566** | A 0.3 bug that made long-running engines fail |
+| `catch (...)` in the promotion thread (F7, the crash part) | ✅ **`main`, merged in #566** | Prevents process termination |
+| Stub signature fix and an `ENABLE_COMPILER=OFF` CI job (F12) | ✅ **`main`, merged in #566** | The build was broken |
 | Promotion service, cancellation, shutdown (§4.1, §4.2) | 0.4, M4 | Builds on NIR's immutability and #561 |
 | Status API, statistics, one compile path (§4.3, §4.8) | 0.4, M4 | New public API |
 | Promotion policy (§4.4) | 0.4, M4, opt-in (D8) | Default unchanged |
@@ -192,7 +199,9 @@ and the tier-0 executable is then discarded unused.
 
 - **Long-running engine:** 40,000 short-lived modules on one engine. It
   completes, the thread count stays at most `promotionThreads + 1`, and the
-  virtual memory stays flat. Today it fails at module 32,735.
+  virtual memory stays flat. Before #566 it failed at module 32,735; #566
+  added a smaller regression test (32 sequential modules hold at most one
+  promotion thread), which the pool version keeps.
 - **Cancellation:** dropping a module while its job is queued or running
   ends that job without installing anything. A running job ends at the next
   stage boundary.

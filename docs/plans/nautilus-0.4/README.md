@@ -284,7 +284,7 @@ the migration guide from 0.3.
 | D5 | Cache and serialization PRs | **Decided:** ported onto NIR; no separate 0.3 formats |
 | D6 | Keep `bc` beside `tbc` | **Decided:** drop `bc` in 0.4, in M1, so it is never ported to NIR; `tbc` is the interpreting backend ([05 §6](05-backends.md)) |
 | D7 | Scope of the unified IR | Proposed: as in §3.1 |
-| D8 | Promotion policy | Proposed: keep `eager` as the default; add opt-in `calls:<N>` and `manual` ([11 §4.4](11-tiered-compilation.md)); fix the 0.3 thread leak on `main` first ([11 §5](11-tiered-compilation.md)) |
+| D8 | Promotion policy | Proposed: keep `eager` as the default; add opt-in `calls:<N>` and `manual` ([11 §4.4](11-tiered-compilation.md)); the 0.3 thread leak is already fixed on `main` (#566, [11 §5](11-tiered-compilation.md)) |
 
 ## References
 
