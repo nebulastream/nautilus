@@ -61,7 +61,7 @@ selects single-tier compilation with exactly that backend.
 The 0.4 `asmjit` backend keeps AsmJit's `Compiler`, its register allocator
 and the post-RA peephole passes. What changes is everything around them:
 the input (NIR) and the side tables. The call-heavy liveness cost was a bug in
-our own AsmJit patch and is already fixed (§4.3).
+our own AsmJit patch and is fixed separately on `main` (#565).
 
 Why not our own single-pass allocator (P0 and the profile in
 [p0-baseline.md](p0-baseline.md)):
@@ -75,7 +75,7 @@ Why not our own single-pass allocator (P0 and the profile in
   and maintaining an allocator.
 - **The one real problem was ours:** the quadratic liveness cost on
   call-heavy functions came from Nautilus's patch to AsmJit's liveness pass,
-  and is fixed (§4.3).
+  and is fixed (#565).
 
 A custom linear-scan allocator on `Assembler` stays a possible later step,
 taken only if real workloads (TPC-H, NebulaStream) still show the allocator
@@ -104,38 +104,9 @@ landed.
 | Use counts, layout | recomputed (`ir::countUsages`) | from NIR (`useCount`, `BlockInfo`) |
 | Constants | constant-inlining special cases | `ConstPool` operands become immediates where the instruction allows |
 | Virtual registers | one per IR value | created on first use and reused after last use where the type allows, to shrink the allocator's work |
-| Call-heavy functions | quadratic liveness in our AsmJit patch (§4.3) | fixed on `main` before 0.4 |
+| Call-heavy functions | quadratic liveness in our AsmJit patch | fixed on `main` before 0.4 (#565) |
 
-### 4.3 The call-heavy liveness cost (found and fixed)
-
-P0 measured `calls` (N runtime calls in one straight-line function) as
-superlinear: `BaseRAPass::buildLiveness()` grew 20x for 5x the calls and
-took 49% of the compile at N = 5000.
-
-**Cause:** Nautilus's own patch to AsmJit's liveness pass
-(`third_party/asmjit/src/asmjit/core/rapass.cpp`, the `[Nautilus]` blocks).
-The patch marks registers whose live range spans a call, so that they get a
-callee-saved register. To find the first call inside a register's live
-range, it walked the call list from the start for every register: O(calls ×
-registers).
-
-**Fix** (#565, against `main`):
-- a binary search for the first call of each span;
-- an early exit once a register's survival mask covers the union of every
-  call's clobbers.
-
-The generated code is byte-identical on every corpus case checked.
-
-| `calls`, asmjit | `buildLiveness()` before | after | Whole compile before | after |
-|---|---|---|---|---|
-| N = 1000 | 6.5 M instructions | 1.7 M | 35.6 M | 30.8 M |
-| N = 5000 | 132.7 M | 9.0 M (linear) | 268.3 M | 144.7 M (−46%) |
-
-The rest of the call cost is our lowering (`AsmJitLoweringProvider::lower`,
-linear). NIR's array side tables and fewer virtual registers (§4.2) address
-it.
-
-### 4.4 Targets
+### 4.3 Targets
 
 Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
 (nautilus-duck):
@@ -145,17 +116,17 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
   benchmark. It is a release criterion.
 - **Compile time:**
   - backend ≤ 0.25 µs/op on linear code (0.3: ~0.4 µs/op);
-  - `calls` linear in N (§4.3, already true after the fix).
+  - `calls` linear in N (already true after #565).
 - **Coverage:** every `asmjit` test passes on x86-64 and AArch64, including
   exceptions and every in-tree extension.
 
-### 4.5 Steps within M4
+### 4.4 Steps within M4
 
 1. Port the lowering providers to NIR with array side tables and
    `ConstPool` immediates.
 2. Reduce virtual-register churn (create on first use, reuse after last
    use).
-3. Confirm the call-heavy fix (§4.3) on NIR on x86-64 and AArch64, with the
+3. Confirm the call-heavy fix (#565) on NIR on x86-64 and AArch64, with the
    `calls` corpus case in CI.
 
 ## 5. MLIR → LLVM
@@ -217,7 +188,7 @@ P0 measurements of `bc` ([p0-baseline.md](p0-baseline.md)) stay as recorded;
 
 - Every backend passes the execution tests and the differential fuzzer on
   NIR.
-- `asmjit` meets the targets of §4.4.
+- `asmjit` meets the targets of §4.3.
 - End to end ≤ 0.75 µs/op on linear corpus code with the default backend
   (README §1).
 - No execution-time regression per backend on `ExecutionBenchmark` and

@@ -218,7 +218,7 @@ releases and no temporary formats.
    - tracing linear in the number of `if`s when written explicitly;
    - no case slower than 0.3.
 3. No execution-time regression per backend on `ExecutionBenchmark` and on
-   TPC-H (nautilus-duck), `asmjit` included ([05 §4.4](05-backends.md)).
+   TPC-H (nautilus-duck), `asmjit` included ([05 §4.3](05-backends.md)).
 4. Warm NebulaStream suite ≥ 60% faster than cold.
 5. Migration guide: plugin intrinsics → extensions, signless integers in
    plugins, renamed options.

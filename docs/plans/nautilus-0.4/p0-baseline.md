@@ -138,7 +138,7 @@ own work or the local allocator. Its cause turned out to be Nautilus's own
 patch to that pass: a linear walk over all calls for every register. With
 a binary search, `buildLiveness()` takes 1.7 M / 9.0 M instructions at
 N = 1000 / 5000 (linear), the whole compile at 5000 calls drops by 46%, and
-the generated code is identical ([05 §4.3](05-backends.md)).
+the generated code is identical (#565).
 
 ### MLIR (not built here)
 
