@@ -16,9 +16,10 @@ public:
 	// `debugInfo.enable` is true, inserts the
 	// Nautilus debug-info passes (location snapshot for mlir source
 	// mode, DIScopeForLLVMFuncOp to materialize a DISubprogram on every
-	// llvm.func).  Returns non-zero on pass-pipeline failure.
+	// llvm.func).  `verifyEachPass` verifies the module after every pass.
+	// Returns non-zero on pass-pipeline failure.
 	static int lowerAndOptimizeMLIRModule(::mlir::OwningOpRef<::mlir::ModuleOp>& module,
 	                                      const std::vector<OptimizationPass>& optimizationPasses,
-	                                      const DebugInfoOptions& debugInfo = {});
+	                                      const DebugInfoOptions& debugInfo = {}, bool verifyEachPass = false);
 };
 } // namespace nautilus::compiler::mlir

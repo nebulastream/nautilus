@@ -179,7 +179,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// 2.b Take the MLIR module from the MLIRLoweringProvider and apply lowering
 	// and optimization passes.
 	const auto pipelineStart = std::chrono::steady_clock::now();
-	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {}, debugInfo)) {
+	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {}, debugInfo,
+	                                                      options.getOptionOrDefault("mlir.verifyEachPass", false))) {
 		throw RuntimeException("Could not lower and optimize MLIR module.");
 	}
 	if (statistics != nullptr) {
