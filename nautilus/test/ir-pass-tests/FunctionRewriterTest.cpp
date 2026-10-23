@@ -10,9 +10,12 @@
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
+#include "nautilus/compiler/ir/passes/OperationTable.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <catch2/catch_all.hpp>
+#include <cstddef>
+#include <memory_resource>
 #include <unordered_set>
 
 namespace nautilus::testing {
@@ -900,6 +903,97 @@ TEST_CASE("FunctionRewriter merge: adopted conditional terminator moves both pre
 	REQUIRE(thenBlock->getPredecessors() == std::vector<BasicBlock*> {entry});
 	REQUIRE(elseBlock->getPredecessors() == std::vector<BasicBlock*> {entry});
 	requireVerifierClean(*irGraph);
+}
+
+// ── Shared sessions ────────────────────────────────────────────────────
+
+TEST_CASE("FunctionRewriter session: passes in a session share one rewriter per function") {
+	auto ir = makeFoldableGraph();
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	auto* entry = findBlock(*fn, 0);
+	auto* c1 = findOp(*fn, 1);
+	auto* sum = findOp(*fn, 3);
+
+	RewriterSession session;
+	FunctionRewriter* first = nullptr;
+	{
+		ScopedRewriter rewriter(*fn, ir->getArena());
+		first = &*rewriter;
+		rewriter->createReplacing<ConstIntOperation>(sum, OperationIdentifier {3}, 5, Type::i32);
+		CHECK(rewriter->eraseIfDeadDeferred(c1) == 1);
+		CHECK(entry->getOperations().size() == 5); // erased, not yet compacted
+	}
+	// Releasing it compacted the pass's deferred erasures, as destroying an
+	// owned rewriter would.
+	CHECK(entry->getOperations().size() == 4);
+	{
+		ScopedRewriter rewriter(*fn, ir->getArena());
+		CHECK(&*rewriter == first);
+		// The next pass sees the first one's changes in the shared tables.
+		CHECK(rewriter->definingBlock(sum) == nullptr);
+		CHECK(rewriter->useCount(findOp(*fn, 3)) == 1);
+	}
+	requireVerifierClean(*ir);
+}
+
+TEST_CASE("FunctionRewriter session: without a session a ScopedRewriter owns its rewriter") {
+	auto ir = makeFoldableGraph();
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	REQUIRE(RewriterSession::current() == nullptr);
+	ScopedRewriter first(*fn, ir->getArena());
+	ScopedRewriter second(*fn, ir->getArena());
+	CHECK(&*first != &*second);
+	{
+		RewriterSession outer;
+		{
+			RewriterSession inner;
+			CHECK(RewriterSession::current() == &inner);
+		}
+		CHECK(RewriterSession::current() == &outer);
+	}
+	CHECK(RewriterSession::current() == nullptr);
+}
+
+TEST_CASE("OperationTable: finds, erases and re-inserts keys through collisions and growth") {
+	std::pmr::monotonic_buffer_resource memory;
+	OperationTable<std::pmr::vector<int>> table(&memory);
+	// Distinct, never dereferenced keys.
+	std::vector<std::byte> storage(32 * 1000);
+	auto key = [&](size_t i) {
+		return reinterpret_cast<const Operation*>(storage.data() + 32 * i);
+	};
+
+	CHECK(table.find(key(0)) == table.end());
+	auto& firstValue = table[key(0)];
+	firstValue.push_back(-1);
+	for (size_t i = 1; i < 1000; ++i) {
+		table[key(i)].push_back(static_cast<int>(i));
+	}
+	REQUIRE(table.size() == 1000);
+	// Values keep their address while the table grows, like unordered_map's.
+	CHECK(&table.at(key(0)) == &firstValue);
+	CHECK(firstValue == std::pmr::vector<int> {-1});
+
+	for (size_t i = 0; i < 1000; i += 2) {
+		CHECK(table.erase(key(i)));
+	}
+	CHECK_FALSE(table.erase(key(0)));
+	CHECK(table.size() == 500);
+	for (size_t i = 0; i < 1000; ++i) {
+		const auto it = table.find(key(i));
+		if (i % 2 == 0) {
+			CHECK(it == table.end());
+			CHECK_FALSE(table.contains(key(i)));
+		} else {
+			REQUIRE(it != table.end());
+			CHECK(it->first == key(i));
+			CHECK(it->second == std::pmr::vector<int> {static_cast<int>(i)});
+		}
+	}
+	// An erased key comes back with a fresh value.
+	CHECK(table[key(2)].empty());
+	CHECK(table.size() == 501);
+	CHECK_THROWS_AS(table.at(key(4)), RuntimeException);
 }
 
 } // namespace nautilus::testing
