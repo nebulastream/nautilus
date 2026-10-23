@@ -2,6 +2,7 @@
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
+#include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
@@ -83,6 +84,9 @@ void IRPassManager::run(IRGraph& ir) {
 	size_t totalIterations = 0;
 
 	for (const auto& group : groups) {
+		// The group's passes share one rewriter per function instead of each
+		// building its own in every round; see RewriterSession.
+		RewriterSession rewriters;
 		for (size_t iteration = 0; iteration < group.maxIterations; ++iteration) {
 			++totalIterations;
 			bool anyChangeThisRound = false;

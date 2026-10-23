@@ -578,7 +578,8 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 		return false;
 	}
 
-	FunctionRewriter rewriter(fn, arena);
+	ScopedRewriter scopedRewriter(fn, arena);
+	FunctionRewriter& rewriter = *scopedRewriter;
 	bool changed = false;
 	std::vector<Operation*> consumers;
 	std::vector<Operation*> operands;
