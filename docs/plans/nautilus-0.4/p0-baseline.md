@@ -44,6 +44,10 @@ the [Nautilus 0.4 design](README.md) · Feeds decision D1.
 `allocs/op` = heap allocations per IR operation. `µs/op` = total
 compile time per IR operation.
 
+`bc` is removed in 0.4 (README D6). Its rows stay as measured: they isolate
+the frontend and passes, whose cost does not depend on the backend. Later
+measurements use `tbc` and `asmjit`.
+
 ### `main`
 
 | Case | Backend | Total ms | Tracing | IR gen | IR passes | Backend | ops | allocs/op | µs/op |

@@ -110,7 +110,7 @@ from nautilus-duck.
          │               │                  │                │
    legalization,     backends           serializer        IR-hash cache key
    optional passes   asmjit ·            artifacts:            │
-                     tbc · bc · MLIR ·   NIR image +           │
+                     tbc · MLIR ·        NIR image +           │
                      cpp · GPU           native payloads       │
                          │                  │                  │
                          ▼                  ▼                  ▼
@@ -142,7 +142,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 02 | [NIR](02-nir.md) | Instruction format, sections, levels, canonical vs. derived data, mutation model, unified-IR rationale | #532 (format rules) |
 | 03 | [Conversion and passes](03-conversion-and-passes.md) | Optimizing trace→SSA conversion, legalization, optional and plugin passes | — |
 | 04 | [Extensions](04-extensions.md) | Extension operations, types, rules and passes; registry lifecycle; migration of the in-tree plugins | — |
-| 05 | [Backends](05-backends.md) | Backend roles; the `asmjit` backend on NIR with AsmJit's allocator; MLIR; bytecode; C++; GPU | #561 (MLIR state reuse) |
+| 05 | [Backends](05-backends.md) | Backend roles; the `asmjit` backend on NIR with AsmJit's allocator; MLIR; `tbc`; C++; GPU; removal of `bc` | #561 (MLIR state reuse) |
 | 06 | [Semantics](06-semantics.md) | Declared call effects and cheaper exception handling (exception default unchanged); signless integers | — |
 | 07 | [Serialization](07-serialization.md) | Artifacts, pointers, runtime bindings, provenance | #527, #529, #532 |
 | 08 | [Caching](08-caching.md) | L0 in-process, L1 semantic, L2 structural caches | #528 |
@@ -160,6 +160,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | Plugin intrinsic API (`IntrinsicRegistry`, `MLIRIntrinsicPlugin`, `AsmJitBackendIntrinsic`) | **Replaced** by the extension API. A deprecated shim registers old intrinsics as extension ops through 0.4.x |
 | `IRGraph`, `ir::Operation`, IR passes | **Removed** (internal) |
 | IR text dumps, `test/data` | **New format** |
+| `bc` backend | **Removed** (D6). `tbc` covers its roles; `engine.backend=bc` fails with an error that names `tbc` ([05 §6](05-backends.md)) |
 | Serialization, artifacts, cache entries | **First persisted formats.** The PRs are ported onto NIR, not released on the 0.3 IR |
 | C API | **New**, on NIR; stable from 0.4 on |
 
@@ -190,10 +191,10 @@ releases and no temporary formats.
 
 | Milestone | Content | Exit criterion |
 |---|---|---|
-| **M1 Foundations** | NIR format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; bridge `IRGraph` → NIR (internal, removed before release); latency corpus driver added and running in CI | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
+| **M1 Foundations** | NIR format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; bridge `IRGraph` → NIR (internal, removed before release); latency corpus driver added and running in CI; `bc` backend removed (D6) | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
 | **M2 Frontend** | Flat trace with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; TPC-H re-run share ≤ 35% of tracing; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
 | **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
-| **M4 Backends** | `bc`/`tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; decision D3 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
+| **M4 Backends** | `tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; decision D3 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
 | **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold; every #527/#528 negative test ported and failing closed |
 | **M6 Semantics and extensions** | Declared call effects and cheaper exception handling; signless integers; extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
 | **M7 Release** | Remove `IRGraph`, the old passes and the bridge; migration guide; user documentation (§6.2); NebulaStream integration; x86-64 and AArch64; sanitizers | Release criteria below |
@@ -279,7 +280,7 @@ the migration guide from 0.3.
 | D3 | Default backend | Proposed: `asmjit` on x86-64 and AArch64, `tbc` elsewhere |
 | D4 | Exception default of `invoke` | **Decided: (b)** keep 0.3's default; add optional `nothrow` and effect declarations; cheaper exception handling ([06 §3](06-semantics.md)) |
 | D5 | Cache and serialization PRs | **Decided:** ported onto NIR; no separate 0.3 formats |
-| D6 | Keep `bc` beside `tbc` | Proposed: keep in 0.4; revisit later |
+| D6 | Keep `bc` beside `tbc` | **Decided:** drop `bc` in 0.4, in M1, so it is never ported to NIR; `tbc` is the interpreting backend ([05 §6](05-backends.md)) |
 | D7 | Scope of the unified IR | Proposed: as in §3.1 |
 
 ## References

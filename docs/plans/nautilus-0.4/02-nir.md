@@ -241,7 +241,7 @@ IR operation.
   Backend work (M4) and the serializer (M5) can start before the new
   conversion (M3) exists. The bridge is removed before release.
 - **Consumers:**
-  - `bc`/`tbc` become a near 1:1 translation;
+  - `tbc` becomes a near 1:1 translation (`bc` is removed in M1);
   - `asmjit` iterates `insts` with `BlockInfo` in one pass;
   - MLIR builds `cf`/`arith` from blocks and terminators.
 - **Dumps:** one printer for both levels; `test/data` regenerated once per

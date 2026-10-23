@@ -15,7 +15,7 @@ existing `asmjit` backend:
 - it is the default on x86-64 and AArch64.
 
 MLIR/LLVM stays for peak performance and persisted native code, and the
-remaining backends are ported to NIR. There is no new backend, no second
+remaining backends are ported to NIR, except `bc`, which is removed (§6). There is no new backend, no second
 AsmJit mode and no custom allocator in 0.4.
 
 ## 2. Today and what it costs
@@ -37,15 +37,16 @@ Backends take 11–30% of a compile on `bc`/`tbc`/`asmjit`
 | Backend | Role | Notes |
 |---|---|---|
 | **`asmjit`** (§4) | **Default** on x86-64 and AArch64 (decision D3) | Reads NIR directly; AsmJit's allocator; code quality of 0.3 |
-| `tbc` (+ copy-and-patch) | Portable default; iOS and platforms without JIT | Near 1:1 from NIR |
-| `bc` | Debugging and simplicity; may later merge into `tbc` (D6) | Near 1:1 from NIR |
+| `tbc` (+ copy-and-patch) | Portable default; iOS and platforms without JIT; the only interpreting backend | Near 1:1 from NIR |
+| ~~`bc`~~ | **Removed in 0.4** (D6, §6) | Not ported to NIR |
 | MLIR → LLVM | Peak performance; produces the persisted native payloads ([07](07-serialization.md)) | #561's per-thread state reuse; reads NIR; maps extension types |
 | `cpp` | Debugging and reference | |
 | GPU (CUDA, Metal) | Plugin backends on NIR | GPU intrinsics as extension ops |
 
 **Tiered compilation keeps its structure** (`TieredJITCompiler`: tier 0
 compiled synchronously, tier 1 in the background). Two things change:
-- tier 0 defaults to `asmjit` (`tbc` where AsmJit is not available), and
+- tier 0 defaults to `asmjit` (`tbc` where AsmJit is not available, replacing
+  today's `bc` fallback), and
   tier 1 stays MLIR;
 - the IR both tiers share is SSA-level NIR, which is immutable after
   conversion, so tier 1 can read it concurrently without copying.
@@ -172,13 +173,36 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
   ([07](07-serialization.md)): one relocatable object per payload, with the
   import table of #527.
 
-## 6. `bc`, `tbc`, `cpp`, GPU
+## 6. `tbc`, `cpp`, GPU, and removing `bc`
 
-- `bc`/`tbc` lower NIR almost one to one. Their register allocators work on
-  value ids, and their handler tables are indexed by extension opcode.
+- `tbc` lowers NIR almost one to one. Its register allocator works on value
+  ids, and its handler table is indexed by extension opcode.
 - `cpp` prints from NIR. Extension ops use expression templates or calls.
 - GPU backends read NIR. Address spaces are extension types, and GPU-only
   ops are target-restricted extension ops ([04 §3.3](04-extensions.md)).
+
+### 6.1 Removing `bc` (D6)
+
+`tbc` covers everything `bc` is used for: it interprets without generating
+code (iOS-safe with `ENABLE_FFI_CLOSURES`), uses the same `NativeClosure`
+entry points, and adds the copy-and-patch mode. `bc` shares no sources with
+`tbc`, so removing it is self-contained. It is removed in **M1**, before the
+NIR port, so it is never ported, and M4 has one backend fewer.
+
+| What | Change |
+|---|---|
+| `backends/bc/` (interpreter, lowering, its dyncall wrapper) | Deleted |
+| `ENABLE_BC_BACKEND` | Removed; `ENABLE_FFI_CLOSURES` and `NativeClosure.cpp` depend on `ENABLE_TBC_BACKEND` only. A configure-time message reports the option as obsolete if it is set |
+| `engine.backend=bc`, `engine.tier0.backend=bc` | Error naming `tbc` as the replacement. No silent alias: `bc`-specific options and dumps do not carry over |
+| `dump.after_bc_generation` | Removed; `tbc` has its own dump |
+| Tier-0 fallback in `TieredJITCompiler` | `asmjit` → `tbc` → interpreter (today `asmjit` → `bc` → interpreter) |
+| Tests (`TieredCompilationTest`, `CompilationStatisticsTest`, `InvokeExceptionExecutionTest`, plugin tests) | `bc` cases move to `tbc`, so the code paths they cover stay tested |
+| `example/src/DemoBackends.cpp`, `docs/engine.md`, `.github/nebulastream/benchmark.toml` | `bc` entries removed |
+
+Before removal, M1 checks that `tbc` passes every test `bc` passes, and is no
+slower on `ExecutionBenchmark`, so no user loses a working configuration.
+P0 measurements of `bc` ([p0-baseline.md](p0-baseline.md)) stay as recorded;
+`tbc` and `asmjit` are the baselines from M1 on.
 
 ## 7. Not in 0.4
 

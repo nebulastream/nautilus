@@ -94,7 +94,7 @@ referenced through typed `RuntimeBinding<T>` handles:
 
 In NIR a binding is a core op, `bind.addr id`. Its identity is stable and
 its address is supplied at load. Every backend implements it, as #529 does
-for interpreted, C++, `bc`, `tbc`, AsmJit and MLIR. The schema is part of
+for interpreted, C++, `bc`, `tbc`, AsmJit and MLIR (the port drops `bc`, removed in 0.4). The schema is part of
 the artifact and of the compatibility check. Address aliasing never merges
 identities, so equal, distinct and overlapping bindings keep their
 relationships across modules and loads.

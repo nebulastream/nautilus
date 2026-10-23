@@ -126,7 +126,7 @@ internal form below this point ([05](05-backends.md)).
   per-call-site provenance.
 - **Folding changes which blocks exist.** Braun sealing must not wait on
   predecessors that were folded away; cover this with merge-heavy tests.
-- **Code quality on backends that relied on the pipeline** (`bc`/`tbc`
+- **Code quality on backends that relied on the pipeline** (`tbc`
   dispatch counts). Compare executed instruction counts in
   `ExecutionBenchmark` and keep an optional per-backend pass list where it
   pays.

@@ -114,7 +114,7 @@ std::vector<TypeLowering> extTypes;   // register class / MLIR type / C++ type
 
 | Backend | What a plugin supplies | Without it |
 |---|---|---|
-| `bc` / `tbc` | a handler (optional) | call to the native fallback; values in frame slots |
+| `tbc` | a handler (optional) | call to the native fallback; values in frame slots |
 | `asmjit` | `lower(ctx, inst)` through a narrow API: operand and result registers or parts, scratch registers, the emitter | call or expansion; values spilled to stack slots |
 | MLIR | `lower(builder, inst, operands) -> mlir::Value` plus a type mapping | call or expansion |
 | `cpp` | an expression template | call |

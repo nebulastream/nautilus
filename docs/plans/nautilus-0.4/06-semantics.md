@@ -56,7 +56,7 @@ A call that may unwind needs two things today:
 - **No capture thunk where unwind tables exist.** MLIR/LLVM code has unwind
   tables, so a may-unwind call with no cleanup can let the exception
   propagate through the generated frame directly. Backends without unwind
-  tables (`bc`, `tbc`, `asmjit`) keep the thunk.
+  tables (`tbc`, `asmjit`) keep the thunk.
 - **Shared landing pads.** Pads are keyed by their ordered destructor set and
   shared per function. The conversion does this during emission
   ([03](03-conversion-and-passes.md)).
