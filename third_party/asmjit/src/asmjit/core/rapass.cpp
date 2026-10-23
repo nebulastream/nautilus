@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: Zlib
 
 #include "../core/api-build_p.h"
+#include <algorithm>
 #ifndef ASMJIT_NO_COMPILER
 
 #include "../core/formatter.h"
@@ -974,6 +975,9 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::buildLiveness() noexcept {
   // register and then spilled and reloaded around every call by the local allocator.
   ZoneVector<uint32_t> callPositions;
   ZoneVector<RARegMask> callClobbers;
+  // Union of every call's clobbers: once a register's survival mask covers it, later calls cannot add to it.
+  RARegMask allCallClobbers;
+  allCallClobbers.reset();
 
   uint32_t position = 2;
   for (i = 0; i < numAllBlocks; i++) {
@@ -1024,6 +1028,7 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::buildLiveness() noexcept {
         if (raInst->_clobberedRegs[RegGroup::kGp] || raInst->_clobberedRegs[RegGroup::kVec]) {
           ASMJIT_PROPAGATE(callPositions.append(allocator(), position));
           ASMJIT_PROPAGATE(callClobbers.append(allocator(), raInst->_clobberedRegs));
+          allCallClobbers.op<Support::Or>(raInst->_clobberedRegs);
         }
 
         for (uint32_t j = 0; j < count; j++) {
@@ -1109,16 +1114,26 @@ ASMJIT_FAVOR_SPEED Error BaseRAPass::buildLiveness() noexcept {
 
     // [Nautilus] A register live both before (reading at or before the call's position) and after the call
     // (beyond its output slot) survives that call, so it should live in a register the call preserves.
+    //
+    // Both lists are sorted by position, so the first call of a span is found by binary search rather than by
+    // walking every earlier call: the walk restarted at the first call for every register, which made this loop
+    // quadratic in functions with many calls (calls x registers).
     if (!callPositions.empty()) {
       RegGroup group = workReg->group();
-      size_t callIndex = 0;
+      RegMask allClobbered = allCallClobbers[group];
+      const uint32_t* firstCall = callPositions.data();
+      const uint32_t* endCall = firstCall + callPositions.size();
+      const uint32_t* call = firstCall;
       for (uint32_t spanIndex = 0; spanIndex < spans.size(); spanIndex++) {
         const LiveRegSpan& span = spans[spanIndex];
-        // Skip calls located before this span (both lists are sorted by position).
-        while (callIndex < callPositions.size() && callPositions[callIndex] < span.a)
-          callIndex++;
-        for (size_t k = callIndex; k < callPositions.size() && callPositions[k] + 1 < span.b; k++)
-          workReg->addClobberSurvivalMask(callClobbers[k][group]);
+        call = std::lower_bound(call, endCall, span.a);
+        for (; call != endCall && *call + 1 < span.b; call++) {
+          workReg->addClobberSurvivalMask(callClobbers[size_t(call - firstCall)][group]);
+          if ((workReg->clobberSurvivalMask() & allClobbered) == allClobbered)
+            break;
+        }
+        if ((workReg->clobberSurvivalMask() & allClobbered) == allClobbered)
+          break;
       }
     }
 
