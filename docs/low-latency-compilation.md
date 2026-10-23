@@ -2,6 +2,11 @@
 
 Status: proposal · Scope: tracing, IR pipeline, tiered compiler, backends
 
+> **Update:** multi-tier aspects are on hold. The trace and IR
+> representation work, including the tracing-cost items of §4.3, is
+> designed in detail in [ir-representation-latency.md](ir-representation-latency.md),
+> which supersedes this document where they overlap.
+
 ## 1. Goal
 
 Make the time from "a function is first called" to "native code is running" as
