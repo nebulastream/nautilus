@@ -6,6 +6,7 @@
 #include "nautilus/compiler/ir/blocks/BasicBlockArgument.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include "nautilus/compiler/ir/passes/OperationTable.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -44,7 +45,8 @@ class FunctionOperation;
  * on a large function the table's own allocation would otherwise dominate
  * the pass (one heap node per value plus one heap vector per use list, and
  * the same number of frees at the end): the buffer turns that into a few
- * large allocations. Entries are never given back individually -- a use
+ * large allocations, and the open-addressing `OperationTable` keeps hashing
+ * and probing it cheap. Entries are never given back individually -- a use
  * list that grows leaves its old storage behind -- which is bounded by a
  * constant factor of the final table and is exactly what a per-pass
  * session can afford.
@@ -315,8 +317,8 @@ private:
 	const IRGraph* ir_ = nullptr;
 	/// Backs `uses_` and `defBlock_`; declared before them so it outlives them.
 	std::pmr::monotonic_buffer_resource tableMemory_;
-	std::pmr::unordered_map<const Operation*, std::pmr::vector<Use>> uses_;
-	std::pmr::unordered_map<const Operation*, BasicBlock*> defBlock_;
+	OperationTable<std::pmr::vector<Use>> uses_;
+	OperationTable<BasicBlock*> defBlock_;
 	uint32_t nextId_ = 0;
 	/// Slot cache for `createReplacing`; built lazily, so sessions that never
 	/// replace in place pay nothing for it. Lives in `tableMemory_` like the
