@@ -291,3 +291,187 @@ Expected outcomes to verify:
 - **Gains may be small for small functions.** For short queries, fixed
   costs such as backend setup can dominate. §5 decides whether §4.5–4.7 are
   worth their churn.
+
+---
+
+# Part II: What to change if semantics may change
+
+Part I keeps every observable behavior. This part asks the opposite: which
+*semantic* commitments cause the latency in the first place, and what should
+replace them? Two commitments stand out: tracing control flow implicitly,
+and an IR that is pessimistic by default. Everything in Part I treats their
+symptoms.
+
+## 7. Root causes in today's semantics
+
+| Commitment | What it forces |
+|---|---|
+| **Implicit control flow.** `if (val<bool>)` and `for (val<…>)` are plain C++, and the tracer discovers branches and merges by itself | The function must be re-executed **once per path** (`runScope` replay). Every operation must carry a call-stack **tag** (a frame-pointer walk plus a trie insert) and a **snapshot hash**, and must be looked up in `globalTagMap`, because *any* operation could be a merge point. `static_val` exists only to perturb that hash. The CFG comes out full of seams, which is why block merging, empty-block elimination, argument pruning and branch threading in the conversion exist |
+| **Mutable CFG with per-op identity.** Every op has its own id, tag and region, and passes rewrite in place | Optimizations happen in separate passes run to a fixed point, with use tables rebuilt each time. Nothing can be deduplicated when it is created |
+| **Pessimistic call semantics.** `FunctionAttributes` defaults to `ModRef`, `willReturn=false` and `noUnwind=false` unless the callee is `noexcept` | Exception regions, landing pads and `ExceptionRegionPreparationPass` are needed, plus `NoThrowInferencePass` and `FunctionAttributeInferencePass` just to recover facts. Every call is a barrier for CSE and hoisting |
+| **Signedness in value types.** `Type` has `i32` and `ui32` and so on | No-op cast operations, and folding, verifier and opcode tables over 10 integer types instead of 4 widths (tbc expands every numeric family over all 10) |
+
+## 8. Proposed semantic changes
+
+### S1. Explicit join points: a structured tracing mode (largest effect)
+
+Add a tracing mode in which control flow on traced values is written with
+combinators. JAX made the same choice (`lax.cond`, `lax.while_loop`,
+`fori_loop`): branching in Python on a traced value is an error there,
+which lets JAX trace once, in linear time. Nautilus already has one such
+construct in `select`.
+
+```cpp
+auto r = nautilus::if_(x > 0, [&] { return x * 2; }, [&] { return x - 1; });
+
+nautilus::while_([&] { return i < n; },
+                 [&] { sum = sum + data[i]; i = i + 1; });
+
+nautilus::for_(0, n, [&](val<int64_t> i) { sum = sum + data[i]; });
+```
+
+Semantics:
+
+- **Each lambda body is traced exactly once.** The tracer opens the
+  then/else/header/body blocks *before* running the lambda, so the CFG is
+  known while it is being built.
+- **Mutated variables become block arguments.** A `val` assigned inside a
+  body is a variable (an `ASSIGN` target). The existing Braun-style SSA
+  construction turns it into block arguments, so the current variable
+  model works unchanged.
+- **Branching on a `val<bool>` directly is an error** in this mode
+  (`explicit operator bool` with a diagnostic naming the combinator to
+  use). Alternatively it falls back to replay for that scope (see
+  "Migration" below).
+- **Plain C++ control flow unrolls.** A C++ `for` over `int` simply runs and
+  emits its iterations. **`static_val` is unnecessary** in this mode, and so
+  is the static-value hash.
+- **Early exits are values, not statements.** `break_()` and `return_()`
+  are combinators that act on the enclosing construct, because a `return`
+  inside a lambda cannot leave the traced function.
+
+What this removes from the compile path:
+
+- **Replay:** tracing takes one pass, and its cost is linear in program
+  size instead of paths × length.
+- **Tags, snapshot hashes and `globalTagMap` lookups per operation.** Merges
+  are now explicit. A tag is captured only when source locations are
+  requested (`debug`, `perf`), and only then.
+- **Seam cleanup.** The trace has no seams for block merging, empty-block
+  elimination or branch threading to remove.
+- **Side effects at trace time run once.** Plain C++ code inside a traced
+  function runs once per program point instead of once per explored path.
+  That is a semantic simplification for users as well.
+
+**Migration.** Make the mode selectable per `nautilus::function` and per
+`region()`, and keep replay tracing as the compatibility mode. Then migrate
+hot NebulaStream operators first and measure before changing the default.
+The `nautilus-review` skill can flag direct branches on `val<bool>`.
+
+### S2. A construction-time optimizing, structured IR
+
+When the CFG is known during construction (S1), the IR can do what the
+passes do now while it is being built. LuaJIT's IR emitter works this way:
+it folds, applies CSE and simplifies at emission time, in one pass.
+
+- **Pure operations have no identity.** Two structurally equal pure
+  operations *are* the same value. The builder hash-conses them per
+  dominating scope, which costs one open-addressing probe per operation.
+  Source attribution becomes lossy (one tag per value), which is acceptable
+  because tags are optional under S1.
+- **Folding and simplification at creation.** The rules of
+  `ConstantFoldingAndCopyPropagation`, `AlgebraicSimplification` and
+  `ConstantBranchFolding` run as builder rules. `if_` on a constant
+  condition traces only the taken arm, with no dead blocks to sweep.
+- **DCE via use counts.** The builder maintains use counts. A backend skips
+  pure values with zero uses, and no DCE pass is needed.
+- **Structured control-flow operations in the IR** (`if`/`loop` with nested
+  blocks and explicit loop-carried values, like MLIR `scf` or Wasm) instead
+  of a flat CFG of block arguments:
+  - **Loops are known by construction,** so `LoopInfo` and dominators are
+    not needed on the fast path.
+  - **Liveness is structural:** a value defined outside a loop and used
+    inside is live for the whole loop.
+  - **A single-pass backend is simpler.** Wasm baseline compilers such as
+    Liftoff and Winch are single-pass for exactly this reason.
+  - **MLIR still works.** It can lower to `scf` and let MLIR produce `cf`.
+- **Memory operations stay ordered** by an explicit effect chain (a token
+  operand, or "last store" state in the builder). That makes the CSE above
+  safe without alias analysis. Loads may be CSE'd against the most recent
+  effect only.
+
+The fixed-point pass pipeline disappears from the critical path. Expensive
+optimizations (LICM, strength reduction) remain optional passes.
+
+### S3. Optimistic call semantics with declared effects
+
+- **`invoke` is `noUnwind` by default.** Throwing callees must opt in
+  (`invoke<may_throw>(…)` or an attribute). Most query runtime functions do
+  not throw. The opt-in keeps exception regions and landing pads, and the
+  capture wrapper, to the call sites that need them.
+- **Declared effects.** A call declares its memory behavior: `pure`,
+  `readonly`, `argmemonly` or `ModRef`. Today's pessimistic default stays
+  available, but marking hot runtime calls `pure`/`readonly` turns them from
+  barriers into values that S2 can CSE.
+- **Trust declarations instead of inferring them.** `NoThrowInferencePass`
+  and `FunctionAttributeInferencePass` leave the critical path. A debug mode
+  checks the declarations (for example, that a `noUnwind` callee does not
+  throw, enforced with a terminate handler).
+
+### S4. Signless integer values
+
+- **Values have only a width.** `i8`, `i16`, `i32`, `i64`, `f32`, `f64`,
+  `ptr`, `bool`.
+- **Signedness moves onto the operations that need it:** `div`, `rem`,
+  shift-right, compare, int↔float casts and extends. LLVM and MLIR's `arith`
+  do the same.
+- **Effects:**
+  - casts between `i32` and `ui32` disappear;
+  - tables over 10 integer types become tables over 4 widths;
+  - backend lowering has fewer cases (the 10-type families in tbc halve).
+- **The user-facing `val<uint32_t>` keeps its C++ semantics.** The operator
+  overloads pick the signed or unsigned operation.
+- **Integer semantics are defined in the IR.** For example, wrap-around on
+  overflow, a trap on division by zero, and masked shift amounts. Then
+  construction-time folding and every backend agree without
+  backend-specific guards.
+
+## 9. Resulting pipeline
+
+```
+structured tracing (one pass, no tags/hashes)  ──►  IR builder
+                                                    (fold + CSE + use counts,
+                                                     structured, effect chain)
+                                                        │
+                                       optional passes (LICM, …) ─┐
+                                                        ▼         │
+                                          single-pass backend ◄───┘
+```
+
+The front end becomes one linear pass over the program, and the backend
+another. The Part I items mostly still apply; dense numbering and the
+frozen lowering view become simpler because the builder produces them
+directly.
+
+## 10. Priority and risks
+
+| Change | Latency effect | Cost to users | Order |
+|---|---|---|---|
+| S3 optimistic calls | medium (EH and inference passes off the path; fewer barriers) | low: annotations on throwing callees | 1 |
+| S4 signless integers | low–medium | none (internal) | 2 |
+| S1 structured tracing | **high** (no replay, no tags/hashes, no seams) | **high**: API change; opt-in mode first | 3 (prototype in parallel) |
+| S2 construction-time IR | high (no fixed-point pipeline) | none, but a large internal rewrite; full effect needs S1 | 4 |
+
+Risks:
+
+- **S1 expressiveness.** Early exits from nested loops, and `return` from
+  deep inside control flow, become more verbose. Some NebulaStream operator
+  code relies on implicit control flow. A per-scope fallback to replay
+  limits the blast radius.
+- **S2 ordering bugs.** CSE over memory is only as correct as the effect
+  chain. The differential fuzzer must cover it before S2 becomes the
+  default.
+- **S3 wrong declarations.** A wrongly declared `noUnwind`/`pure` callee is
+  undefined behavior. The debug-mode checks are a requirement, not an extra.
+- **Two tracing modes** double the testing surface until replay mode can be
+  retired, if ever.
