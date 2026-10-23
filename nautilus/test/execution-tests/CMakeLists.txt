@@ -41,6 +41,11 @@ if (ENABLE_TBC_BACKEND)
             backends/tbc/CompilationStatisticsTest.cpp)
 endif ()
 
+if (ENABLE_C_BACKEND)
+    list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
+            backends/cpp/CPPTempFileTest.cpp)
+endif ()
+
 if (ENABLE_ASMJIT_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
             backends/asmjit/ConcurrentExecutionTest.cpp)

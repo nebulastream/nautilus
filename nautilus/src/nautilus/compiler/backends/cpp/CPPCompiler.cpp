@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <system_error>
 
 using namespace std::string_literals;
 namespace nautilus::compiler::cpp {
@@ -34,6 +35,19 @@ SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::
 #else
 #error "Unknown platform"
 #endif
+
+	// Neither file is needed once the library is loaded (dlopen keeps its own
+	// mapping), and both must also go when compilation fails; otherwise every
+	// compile leaves its source in the temp directory for good.
+	struct RemoveOnExit {
+		const std::string& source;
+		const std::string& library;
+		~RemoveOnExit() {
+			std::error_code ignored;
+			std::filesystem::remove(source, ignored);
+			std::filesystem::remove(library, ignored);
+		}
+	} removeOnExit {sourceFileName, libraryFileName};
 
 	auto file = common::File::createFile(sourceFileName, code);
 	auto compilationFlags = CPPCompilerFlags::createDefaultCompilerFlags();
@@ -75,17 +89,7 @@ SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::
 	compileSharedLib(compilationFlags, file, libraryFileName);
 
 	// load shared lib
-	auto sharedLibrary = SharedLibrary::load(libraryFileName);
-
-	// timer.pause();
-	/* if (!request->enableDebugging()) {
-	     std::filesystem::remove(sourceFileName);
-	     std::filesystem::remove(libraryFileName);
-	 }*/
-	// NES_INFO("CPPCompiler Runtime: " << (double) timer.getRuntime() / (double)
-	// 1000000 << "ms");// print runtime
-	std::filesystem::remove(libraryFileName);
-	return sharedLibrary;
+	return SharedLibrary::load(libraryFileName);
 }
 
 void CPPCompiler::compileSharedLib(CPPCompilerFlags flags, std::shared_ptr<common::File> sourceFile,
