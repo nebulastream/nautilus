@@ -54,7 +54,7 @@ CI:
 | Passes | `irPasses.<pass>.ms`, `.runs`, `.changes` (#561) |
 | Backend | `backend.totalMs`, per-backend sub-stages, code size |
 | Reuse | `cache.level` (L0/L1/L2/miss), `cache.reason`, `artifact.eligible`, `artifact.ineligibleReason` |
-| Memory | trace and NIR arena bytes, allocations (debug builds) |
+| Memory | trace and NIR arena bytes, bytes held by the arena pools, allocations (debug builds) |
 
 Statistics stay opt-in per compile. When they are not collected, the cost is
 an increment per counter and no walks.

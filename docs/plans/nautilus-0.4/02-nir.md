@@ -199,6 +199,45 @@ What keeps the in-memory format free to evolve:
   maps, liveness and spill slots are all arrays. No hash map remains on a
   per-operand path.
 
+### 4.1 Arena management (to revisit)
+
+Trace and NIR memory comes from arenas, so arena policy decides how much
+memory a long-running engine keeps. 0.4 revisits it in M1, together with the
+NIR layout.
+
+**Today (0.3):**
+- **Pools:** each engine has one `ArenaPool` for traces and one for IR
+  graphs. Each pool keeps up to 8 spare arenas
+  (`ArenaPool::DEFAULT_MAX_SPARES`).
+- **Recycling keeps chunks:** a returned arena is `softReset()`, which keeps
+  its heap chunks, so the next compile allocates nothing.
+- **Effect:** the engine keeps the high-water mark of its largest compiles
+  for its lifetime, for up to 8 concurrent compiles per pool. **Measured:**
+  after one compile of about 20,000 ops, 22.5 MB of heap stays held with
+  `asmjit` or `tbc` and about 22 MB with MLIR. Freeing the chunks on release
+  instead brings that down to 0.3–1.4 MB.
+
+**To decide in M1** (measured on the latency corpus and the NebulaStream
+suite):
+- **A retention cap:** on release, keep chunks up to a per-arena byte budget
+  and free the rest. The budget is per engine
+  (`engine.arena.retainedBytes`), and the spare count stays configurable.
+- **Size-aware reuse:** hand large compiles an arena that already has large
+  chunks, instead of whichever spare is first.
+- **Lifetimes per level:**
+  - the trace arena is released right after conversion;
+  - an SSA-level NIR module stays alive only while a backend, a pending
+    promotion ([11](11-tiered-compilation.md)) or the serializer
+    ([07](07-serialization.md)) needs it.
+- **Arenas or sized arrays for NIR sections:** the flat sections (`insts`,
+  `extra`, side tables) may be better served by arrays reserved from the
+  trace's op count than by bump allocation.
+- **Visibility:** pool bytes held and peak arena bytes are reported in the
+  statistics ([10](10-observability.md)).
+
+**Target:** memory held by idle pools stays bounded by the budget, and
+compile latency on the corpus does not regress.
+
 ## 5. Cost comparison for one binary `add` (x86-64)
 
 | | 0.3 | 0.4 |
@@ -254,6 +293,9 @@ IR operation.
 - Every execution test's IR round-trips through bridge → printer →
   serializer → loader with byte-identical re-serialization.
 - No hash map on any NIR per-operand path.
+- The arena policy of §4.1 decided and measured: memory held by idle pools is
+  bounded by the retention budget, with no compile-latency regression on the
+  corpus.
 
 ## 9. Risks
 
