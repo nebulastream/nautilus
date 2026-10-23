@@ -111,6 +111,7 @@ bool TraceContext::isFollowing() {
 }
 
 TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
+	++session_->replayedOperations_;
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	auto consumedTag = currentOperation.tag;
 	state->executionTrace.nextOperation();
@@ -550,9 +551,15 @@ void TraceContext::runScope(std::function<void()>& body) {
 	auto& symbolicExecutionContext = state->symbolicExecutionContext;
 	auto traceIteration = 0;
 	++session_->tracedScopes_;
+	// Each run's own time, without the scopes it enters: those account for
+	// theirs themselves, into scopeTime_ (see the end of this function).
+	const auto scopeStart = std::chrono::steady_clock::now();
+	const auto nestedAtStart = session_->scopeTime_;
 	while (symbolicExecutionContext.shouldContinue()) {
 		traceIteration = traceIteration + 1;
 		++session_->traceIterations_;
+		const auto runStart = std::chrono::steady_clock::now();
+		const auto nestedBefore = session_->scopeTime_;
 		log::trace("Trace Iteration {}", traceIteration);
 		log::trace("{}", state->executionTrace);
 
@@ -574,7 +581,12 @@ void TraceContext::runScope(std::function<void()>& body) {
 		// After each iteration, the static variable stack must be empty.
 		// Since the body completes normally, all destructors fire in order.
 		assert(staticVars.empty() && "static variable stack not empty after tracing iteration");
+		const auto ownTime = (std::chrono::steady_clock::now() - runStart) - (session_->scopeTime_ - nestedBefore);
+		(traceIteration == 1 ? session_->firstRunTime_ : session_->rerunTime_) += ownTime;
 	}
+	// Adds this scope's time net of its nested scopes, which added theirs: an
+	// enclosing scope's run then sees exactly this scope's total.
+	session_->scopeTime_ += (std::chrono::steady_clock::now() - scopeStart) - (session_->scopeTime_ - nestedAtStart);
 	log::debug("Scope traced with {} iterations", traceIteration);
 }
 
@@ -803,6 +815,10 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 	auto traceModule = std::make_unique<TraceModule>();
 	tracedScopes_ = 0;
 	traceIterations_ = 0;
+	replayedOperations_ = 0;
+	snapshots_ = 0;
+	firstRunTime_ = rerunTime_ = scopeTime_ = {};
+	std::chrono::steady_clock::duration finalizeTime {};
 	functionsToTrace = functions;
 	registeredFunctions.clear();
 	usedFunctionNames.clear();
@@ -862,16 +878,25 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 		entryBlock_ = 0;
 		parent_ = nullptr;
 		runScope(wrapperFunc);
+		const auto finalizeStart = std::chrono::steady_clock::now();
 		executionTrace.materializeCopySites();
 
 		state.reset();
 		// The trace is complete, so the blocks that only bounded region bodies can go.
 		executionTrace.collapseRegionSeams();
 		resolveCalleeNames(executionTrace, options);
+		finalizeTime += std::chrono::steady_clock::now() - finalizeStart;
 		log::trace("Final trace: {}", executionTrace);
 	}
 
-	traceModule->getTracingCounts() = {.scopes = tracedScopes_, .iterations = traceIterations_};
+	using Milliseconds = std::chrono::duration<double, std::milli>;
+	traceModule->getTracingCounts() = {.scopes = tracedScopes_,
+	                                   .iterations = traceIterations_,
+	                                   .replayedOperations = replayedOperations_,
+	                                   .snapshots = snapshots_,
+	                                   .firstRunMs = Milliseconds(firstRunTime_).count(),
+	                                   .rerunMs = Milliseconds(rerunTime_).count(),
+	                                   .finalizeMs = Milliseconds(finalizeTime).count()};
 	// activeTracer is cleared by ActiveTracerGuard.
 	return traceModule;
 }
@@ -1003,6 +1028,7 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 }
 
 Snapshot TraceContext::recordSnapshot() {
+	++session_->snapshots_;
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
 }
 

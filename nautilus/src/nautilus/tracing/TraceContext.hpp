@@ -10,6 +10,7 @@
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -528,6 +529,13 @@ private:
 	/// session_), handed to the TraceModule as its TracingCounts.
 	uint64_t tracedScopes_ = 0;
 	uint64_t traceIterations_ = 0;
+	uint64_t replayedOperations_ = 0;
+	uint64_t snapshots_ = 0;
+	std::chrono::steady_clock::duration firstRunTime_ {};
+	std::chrono::steady_clock::duration rerunTime_ {};
+	/// Time spent in finished scopes, net of the scopes nested in them: what a
+	/// scope's run subtracts for the scopes it entered.
+	std::chrono::steady_clock::duration scopeTime_ {};
 
 	/// " in function 'name' (registered at file:line:column)" for the function currently
 	/// being traced, or empty before any function has started. Used to extend an

@@ -132,6 +132,15 @@ public:
 		uint64_t scopes = 0;
 		/// Runs of a scope's body: one per path the symbolic execution explored.
 		uint64_t iterations = 0;
+		/// Operations a run replayed along an already-recorded path (FOLLOW mode).
+		uint64_t replayedOperations = 0;
+		/// Snapshots taken: one per operation recorded or checked against the trace.
+		uint64_t snapshots = 0;
+		/// Time in the first run of each scope's body and in the runs after it,
+		/// each excluding the scopes nested in it, and in finishing the traces.
+		double firstRunMs = 0;
+		double rerunMs = 0;
+		double finalizeMs = 0;
 	};
 	TracingCounts& getTracingCounts() {
 		return tracingCounts;

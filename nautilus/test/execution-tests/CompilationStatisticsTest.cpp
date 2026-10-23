@@ -367,6 +367,23 @@ TEST_CASE("CompilationStatistics: tracing records its scopes, runs and trace siz
 	CHECK(count("tracing.operations") > count("tracing.blocks"));
 	// `result = x` and `result = 0 - x` record ASSIGNs.
 	CHECK(count("tracing.copies") >= 2);
+	// The second run replays the path to the branch before recording the other arm.
+	CHECK(count("tracing.replayedOperations") > 0);
+	CHECK(count("tracing.snapshots") >= count("tracing.operations") / 2);
+
+	auto milliseconds = [&](const char* key) {
+		INFO("missing key: " << key);
+		const auto* value = stats->find(key);
+		REQUIRE(value != nullptr);
+		return std::get<double>(*value);
+	};
+	const auto firstRun = milliseconds("tracing.firstRun.ms");
+	const auto rerun = milliseconds("tracing.rerun.ms");
+	const auto finalize = milliseconds("tracing.finalize.ms");
+	CHECK(firstRun > 0.0);
+	CHECK(rerun > 0.0);
+	CHECK(finalize >= 0.0);
+	CHECK(firstRun + rerun + finalize <= milliseconds("tracing.ms"));
 }
 
 } // namespace nautilus::engine

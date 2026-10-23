@@ -108,7 +108,10 @@ namespace {
 /// Records what tracing took and what it recorded: how many scopes (functions
 /// and region() bodies) it traced and how often their bodies ran -- once per
 /// path the symbolic execution explored -- and the size of the trace, of which
-/// `tracing.copies` are the ASSIGNs a val<T> copy records.
+/// `tracing.copies` are the ASSIGNs a val<T> copy records. `tracing.ms` splits
+/// into the first run of every body, the runs after it (re-executions, which
+/// replay `tracing.replayedOperations` recorded operations to reach a new
+/// path), finishing the traces, and the rest (setup).
 void recordTraceStatistics(const tracing::TraceModule& module, CompilationStatistics& statistics) {
 	int64_t blocks = 0;
 	int64_t operations = 0;
@@ -130,6 +133,11 @@ void recordTraceStatistics(const tracing::TraceModule& module, CompilationStatis
 	statistics.set("tracing.blocks", blocks);
 	statistics.set("tracing.operations", operations);
 	statistics.set("tracing.copies", copies);
+	statistics.set("tracing.replayedOperations", static_cast<int64_t>(counts.replayedOperations));
+	statistics.set("tracing.snapshots", static_cast<int64_t>(counts.snapshots));
+	statistics.set("tracing.firstRun.ms", counts.firstRunMs);
+	statistics.set("tracing.rerun.ms", counts.rerunMs);
+	statistics.set("tracing.finalize.ms", counts.finalizeMs);
 }
 
 /// The cleanup that makes trace-generated IR small: registers the fixed-point
