@@ -313,7 +313,12 @@ symptoms.
 
 ## 8. Proposed semantic changes
 
-### S1. Explicit join points: a structured tracing mode (largest effect)
+### S1. Explicit join points: a structured tracing mode (deferred follow-up)
+
+> **Decision:** implicit, trace-based control-flow discovery stays. S1 is a
+> possible follow-up API on top of the representation in Part III, not part
+> of this design. Part III is built so that S1 can be added later without
+> changing the formats.
 
 Add a tracing mode in which control flow on traced values is written with
 combinators. JAX made the same choice (`lax.cond`, `lax.while_loop`,
@@ -369,6 +374,11 @@ hot NebulaStream operators first and measure before changing the default.
 The `nautilus-review` skill can flag direct branches on `val<bool>`.
 
 ### S2. A construction-time optimizing, structured IR
+
+> **Without S1:** the trace CFG is complete only once tracing ends, so the
+> optimizing builder runs during trace→IR conversion instead of during
+> tracing, and the IR stays in CFG form (§13). Folding, scoped CSE and use
+> counts all still apply there.
 
 When the CFG is known during construction (S1), the IR can do what the
 passes do now while it is being built. LuaJIT's IR emitter works this way:
@@ -436,51 +446,36 @@ optimizations (LICM, strength reduction) remain optional passes.
   construction-time folding and every backend agree without
   backend-specific guards.
 
-## 9. Resulting pipeline
+## 9. Resulting pipeline (implicit control flow kept)
 
 ```
-structured tracing (one pass, no tags/hashes)  ──►  IR builder
-                                                    (fold + CSE + use counts,
-                                                     structured, effect chain)
-                                                        │
-                                       optional passes (LICM, …) ─┐
-                                                        ▼         │
-                                          single-pass backend ◄───┘
+replay tracing (implicit control flow, tags, merge detection)
+        │   records into the flat trace (§12)
+        ▼
+optimizing conversion (one RPO pass: SSA + fold + scoped CSE + use counts)
+        │   writes the flat IR (§13)
+        ▼
+optional passes (LICM, …) ─► single-pass backend / bc / tbc / MLIR
 ```
-
-The front end becomes one linear pass over the program, and the backend
-another. The Part I items mostly still apply; dense numbering and the
-frozen lowering view become simpler because the builder produces them
-directly.
 
 ## 10. Priority and risks
 
 | Change | Latency effect | Cost to users | Order |
 |---|---|---|---|
-| S3 optimistic calls | medium (EH and inference passes off the path; fewer barriers) | low: annotations on throwing callees | 1 |
-| S4 signless integers | low–medium | none (internal) | 2 |
-| S1 structured tracing | **high** (no replay, no tags/hashes, no seams) | **high**: API change; opt-in mode first | 3 (prototype in parallel) |
-| S2 construction-time IR | high (no fixed-point pipeline) | none, but a large internal rewrite; full effect needs S1 | 4 |
+| Part III flat trace + flat IR | high (no per-op malloc, no hash maps, ~5–10x fewer bytes) | none (internal; dumps change) | 1 |
+| S2 in the conversion | high (fixed-point pipeline off the critical path) | none | 2 |
+| S3 optimistic calls | medium | low: annotations on throwing callees | 3 |
+| S4 signless integers | low–medium | none (internal) | 4 |
+| S1 structured tracing | high | high: API change | deferred follow-up |
 
-Risks:
-
-- **S1 expressiveness.** Early exits from nested loops, and `return` from
-  deep inside control flow, become more verbose. Some NebulaStream operator
-  code relies on implicit control flow. A per-scope fallback to replay
-  limits the blast radius.
-- **S2 ordering bugs.** CSE over memory is only as correct as the effect
-  chain. The differential fuzzer must cover it before S2 becomes the
-  default.
-- **S3 wrong declarations.** A wrongly declared `noUnwind`/`pure` callee is
-  undefined behavior. The debug-mode checks are a requirement, not an extra.
-- **Two tracing modes** double the testing surface until replay mode can be
-  retired, if ever.
+S2 and S3 carry the risks listed under them above. S1's risks only matter
+once it is picked up.
 
 ---
 
-# Part III: Memory representation under S1 + S2
+# Part III: Memory representation (trace kept)
 
-## 11. One representation instead of two
+## 11. Two flat representations, one shared vocabulary
 
 Today a value exists three times:
 
@@ -489,184 +484,239 @@ Today a value exists three times:
   heap `std::vector`;
 - as hash-map entries in each backend.
 
-With structured tracing (S1), each body is traced once and the CFG is known
-during recording, so the trace has no job left that the IR cannot do. The
-proposal is:
+The trace stays, because replay-based exploration and merge detection need
+a record of what was executed and where. But the trace and the IR become
+**two flat arrays with the same instruction format**:
 
-- **The tracer writes the IR directly.** `ExecutionTrace`,
-  `TraceOperation`, `InputVariant` and `TraceToIRConversionPhase` go away in
-  structured mode.
-- **A `val<T>` holds the IR value id itself.** `TypedValueRefHolder`
-  already holds a 32-bit ref and a type, so `val<T>` does not grow.
-- **The replay mode (the compatibility fallback) records into the same
-  format,** with a CFG variant and a side array of snapshots. Its
-  conversion becomes a linear rewrite of one flat stream into another
+- **The trace** is an append-only stream in recording order, grouped into
+  blocks by index lists. It carries the snapshot information that merge
+  detection needs, in a side array.
+- **The IR** is the same instruction format in SSA, laid out per function
+  in layout order, without snapshots.
+- **Conversion** reads one flat array and writes another: a linear rewrite
   instead of building a pointer graph.
-
-## 12. Layout: flat, index-based and fixed-size
 
 The model follows LuaJIT's IR (fixed-size instructions, 16-bit refs,
 constants below a bias), Cranelift's entity tables (`u32` ids, secondary
-maps, pooled value lists) and Zig's AIR (struct-of-arrays, tag + data,
-an "extra" array for variable-length payloads).
+maps, pooled value lists) and Zig's AIR (struct-of-arrays, tag + data, an
+"extra" array for variable-length payloads).
+
+### Shared instruction format
 
 ```cpp
-// Per function. All storage is a handful of growable arrays, recycled
-// through a thread-local pool, so steady-state compiles do no malloc.
-struct Inst {                 // 16 B, value id == index into insts
+struct Inst {                 // 16 B
 	Opcode op;                // u8
-	Type   type;              // u8: signless width (S4)
-	uint16_t flags;           // e.g. nsw, branch hint, effect class
-	uint32_t a, b;            // operands: value ids, or constant refs
-	uint32_t c;               // third operand, immediate, or extra index
+	Type   type;              // u8: signless width once S4 lands
+	uint16_t flags;           // branch hint, effect class, ...
+	uint32_t a, b;            // operands: value refs or tagged constant refs
+	uint32_t c;               // third operand, immediate, or index into `extra`
 };
+```
 
-struct Function {
-	std::vector<Inst>     insts;     // linear program order == layout order
-	std::vector<uint32_t> extra;     // variable-length operands (call args, loop args)
-	ConstPool             consts;    // interned constants; refs tagged in a/b
-	// Cold side tables indexed by value id, only filled when requested:
-	std::vector<const Tag*> sourceTag;   // debug / perf only
-	std::vector<uint16_t>   region;      // region() attribution
-	// Built incrementally by the builder:
+Shared by trace and IR:
+
+- **`extra`** (`std::vector<uint32_t>`) holds variable-length payloads: call
+  arguments, block-argument lists, `{argCount, args…}`.
+- **`ConstPool`** holds interned constants, referenced with the top bit set
+  (the counterpart of LuaJIT's refs below `REF_BIAS`). An add of a constant
+  needs no constant instruction.
+- **Call descriptors** go into a per-module table (the existing
+  `FunctionTable`), referenced by `FunctionId` in `a`. Names are resolved
+  only when dumping.
+- **Storage** is recycled per thread, so a steady-state compile does no
+  per-operation `malloc`.
+
+## 12. The flat trace
+
+```cpp
+struct FlatTrace {
+	std::vector<Inst>      ops;        // trace op id == index; recording order
+	std::vector<uint32_t>  extra;
+	ConstPool              consts;
+	std::vector<Snapshot>  snapshot;   // by trace op id (16 B); only the merge map reads it
+	std::vector<uint16_t>  region;     // by trace op id
+	std::vector<TraceBlock> blocks;    // per block: arena index list of op ids, predecessors
+	FlatMap<Snapshot, uint32_t> tagMap; // open addressing in the trace arena: snapshot -> op id
+};
+```
+
+What changes compared with today:
+
+- **Operations are identified by a global op id, not by `(block, index)`.**
+  `globalTagMap` stores `(blockIndex, operationIndex)` today. When
+  `processControlFlowMerge` splits a block, it moves the tail into the
+  merge block and **rewrites the map entry of every moved operation**. With
+  a global op id the map entries stay valid. A split moves only the tail of
+  one `u32` index list, plus one `opBlock[]` update per moved op if a
+  reverse map is kept.
+- **Records are 16 B instead of 56 + 24·n B.** The snapshot (16 B) moves
+  to a parallel array that is written in record mode and read only by the
+  merge map and source attribution. Operands are 4 B refs. Constants, call
+  descriptors, block refs, probabilities and alloca indices go into
+  `consts` / `extra` / the side tables.
+- **The tag map is an open-addressing table in the trace arena,** so an
+  insert does not allocate. Today every recorded operation allocates a
+  `std::unordered_map` node.
+- **Trie fan-out is hashed.** `TrieNode::append` switches to a small
+  open-addressing child table above about 8 children, so tag creation stays
+  O(depth) for functions with many call sites.
+- **Replay keeps its cursor.** Follow mode already advances a cursor without
+  taking a snapshot (`TraceContext::follow`). With the flat trace the cursor
+  is a position in the block's index list, and reading the recorded op is an
+  index into `ops`. The reconciliation-`ASSIGN` skip in `follow()` compares
+  `snapshot[id]` instead of the record's embedded tag.
+- **Value refs stay what they are.** `TypedValueRef` (a `u32` ref plus the
+  type) is what `val<T>` holds. Operand slots in `Inst` are those refs, so
+  recording an operation writes one 16 B record and the ref of its result.
+
+Explicitly unchanged:
+
+- the replay algorithm (`SymbolicExecutionContext`, follow and record
+  modes);
+- tag creation by frame-pointer walk;
+- snapshot hashing with the static-value stack;
+- `static_val` and `region()` semantics;
+- merge detection at any operation.
+
+S1 can later be added as a mode that skips snapshots and the tag map; it
+would write the same format.
+
+**Open question to measure.** Copies (`ASSIGN` from `val` copy
+construction) are about half of all traced operations, according to the
+comment in `TraceContext::traceCopy`. In the flat trace they still cost a
+16 B record, a snapshot and a map insert each. A lazier copy model could
+remove most of them, but copy sites take part in merge detection, so this
+needs its own investigation and is not part of this design.
+
+## 13. The flat IR
+
+The trace's CFG is complete only once tracing ends, so the IR keeps
+**CFG form** (blocks + block arguments) instead of structured markers. It
+is laid out for single-pass consumers:
+
+```cpp
+struct FlatFunction {
+	std::vector<Inst>     insts;      // value id == index; blocks contiguous, in layout order
+	std::vector<uint32_t> extra;      // block-argument lists, call args
+	ConstPool             consts;
+	std::vector<BlockInfo> blocks;    // per block: first inst, arg range in extra, loop depth, loop end
+	// Cold side tables by value id, filled only on request:
+	std::vector<const Tag*> sourceTag;
+	std::vector<uint16_t>   region;
+	// Built by the conversion:
 	std::vector<uint32_t>   useCount;
-	std::vector<uint32_t>   forward;     // replaced-by, resolved on read
+	std::vector<uint32_t>   forward;  // replaced-by, resolved on read
 };
 ```
 
-### Key properties
+- **Block arguments are the first instructions of a block** (`op=BlockArg`),
+  so they have value ids like everything else. Terminators are
+  `br target, extraIdx` and `condbr cond, t, f, extraIdx`; the argument
+  lists live in `extra`. There are no `BasicBlock`, `BasicBlockInvocation`
+  or predecessor objects; predecessor counts are a side array computed by
+  the conversion.
+- **Layout order is fixed by the conversion:** RPO with loop bodies
+  contiguous. Each `BlockInfo` carries loop depth and loop end, so a
+  TPDE-style backend needs no analysis pass of its own. The trace gives
+  this nearly for free, because the tracer already marks `ControlFlowMerge`
+  blocks (loop-header candidates) and knows which edges go back.
+- **Dense by construction.** Value id = index, block id = index. Every
+  backend side table is a `std::vector`, and `Frame<OperationIdentifier, V>`
+  becomes an array (§4.2 falls out directly).
 
-- **Values are numbered densely by construction.** A value's id is its
-  index into `insts`. Every side table (backend register map, use counts,
-  liveness, spill slots) is a `std::vector` indexed by that id. No hash map
-  remains on any per-operand path.
-- **Operands are 4 B indices, not pointers.** Reading an operand is one
-  load into a contiguous array. The pointer chain block → vector →
-  `Operation` → inputs → `Operation` disappears.
-- **Constants live in their own pool,** referenced by a tagged id (top bit
-  set, the counterpart of LuaJIT's refs below `REF_BIAS`). An add of a
-  constant needs no constant instruction. Backends see the immediate
-  directly, which TPDE-style encoders use for immediate forms.
-- **Hot and cold data are split.** The 16 B instruction holds only what
-  every consumer needs. Source tags, region indices, call names and
-  attributes live in side tables that are filled only when debug, perf or
-  dumping asks for them. Today these sit in every `Operation` (`sourceTag`
-  8 B, region 2 B) and in every `CallOperation` (two `std::string`s).
-- **Calls** are `{op=Call, a=calleeId, c=extra offset}`. The `extra` array
-  holds `{argCount, args…}`, and the callee descriptor lives in the
-  existing `FunctionTable`.
+### The optimizing conversion (S2 without S1)
 
-### Structured control flow inline in the stream
+`TraceToIRConversionPhase` already converts in one linear pass with dense
+tables and Braun-style SSA. It becomes the optimizing builder:
 
-Control flow is written as markers in the instruction stream, in the
-style of Wasm:
+1. **Visit blocks in RPO** with predecessors before successors, except for
+   back edges. A block is *live* once a live edge enters it, and dead
+   blocks are never emitted. A `condbr` on a value that folded to a
+   constant adds only the taken edge, so constant branch folding and
+   unreachable-block removal happen during conversion. Back edges come from
+   latches converted after the header, which is when Braun sealing closes
+   the header.
+2. **Fold on emission.** The rules of `ConstantFoldingAndCopyPropagation`
+   and `AlgebraicSimplification` are builder rules. A trivial block
+   argument (every edge passes the same value, or only itself) is folded
+   into `forward[]`, as Braun's algorithm already does.
+3. **Scoped CSE.** An open-addressing table over `(op, type, a, b, c)` with
+   an undo log, scoped along the dominator tree. A dominator tree over the
+   trace CFG is cheap (Cooper–Harvey–Kennedy). A block-local scope is a
+   valid first step. Loads and calls key their entries on the current
+   effect id, so memory order is kept without alias analysis.
+4. **Use counts while emitting.** A pure value with zero uses at the end is
+   skipped by backends, so no DCE pass is needed on the fast path.
+5. **Block merging and empty-block elimination become threading.** A trace
+   block with a single predecessor and an unconditional jump is appended to
+   its predecessor's IR block instead of becoming its own block. Jump-only
+   trace blocks are already threaded today.
 
-```
-v7  = loop  [init: v1, v2]          ; loop-carried values become v7, v8
-v8  =   loop.arg
-...
-v12 =   if v11
-        ...                         ; then arm
-      else
-        ...
-      end   [results: v13]
-      continue [v14, v15]           ; next-iteration values
-      end loop [results: v16, v17]
-```
+After this, the fixed-point pass group is no longer on the critical path.
+LICM and strength reduction remain optional passes.
 
-- **Layout order is program order.** A single-pass backend walks `insts`
-  once from front to back. Loop extents are explicit (`loop` … `end`),
-  so loop analysis needs no RPO or dominators, and liveness needs at most
-  one backward sweep.
-- **No block objects, no predecessor lists, no `BasicBlockInvocation`s.**
-  The 88 B `BasicBlock`, the 144 B `IfOperation` and the 80 B
-  `BranchOperation` become a few 16 B markers.
-- **Loop-carried values work in one pass.** The builder learns which
-  variables a loop carries only while it traces the body, so the `loop`
-  marker's argument list lives in `extra` and is completed when the loop
-  closes. The builder creates a loop argument on the first read of a
-  variable inside the body (Braun's incomplete phi). When the loop closes,
-  an argument whose next-iteration value equals its initial value is
-  folded into `forward[]`. Readers resolve it lazily, so **no use lists and
-  no rewrite of the body are needed.**
-
-### Builder state
-
-The builder keeps a small amount of state, all of it dense:
-
-- **Current definition per variable:** `varDef[varId]`, saved and restored
-  at the boundaries of `if_` arms and loops.
-- **A scoped hash-consing table:** open addressing over
-  `(op, type, a, b, c)` → id, plus an undo log. Entries added inside a
-  then-arm are rolled back when the arm closes, so a value defined there is
-  never reused where it does not dominate.
-- **The effect chain:** the id of the last effect (a store, or a call that
-  may write memory). Loads and calls key their CSE entries on it.
-
-## 13. Mutation model: build once, rewrite by copying
-
-Ids are dense indices, so passes do not mutate in place. They run as
-optional, off-critical-path work:
+### Mutation model: build once, rewrite by copying
 
 - **Linear rewrites copy.** A pass that removes or replaces operations
-  streams `insts` into a new array, using an old→new id map (one
+  streams `insts` into a new array using an old→new id map (one
   `std::vector<uint32_t>`). This is O(n), stays cache-friendly and keeps
   ids dense.
-- **Local replacements use `forward[]`.** A pass that only replaces values
-  records the replacement there, and compaction applies it later.
-- **No persistent use lists.** `useCount` covers what backends and DCE
-  need. A pass that needs real uses builds a CSR table once (offsets +
-  flat use array, two allocations).
-
-This drops the in-place-mutation machinery from the critical path:
-`FunctionRewriter` sessions, predecessor upkeep and use tables rebuilt per
-pass.
+- **Local replacements use `forward[]`.** Compaction applies them later.
+- **No persistent use lists.** A pass that needs real uses builds a CSR
+  table once (offsets + flat use array). `FunctionRewriter`'s per-pass
+  hash table and the predecessor upkeep in `IRPassManager` go away.
 
 ## 14. Cost comparison for one binary `add` (x86-64)
 
 | | Today | Proposed |
 |---|---|---|
-| Trace record | 56 B op + 2 × 24 B inputs | none (no separate trace) |
-| Tag work per op | frame-pointer walk, trie insert, `globalTagMap` node (`malloc`) | none (tags only on request) |
+| Trace record | 56 B + 2 × 24 B inputs | 16 B + 16 B snapshot (record mode only) |
+| Tag map insert | `unordered_map` node (`malloc`); rewritten when its block is split | open-addressing slot; never rewritten |
 | IR object | 32 B op + 16 B inputs + 8 B vector slot | 16 B `Inst` |
-| Constant operand | separate 40 B `ConstIntOperation` | entry in the interned constant pool, shared |
+| Constant operand | separate 40 B `ConstIntOperation` | interned entry in `ConstPool`, shared |
+| Branch / if | 80 B / 144 B + block objects | 16 B terminator + args in `extra` |
 | Backend value lookup | `unordered_map` probe | array index |
 | Heap allocations per op (steady state) | ≥ 1 | 0 (recycled arrays) |
-| Representations built | 2 + per-backend maps | 1 |
+| IR passes before codegen | fixed point, up to 28 use-table builds | none required (done in conversion) |
 
-Roughly a **10x reduction in bytes per operation** and **zero per-op
-allocations**. Each step from tracing to a backend reads one contiguous
-array.
+That is roughly 5x fewer bytes per traced operation, about 3x fewer per IR
+operation, and no per-operation allocation. Tag creation (the frame-pointer
+walk) remains the main per-operation tracing cost in record mode. That cost
+belongs to the kept trace semantics and is what a later S1 would remove.
 
 ## 15. Consequences for consumers
 
 - **Backends:**
   - `bc`/`tbc` become a near 1:1 translation, because a register bytecode
     is almost this format;
-  - `asmjit` and a TPDE-style backend iterate `insts` directly;
-  - MLIR builds `scf`/`arith` from the markers.
+  - `asmjit` and a TPDE-style backend iterate `insts` directly, using
+    `BlockInfo` for loops;
+  - MLIR builds `cf`/`arith` blocks from `BlockInfo` and the terminators.
+- **Trace consumers.** `CopyAttribution`, region seam collapsing and the
+  trace dump read `InputVariant` today. They switch to the flat accessors;
+  add the accessor layer first (§6).
 - **Dumps and tests.** The `tracing/`, `ir/` and `after_*` reference dumps
-  under `test/data` change format. A printer for the stream replaces both
-  the trace and IR printers. That means a one-time regeneration of the
-  expected outputs, and the differential fuzzer guards semantics across it.
-- **Passes.** Existing passes are rewritten as stream-copy transforms.
-  Construction-time folding and CSE (S2) take over most of them; LICM and
-  strength reduction remain as optional copy passes.
-- **Compatibility.** The replay tracer and the pointer-based IR can coexist
-  behind the `TraceModule` → `IRGraph` boundary until every backend reads
-  the new format. Migrate one backend at a time: `bc`/`tbc` first, as the
-  closest fit, then `asmjit`, then MLIR.
+  under `test/data` change format. That means a one-time regeneration, with
+  the differential fuzzer guarding semantics across it.
+- **Migration.** Land it in four steps:
+  1. flat trace behind the existing `TraceModule` interface;
+  2. flat IR alongside `IRGraph`, with an adapter from flat IR to `IRGraph`
+     so the existing passes and backends keep working;
+  3. port backends one at a time: `bc`/`tbc` first, then `asmjit`, then
+     MLIR;
+  4. delete `IRGraph` and the pointer-based passes.
 
 ## 16. Risks
 
 - **The 16 B instruction format is a hard budget.** Wide immediates and
-  `__int128` constants go through the constant pool; SIMD shuffles and
-  other variable-length payloads go through `extra`. Each new opcode must
-  fit this format, which is a constraint on the plugin APIs (intrinsics,
-  SIMD, GPU).
-- **Scoped CSE correctness.** The undo log must exactly mirror structured
-  scopes, including `break_()` and `return_()` exits. Fuzz this
-  specifically.
-- **Lossy provenance.** A value shared through CSE keeps one tag. That is
-  acceptable for profiling, but debuggers stepping through traced code
-  lose per-call-site identity unless CSE is disabled in debug builds.
+  `__int128` constants go through `ConstPool`; SIMD shuffles and other
+  variable-length payloads go through `extra`. Each new opcode must fit,
+  which constrains the plugin APIs (intrinsics, SIMD, GPU).
+- **Scoped CSE must follow dominance exactly.** Start with block-local
+  scopes. Widening the scope to the dominator tree needs dedicated fuzzing.
+- **Lossy provenance.** A value shared through CSE keeps one source tag.
+  Disable CSE in debug builds if debuggers need per-call-site identity.
+- **Conversion order.** Folding during conversion changes which blocks
+  exist, so verify on every merge-heavy test (regions, nested loops,
+  `break`) that Braun sealing does not wait on predecessors that were
+  folded away.
