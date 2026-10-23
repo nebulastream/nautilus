@@ -6,10 +6,15 @@ Part of the [Nautilus 0.4 design](README.md) · Milestone M4 · Builds on #561
 ## 1. Purpose
 
 Every backend reads SSA-level NIR after legalization
-([03](03-conversion-and-passes.md)). 0.4 improves the existing `asmjit`
-backend with a single-pass emission mode and makes it the default on x86-64
-and AArch64. It keeps MLIR/LLVM for peak performance and persisted native
-code, and ports the remaining backends to NIR. There is no new backend.
+([03](03-conversion-and-passes.md)). 0.4 turns the existing `asmjit`
+backend into a single-pass backend:
+- one emission path, aiming for minimal compile latency at about LLVM -O0
+  code quality;
+- the default on x86-64 and AArch64.
+
+MLIR/LLVM stays for peak performance and persisted native code, and the
+remaining backends are ported to NIR. There is no new backend and no
+second AsmJit mode.
 
 ## 2. Today and what it costs
 
@@ -29,7 +34,7 @@ Backends take 11–30% of a compile on `bc`/`tbc`/`asmjit`
 
 | Backend | Role | Notes |
 |---|---|---|
-| **`asmjit`**, improved (§4) | **Default** on x86-64 and AArch64 (decision D3) | Reads NIR directly; new single-pass `fast` mode (default) and today's `optimized` mode |
+| **`asmjit`**, single-pass (§4) | **Default** on x86-64 and AArch64 (decision D3) | Reads NIR directly; target: about LLVM -O0 code quality at minimal latency |
 | `tbc` (+ copy-and-patch) | Portable default; iOS and platforms without JIT | Near 1:1 from NIR |
 | `bc` | Debugging and simplicity; may later merge into `tbc` (D6) | Near 1:1 from NIR |
 | MLIR → LLVM | Peak performance; produces the persisted native payloads ([07](07-serialization.md)) | #561's per-thread state reuse; reads NIR; maps extension types |
@@ -38,77 +43,57 @@ Backends take 11–30% of a compile on `bc`/`tbc`/`asmjit`
 
 **Tiered compilation keeps its structure** (`TieredJITCompiler`: tier 0
 compiled synchronously, tier 1 in the background). Two things change:
-- tier 0 defaults to `asmjit` in `fast` mode (`tbc` where AsmJit is not
-  available), and tier 1 stays MLIR;
+- tier 0 defaults to `asmjit` (`tbc` where AsmJit is not available), and
+  tier 1 stays MLIR;
 - the IR both tiers share is SSA-level NIR, which is immutable after
   conversion, so tier 1 can read it concurrently without copying.
 
 Promotion policy is unchanged in 0.4 (§7). `engine.backend=<x>` still
 selects single-tier compilation with exactly that backend.
 
-## 4. The improved AsmJit backend
+## 4. The single-pass AsmJit backend
 
-The backend keeps its name (`engine.backend=asmjit`), its two lowering
-providers (`X64LoweringProvider`, `A64LoweringProvider`) and their
-instruction selection. It also keeps its exception transport
-(`CapturedExceptionTransport`, exception regions), its `JitRuntime`
-(executable memory, W^X and `MAP_JIT` on macOS) and its intrinsic handlers,
-which become extension lowering ([04 §3.5](04-extensions.md)).
+### 4.1 What stays and what changes
 
-Three things change:
-- it reads NIR instead of `IRGraph`;
-- its side tables become arrays;
-- it gets a second, single-pass emission mode.
+**Stays:**
+- the name (`engine.backend=asmjit`);
+- the two lowering providers (`X64LoweringProvider`, `A64LoweringProvider`)
+  and their instruction selection;
+- the exception transport (`CapturedExceptionTransport`, exception regions);
+- `JitRuntime` (executable memory, W^X and `MAP_JIT` on macOS);
+- the intrinsic handlers, which become extension lowering
+  ([04 §3.5](04-extensions.md)).
 
-### 4.1 Reading NIR
+**Changes:**
 
-- **Value and block maps become arrays** indexed by value and block id:
-  `Frame<OperationIdentifier, AsmReg>`, `blockLabels`, `processedBlocks`,
-  `usageCounts_` and `inlinedConstParams_` all go
-  ([02 §4](02-nir.md)).
-- **Use counts and layout come from NIR:** `useCount` and `BlockInfo`
-  (layout order, loop depth, loop end). The backend no longer runs
-  `ir::countUsages`; loop data is derived data, rebuilt in one linear pass
-  after an artifact load ([02 §3.6](02-nir.md)).
-- **Constants are immediates:** an operand referencing `ConstPool` is
-  emitted as an immediate where the instruction allows it, which replaces
-  today's constant-inlining special cases.
-
-### 4.2 Two emission modes, one instruction selection
-
-Most of today's lowering emits instructions through AsmJit's shared emitter
-API (`x86::Emitter` / `a64::Emitter`), which `Compiler`, `Builder` and
-`Assembler` all implement. Only three things are `Compiler`-specific:
-virtual registers (`newGp`), function and call nodes (`FuncNode`,
-`cc.invoke`), and `finalize()`. The modes differ exactly there:
-
-| | `optimized` (today's path) | `fast` (new, default) |
+| | 0.3 | 0.4 |
 |---|---|---|
+| Input | `IRGraph` | SSA-level NIR |
+| Side tables | hash maps (`Frame`, `blockLabels`, `processedBlocks`, `usageCounts_`, `inlinedConstParams_`) | arrays indexed by value and block id |
+| Use counts, layout | recomputed (`ir::countUsages`) | from NIR (`useCount`, `BlockInfo`) |
 | Emitter | `x86::Compiler` / `a64::Compiler` | `x86::Assembler` / `a64::Assembler` |
-| Registers | virtual registers, AsmJit's global RA pass | **our single-pass local allocator** (§4.3) |
-| Calls | `cc.invoke` nodes | direct ABI moves and `call`, emitted in place |
+| Registers | virtual registers + AsmJit's global RA pass | single-pass local allocator (§4.3) |
+| Calls | `cc.invoke` nodes | direct ABI moves and `call`, emitted in place; linear in the number of calls |
 | Frames | `FuncNode` frame handling | prologue and epilogue patched at the end |
-| Peephole | post-RA peephole passes (`X64PostRAPeepholePass`, `A64PostRAPeepholePass`) | fusion at selection time (§4.3) |
-| Use | when code quality matters more than compile time | default |
+| Peepholes | post-RA passes (`X64PostRAPeepholePass`, `A64PostRAPeepholePass`) | fusion at selection time |
+| Constants | constant-inlining special cases | `ConstPool` operands become immediates |
 
-Instruction selection is written once against a small operand-supply
-interface:
+### 4.2 Why one single-pass path is enough
 
-```cpp
-// implemented by both modes
-struct OperandSupply {
-	Operand use(ValueId v);          // register, stack slot or immediate
-	Reg     def(ValueId v);          // destination register for v
-	Reg     scratch(RegClass cls);   // temporary for this instruction
-	void    release(ValueId v);      // last use reached
-};
-```
+| | AsmJit `Compiler` + global RA (0.3) | Single-pass local allocation (0.4) |
+|---|---|---|
+| Compile cost | node list, liveness and allocation over the whole function, `finalize()`; superlinear in calls | one walk; linear |
+| Values live across blocks | kept in registers | spilled at merges, except fixed registers for innermost-loop values |
+| Reference point | between LLVM -O0 and -O1 code generation | LLVM -O0's `RegAllocFast` is also local; TPDE reports ±9% of -O0 with this design |
+| Input IR | cleaned by the fixed-point passes | cleaned by the conversion (folding, CSE, dead blocks), unlike -O0, which compiles unoptimized IR |
 
-In `optimized` mode it hands out virtual registers. In `fast` mode it is the
-local allocator. The selected instructions are emitted through the shared
-emitter in both modes. The mode is chosen with `asmjit.mode=fast|optimized`.
+A global allocator buys fewer spills in large branchy functions: code
+quality between -O0 and -O1, at a multiple of the compile cost. Code that
+runs long enough to need that should go to MLIR, which is the peak tier in
+any case. For the 0.4 goal (minimal latency at about -O0 quality), the
+single-pass path is the right and only design.
 
-### 4.3 The fast mode
+### 4.3 Code generation
 
 - **Analysis.** Layout and loop data come from NIR. The only pass of its own
   is a linear backward sweep for last-use positions: per value, the start
@@ -121,53 +106,67 @@ emitter in both modes. The mode is chosen with `asmjit.mode=fast|optimized`.
   - the lowest free register first; otherwise evict in round-robin order;
   - a value dead after its last use frees its register immediately;
   - values in innermost loops, such as induction variables, get fixed
-    callee-saved registers.
+    callee-saved registers. This is where the backend recovers most of what
+    a global allocator gives in hot loops.
 - **Edges.** At edges into merge blocks or non-fall-through targets, values
   without a fixed register are spilled. Block arguments become parallel
   moves on the edge, and critical edges that need moves get a split block.
-- **Fusion within a block** replaces the post-RA peephole passes:
-  - compare + branch (today's `enableBranchFusion_`);
+- **Fusion within a block:**
+  - compare + branch (today's branch fusion);
   - immediates from `ConstPool`;
   - `add`/`mul` into the address modes of `load`/`store`;
   - a single-use value into its user.
 - **Calls** follow the platform ABI directly: arguments are moved into
   argument registers or stack slots, and caller-saved values are spilled
-  around the call. Internal calls are labels in one code holder. Cost is
-  linear in the number of calls, which removes the superlinear behavior P0
-  measured in `optimized` mode.
+  around the call. Internal calls are labels in one code holder.
 - **Frame.** The prologue reserves the frame and is patched at the end with
   the frame size and the callee-saved set; epilogues likewise.
+- **Instruction selection** is carried over from the current lowering
+  providers. Most of their emission goes through AsmJit's shared emitter
+  API, which `Assembler` implements as well. What changes is where operands
+  come from:
+
+  ```cpp
+  struct OperandSupply {           // the single-pass allocator
+  	Operand use(ValueId v);      // register, stack slot or immediate
+  	Reg     def(ValueId v);      // destination register for v
+  	Reg     scratch(RegClass c); // temporary for this instruction
+  	void    release(ValueId v);  // last use reached
+  };
+  ```
+
+- **Extensions** lower through `lower(ctx, inst)` with the same supply and
+  the emitter, or are legalized to their fallback.
 
 TPDE, Umbra's Flying Start and the Wasm baseline compilers are related work
 for this technique. Nautilus implements it inside its AsmJit backend and
 takes no TPDE dependency.
 
-### 4.4 The optimized mode
+### 4.4 Targets
 
-`optimized` is today's backend reading NIR. It keeps AsmJit's global
-register allocator and the post-RA peephole passes, for modules where code
-quality matters more than compile time and where MLIR is too expensive.
-The superlinear call cost P0 found in this mode is investigated in M4. Its
-likely cause is RA work per `InvokeNode` across long functions. It is
-fixed if the fix is local; otherwise it is documented as a property of this
-mode.
+Measured with the latency corpus, `ExecutionBenchmark` and TPC-H
+(nautilus-duck):
 
-### 4.5 Targets
+- **Compile time:** backend ≤ 0.1 µs/op, and linear in the number of calls.
+- **Code quality:**
+  - execution time within 1.1x of LLVM -O0 (the MLIR backend with
+    `optimizationLevel=0`) on the loop kernels and TPC-H;
+  - ≥ 3x faster than `bc`;
+  - within 1.3x of 0.3's `asmjit`.
+- **Coverage:** every `asmjit` test passes on x86-64 and AArch64, including
+  exceptions and every in-tree extension.
 
-- `fast` mode backend time ≤ 0.1 µs/op, and linear in the number of calls.
-- `fast` mode code within 1.2x of `optimized` mode, and ≥ 3x faster than `bc`
-  on the `ExecutionBenchmark` loop kernels.
-- Both modes pass every `asmjit` test on x86-64 and AArch64, including
-  exceptions and every in-tree extension, before D3 makes `fast` the
-  default.
+### 4.5 Steps within M4
 
-### 4.6 Steps within M4
-
-1. Port today's `Compiler`-based lowering to NIR (`optimized` mode), with
-   array side tables. Behavior is identical by construction.
-2. Factor instruction selection behind `OperandSupply`.
-3. Add `fast` mode on x86-64, then AArch64.
-4. Switch the default once §4.5 holds (D3).
+1. Port the lowering providers to NIR with array side tables, and factor
+   instruction selection behind `OperandSupply`. Until step 3, the
+   `Compiler` path serves as the operand supply, so tests stay green. It is
+   an internal step and is not shipped.
+2. Implement the single-pass allocator, calls and frames on `Assembler` on
+   x86-64.
+3. Delete the `Compiler` path and the post-RA peephole passes once x86-64
+   passes all tests and meets §4.4.
+4. The same for AArch64.
 
 ## 5. MLIR → LLVM
 
@@ -198,27 +197,29 @@ mode.
   admission control, the tier lattice).
 - Lazy per-function compilation and parallel compilation of a module's
   functions.
-- A new native backend, and any TPDE backend, adapter or TPDE-based middle
-  tier.
+- A second AsmJit mode with a global register allocator, a new native
+  backend, and any TPDE backend, adapter or TPDE-based middle tier.
 
 ## 8. Exit criteria (M4)
 
 - Every backend passes the execution tests and the differential fuzzer on
-  NIR. The fuzzer covers both `asmjit` modes.
+  NIR.
+- `asmjit` meets the targets of §4.4. The `Compiler` path and the post-RA
+  peephole passes are deleted.
 - End to end ≤ 0.5 µs/op on linear corpus code with the default backend.
 - No execution-time regression per backend on `ExecutionBenchmark` and
-  TPC-H (nautilus-duck). For `asmjit`, this holds in `optimized` mode.
+  TPC-H, except the bounded `asmjit` trade of §4.4 (≤ 1.3x of 0.3's
+  `asmjit`, within 1.1x of LLVM -O0).
 - Decision D3 taken on measured results.
 
 ## 9. Risks
 
-- **Code size and quality in `fast` mode.** Local allocation produces more
-  spills than a global allocator. `optimized` mode and MLIR remain
-  selectable per module, and the 1.2x target gates the default.
-- **Two modes to maintain.** Shared instruction selection keeps the
-  mode-specific code to register supply, calls and frames. Both modes run in
-  CI and in the fuzzer.
-- **`fast` mode reaches parity late.** `optimized` mode stays the default
-  until it does; `tbc` remains the portable default.
+- **Spills in large branchy functions.** Local allocation spills at merges.
+  Fixed registers for loop values cover the hot case, and the 1.1x-of-O0
+  target gates the release. Modules that need better code use MLIR.
+- **Code size.** Single-pass code is larger than optimized LLVM code.
+  Measure the I-cache effect on NebulaStream.
+- **Late parity on AArch64.** x86-64 can switch first; `tbc` remains the
+  portable default.
 - **The plugin lowering API is public surface.** Keep it narrow (operands,
   results, scratch registers, emitter) so the allocator can change.

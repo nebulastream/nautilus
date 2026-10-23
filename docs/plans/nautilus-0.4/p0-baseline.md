@@ -163,9 +163,9 @@ representation and passes, T = tracing, B = backends.
    with many call sites (real operators). It is part of the frontend
    milestone (M2).
 4. **AsmJit's call handling is superlinear:** 70–76% of compile time on
-   call-heavy code. The improved `asmjit` backend's single-pass `fast` mode
-   handles calls in linear time (M4).
-5. **The backend share is 11–30%.** The `asmjit` fast mode remains
+   call-heavy code. The `asmjit` backend is rebuilt as single-pass, with
+   calls in linear time (M4).
+5. **The backend share is 11–30%.** The single-pass `asmjit` backend remains
    important, but behind items 1–3 for latency on large functions. For small
    functions on MLIR, the fixed cost (#561) matters most.
 6. **3–25 allocations per op and two materializations** justify the flat
