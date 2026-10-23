@@ -36,12 +36,19 @@ Additions in 0.4:
 - **real kernels:** NebulaStream queries via the existing CI job, and TPC-H
   kernels from nautilus-duck.
 
-CI:
-- the corpus runs in the benchmark workflow on `nautilus-0.4`, with the
-  existing 200% alert;
-- the release criteria ([README §6](README.md)) are checked against it;
-- because the runners are shared, a regression is confirmed only after a
-  rerun.
+How it is measured (D9):
+- **Gates use instruction counts under callgrind** for every per-op target
+  and every "no slower than 0.3" check. They are deterministic and do not
+  depend on the runner, so CI can enforce them.
+- **Wall-clock targets** (the µs/op budgets, warm vs. cold, time to tier 1,
+  `ExecutionBenchmark`) are measured on **one dedicated reference
+  machine**, fixed for the whole release and recorded in the corpus output
+  (CPU model, frequency policy, kernel, compiler).
+- **Shared CI runners** run the corpus in the benchmark workflow on
+  `nautilus-0.4` with the existing 200% alert. Their wall-clock numbers are
+  reported, not gated; a regression there is confirmed only after a rerun.
+- The release criteria ([README §6](README.md)) are checked on both the
+  instruction counts and the reference machine.
 
 ## 3. Statistics
 

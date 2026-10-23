@@ -176,7 +176,31 @@ slower on `ExecutionBenchmark`, so no user loses a working configuration.
 P0 measurements of `bc` ([p0-baseline.md](p0-baseline.md)) stay as recorded;
 `tbc` and `asmjit` are the baselines from M1 on.
 
-## 7. Not in 0.4
+## 7. Debug info and profiling (D14)
+
+0.3 has three ways to see generated code: DWARF debug info and GDB JIT
+registration from MLIR (`DebugInfoExecutionTest`), perf jitdump
+(`PerfJitDumpExecutionTest`), and the in-process `JitSymbolRegistry` behind
+`perf.sample` and the `profiling` plugin. They need source locations and
+names, which 0.4 carries in NIR:
+
+- **Source locations** live in the optional `debug` section
+  ([02 §3.2](02-nir.md)): a source tag per instruction and the region
+  table. They are recorded only when a debug or profiling option is set
+  (`dump.*`, `perf`, `perf.sample`, debug info), so the default compile
+  pays nothing ([01 §5](01-tracing-frontend.md)).
+- **MLIR** emits DWARF locations from the `debug` section, as it does from
+  today's IR.
+- **`asmjit` and `tbc` register their code too.** In 0.3, `perf.sample`
+  needs `engine.backend=mlir`, because tier-0 backends register nothing.
+  In 0.4, `asmjit` publishes one symbol per function (and per `region()`
+  when source locations are on) to `JitSymbolRegistry` and to the jitdump,
+  and `tbc` publishes its handler ranges. Profiling then works with the
+  default backend.
+- **Tests:** the existing debug-info and jitdump tests run on NIR, plus a
+  `perf.sample` test on `asmjit` ([12](12-validation.md)).
+
+## 8. Not in 0.4
 
 - Per-tier IR levels and more than two tiers
   ([11 §9](11-tiered-compilation.md)).
@@ -185,7 +209,7 @@ P0 measurements of `bc` ([p0-baseline.md](p0-baseline.md)) stay as recorded;
 - A custom register allocator, a second AsmJit mode, a new native backend,
   and any TPDE backend, adapter or TPDE-based middle tier.
 
-## 8. Exit criteria (M4)
+## 9. Exit criteria (M4)
 
 - Every backend passes the execution tests and the differential fuzzer on
   NIR.
@@ -194,9 +218,11 @@ P0 measurements of `bc` ([p0-baseline.md](p0-baseline.md)) stay as recorded;
   (README §1).
 - No execution-time regression per backend on `ExecutionBenchmark` and
   TPC-H, `asmjit` included.
+- Debug info, jitdump and `perf.sample` work on NIR, `perf.sample` also
+  with `asmjit` (§7).
 - Decision D3 taken on measured results.
 
-## 9. Risks
+## 10. Risks
 
 - **Other superlinear paths in our AsmJit patches.** The call-heavy case was
   one. The corpus (`calls`, `straight`, `loopBody` at 10k+ ops) runs in CI

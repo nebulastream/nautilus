@@ -134,6 +134,12 @@ registration API per backend.
 - **Registration before any tracing,** from static initializers or plugin
   init functions, as the in-tree plugins already do.
 - **Frozen after the first compile:** read-only and lock-free.
+- **Late registration is an error** (D13). Registering an op, type or pass
+  after the first compile, for example from a plugin loaded later with
+  `dlopen`, throws an exception that names the extension and says that all
+  extensions must be registered before the first compile. The registry is
+  never mutated while compiles may read it. An engine-scoped registry for
+  late-loaded plugins is a possible later step.
 - **One `ExtensionRegistry`** holds types, ops and passes, and absorbs
   `IntrinsicRegistry`. A deprecated shim registers old-style intrinsics as
   extension ops with `fallback = native function`, so existing plugins keep

@@ -29,7 +29,7 @@ architecture, the decisions, compatibility, the release plan and the risks.
 | Artifact | A serialized module: NIR image, optional native payloads, compatibility descriptor ([07](07-serialization.md)) |
 | L0 / L1 / L2 | In-process, semantic-key and structural caches ([08](08-caching.md)) |
 | Re-run | A repeated execution of a traced body to explore another branch direction ([01](01-tracing-frontend.md)) |
-| M1–M7, D1–D7 | Milestones (§6) and decisions (§8) |
+| M1–M7, D1–D17 | Milestones (§6) and decisions (§8) |
 
 ## 1. Summary
 
@@ -150,6 +150,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 09 | [C API](09-c-api.md) | The C interface to NIR and the engine | #531 |
 | 10 | [Observability](10-observability.md) | Statistics, the latency corpus, dumps, tooling | #561, #524 |
 | 11 | [Tiered compilation](11-tiered-compilation.md) | Review of `TieredJITCompiler`; a promotion service with a worker pool, cancellation, status API, opt-in promotion policy, early tier-1 start, cache-aware tiering | 0.3 tiered compiler, #561 |
+| 12 | [Validation](12-validation.md) | How each component is tested; performance-gate method; new test infrastructure | #544 (fuzzer), the corpus |
 | — | [P0 baseline](p0-baseline.md) | Measurements behind this design | design study (closed #562) |
 
 ## 5. Compatibility and versioning
@@ -165,6 +166,9 @@ Details and rationale: [02-nir.md](02-nir.md).
 | `bc` backend | **Removed** (D6). `tbc` covers its roles; `engine.backend=bc` fails with an error that names `tbc` ([05 §6](05-backends.md)) |
 | Serialization, artifacts, cache entries | **First persisted formats.** The PRs are ported onto NIR, not released on the 0.3 IR |
 | C API | **New**, on NIR; stable from 0.4 on |
+| Artifacts and cache entries across 0.4.x (D12) | **NIR images stay loadable** within 0.4.x: patch releases do not change the format, and minor format bumps only add feature bits and wider strides. **Native payloads are tied to the exact build** and are recompiled from the NIR image after an upgrade. A 0.5 image is rejected by 0.4 with a clear error |
+| Integer edge cases (D10) | **Defined:** division by zero and `MIN / -1` throw `nautilus::ArithmeticException`; shift amounts are masked. Undefined in 0.3 ([06 §4](06-semantics.md)) |
+| Floating point (D11) | IEEE strict, no fast-math; float→int casts saturate instead of being undefined ([06 §4.1](06-semantics.md)) |
 
 Version identities recorded in every artifact: the core version (semver),
 the NIR format (major.minor + feature bits), the artifact format, and each
@@ -193,7 +197,7 @@ releases and no temporary formats.
 
 | Milestone | Content | Exit criterion |
 |---|---|---|
-| **M1 Foundations** | NIR format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; bridge `IRGraph` → NIR (internal, removed before release); latency corpus driver added and running in CI; bounded chunk pool for arenas ([02 §4.1](02-nir.md)); `bc` backend removed (D6) | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
+| **M1 Foundations** | NIR format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; bridge `IRGraph` → NIR (internal, removed before release); latency corpus driver added and running in CI; bounded chunk pool for arenas ([02 §4.1](02-nir.md)); `bc` backend removed (D6); validation infrastructure of [12 §5](12-validation.md): loader/verifier fuzzer, reference machine, NebulaStream CI job against `nautilus-0.4` (D16) | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
 | **M2 Frontend** | Flat trace with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; TPC-H re-run share ≤ 35% of tracing; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
 | **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
 | **M4 Backends** | `tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; the promotion service of [11](11-tiered-compilation.md); decisions D3 and D8 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
@@ -227,7 +231,8 @@ releases and no temporary formats.
 
 ### 6.1 Testing and validation
 
-These rules apply to every milestone:
+[12-validation.md](12-validation.md) has the tests per component and the
+measurement method (D9). These rules apply to every milestone:
 
 - **The differential fuzzer** (production-ready since #544) compares
   backends and the interpreter on every change. It is extended with:
@@ -279,12 +284,21 @@ the migration guide from 0.3.
 |---|---|---|
 | D1 | Order of the work | As in §6: foundations first, then frontend and conversion (the measured hot spots) |
 | D2 | Native backend | **Decided:** one `asmjit` backend on NIR that keeps AsmJit's register allocator; no custom allocator in 0.4 (a later, data-driven option), no second mode, no new backend, no TPDE |
-| D3 | Default backend | Proposed: `asmjit` on x86-64 and AArch64, `tbc` elsewhere |
+| D3 | Default backend | Proposed: `asmjit` on x86-64 and AArch64, `tbc` elsewhere. Decided at the M4 exit, on the measured results ([05 §9](05-backends.md)) |
 | D4 | Exception default of `invoke` | **Decided: (b)** keep 0.3's default; add optional `nothrow` and effect declarations; cheaper exception handling ([06 §3](06-semantics.md)) |
 | D5 | Cache and serialization PRs | **Decided:** ported onto NIR; no separate 0.3 formats |
 | D6 | Keep `bc` beside `tbc` | **Decided:** drop `bc` in 0.4, in M1, so it is never ported to NIR; `tbc` is the interpreting backend ([05 §6](05-backends.md)) |
 | D7 | Scope of the unified IR | Proposed: as in §3.1 |
 | D8 | Promotion policy | Proposed: keep `eager` as the default; add opt-in `calls:<N>` and `manual` ([11 §4.4](11-tiered-compilation.md)) |
+| D9 | How performance gates are measured | **Decided:** instruction counts under callgrind for gates; wall-clock on one dedicated reference machine; shared runners report only ([10 §2](10-observability.md)) |
+| D10 | Integer edge cases | **Decided:** wrap on overflow; division by zero and `MIN / -1` throw `nautilus::ArithmeticException`; shift amounts masked, emitted only where the target does not mask ([06 §4](06-semantics.md)) |
+| D11 | Floating-point semantics | **Decided:** IEEE strict, no fast-math in 0.4; saturating float→int casts ([06 §4.1](06-semantics.md)) |
+| D12 | Compatibility across 0.4.x | **Decided:** NIR images loadable across 0.4.x; native payloads tied to the exact build and recompiled from the image (§5) |
+| D13 | Extensions registered after the first compile | **Decided:** an error naming the extension; register everything before the first compile ([04 §3.7](04-extensions.md)) |
+| D14 | Debug info and profiling on NIR | **Decided:** source locations in the optional `debug` section, recorded only on request; `asmjit` and `tbc` register their code so `perf.sample` works with the default backend ([05 §7](05-backends.md)) |
+| D15 | GPU testing without GPU CI | **Decided:** CUDA compile-only in CI; Metal on the macOS runner where it exposes a device; a manual GPU run on the M7 checklist ([12 §4](12-validation.md)) |
+| D16 | NebulaStream migration | **Decided:** the NebulaStream CI job runs against `nautilus-0.4` from M1 on, so breakage shows per milestone; NebulaStream is ported milestone by milestone, not in M7 |
+| D17 | Deprecated surfaces | **Decided:** every shim (old intrinsic API, renamed options, `waitForPendingPromotions`) keeps a test that checks it still works and warns once ([12 §2](12-validation.md)) |
 
 ## References
 
