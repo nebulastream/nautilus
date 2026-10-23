@@ -110,6 +110,14 @@ public:
 	 */
 	bool allPromotionsComplete() const;
 
+	/**
+	 * @brief Number of promotion threads this compiler still holds: the running
+	 * ones plus those that finished since the last promotion started. Finished
+	 * threads are joined when the next promotion starts, so this stays bounded
+	 * by the promotions in flight however many modules are compiled.
+	 */
+	size_t retainedPromotionThreads() const;
+
 private:
 	/**
 	 * @brief Trace and compile @p functions with the named @p backend, returning
@@ -139,10 +147,20 @@ private:
 	void promoteAsync(std::weak_ptr<engine::details::ModuleState> state, std::shared_ptr<ir::IRGraph> ir,
 	                  engine::ModuleOptions options) const;
 
+	/// A promotion thread and the flag it sets when its work is done, so the
+	/// thread can be joined (briefly) once the flag is set.
+	struct PromotionThread {
+		std::thread thread;
+		std::shared_ptr<std::atomic<bool>> finished;
+	};
+
+	/// Joins and drops the finished promotion threads. Caller holds threadsMutex_.
+	void reapFinishedPromotions() const;
+
 	CompilationPipeline pipeline_;
 	engine::TieredCompilationConfig config_;
 
-	mutable std::vector<std::thread> promotionThreads_;
+	mutable std::vector<PromotionThread> promotionThreads_;
 	mutable std::mutex threadsMutex_;
 	mutable std::atomic<int> pendingPromotions_ {0};
 };
