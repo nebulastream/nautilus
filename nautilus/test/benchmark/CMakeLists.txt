@@ -15,4 +15,9 @@ if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
     target_link_libraries(nautilus-benchmarks PUBLIC nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
     catch_discover_tests(nautilus-benchmarks EXTRA_ARGS --allow-running-no-tests)
+
+    # P0 latency corpus (docs/low-latency-plan.md). A plain executable: it
+    # replaces the global operator new to count allocations.
+    add_executable(nautilus-latency-corpus LatencyCorpus.cpp)
+    target_link_libraries(nautilus-latency-corpus PRIVATE nautilus)
 endif ()

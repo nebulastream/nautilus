@@ -1,5 +1,11 @@
 # Plan: Low-Latency Compilation
 
+> **Superseded** by the release plan in [nautilus-2.md](nautilus-2.md), which
+> reorders this plan with the P0 measurements
+> ([p0-latency-baseline.md](p0-latency-baseline.md)) and adds serialization,
+> caching and the explicit control-flow API. Kept as the detailed record of
+> the individual work items.
+
 Status: proposal · Merges every point of
 [low-latency-compilation.md](low-latency-compilation.md) (the backend and
 pipeline survey) and [ir-representation-latency.md](ir-representation-latency.md)

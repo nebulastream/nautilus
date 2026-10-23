@@ -12,12 +12,12 @@ The document grew in four iterations. The decisions so far:
 | Topic | Decision | Where |
 |---|---|---|
 | Control-flow tracing | **Keep** implicit, replay-based tracing with tags and merge detection | Part III |
-| Explicit control-flow API (S1) | Deferred follow-up; the formats leave room for it | §8 S1 |
+| Explicit control-flow API (S1) | In Nautilus 2, built on region scopes so it mixes with implicit control flow | [nautilus-2.md §4.1.2](nautilus-2.md) |
 | Trace and IR representation | **Flat**: 16 B instructions, dense ids, side arrays, no per-op allocation | Part III |
 | IR optimization on the critical path | In the trace→IR conversion (S2 without S1) | §13 |
 | Call semantics (S3), signless integers (S4) | Proposed, after the flat formats | §8 |
 | Plugin extensibility | Extension ops, types, rules and passes through one frozen registry | Part IV |
-| Implementation order | Unified plan | [low-latency-plan.md](low-latency-plan.md) |
+| Implementation order | Nautilus 2 release plan | [nautilus-2.md](nautilus-2.md) |
 
 How Part I relates to Part III:
 
