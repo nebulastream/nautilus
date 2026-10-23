@@ -2,7 +2,7 @@
 #include "GraphVizUtil.hpp"
 #include <sstream>
 #ifdef ENABLE_LOGGING
-#include "fmt/core.h"
+#include "fmt/format.h"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/CallOperation.hpp"
