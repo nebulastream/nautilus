@@ -6,15 +6,17 @@ Part of the [Nautilus 0.4 design](README.md) · Milestone M4 · Builds on #561
 ## 1. Purpose
 
 Every backend reads SSA-level NIR after legalization
-([03](03-conversion-and-passes.md)). 0.4 rebuilds the existing `asmjit`
-backend as a single-pass backend:
-- one emission path with minimal compile latency;
-- **no regression in code quality against 0.3's `asmjit`**;
-- the default on x86-64 and AArch64.
+([03](03-conversion-and-passes.md)). 0.4 keeps one native backend, the
+existing `asmjit` backend:
+- it reads NIR, with array side tables;
+- it keeps AsmJit's register allocator, so there is **no regression in code
+  quality against 0.3**;
+- it fixes its call-heavy compile-time cost;
+- it is the default on x86-64 and AArch64.
 
 MLIR/LLVM stays for peak performance and persisted native code, and the
-remaining backends are ported to NIR. There is no new backend and no
-second AsmJit mode.
+remaining backends are ported to NIR. There is no new backend, no second
+AsmJit mode and no custom allocator in 0.4.
 
 ## 2. Today and what it costs
 
@@ -34,7 +36,7 @@ Backends take 11–30% of a compile on `bc`/`tbc`/`asmjit`
 
 | Backend | Role | Notes |
 |---|---|---|
-| **`asmjit`**, single-pass (§4) | **Default** on x86-64 and AArch64 (decision D3) | Reads NIR directly; linear-scan allocation; code at least as fast as 0.3's `asmjit` |
+| **`asmjit`** (§4) | **Default** on x86-64 and AArch64 (decision D3) | Reads NIR directly; AsmJit's allocator; code quality of 0.3 |
 | `tbc` (+ copy-and-patch) | Portable default; iOS and platforms without JIT | Near 1:1 from NIR |
 | `bc` | Debugging and simplicity; may later merge into `tbc` (D6) | Near 1:1 from NIR |
 | MLIR → LLVM | Peak performance; produces the persisted native payloads ([07](07-serialization.md)) | #561's per-thread state reuse; reads NIR; maps extension types |
@@ -51,14 +53,41 @@ compiled synchronously, tier 1 in the background). Two things change:
 Promotion policy is unchanged in 0.4 (§7). `engine.backend=<x>` still
 selects single-tier compilation with exactly that backend.
 
-## 4. The single-pass AsmJit backend
+## 4. The AsmJit backend
 
-### 4.1 What stays and what changes
+### 4.1 Decision: keep AsmJit's allocator
+
+The 0.4 `asmjit` backend keeps AsmJit's `Compiler`, its register allocator
+and the post-RA peephole passes. What changes is everything around them:
+the input (NIR), the side tables, and the call-heavy liveness cost.
+
+Why not our own single-pass allocator (P0 and the profile in
+[p0-baseline.md](p0-baseline.md)):
+
+- **AsmJit's allocator is not the dominant cost on normal code.** On linear
+  code, `finalize()` plus the RA passes are about 10% of all instructions,
+  ~40% of backend time (≈ 0.17 µs/op). The rest of the backend is our
+  lowering: hash-map frames, node creation, dispatch. NIR fixes most of
+  that.
+- **Keeping it guarantees no code-quality regression** and avoids writing
+  and maintaining an allocator.
+- **The one real problem is contained:** `BaseRAPass::buildLiveness()`
+  grows quadratically on call-heavy functions (§4.3), and is investigated
+  as a bounded task.
+
+A custom linear-scan allocator on `Assembler` stays a possible later step,
+taken only if real workloads (TPC-H, NebulaStream) still show the allocator
+as a large share of compile time once the frontend and conversion work has
+landed.
+
+### 4.2 What stays and what changes
 
 **Stays:**
 - the name (`engine.backend=asmjit`);
 - the two lowering providers (`X64LoweringProvider`, `A64LoweringProvider`)
   and their instruction selection;
+- `x86::Compiler` / `a64::Compiler`, AsmJit's register allocator, and the
+  post-RA peephole passes;
 - the exception transport (`CapturedExceptionTransport`, exception regions);
 - `JitRuntime` (executable memory, W^X and `MAP_JIT` on macOS);
 - the intrinsic handlers, which become extension lowering
@@ -71,130 +100,56 @@ selects single-tier compilation with exactly that backend.
 | Input | `IRGraph` | SSA-level NIR |
 | Side tables | hash maps (`Frame`, `blockLabels`, `processedBlocks`, `usageCounts_`, `inlinedConstParams_`) | arrays indexed by value and block id |
 | Use counts, layout | recomputed (`ir::countUsages`) | from NIR (`useCount`, `BlockInfo`) |
-| Emitter | `x86::Compiler` / `a64::Compiler` | `x86::Assembler` / `a64::Assembler` |
-| Registers | virtual registers + AsmJit's global RA pass | linear-scan allocation with splitting, during emission (§4.3) |
-| Calls | `cc.invoke` nodes | direct ABI moves and `call`, emitted in place; linear in the number of calls |
-| Frames | `FuncNode` frame handling | prologue and epilogue patched at the end |
-| Peepholes | post-RA passes (`X64PostRAPeepholePass`, `A64PostRAPeepholePass`) | fusion at selection time |
-| Constants | constant-inlining special cases | `ConstPool` operands become immediates |
+| Constants | constant-inlining special cases | `ConstPool` operands become immediates where the instruction allows |
+| Virtual registers | one per IR value | created on first use and reused after last use where the type allows, to shrink the allocator's work |
+| Call-heavy functions | quadratic liveness (§4.3) | fixed in how we emit code, or upstream |
 
-### 4.2 Design goal: 0.3's code quality at single-pass cost
+### 4.3 The call-heavy liveness cost
 
-There is one backend, and it must not regress against 0.3's `asmjit`.
-Where 0.3's code quality comes from, and how 0.4 keeps it:
+Measured on `calls` (N runtime calls in one function, `main`, callgrind):
 
-| 0.3 source of quality | How 0.4 keeps it |
-|---|---|
-| AsmJit's global register allocator: liveness over the whole function; values stay in registers across blocks | **Linear-scan allocation with interval splitting** (§4.3): global live intervals, assigned in one walk |
-| Post-RA peephole rule 1: self-move elimination | Direct emission never produces a self-move, except the intentional `mov r32, r32` zero extension, which stays |
-| Post-RA peephole rule 2: `mov r, 0` → `xor r32, r32` where flags are dead | Applied at selection time; flag liveness is known there (flags are only live between a fused compare and its branch) |
-| Branch fusion, constant inlining | Kept: compare + branch fusion; `ConstPool` operands as immediates; address-mode fusion |
+| N | `buildLiveness()` instructions | Share of the compile | Local allocator |
+|---|---|---|---|
+| 1000 | 6.5 M | 18% | 1.9 M |
+| 5000 | 132.7 M (**20x** for 5x calls) | **49%** | 9.4 M (linear) |
 
-What 0.4 removes is the *cost* of that quality: the node list, the iterative
-passes and `finalize()`. P0 measured those as ~10% of all instructions on
-linear code, and as superlinear in the number of calls.
+The test function has no exception branches, so this is not one block per
+call. The cause is not yet isolated. Candidates, checked in this order:
+1. how long values stay live across calls (constants and arguments
+   materialized early);
+2. the number of virtual registers we create per call (argument and result
+   registers);
+3. AsmJit's liveness algorithm itself.
 
-### 4.3 Register allocation: linear scan with splitting
+The first two are fixable in our lowering. The third is reported upstream,
+with the reproducer from the latency corpus. Exit: `calls` linear in N, or
+a documented upstream issue with the measured bound.
 
-This is the allocator family JITs use for exactly this trade-off
-(Poletto & Sarkar; Wimmer & Mössenböck's linear scan in HotSpot's client
-compiler):
+TPC-H kernels are small (median 266 MLIR ops, #561), so this rarely shows
+up there. It matters for large generated functions.
 
-1. **Live intervals in one linear pass.**
-   - NIR's layout order numbers every instruction, and `BlockInfo` gives
-     loop extents.
-   - One backward sweep per block computes live-in sets and the use
-     positions of each value, stored in a flat array.
-   - A value live into a loop header is extended to the loop end. This
-     uses the loop tree from NIR, with no iterative data flow (Kohn et al.).
-2. **Assignment during emission, in layout order:**
-   - an interval starting at an instruction takes a free register, or its
-     hint if that is free;
-   - if none is free, the interval whose next use is farthest away is split
-     and spilled, and it is reloaded before its next use;
-   - the active set is ordered by end position, so each step costs
-     O(log R) for R registers.
-3. **Hints instead of moves:**
-   - block arguments prefer the register of their incoming values
-     (coalescing);
-   - values crossing calls prefer callee-saved registers;
-   - arguments and return values prefer their ABI registers.
-4. **Edges.** A value keeps its register across block boundaries. Resolution
-   moves are emitted only on edges where a split interval lives in
-   different locations on the two sides, and critical edges that need moves
-   get a split block.
-
-Total cost: one analysis pass plus one emission pass,
-O(n + intervals · log R).
-
-### 4.4 Code generation
-
-- **Value table.** Indexed by value id; per value its interval, current
-  location (register per part, or stack slot) and spill slot. Multi-part
-  types (`i128`) take one interval per part.
-- **Instruction selection** is carried over from the current lowering
-  providers. Most of their emission goes through AsmJit's shared emitter
-  API, which `Assembler` implements as well. What changes is where operands
-  come from:
-
-  ```cpp
-  struct OperandSupply {           // backed by the linear-scan allocator
-  	Operand use(ValueId v);      // register, stack slot or immediate
-  	Reg     def(ValueId v);      // destination register for v
-  	Reg     scratch(RegClass c); // temporary for this instruction
-  	void    release(ValueId v);  // last use reached
-  };
-  ```
-
-- **Calls** follow the platform ABI directly: argument moves, then `call`.
-  Intervals that cross the call live in callee-saved registers or are
-  spilled around it. Internal calls are labels in one code holder. Cost is
-  linear in the number of calls.
-- **Frame.** The prologue reserves the frame and is patched at the end with
-  the frame size and the callee-saved set; epilogues likewise.
-- **Extensions** lower through `lower(ctx, inst)` with the same supply and
-  the emitter, or are legalized to their fallback.
-
-TPDE, Umbra's Flying Start and the Wasm baseline compilers are related work
-for single-pass emission. HotSpot's client compiler is related work for
-linear-scan allocation in a JIT. Nautilus implements both inside its AsmJit
-backend and takes no TPDE dependency.
-
-### 4.5 Targets
+### 4.4 Targets
 
 Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
 (nautilus-duck):
 
-- **Code quality: no regression against 0.3's `asmjit`.** Execution time is
-  at most 0.3's on every benchmark, beyond measurement noise (3% on the
-  shared runners, confirmed by a rerun). This is a release criterion.
+- **Code quality: no regression against 0.3's `asmjit`.** This holds by
+  construction (same allocator and peepholes) and is checked on every
+  benchmark. It is a release criterion.
 - **Compile time:**
-  - backend ≤ 0.1 µs/op (0.3: ~0.4 µs/op);
-  - linear in the number of calls (0.3: ~4 µs per call at 5000 calls).
+  - backend ≤ 0.25 µs/op on linear code (0.3: ~0.4 µs/op);
+  - `calls` linear in N (§4.3).
 - **Coverage:** every `asmjit` test passes on x86-64 and AArch64, including
   exceptions and every in-tree extension.
-- **For reference:** execution time compared with LLVM -O0 (the MLIR
-  backend at `optimizationLevel=0`) is reported. It is expected to be at
-  least as good, because the input is already cleaned by the conversion.
 
-### 4.6 Steps within M4
+### 4.5 Steps within M4
 
-1. **Port the lowering providers to NIR** with array side tables. The
-   `Compiler` path serves as operand supply, so behavior and code quality
-   are unchanged. This is the M4 baseline: the reference for "no
-   regression", and the fallback if step 3 is not ready.
-2. **Factor instruction selection behind `OperandSupply`,** and implement
-   the linear-scan allocator, calls and frames on `Assembler` for x86-64.
-3. **Compare on every benchmark against the step-1 baseline.** Delete the
-   `Compiler` path and the post-RA peephole passes only when §4.5 holds on
-   x86-64.
-4. The same for AArch64.
-
-If step 3 does not reach parity in time for the release, 0.4 ships step 1:
-one `asmjit` backend on NIR with 0.3's allocator and code quality. It still
-gains the IR, side-table and conversion improvements, and its call
-superlinearity is investigated separately. Either way there is one backend
-and no regression.
+1. Port the lowering providers to NIR with array side tables and
+   `ConstPool` immediates.
+2. Reduce virtual-register churn (create on first use, reuse after last
+   use).
+3. Isolate and fix the call-heavy liveness cost (§4.3), on x86-64 and
+   AArch64.
 
 ## 5. MLIR → LLVM
 
@@ -225,30 +180,27 @@ and no regression.
   admission control, the tier lattice).
 - Lazy per-function compilation and parallel compilation of a module's
   functions.
-- A second AsmJit mode, a new native backend, and any TPDE backend, adapter
-  or TPDE-based middle tier.
+- A custom register allocator, a second AsmJit mode, a new native backend,
+  and any TPDE backend, adapter or TPDE-based middle tier.
 
 ## 8. Exit criteria (M4)
 
 - Every backend passes the execution tests and the differential fuzzer on
   NIR.
-- `asmjit` meets the targets of §4.5. The `Compiler` path and the post-RA
-  peephole passes are deleted, or the step-1 fallback of §4.6 applies.
-- End to end ≤ 0.5 µs/op on linear corpus code with the default backend.
+- `asmjit` meets the targets of §4.4.
+- End to end ≤ 0.75 µs/op on linear corpus code with the default backend
+  (README §1).
 - No execution-time regression per backend on `ExecutionBenchmark` and
   TPC-H, `asmjit` included.
 - Decision D3 taken on measured results.
 
 ## 9. Risks
 
-- **Linear scan falls short of AsmJit's allocator** on some kernels. The
-  step-1 baseline is the reference on every benchmark, a shortfall blocks
-  deleting the `Compiler` path, and the fallback keeps 0.3's quality. Known
-  levers before falling back: better split positions, more hints, and
-  rematerializing constants instead of spilling them.
-- **Code size.** Single-pass code is larger than optimized LLVM code.
-  Measure the I-cache effect on NebulaStream.
-- **Late parity on AArch64.** x86-64 can switch first; AArch64 keeps the
-  step-1 path until it reaches parity.
+- **The call-heavy liveness cost is inside AsmJit.** If our lowering does
+  not cause it, it needs an upstream fix. Until then it bounds very large
+  call-heavy functions; MLIR or `tbc` remain options for them.
+- **AsmJit's allocator stays a fixed cost** (~0.17 µs/op on linear code).
+  If the frontend and conversion work makes it dominant, a custom allocator
+  becomes the next step, decided on TPC-H and NebulaStream data.
 - **The plugin lowering API is public surface.** Keep it narrow (operands,
-  results, scratch registers, emitter) so the allocator can change.
+  results, scratch registers, emitter).

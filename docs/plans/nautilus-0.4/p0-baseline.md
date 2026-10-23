@@ -122,6 +122,17 @@ quadratic.
 | IR passes | 33% |
 | bc lowering | 18%, of which `countAllUsages` 6.7% |
 
+**`calls`, asmjit, N = 1000 vs. 5000** (added after the first report):
+
+| N | `BaseRAPass::buildLiveness()` | Share of the compile | `runLocalAllocator()` |
+|---|---|---|---|
+| 1000 | 6.5 M instructions | 18% | 1.9 M |
+| 5000 | 132.7 M (20x for 5x calls) | 49% | 9.4 M (linear) |
+
+The superlinear call cost is AsmJit's liveness analysis, not our lowering's
+own work and not the local allocator. The test function has no exception
+branches.
+
 ### MLIR (not built here)
 
 - CI tracing benchmark on `main`: `comp_mlir_*` takes 3.3–5 ms for trivial
@@ -163,10 +174,12 @@ representation and passes, T = tracing, B = backends.
    with many call sites (real operators). It is part of the frontend
    milestone (M2).
 4. **AsmJit's call handling is superlinear:** 70–76% of compile time on
-   call-heavy code. The `asmjit` backend is rebuilt as single-pass, with
-   calls in linear time (M4).
-5. **The backend share is 11–30%.** The single-pass `asmjit` backend remains
-   important, but behind items 1–3 for latency on large functions. For small
+   call-heavy code, caused by `buildLiveness()`. `asmjit` keeps AsmJit's
+   allocator, and the liveness cost is isolated and fixed as a bounded task
+   (M4).
+5. **The backend share is 11–30%.** AsmJit's allocator itself is ~40% of
+   that on linear code. It stays, because it guarantees 0.3's code quality;
+   the lowering around it gets cheaper with NIR. For small
    functions on MLIR, the fixed cost (#561) matters most.
 6. **3–25 allocations per op and two materializations** justify the flat
    representation as the strategic change. It also carries serialization
