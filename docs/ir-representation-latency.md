@@ -720,3 +720,212 @@ belongs to the kept trace semantics and is what a later S1 would remove.
   exist, so verify on every merge-heavy test (regions, nested loops,
   `break`) that Braun sealing does not wait on predecessors that were
   folded away.
+
+---
+
+# Part IV: An extensible IR for plugins
+
+## 17. How plugins extend Nautilus today
+
+| Mechanism | Used by | Limitation |
+|---|---|---|
+| **Intrinsics** (`IntrinsicRegistry`): a native function, identified by address, that a backend *may* replace with instructions. Every intrinsic is also a valid call (the fallback invariant) | `builtin` (prefetch, overflow, int128), `simd`, `specialization` (assume) | **The IR only sees a call.** Passes treat it as an opaque call with whatever `FunctionAttributes` it got, so there is no folding, CSE or hoisting unless effects are declared, and no verifier. Handlers are separate per backend (`MLIRIntrinsicPlugin`, `AsmJitBackendIntrinsic`) |
+| **Backends** (`CompilationBackendRegistry`) | `gpu` (CUDA, Metal) | All or nothing: a new backend, no new IR |
+| **LLVM hooks** (`LLVMBackendHooks`) | `inlining` | MLIR/LLVM only, below the Nautilus IR |
+| **New value types** | none possible | `Type` is a closed 13-entry enum. `val<vec<T>>` therefore travels as a pointer, and backends without the vector handlers keep results in a **per-thread ring of 32 slots** with a documented lifetime limit (`docs/simd.md`). `val<__int128>` is the same kind of workaround |
+
+The flat IR (Part III) has a fixed 16 B instruction and dense opcode
+tables. That is a good opportunity to make extension a first-class
+concept: plugins should be able to define **operations, types, fold rules
+and passes**, and backends should dispatch on them through arrays.
+Extension must not cost the core anything on the hot path.
+
+## 18. Design: extensions, "dialects lite"
+
+The model is a much lighter version of MLIR's dialects. Plugins register
+descriptors at static-initialization time, the registry assigns dense ids,
+and every consumer dispatches through flat tables indexed by those ids.
+There are no virtual calls or string lookups per instruction.
+
+### 18.1 Opcode and type spaces
+
+The `Inst` header changes to make room for extension ids. It stays 16 B:
+
+```cpp
+struct Inst {          // 16 B
+	uint16_t op;       // [0, 256): core opcodes; [256, …): extension opcodes
+	uint8_t  type;     // TypeId: core scalar types fixed, extension types registered
+	uint8_t  flags;
+	uint32_t a, b, c;
+};
+```
+
+- **Core opcodes keep fixed, compile-time values.** Backend `switch`
+  statements over core ops are unchanged.
+- **Extension opcodes are assigned densely at registration,** in the same
+  way `IntrinsicRegistry` assigns `IntrinsicId`s today. They are stable for
+  the life of the process. Text dumps and any IR hash use the qualified
+  *name* (`simd.add`), never the numeric id.
+- **`TypeId` is 8 bits.** Core types take fixed ids. Plugins register
+  further types, up to 255 in total; a module that needs more is
+  unrealistic.
+
+### 18.2 Extension types
+
+```cpp
+struct TypeInfo {
+	std::string_view name;        // "simd.vec<f32>", "builtin.i128"
+	uint16_t size, align;         // in-memory layout
+	RegClass regClass;            // GP, FP, Vector, or MultiPart
+	uint8_t  parts;               // > 1 for multi-part values (i128 = 2 × GP)
+	TypeId   memoryFallback;      // how backends without support hold it: in a stack slot
+};
+```
+
+- **Values have real SSA identity.** A `vec<f32>` is an SSA value of type
+  `simd.vec<f32>`. A backend that supports it keeps it in a vector register.
+  A backend that does not keeps it in a **compiler-managed stack slot**: the
+  fallback becomes "spill to memory" instead of "ring buffer". That removes
+  the 32-value lifetime limit and the hazard it carries.
+- **Multi-part values cover `i128`** and similar types. This is the same
+  concept as TPDE's value parts, so a single-pass backend allocates
+  `parts` registers per value.
+- **Plugins choose their lane count when the type is created.** For SIMD
+  that can be per CPU (`vec<f32, 8>`). Types are interned, so equal
+  parameters give the same `TypeId`.
+
+### 18.3 Extension operations
+
+```cpp
+struct OpInfo {
+	std::string_view name;                 // "simd.add"
+	Signature sig;                         // operand/result counts and type constraints
+	OpTraits traits;                       // Pure, Commutative, Idempotent, NoUnwind
+	EffectClass effects;                   // None / Read / Write / ReadWrite (on the effect chain)
+	FoldFn fold = nullptr;                 // constant fold over ConstPool values
+	SimplifyFn simplify = nullptr;         // builder rule (e.g. x + 0 -> x)
+	VerifyFn verify = nullptr;
+	PrintFn print = nullptr;               // payload in `extra` (masks, immediates)
+	Fallback fallback;                     // REQUIRED, see below
+};
+```
+
+The rules:
+
+- **A mandatory fallback,** generalizing the intrinsic invariant: every
+  extension op names either
+  - a **native function** with the op's exact signature, so it can always
+    be emitted as a call; or
+  - an **expansion** into core ops (and other extension ops) that the
+    conversion applies when the target backend has no handler.
+
+  Every backend therefore supports every extension, as today. A handler is
+  only an optimization.
+- **Traits make extension ops first-class for the builder.** Folding,
+  simplification and scoped CSE (§13) consult `traits`, `effects`, `fold`
+  and `simplify` exactly as they do for core ops. A `Pure` extension op is
+  CSE'd and hoisted. An op with `Read` or `Write` effects joins the effect
+  chain. This is what the intrinsic-as-call model cannot do.
+- **Terminators stay core-only.** Extensions cannot introduce new control
+  flow, so layout, loop info and liveness (§13) never need to know about
+  plugins. If an extension needs control flow, its `expansion` emits core
+  branches.
+- **Payloads** (shuffle masks, prefetch locality, GPU address spaces) live
+  in `extra` or `ConstPool`, referenced from `c`. They are interned, so
+  CSE compares them by index.
+
+### 18.4 Tracing extension ops
+
+Plugins record operations through one generic entry point. For example,
+the SIMD plugin's `operator+` for `val<vec<T>>`:
+
+```cpp
+// in the plugin's val<vec<T>> operator+
+auto& ref = tracing::traceExtOp(SimdOps::add, vecType, {lhs.state, rhs.state});
+```
+
+- **One API covers trace and IR.** The trace records the op in the same
+  16 B format with no extra side tables, because Part III shares one
+  instruction format between trace and IR.
+- **Direct mode is unchanged.** When tracing is disabled, the plugin's
+  `val<>` computes directly, as it does today.
+
+### 18.5 Backend lowering tables
+
+Each backend owns a table indexed by extension opcode, plus a table of type
+handlers:
+
+```cpp
+// per backend, filled at registration
+std::vector<LowerFn> extLowering;     // index = op - 256; nullptr -> fallback
+std::vector<TypeLowering> extTypes;   // register class / MLIR type / C++ type
+```
+
+| Backend | What a plugin supplies | Without it |
+|---|---|---|
+| bc / tbc | a handler, optional | call to the native fallback; values in frame slots |
+| asmjit / single-pass | `lower(ctx, inst)` through a narrow API: operand and result registers or parts, scratch registers, an assembler | call or expansion; values spilled to stack slots |
+| MLIR | `lower(builder, inst, operands) -> mlir::Value`, plus a type mapping | call or expansion |
+| C++ | an expression template | call |
+
+These replace `MLIRIntrinsicPlugin` and `AsmJitBackendIntrinsic` with one
+registration API per backend. Dispatch is an array index on the extension
+opcode.
+
+### 18.6 Plugin passes and rules
+
+- **Builder rules** (`fold` and `simplify` on `OpInfo`) run inside the
+  optimizing conversion. That is the cheap and preferred way for a plugin
+  to optimize its own ops.
+- **Passes.** A plugin registers copy-transform passes (§13) at named
+  pipeline points: `afterConversion`, `beforeLowering`. Each pass is marked
+  either *required*, for correctness (for example, GPU kernel outlining), or
+  *optional*, for optimization. Only required passes are allowed on a
+  latency-critical compile, so a plugin cannot silently put a fixed-point
+  pass back on the critical path.
+- **Analyses** that plugins need (loop info, use counts) come from
+  `BlockInfo` and `useCount` (§13). They are not recomputed per plugin.
+
+### 18.7 Registry lifecycle
+
+- **Registration before any tracing,** from static initializers or plugin
+  init functions, as the in-tree plugins already do. After the first
+  compile the registry is **frozen**: read-only and lock-free, so lookups
+  on the hot path need no mutex. Today `IntrinsicRegistry` takes a mutex on
+  every lookup.
+- **One `ExtensionRegistry`** holds types, ops and passes, and absorbs
+  `IntrinsicRegistry`. An existing intrinsic becomes an extension op with
+  `fallback = native function`, so today's plugins can migrate by changing
+  their registration call without changing behavior.
+- **`IRVerifier` checks every extension instruction** against its
+  `Signature` and `verify` hook in debug builds. A mismatch names the
+  plugin.
+
+## 19. Migration of the in-tree plugins
+
+| Plugin | Today | As an extension |
+|---|---|---|
+| `builtin` prefetch | intrinsic plus MLIR/asmjit handlers | `builtin.prefetch`, effects `Read`, payload = locality, fallback = the wrapper function |
+| `builtin` overflow | intrinsic | `builtin.add_overflow` and friends: `Pure`, folded by the plugin's `fold` |
+| `builtin` int128 | `val<__int128>` with its own lowering | type `builtin.i128` (2 GP parts) plus pure ops; single-pass backends get it through value parts |
+| `simd` | `vec<T>` as a pointer; ring-buffer fallback | types `simd.vec<T,N>` (vector register class), pure ops, mask ops; fallback in stack slots; **ring buffer removed** |
+| `specialization` assume | intrinsic | `spec.assume`, a fact the builder consumes (feeding fold and simplify); fallback = no-op |
+| `gpu` | backend plugin | stays a backend. GPU-only ops (thread id, barriers) become extension ops with `Write` effects and no native fallback, so they are allowed only for GPU targets (checked by the verifier) |
+| `inlining` | LLVM hooks | unchanged (works below the Nautilus IR) |
+
+## 20. Risks
+
+- **Fixed id widths.** 65 280 extension opcodes and 255 types are plenty
+  for a process, but ids are not stable across processes. Anything
+  persisted (a code cache key, a serialized IR) must use names.
+- **The fallback must be correct.** An expansion or native fallback that
+  disagrees with a backend handler is a silent miscompile. Run the
+  differential fuzzer with each extension's handler both enabled and
+  disabled.
+- **Trait honesty.** A plugin that marks an op `Pure` when it is not
+  breaks CSE, the same risk as S3's declared effects. Add a debug mode that
+  ignores traits for A/B testing.
+- **The backend API is public surface.** The `lower(ctx, inst)` API of the
+  single-pass backend exposes register-allocation concepts to plugins. Keep
+  it narrow (operands, results, scratch registers, assembler) so the
+  allocator can still change underneath.
