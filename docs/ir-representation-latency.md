@@ -17,7 +17,7 @@ The document grew in four iterations. The decisions so far:
 | IR optimization on the critical path | In the trace→IR conversion (S2 without S1) | §13 |
 | Call semantics (S3), signless integers (S4) | Proposed, after the flat formats | §8 |
 | Plugin extensibility | Extension ops, types, rules and passes through one frozen registry | Part IV |
-| Implementation order | Milestones M0–M8 | Part V |
+| Implementation order | Unified plan | [low-latency-plan.md](low-latency-plan.md) |
 
 How Part I relates to Part III:
 
@@ -957,28 +957,6 @@ opcode.
 
 # Part V: Implementation plan
 
-Each milestone stays mergeable on its own and keeps every backend and test
-green. Each one is gated by the measurements of M0. "Adapter" means a
-linear translation to the existing format, so the old consumers keep
-working until they are ported.
-
-| # | Milestone | Content | Exit criterion |
-|---|---|---|---|
-| M0 | **Measure** | §5 corpus (1k/10k/100k ops, branchy, call-heavy, real NebulaStream queries); ns/op per stage, allocations/op, peak arena bytes, hash-map and `TrieNode::append` profile share | Baseline report; each §3 hypothesis confirmed or rejected |
-| M1 | **Dense tables on today's IR** | `ValueTable` replaces `Frame<OperationIdentifier, V>` and the usage/label maps in all backends (§4.2); dense-id check in `IRVerifier` (§4.1) | No `unordered_map` on any backend per-operand path; backend lowering faster on the corpus |
-| M2 | **Tracing hot path** | Open-addressing `tagMap` in the trace arena; global op ids so merge splits stop rewriting entries; hashed trie fan-out; arena-backed block lists | Zero `malloc` per recorded op; replay results identical (all `tracing/` dumps unchanged) |
-| M3 | **Flat trace** | `FlatTrace` (§12) behind `TraceModule`; accessor layer for `CopyAttribution`, region handling and dumps; adapter from flat trace to today's conversion | Trace bytes/op about 5x lower; `tracing/` dumps regenerated once and reviewed |
-| M4 | **Extension registry** | `ExtensionRegistry` (§18) absorbs `IntrinsicRegistry`; frozen and lock-free after the first compile; in-tree intrinsics re-registered as extension ops with native fallbacks; still lowered as calls by the old IR | All plugin tests green; no behavior change; per-backend handler tables keyed by extension opcode |
-| M5 | **Flat IR + optimizing conversion** | `FlatFunction` (§13) produced from the flat trace in one RPO pass: SSA, folding, block-local CSE, use counts, threading; adapter from flat IR to `IRGraph` | Differential fuzzer clean; IR ops per function ≤ today's after the full pipeline; fixed-point pipeline optional |
-| M6 | **Port backends** | `bc`/`tbc` first, then `asmjit`, then MLIR, each reading `FlatFunction` and the extension tables directly | Each port: execution tests and fuzzer green; lowering ns/op improved over M1 |
-| M7 | **Extension types** | `simd.vec<T,N>`, `builtin.i128` as registered types with stack-slot fallback; SIMD ring buffer removed | SIMD tests pass on every backend without the 32-value lifetime rule |
-| M8 | **Retire the old IR** | Delete `IRGraph`, the pointer-based passes and the adapters; port LICM and strength reduction as copy passes | No users of `ir::Operation` left |
-
-S3 (optimistic calls) and S4 (signless integers) slot in after M5, once the
-conversion is the single place where call attributes and integer types
-are interpreted. S1 (explicit control flow) can follow M5 at any time,
-because it writes the same flat trace.
-
-Dependencies: M1 and M2 are independent of everything else and give early
-wins on today's code. M3 → M5 → M6 → M8 is the critical chain. M4 can run
-in parallel with M3. M7 needs M4 and M6.
+The implementation plan, merged with the backend and pipeline work of
+[low-latency-compilation.md](low-latency-compilation.md), lives in
+[low-latency-plan.md](low-latency-plan.md).

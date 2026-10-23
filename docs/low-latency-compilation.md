@@ -256,14 +256,9 @@ Without numbers, none of this should be built. Prerequisites:
 
 ## 6. Roadmap
 
-| Phase | Work | Exit criterion |
-|---|---|---|
-| 0 | Corpus, per-stage statistics, baseline report per backend | Breakdown of `T_first` for every corpus entry |
-| 1 | §4.1 per-tier IR levels and passes moved to the promotion thread; promotion thread pool | Critical path no longer includes the fixed-point pipeline; tier-1 code unchanged (differential fuzzer) |
-| 2 | §4.2 prototype: TPDE adapter over `IRGraph`, x86-64 first | Passes the execution tests and the differential fuzzer; latency compared with `asmjit`/`bc` |
-| 3 | Decision TPDE vs. in-house; AArch64; exception regions; intrinsics | Default tier 0 on both architectures |
-| 4 | §4.3 tracing cost (incremental hashing, cheaper replay); IR-hash code cache | Tracing ≤ 50% of `T_first` on the branchy corpus |
-| 5 | §4.4 MLIR context reuse, tuned levels; §4.7 delayed promotion; §4.5 lazy compilation | Less tier-1 CPU per query at equal steady-state throughput |
+Superseded by the unified plan in [low-latency-plan.md](low-latency-plan.md),
+which sequences these items together with the representation work and
+lists the parked tiering items.
 
 ## 7. Risks and open questions
 
