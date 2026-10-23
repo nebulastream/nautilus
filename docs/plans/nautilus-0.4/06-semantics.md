@@ -5,54 +5,78 @@ Part of the [Nautilus 0.4 design](README.md) · Milestone M6
 ## 1. Purpose
 
 Two semantic commitments of 0.3 cost latency and optimization opportunities
-in every compile. 0.4 changes both: call semantics become optimistic with
-declared effects, and integer values become signless. Both break
-plugins and IR consumers, which is acceptable in 0.4 because the IR and the
-plugin API change anyway.
+in every compile: how calls declare what they do, and signedness in value
+types. 0.4 changes both:
+
+- **Calls keep their exception default** (decision D4 = b) but can
+  **declare their effects**, and exception handling gets cheaper where the
+  backend allows it. This is not a breaking change for users.
+- **Integer values become signless.** This breaks plugins and IR consumers,
+  which is acceptable in 0.4 because the IR and the plugin API change
+  anyway.
 
 ## 2. Root causes
 
 | 0.3 commitment | What it forces |
 |---|---|
-| **Pessimistic call semantics:** `FunctionAttributes` defaults to `ModRef`, `willReturn=false` and `noUnwind=false` unless the callee is `noexcept` | Exception regions, landing pads and `ExceptionRegionPreparationPass` on many calls; `NoThrowInferencePass` and `FunctionAttributeInferencePass` just to recover facts; every call is a barrier for CSE and hoisting |
+| **Pessimistic call semantics:** `FunctionAttributes` defaults to `ModRef`, `willReturn=false` and `noUnwind=false` unless the callee is `noexcept` | Exception handling on most calls; `NoThrowInferencePass` and `FunctionAttributeInferencePass` just to recover facts; every call is a barrier for CSE and hoisting |
 | **Signedness in value types:** `Type` has `i32` and `ui32`, and so on | No-op cast operations; folding, verifier and opcode tables over 10 integer types instead of 4 widths (`tbc` expands every numeric family over all 10) |
 
-## 3. Optimistic call semantics with declared effects
+## 3. Call semantics: same default, declared effects, cheaper exceptions
 
-- **Exceptions are opt-in.** The rule for a call through `invoke`:
+### 3.1 Exception default (D4 = b)
 
-  | Callee | 0.3 | 0.4 |
-  |---|---|---|
-  | `noexcept` function type | cannot unwind | cannot unwind (unchanged) |
-  | anything else, no annotation | may unwind: exception region, capture thunk | **cannot unwind** |
-  | annotated `invoke<may_throw>(…)` or registered with the `throws` attribute | — | may unwind: exception region, capture thunk |
+The 0.3 rule stays:
 
-  Most runtime functions are not marked `noexcept` but never throw, so
-  0.3's default puts exception machinery on most calls. A callee that does
-  throw without the annotation is found by the debug-mode check below, not
-  by a compile-time warning: such a warning would fire on almost every
-  callee.
-- **Declared effects.** A call declares its memory behavior: `pure`,
-  `readonly`, `argmemonly` or `ModRef` (today's pessimistic default stays
-  available). `pure` and `readonly` calls become values the conversion can
-  merge and hoist ([03](03-conversion-and-passes.md)).
-- **Trust declarations instead of inferring them.** The inference passes
-  leave the critical path.
-- **Debug-mode checks** verify the declarations: a terminate handler
-  catches a `noUnwind` callee that throws, and shadow checks catch effect
-  violations where feasible.
-- **Plugins and the `std` wrappers** declare effects for their runtime
-  functions.
+| Callee | 0.3 and 0.4 |
+|---|---|
+| `noexcept` function type | cannot unwind |
+| anything else | may unwind |
 
-Decision D4 has two options:
+New in 0.4: callees that are not `noexcept` but never throw can say so with
+`invoke<no_throw>(…)` or the `nothrow` attribute at registration. This is
+optional and non-breaking.
 
-- **(a) Optimistic default, as above.** Most of the latency and
-  optimization benefit; needs the debug-mode check and the migration step.
-- **(b) Keep 0.3's default,** but drop the exception region for calls with
-  no destructors to run and make effect declarations cheap to add.
-  Smaller benefit; no migration.
+The rejected alternative (a) assumed that every non-`noexcept` callee does
+not throw. That would remove more exception machinery, but at the price of
+a breaking change and a migration step for every throwing callee.
 
-The proposal is (a).
+### 3.2 Cheaper exception handling
+
+A call that may unwind needs two things today:
+- a **capture thunk**, because interpreted and single-pass frames have no
+  unwind tables, so an exception must be caught before it crosses them;
+- a **landing pad** with the destructors to run.
+
+0.4 keeps that contract and removes what is not needed:
+
+- **No landing pad without cleanup.** A call with no live owned values gets
+  the "no cleanup" unwind entry ([02 §3.4](02-nir.md)), as today's
+  `noLandingPad` call sites do.
+- **No capture thunk where unwind tables exist.** MLIR/LLVM code has unwind
+  tables, so a may-unwind call with no cleanup can let the exception
+  propagate through the generated frame directly. Backends without unwind
+  tables (`bc`, `tbc`, the single-pass backend) keep the thunk.
+- **Shared landing pads.** Pads are keyed by their ordered destructor set and
+  shared per function. The conversion does this during emission
+  ([03](03-conversion-and-passes.md)).
+- **Annotations where they pay.** The `std` plugin and the hot NebulaStream
+  runtime functions are annotated `nothrow` where they cannot throw. Each
+  annotation removes the thunk and the exception region from every call
+  site of that callee.
+
+### 3.3 Declared effects
+
+- **A call declares its memory behavior:** `pure`, `readonly`, `argmemonly`
+  or `ModRef`. `ModRef` stays the default, so this is non-breaking.
+- **`pure` and `readonly` calls become values** the conversion can merge and
+  hoist ([03](03-conversion-and-passes.md)). Every other call stays a barrier.
+- **Declarations and inference coexist.** The analyses of
+  `NoThrowInferencePass` and `FunctionAttributeInferencePass` run once
+  inside the conversion. A declaration, where present, takes precedence.
+- **Debug-mode checks** verify the declarations:
+  - a terminate handler catches a `nothrow` callee that throws;
+  - shadow checks catch effect violations where feasible.
 
 ## 4. Signless integer values
 
@@ -71,15 +95,14 @@ The proposal is (a).
 - **Integer semantics are defined in the IR:** wrap-around on overflow, a
   trap on division by zero, and masked shift amounts. The conversion's
   folding and every backend then agree without backend-specific guards.
-  The P0 corpus and the differential fuzzer check that the results match
+  The latency corpus and the differential fuzzer check that results match
   0.3's observable C++ behavior.
 
 ## 5. Migration
 
-- **Calls to `noexcept` callees behave as before.** Callees that actually
-  throw need `invoke<may_throw>` or the `throws` attribute. Running the test
-  suite once in debug mode lists every callee that threw without one. The
-  migration guide lists the patterns.
+- **Calls:** nothing to migrate. Calls to `noexcept` callees behave as before,
+  and everything else may unwind as before. `nothrow` and effect
+  annotations are optional additions.
 - **Signedness:** plugins that switch on `Type::ui32` and similar map to
   width plus operation flag. A helper `isUnsignedOp(inst)` replaces the type
   checks.
@@ -87,14 +110,20 @@ The proposal is (a).
 
 ## 6. Exit criteria (M6)
 
-- NebulaStream suite green with the new `invoke` default.
-- Exception regions only where callees opt in. The inference passes are no
-  longer on the default path.
+- All suites green, with no change in exception behavior compared with 0.3.
+- No capture thunk on MLIR call sites without cleanup; landing pads only for
+  calls with live owned values.
+- The `std` plugin and the NebulaStream hot runtime functions annotated.
+  The share of call sites with exception handling is reported in the
+  statistics and lower than in 0.3.
 - Differential fuzzer clean across all backends with signless integers.
 
 ## 7. Risks
 
-- **A wrongly declared `noUnwind` or `pure` callee is undefined behavior.**
+- **A wrongly declared `nothrow` or `pure` callee is undefined behavior.**
   The debug-mode checks are a requirement, not an extra.
+- **Propagating through MLIR frames without a thunk** relies on correct
+  unwind tables and personality wiring. Today's MLIR exception tests,
+  extended with no-cleanup call sites, gate the change.
 - **Hidden signedness assumptions** in plugins and backends. Run the
   fuzzer with every integer width and signedness.

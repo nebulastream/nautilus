@@ -139,7 +139,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 03 | [Conversion and passes](03-conversion-and-passes.md) | Optimizing trace→SSA conversion, legalization, optional and plugin passes | — |
 | 04 | [Extensions](04-extensions.md) | Extension operations, types, rules and passes; registry lifecycle; migration of the in-tree plugins | — |
 | 05 | [Backends](05-backends.md) | Backend roles; the single-pass native backend; MLIR; bytecode; C++; GPU | #561 (MLIR state reuse) |
-| 06 | [Semantics](06-semantics.md) | Optimistic call semantics with declared effects; signless integers | — |
+| 06 | [Semantics](06-semantics.md) | Declared call effects and cheaper exception handling (exception default unchanged); signless integers | — |
 | 07 | [Serialization](07-serialization.md) | Artifacts, pointers, runtime bindings, provenance | #527, #529, #532 |
 | 08 | [Caching](08-caching.md) | L0 in-process, L1 semantic, L2 structural caches | #528 |
 | 09 | [C API](09-c-api.md) | The C interface to NIR and the engine | #531 |
@@ -152,7 +152,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 |---|---|
 | `val<T>`, `static_val`, `region()`, `nautilus::function`, `invoke`, engine, module, options | **Source-compatible.** Renamed options keep deprecated aliases through 0.4.x |
 | Explicit control flow | **New**, opt-in, mixable with implicit control flow |
-| Exception default of `invoke` | **Breaking (if D4 = a):** callees that are not `noexcept` are assumed not to throw; callees that throw opt in with `invoke<may_throw>` or the `throws` attribute; a debug-mode check finds missing opt-ins ([06](06-semantics.md)) |
+| Exception default of `invoke` | **Unchanged** (D4 = b). New, optional: `invoke<no_throw>`/`nothrow` and effect declarations ([06](06-semantics.md)) |
 | Plugin intrinsic API (`IntrinsicRegistry`, `MLIRIntrinsicPlugin`, `AsmJitBackendIntrinsic`) | **Replaced** by the extension API. A deprecated shim registers old intrinsics as extension ops through 0.4.x |
 | `IRGraph`, `ir::Operation`, IR passes | **Removed** (internal) |
 | IR text dumps, `test/data` | **New format** |
@@ -191,7 +191,7 @@ releases and no temporary formats.
 | **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
 | **M4 Backends** | `bc`/`tbc`, `cpp`, MLIR and GPU on NIR; single-pass native backend on x86-64, then AArch64, exceptions and extension lowering; decision D3 | End to end ≤ 0.5 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
 | **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold; every #527/#528 negative test ported and failing closed |
-| **M6 Semantics and extensions** | Optimistic call semantics; signless integers; extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
+| **M6 Semantics and extensions** | Declared call effects and cheaper exception handling; signless integers; extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
 | **M7 Release** | Remove `IRGraph`, the old passes, the bridge and (per D3) `asmjit`; migration guide; user documentation (§6.2); NebulaStream integration; x86-64 and AArch64; sanitizers | Release criteria below |
 
 **Order and parallelism:**
@@ -215,8 +215,8 @@ releases and no temporary formats.
 3. No execution-time regression per backend on `ExecutionBenchmark` and on
    TPC-H (nautilus-duck).
 4. Warm NebulaStream suite ≥ 60% faster than cold.
-5. Migration guide: plugin intrinsics → extensions, throwing `invoke`
-   callees, renamed options.
+5. Migration guide: plugin intrinsics → extensions, signless integers in
+   plugins, renamed options.
 
 ### 6.1 Testing and validation
 
@@ -264,7 +264,7 @@ the migration guide from 0.3.
 | In-memory = wire layout constrains evolution | Per-section strides and feature bits; derived data never serialized |
 | Provenance classes miss a raw-address path | Fail closed by default; #527's negative tests |
 | The single-pass backend reaches parity late | `tbc` is a complete default; MLIR available; `asmjit` can be ported as a stopgap |
-| Breaking `invoke` default | Debug-mode check that names every callee throwing without an opt-in; migration guide; option (b) of D4 as the fallback |
+| Wrong `nothrow`/`pure` declarations | Debug-mode checks (terminate handler, shadow effect checks) ([06 §3.3](06-semantics.md)) |
 | L2 hash collisions | 128-bit hash plus a full image comparison on hit |
 
 ## 8. Decisions
@@ -274,7 +274,7 @@ the migration guide from 0.3.
 | D1 | Order of the work | As in §6: foundations first, then frontend and conversion (the measured hot spots) |
 | D2 | Native backend | **Decided:** our own single-pass backend; no TPDE backend or adapter |
 | D3 | Default backend | Proposed: single-pass native where available, `tbc` elsewhere; `asmjit` removed at parity |
-| D4 | Exception default of `invoke` | Proposed: (a) optimistic default with explicit `may_throw` opt-in; alternative (b) keeps 0.3's default ([06 §3](06-semantics.md)) |
+| D4 | Exception default of `invoke` | **Decided: (b)** keep 0.3's default; add optional `nothrow` and effect declarations; cheaper exception handling ([06 §3](06-semantics.md)) |
 | D5 | Cache and serialization PRs | **Decided:** ported onto NIR; no separate 0.3 formats |
 | D6 | Keep `bc` beside `tbc` | Proposed: keep in 0.4; revisit later |
 | D7 | Scope of the unified IR | Proposed: as in §3.1 |

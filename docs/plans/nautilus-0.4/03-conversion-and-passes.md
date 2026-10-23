@@ -74,11 +74,11 @@ dense tables and Braun-style SSA construction on the complete trace CFG.
    happens during emission: landing pads are keyed by their ordered
    destructor set and shared, and unwinding calls point at them
    ([02 §3.4](02-nir.md)).
-8. **Attributes.** Until declared call effects land (M6,
-   [06](06-semantics.md)), the analyses of `NoThrowInferencePass` and
+8. **Attributes.** The analyses of `NoThrowInferencePass` and
    `FunctionAttributeInferencePass` run once inside the conversion, on the
-   function table, instead of as separate passes. After M6 the attributes
-   come from the declarations, and the inference becomes an optional check.
+   function table, instead of as separate passes. From M6 on, declared
+   effects and `nothrow` annotations ([06](06-semantics.md)) take precedence
+   where present.
 
 ## 4. Legalization (NIR → NIR)
 
