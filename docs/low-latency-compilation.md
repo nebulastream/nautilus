@@ -96,6 +96,10 @@ no loss for tier 1.
 
 ### 4.2 New tier 0: a single-pass native backend (TPDE-style)
 
+> **Decision:** option (a), integrating TPDE, is dropped: there is no TPDE
+> backend or adapter. Nautilus implements its own single-pass backend
+> ([nautilus-2.md §4.6.1](nautilus-2.md)). TPDE remains related work.
+
 This backend is the core of the proposal. Its structure follows TPDE and
 Flying Start:
 
@@ -190,7 +194,7 @@ Tier 1 runs in the background, but it still costs CPU and delays peak code.
 - **Size-dependent optimization level.** Use O2 instead of O3 below a size
   threshold, or a tuned pass list. Engelke & Schwarz show that LLVM gets much
   faster when tuned for compile time.
-- **Optional mid tier.** Run LLVM O1 IR passes and then TPDE-LLVM as codegen
+- **Optional mid tier (dropped: no TPDE dependency).** Run LLVM O1 IR passes and then TPDE-LLVM as codegen
   in place of LLVM codegen (TPDE reports about 80x faster than LLVM O1
   back-end time). This is an option for when plain tier 0 is too slow but
   full LLVM is too expensive.

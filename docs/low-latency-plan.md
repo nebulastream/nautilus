@@ -119,8 +119,8 @@ P2-a, P2-c and P2-d can proceed in parallel. P2-b needs P2-a.
 | # | Work | Exit criterion |
 |---|---|---|
 | P3-a | **Port `bc` and `tbc`** to read `FlatFunction` and the extension tables | Execution tests and fuzzer green; lowering ns/op ≤ P1-a |
-| P3-b | **Single-pass native backend prototype on x86-64** (latency §4.2): linear analysis from `BlockInfo`, greedy local register allocation with value parts, spilling at merges, block arguments as parallel moves, fusion within a block, prologue patching. Option (a): a TPDE `IRAdaptor` over `FlatFunction`. Option (b): in-house on `asmjit::Assembler`, with encoders from `tools/stencils` | Passes the execution tests; backend time ≥ 10x faster than MLIR at O0; code within 1.2x of today's `asmjit` and ≥ 3x faster than `bc` on the `ExecutionBenchmark` loop kernels |
-| P3-c | **Decision D2:** TPDE (a) or in-house (b). Then AArch64, exception regions and unwind info, extension-op lowering through the narrow plugin API (IR §18.5) | Feature parity with today's `asmjit` on both architectures |
+| P3-b | **Single-pass native backend prototype on x86-64** (latency §4.2): linear analysis from `BlockInfo`, greedy local register allocation with value parts, spilling at merges, block arguments as parallel moves, fusion within a block, prologue patching. In-house on `asmjit::Assembler`, with optional encoders from `tools/stencils` (no TPDE backend) | Passes the execution tests; backend time ≥ 10x faster than MLIR at O0; code within 1.2x of today's `asmjit` and ≥ 3x faster than `bc` on the `ExecutionBenchmark` loop kernels |
+| P3-c | **Decision D2 (resolved: in-house; no TPDE backend).** Then AArch64, exception regions and unwind info, extension-op lowering through the narrow plugin API (IR §18.5) | Feature parity with today's `asmjit` on both architectures |
 | P3-d | **Decision D3: the default backend.** Make the single-pass backend the default where it is available, with `tbc` (plus copy-and-patch) the portable default elsewhere. Today's `asmjit` stays only for features the new backend lacks (latency §7) | Default switched; documentation updated |
 | P3-e | **MLIR from `FlatFunction`** (`cf`/`arith` from `BlockInfo` and terminators, extension types mapped) | LLVM IR tests updated; execution unchanged |
 
@@ -177,7 +177,7 @@ P3-d + P4-b ─► P5-e, P5-f ─► P6
 | Per-tier IR levels; passes on the promotion thread | latency §4.1 | Parked (tiering on hold); for one backend, P4-b supersedes it | Tiering resumes |
 | Promotion thread pool, delayed promotion, admission control | latency §4.4, §4.7 | Parked | Tiering resumes |
 | Tier lattice (interpreter / `tbc` / native / `asmjit` / MLIR) | latency §4.6 | Parked; P3-d decides the single default | Tiering resumes |
-| Mid tier: LLVM O1 passes + TPDE-LLVM codegen | latency §4.4 | Parked | After P3-c (D2) and tiering |
+| Mid tier: LLVM O1 passes + TPDE-LLVM codegen | latency §4.4 | Rejected (no TPDE dependency) | — |
 | S1: explicit control-flow API (`if_`, `while_`, `for_`) | IR §8 S1 | Deferred follow-up; the flat trace already fits it | After P4 |
 | Lazier copies (copies are about half of all traced ops) | IR §12 | Needs its own investigation (copy sites take part in merge detection) | After P1-b, with P0 data |
 | Intrusive use lists in `Operation` | IR §4.4 (b) | Rejected (breaks the 32 B layout; moot after P6) | — |
@@ -205,6 +205,6 @@ P3-d + P4-b ─► P5-e, P5-f ─► P6
 | # | When | Question | Input |
 |---|---|---|---|
 | D1 | After P0 | Order of P1–P5 | Per-stage shares from P0 |
-| D2 | After P3-b | TPDE (a) or in-house (b) | Latency, code quality, dependency cost, effort for exceptions and extensions |
+| D2 | Resolved | In-house single-pass backend; no TPDE backend or adapter | See [nautilus-2.md §4.6.1](nautilus-2.md) |
 | D3 | After P3-c | Default backend | P3-b targets met on both architectures |
 | D4 | P5-b | Annotation policy for runtime calls (opt-in throwing, declared effects) | NebulaStream call-site survey |

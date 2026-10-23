@@ -198,7 +198,8 @@ struct LoweringView {
   cross-block analysis in `bc`.
 - It matches the TPDE `IRAdaptor` contract exactly: values numbered densely,
   blocks in a given order, successors, phis (block arguments) and operands.
-  It is therefore also the integration point for a TPDE-style backend.
+  It is therefore also the input for a single-pass backend (TPDE is the
+  reference for the technique; Nautilus implements its own).
 - It lives in the IR arena next to the graph and is invalidated by any
   later mutation. A debug-mode generation counter on `FunctionOperation`
   catches stale use.
