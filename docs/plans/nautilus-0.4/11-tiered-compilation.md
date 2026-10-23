@@ -179,9 +179,9 @@ and the tier-0 executable is then discarded unused.
 
 | Change | Target | Why |
 |---|---|---|
-| Reap finished promotion threads, or use a small pool; decrement the counter when thread creation fails (F1, F2) | **`main` now**, small PR | A 0.3 bug that makes long-running engines fail |
-| `catch (...)` in the promotion thread (F7, the crash part) | **`main` now** | Prevents process termination |
-| Stub signature fix and an `ENABLE_COMPILER=OFF` CI job (F12) | **`main` now** | The build is broken today |
+| Reap finished promotion threads, or use a small pool; decrement the counter when thread creation fails (F1, F2) | **`main` now**, #566 | A 0.3 bug that makes long-running engines fail |
+| `catch (...)` in the promotion thread (F7, the crash part) | **`main` now**, #566 | Prevents process termination |
+| Stub signature fix and an `ENABLE_COMPILER=OFF` CI job (F12) | **`main` now**, #566 | The build is broken today |
 | Promotion service, cancellation, shutdown (§4.1, §4.2) | 0.4, M4 | Builds on NIR's immutability and #561 |
 | Status API, statistics, one compile path (§4.3, §4.8) | 0.4, M4 | New public API |
 | Promotion policy (§4.4) | 0.4, M4, opt-in (D8) | Default unchanged |
