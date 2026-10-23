@@ -51,7 +51,8 @@ compiled synchronously, tier 1 in the background). Two things change:
 - the IR both tiers share is SSA-level NIR, which is immutable after
   conversion, so tier 1 can read it concurrently without copying.
 
-Promotion policy is unchanged in 0.4 (§7). `engine.backend=<x>` still
+How promotion runs (worker pool, cancellation, status, opt-in policy) is
+in [11-tiered-compilation.md](11-tiered-compilation.md). `engine.backend=<x>` still
 selects single-tier compilation with exactly that backend.
 
 ## 4. The AsmJit backend
@@ -177,8 +178,8 @@ P0 measurements of `bc` ([p0-baseline.md](p0-baseline.md)) stay as recorded;
 
 ## 7. Not in 0.4
 
-- Changes to multi-tier promotion (per-tier IR levels, delayed promotion,
-  admission control, the tier lattice).
+- Per-tier IR levels and more than two tiers
+  ([11 §9](11-tiered-compilation.md)).
 - Lazy per-function compilation and parallel compilation of a module's
   functions.
 - A custom register allocator, a second AsmJit mode, a new native backend,

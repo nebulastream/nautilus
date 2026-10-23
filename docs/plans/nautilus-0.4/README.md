@@ -66,7 +66,8 @@ Goals, in priority order:
   The extension registry is frozen after the first compile, and caches
   lock per key ([02 §3.4](02-nir.md), [08](08-caching.md)).
 - **Not in 0.4:**
-  - changes to multi-tier promotion;
+  - per-tier IR levels, more than two tiers, on-stack replacement
+    ([11 §9](11-tiered-compilation.md));
   - lazy per-function compilation;
   - a new optimizing tier;
   - a new native backend, a second AsmJit mode or a custom register
@@ -148,6 +149,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 08 | [Caching](08-caching.md) | L0 in-process, L1 semantic, L2 structural caches | #528 |
 | 09 | [C API](09-c-api.md) | The C interface to NIR and the engine | #531 |
 | 10 | [Observability](10-observability.md) | Statistics, the latency corpus, dumps, tooling | #561, #524 |
+| 11 | [Tiered compilation](11-tiered-compilation.md) | Review of `TieredJITCompiler`; a promotion service with a worker pool, cancellation, status API, opt-in promotion policy, early tier-1 start, cache-aware tiering | 0.3 tiered compiler, #561 |
 | — | [P0 baseline](p0-baseline.md) | Measurements behind this design | design study (closed #562) |
 
 ## 5. Compatibility and versioning
@@ -194,7 +196,7 @@ releases and no temporary formats.
 | **M1 Foundations** | NIR format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; bridge `IRGraph` → NIR (internal, removed before release); latency corpus driver added and running in CI; `bc` backend removed (D6) | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
 | **M2 Frontend** | Flat trace with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; TPC-H re-run share ≤ 35% of tracing; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
 | **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
-| **M4 Backends** | `tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; decision D3 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
+| **M4 Backends** | `tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; the promotion service of [11](11-tiered-compilation.md); decisions D3 and D8 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
 | **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold; every #527/#528 negative test ported and failing closed |
 | **M6 Semantics and extensions** | Declared call effects and cheaper exception handling; signless integers; extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
 | **M7 Release** | Remove `IRGraph`, the old passes and the bridge; migration guide; user documentation (§6.2); NebulaStream integration; x86-64 and AArch64; sanitizers | Release criteria below |
@@ -282,6 +284,7 @@ the migration guide from 0.3.
 | D5 | Cache and serialization PRs | **Decided:** ported onto NIR; no separate 0.3 formats |
 | D6 | Keep `bc` beside `tbc` | **Decided:** drop `bc` in 0.4, in M1, so it is never ported to NIR; `tbc` is the interpreting backend ([05 §6](05-backends.md)) |
 | D7 | Scope of the unified IR | Proposed: as in §3.1 |
+| D8 | Promotion policy | Proposed: keep `eager` as the default; add opt-in `calls:<N>` and `manual` ([11 §4.4](11-tiered-compilation.md)); fix the 0.3 thread leak on `main` first ([11 §5](11-tiered-compilation.md)) |
 
 ## References
 
