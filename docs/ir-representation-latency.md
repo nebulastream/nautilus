@@ -475,3 +475,198 @@ Risks:
   undefined behavior. The debug-mode checks are a requirement, not an extra.
 - **Two tracing modes** double the testing surface until replay mode can be
   retired, if ever.
+
+---
+
+# Part III: Memory representation under S1 + S2
+
+## 11. One representation instead of two
+
+Today a value exists three times:
+
+- as a 104 B `TraceOperation` with variant inputs;
+- as a 32–152 B arena `Operation`, plus its input array and a slot in a
+  heap `std::vector`;
+- as hash-map entries in each backend.
+
+With structured tracing (S1), each body is traced once and the CFG is known
+during recording, so the trace has no job left that the IR cannot do. The
+proposal is:
+
+- **The tracer writes the IR directly.** `ExecutionTrace`,
+  `TraceOperation`, `InputVariant` and `TraceToIRConversionPhase` go away in
+  structured mode.
+- **A `val<T>` holds the IR value id itself.** `TypedValueRefHolder`
+  already holds a 32-bit ref and a type, so `val<T>` does not grow.
+- **The replay mode (the compatibility fallback) records into the same
+  format,** with a CFG variant and a side array of snapshots. Its
+  conversion becomes a linear rewrite of one flat stream into another
+  instead of building a pointer graph.
+
+## 12. Layout: flat, index-based and fixed-size
+
+The model follows LuaJIT's IR (fixed-size instructions, 16-bit refs,
+constants below a bias), Cranelift's entity tables (`u32` ids, secondary
+maps, pooled value lists) and Zig's AIR (struct-of-arrays, tag + data,
+an "extra" array for variable-length payloads).
+
+```cpp
+// Per function. All storage is a handful of growable arrays, recycled
+// through a thread-local pool, so steady-state compiles do no malloc.
+struct Inst {                 // 16 B, value id == index into insts
+	Opcode op;                // u8
+	Type   type;              // u8: signless width (S4)
+	uint16_t flags;           // e.g. nsw, branch hint, effect class
+	uint32_t a, b;            // operands: value ids, or constant refs
+	uint32_t c;               // third operand, immediate, or extra index
+};
+
+struct Function {
+	std::vector<Inst>     insts;     // linear program order == layout order
+	std::vector<uint32_t> extra;     // variable-length operands (call args, loop args)
+	ConstPool             consts;    // interned constants; refs tagged in a/b
+	// Cold side tables indexed by value id, only filled when requested:
+	std::vector<const Tag*> sourceTag;   // debug / perf only
+	std::vector<uint16_t>   region;      // region() attribution
+	// Built incrementally by the builder:
+	std::vector<uint32_t>   useCount;
+	std::vector<uint32_t>   forward;     // replaced-by, resolved on read
+};
+```
+
+### Key properties
+
+- **Values are numbered densely by construction.** A value's id is its
+  index into `insts`. Every side table (backend register map, use counts,
+  liveness, spill slots) is a `std::vector` indexed by that id. No hash map
+  remains on any per-operand path.
+- **Operands are 4 B indices, not pointers.** Reading an operand is one
+  load into a contiguous array. The pointer chain block → vector →
+  `Operation` → inputs → `Operation` disappears.
+- **Constants live in their own pool,** referenced by a tagged id (top bit
+  set, the counterpart of LuaJIT's refs below `REF_BIAS`). An add of a
+  constant needs no constant instruction. Backends see the immediate
+  directly, which TPDE-style encoders use for immediate forms.
+- **Hot and cold data are split.** The 16 B instruction holds only what
+  every consumer needs. Source tags, region indices, call names and
+  attributes live in side tables that are filled only when debug, perf or
+  dumping asks for them. Today these sit in every `Operation` (`sourceTag`
+  8 B, region 2 B) and in every `CallOperation` (two `std::string`s).
+- **Calls** are `{op=Call, a=calleeId, c=extra offset}`. The `extra` array
+  holds `{argCount, args…}`, and the callee descriptor lives in the
+  existing `FunctionTable`.
+
+### Structured control flow inline in the stream
+
+Control flow is written as markers in the instruction stream, in the
+style of Wasm:
+
+```
+v7  = loop  [init: v1, v2]          ; loop-carried values become v7, v8
+v8  =   loop.arg
+...
+v12 =   if v11
+        ...                         ; then arm
+      else
+        ...
+      end   [results: v13]
+      continue [v14, v15]           ; next-iteration values
+      end loop [results: v16, v17]
+```
+
+- **Layout order is program order.** A single-pass backend walks `insts`
+  once from front to back. Loop extents are explicit (`loop` … `end`),
+  so loop analysis needs no RPO or dominators, and liveness needs at most
+  one backward sweep.
+- **No block objects, no predecessor lists, no `BasicBlockInvocation`s.**
+  The 88 B `BasicBlock`, the 144 B `IfOperation` and the 80 B
+  `BranchOperation` become a few 16 B markers.
+- **Loop-carried values work in one pass.** The builder learns which
+  variables a loop carries only while it traces the body, so the `loop`
+  marker's argument list lives in `extra` and is completed when the loop
+  closes. The builder creates a loop argument on the first read of a
+  variable inside the body (Braun's incomplete phi). When the loop closes,
+  an argument whose next-iteration value equals its initial value is
+  folded into `forward[]`. Readers resolve it lazily, so **no use lists and
+  no rewrite of the body are needed.**
+
+### Builder state
+
+The builder keeps a small amount of state, all of it dense:
+
+- **Current definition per variable:** `varDef[varId]`, saved and restored
+  at the boundaries of `if_` arms and loops.
+- **A scoped hash-consing table:** open addressing over
+  `(op, type, a, b, c)` → id, plus an undo log. Entries added inside a
+  then-arm are rolled back when the arm closes, so a value defined there is
+  never reused where it does not dominate.
+- **The effect chain:** the id of the last effect (a store, or a call that
+  may write memory). Loads and calls key their CSE entries on it.
+
+## 13. Mutation model: build once, rewrite by copying
+
+Ids are dense indices, so passes do not mutate in place. They run as
+optional, off-critical-path work:
+
+- **Linear rewrites copy.** A pass that removes or replaces operations
+  streams `insts` into a new array, using an old→new id map (one
+  `std::vector<uint32_t>`). This is O(n), stays cache-friendly and keeps
+  ids dense.
+- **Local replacements use `forward[]`.** A pass that only replaces values
+  records the replacement there, and compaction applies it later.
+- **No persistent use lists.** `useCount` covers what backends and DCE
+  need. A pass that needs real uses builds a CSR table once (offsets +
+  flat use array, two allocations).
+
+This drops the in-place-mutation machinery from the critical path:
+`FunctionRewriter` sessions, predecessor upkeep and use tables rebuilt per
+pass.
+
+## 14. Cost comparison for one binary `add` (x86-64)
+
+| | Today | Proposed |
+|---|---|---|
+| Trace record | 56 B op + 2 × 24 B inputs | none (no separate trace) |
+| Tag work per op | frame-pointer walk, trie insert, `globalTagMap` node (`malloc`) | none (tags only on request) |
+| IR object | 32 B op + 16 B inputs + 8 B vector slot | 16 B `Inst` |
+| Constant operand | separate 40 B `ConstIntOperation` | entry in the interned constant pool, shared |
+| Backend value lookup | `unordered_map` probe | array index |
+| Heap allocations per op (steady state) | ≥ 1 | 0 (recycled arrays) |
+| Representations built | 2 + per-backend maps | 1 |
+
+Roughly a **10x reduction in bytes per operation** and **zero per-op
+allocations**. Each step from tracing to a backend reads one contiguous
+array.
+
+## 15. Consequences for consumers
+
+- **Backends:**
+  - `bc`/`tbc` become a near 1:1 translation, because a register bytecode
+    is almost this format;
+  - `asmjit` and a TPDE-style backend iterate `insts` directly;
+  - MLIR builds `scf`/`arith` from the markers.
+- **Dumps and tests.** The `tracing/`, `ir/` and `after_*` reference dumps
+  under `test/data` change format. A printer for the stream replaces both
+  the trace and IR printers. That means a one-time regeneration of the
+  expected outputs, and the differential fuzzer guards semantics across it.
+- **Passes.** Existing passes are rewritten as stream-copy transforms.
+  Construction-time folding and CSE (S2) take over most of them; LICM and
+  strength reduction remain as optional copy passes.
+- **Compatibility.** The replay tracer and the pointer-based IR can coexist
+  behind the `TraceModule` → `IRGraph` boundary until every backend reads
+  the new format. Migrate one backend at a time: `bc`/`tbc` first, as the
+  closest fit, then `asmjit`, then MLIR.
+
+## 16. Risks
+
+- **The 16 B instruction format is a hard budget.** Wide immediates and
+  `__int128` constants go through the constant pool; SIMD shuffles and
+  other variable-length payloads go through `extra`. Each new opcode must
+  fit this format, which is a constraint on the plugin APIs (intrinsics,
+  SIMD, GPU).
+- **Scoped CSE correctness.** The undo log must exactly mirror structured
+  scopes, including `break_()` and `return_()` exits. Fuzz this
+  specifically.
+- **Lossy provenance.** A value shared through CSE keeps one tag. That is
+  acceptable for profiling, but debuggers stepping through traced code
+  lose per-call-site identity unless CSE is disabled in debug builds.
