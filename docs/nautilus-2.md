@@ -46,8 +46,8 @@ corpus functions, 3 backends):
 | **Replay dominates branchy code** (69–78%): 270k replayed ops for 300 `if`s; `region()` cuts it to 900 | Explicit control flow becomes a first-class API that can be mixed with implicit control flow (§4.1.2); replay cursor fix |
 | **Tag trie fan-out costs about 3x tracing** with many distinct call sites | Hashed trie children (§4.1.1) |
 | 3–5 heap allocations per IR op on linear code, 18–25 on branchy code; two materializations | Flat trace and NIR with recycled arrays (§4.2, §4.3) |
-| AsmJit is superlinear on call-heavy code (~4 µs per call at 5000 calls) | Quick fix in 1.x; replaced by the single-pass backend (§4.6) |
-| MLIR is dominated by fixed setup (3–5 ms minimum per compile) | #561 lands in 1.x; context reuse stays in 2.0 |
+| AsmJit is superlinear on call-heavy code (~4 µs per call at 5000 calls) | Replaced by the single-pass backend (§4.6) |
+| MLIR is dominated by fixed setup (3–5 ms minimum per compile) | #561's per-thread MLIR/LLVM state reuse is part of the MLIR backend on NIR (§4.6) |
 
 ## 3. Architecture
 
@@ -310,9 +310,7 @@ with one more constraint: **the in-memory layout is the wire layout**.
 - **The fixed-point pipeline is optional.** LICM and strength reduction
   remain as optional copy passes. Plugin passes register at
   `afterConversion` and `beforeLowering`, each marked required or optional.
-- **Quick win in 1.x, before NIR exists:** a `Cheap` IR level (one round,
-  no fixed point) on today's IR, plus #561's shared rewriter. P0 shows
-  passes at 44–53% even after #561, so this pays immediately.
+- **No separate interim step.** #561's pass-table work speeds up today's pipeline, which 2.0 removes from the critical path; its tracing statistics carry over (§4.1.1).
 
 ### 4.5 Extension registry
 
@@ -347,7 +345,7 @@ Additions for 2.0:
 | `bc` | Kept for debugging and simplicity; could be merged into `tbc` later | |
 | MLIR → LLVM | Peak-performance backend; the persisted-native-object path | #561's state reuse; reads NIR; maps extension types |
 | `cpp` | Debugging and reference | |
-| `asmjit` | Transitional: kept only for features the native backend lacks, then removed | 1.x fix for the superlinear call handling (P0) |
+| `asmjit` | Removed in 2.0 if the single-pass backend reaches parity (D2/D3); otherwise ported to NIR as a fallback | Superlinear call handling (P0) is a reason not to keep it as a default |
 | GPU (CUDA, Metal) | Plugin backends on NIR | Extension ops for GPU intrinsics |
 
 ### 4.7 Semantics changes
@@ -517,13 +515,13 @@ Three levels, each optional, all producing or consuming the artifacts of
 
 | Surface | 2.0 |
 |---|---|
-| `val<T>`, `static_val`, `region()`, `nautilus::function`, `invoke`, engine, module, options | **Source-compatible.** Option renames keep deprecated aliases for one minor release |
+| `val<T>`, `static_val`, `region()`, `nautilus::function`, `invoke`, engine, module, options | **Source-compatible.** Renamed options keep deprecated aliases through 2.x |
 | Explicit control flow | **New**, opt-in, mixable with implicit control flow |
 | `invoke` exception default (S3) | **Breaking:** throwing callees must opt in (detected from `noexcept(false)` where the signature allows) |
-| Plugin intrinsic API (`IntrinsicRegistry`, `MLIRIntrinsicPlugin`, `AsmJitBackendIntrinsic`) | **Replaced** by the extension API; a shim registers old intrinsics as extension ops for one minor release |
+| Plugin intrinsic API (`IntrinsicRegistry`, `MLIRIntrinsicPlugin`, `AsmJitBackendIntrinsic`) | **Replaced** by the extension API; a deprecated shim registers old intrinsics as extension ops through 2.x |
 | `IRGraph`, `ir::Operation`, IR passes | **Removed** (internal) |
 | IR text dumps, `test/data` | **New format** |
-| Serialization (#532 format, #527 artifacts, #528 cache entries) | **Format v2 = NIR-based.** v1 images are rejected with a clear error (they are not yet released) |
+| Serialization (#532 format, #527 artifacts, #528 cache entries) | **First persisted formats, NIR-based.** No earlier format exists to support: the PRs are ported onto NIR, not released separately |
 | C API (#531) | Ships with 2.0 on NIR; frozen from 2.0 onwards |
 
 Version identities recorded in artifacts:
@@ -533,30 +531,64 @@ Version identities recorded in artifacts:
 - the artifact format;
 - each extension's `name@version`.
 
-## 6. Release plan
+## 6. Release plan: everything in one release, Nautilus 2.0
 
-Work lands as 1.x minor releases where it is independent of NIR. The 2.0
-line integrates on a long-lived branch with adapters, so `main` stays
-releasable.
+All changes ship together as **Nautilus 2.0**. There are no interim 1.x
+feature releases and no temporary formats:
 
-| Release | Content | Exit criterion (measured with the corpus) |
+- **Development happens on an integration branch (`next`).** `main` takes
+  only fixes until 2.0 merges.
+- **The open PRs are ported onto NIR, not landed on today's IR:**
+
+  | PR | Lands as |
+  |---|---|
+  | #300 explicit control flow | region-based constructs, M2 |
+  | #527 / #528 / #529 artifacts, cache, runtime bindings | M5 |
+  | #532 IR serialization | the canonical-section serializer, M1 |
+  | #531 C API | M5 |
+  | #561 compile-time cuts | MLIR state reuse in M4; tracing statistics in M2 |
+
+  Features are therefore built once, on the final representation.
+- **The milestones below are internal checkpoints on `next`.** Each one is
+  merged when green, with the full CI matrix and the latency corpus
+  running on `next`.
+
+| Milestone | Content | Exit criterion |
 |---|---|---|
-| **1.x-a** | Land #561. `Cheap` IR level; hashed tag trie; tag-map open addressing; replay cursor and value-ref free list; AsmJit call fix; P0 corpus in CI | Passes ≤ 25% on linear code; tracing −30% on `distinctSites`; AsmJit linear in calls |
-| **1.x-b** | Explicit control flow on region scopes (rework of #300, mixing allowed); replay diagnostics | `chainedIf` written explicitly: one pass, zero replayed ops; mixed functions correct under the fuzzer |
-| **1.x-c** | #527/#528/#529 (artifacts, L1 cache, runtime bindings) and #532 (IR images) landed on today's IR, as the v1 formats, behind opt-in options | NebulaStream warm suite −60% or better (as measured in #529) |
-| **2.0-alpha** | NIR format, verifier and printer; bridge `IRGraph` → NIR; `ExtensionRegistry` (absorbing intrinsics); flat trace; bc/tbc on NIR | Round trip of every test's IR; plugin tests green |
-| **2.0-beta** | Optimizing conversion (passes optional); single-pass native backend (D2) and MLIR on NIR; artifacts v2 (NIR + native payloads); L0/L2 caches; C API on NIR; extension types (SIMD ring buffer removed) | End to end ≤ 0.5 µs/op on linear code; branchy explicit code linear; warm hits unchanged versus 1.x-c |
-| **2.0** | S3 and S4; remove `IRGraph`, the old passes, the intrinsic shims and `asmjit` (if D2/D3 allow); documentation and migration guide | All suites green on x86-64 and AArch64; NebulaStream integration green |
+| **M1 Foundations** | NIR format with levels (Trace/SSA) and the canonical/derived split; verifier, printer and canonical serializer (#532's format rules); `ExtensionRegistry` absorbing intrinsics; a bridge from `IRGraph` to NIR (internal, removed before release); latency corpus in CI on `next` | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
+| **M2 Frontend** | Flat trace (NIR trace level) with the hashed tag trie, open-addressing tag map, index-based replay cursor and value-ref free list; explicit `If`/`While`/`For` on region scopes, mixable with implicit control flow (port of #300); #561's tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; explicit `chainedIf`: one pass, zero replayed ops; mixed functions correct under the fuzzer |
+| **M3 Conversion** | Optimizing conversion Trace→SSA (Braun SSA, folding, CSE, use counts, threading); legalization NIR→NIR; optional copy passes (LICM, strength reduction); plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
+| **M4 Backends** | `bc`/`tbc`, `cpp`, MLIR (with #561's state reuse) and GPU on NIR; single-pass native prototype → D2 → parity (AArch64, exceptions, extension lowering) → D3 | End to end ≤ 0.5 µs/op on linear code; execution benchmarks no worse than 1.x per backend |
+| **M5 Reuse** | Artifacts (NIR image + native payloads + descriptor, #527's import and loader contract); provenance classes and pre-optimization eligibility; runtime bindings (#529); L1 (#528), L2 and L0 caches; C API on NIR (#531) | NebulaStream warm suite ≥ 60% faster (−67% measured in #529); every #527/#528 negative test ported and failing closed |
+| **M6 Semantics and extensions** | S3 (optimistic calls) and S4 (signless integers); extension types (`simd.vec`, `builtin.i128`) with the SIMD ring buffer removed; in-tree plugins migrated | Plugin suites green; SIMD tests pass on every backend without the lifetime rule |
+| **M7 Release** | Remove `IRGraph`, the old passes, the bridge and (per D3) `asmjit`; migration guide; documentation; NebulaStream integration; x86-64 and AArch64; sanitizers | The release criteria below |
 
-Why this order:
+Order and parallelism:
 
-- **1.x-a** takes the measured hot spots on today's code.
-- **1.x-b** removes the largest branchy-code cost and gives users the API
-  early.
-- **1.x-c** ships the already-validated cache stack without waiting for
-  NIR. Its v1 formats are explicitly temporary.
-- **2.0** then replaces the representation underneath, with everything
-  measured against the same corpus.
+- M1 comes first: everything else writes or reads NIR.
+- M2 and M3 can proceed in parallel once M1 lands (M2 produces trace-level
+  NIR; M3 can start on the bridge's output).
+- M4 starts on the bridge's SSA output and switches to M3's when it lands.
+- M5 needs M4 for native payloads, but its NIR-image path (portable
+  artifacts, L0/L2) can start right after M1.
+- M6 needs M3 (semantics live in the conversion) and M4 (lowering).
+- M7 closes.
+
+**Release criteria for 2.0:**
+
+1. All core, plugin and NebulaStream suites green on x86-64 and AArch64,
+   with ASan/UBSan and TSan.
+2. Latency corpus targets met:
+   - end to end ≤ 0.5 µs/op on linear code;
+   - tracing linear in the number of `if`s when written explicitly;
+   - no corpus case slower than 1.x.
+3. No execution-time regression on `ExecutionBenchmark` or TPC-H
+   (nautilus-duck) per backend.
+4. Warm NebulaStream suite ≥ 60% faster than cold.
+5. Migration guide covering:
+   - plugin intrinsics → extensions;
+   - throwing `invoke` callees (S3);
+   - option renames.
 
 ## 7. Risks
 
@@ -564,20 +596,21 @@ Why this order:
 |---|---|
 | Region-based explicit control flow has corner cases (values escaping a body, nested memo keys) | Same rules and diagnostics as `region()`; fuzzer with mixed implicit and explicit functions; #300's tests as the base |
 | In-memory layout = wire layout constrains in-memory evolution | Per-section strides and feature bits (#532); in-memory-only fields go into side tables that are not serialized |
-| Two cache formats (v1 in 1.x-c, v2 in 2.0) | v1 is opt-in and documented as temporary; v2 rejects v1 cleanly; caches are rebuildable by definition |
+| A long-lived `next` branch drifts from `main` | `main` takes fixes only; merge `main` into `next` weekly; full CI and corpus on `next`; milestones merged only when green |
+| One big release concentrates risk | Internal milestones with exit criteria; release criteria gate 2.0; adapters (the bridge) let each milestone be validated against today's behavior |
 | Provenance classes miss a raw-address path | Fail closed by default; keep #527's negative tests (encoded, laundered, callback, destructor-only); persistence only for eligible modules |
 | L2 hash collisions | 128-bit hash plus a full image comparison on hit (images are small and flat) |
 | Single-pass backend decision (D2) delays 2.0-beta | `tbc` is a complete fallback default; MLIR remains available |
-| Breaking `invoke` default (S3) | Derive the default from `noexcept` where possible; migration warnings in 1.x; debug-mode checks |
+| Breaking `invoke` default (S3) | Derive the default from `noexcept` where possible; migration guide and compile-time warnings for `noexcept(false)` callees without an opt-in; debug-mode checks |
 
 ## 8. Decisions needed
 
 | # | Question | Proposed answer |
 |---|---|---|
-| D1 | Order after P0 | As in §6 (passes and tracing hot spots first) |
+| D1 | Order after P0 | As in §6: one release; foundations first, then frontend and conversion (the measured hot spots) |
 | D2 | TPDE adapter or in-house single-pass backend | Prototype the TPDE adapter first (2.0-alpha), decide on latency, exceptions and extension support |
 | D3 | Default backend in 2.0 | Single-pass native where available, `tbc` elsewhere |
 | D4 | Annotation policy for runtime calls (S3) | Derived from `noexcept`; explicit opt-in otherwise |
-| D5 | Land the cache stack (#527–#529) and #532 on today's IR as v1 (1.x-c), or wait for NIR | Land as v1: the warm-start win (−67%) is large and already validated |
+| D5 | Land the cache stack (#527–#529) and #532 separately, or port them onto NIR | **Port onto NIR (M1, M5).** Everything ships in 2.0, so there are no temporary v1 formats |
 | D6 | Keep `bc` beside `tbc` | Keep in 2.0; revisit merging in 2.x |
 | D7 | Unified IR: what exactly to unify | One encoding and infrastructure; two levels (trace, SSA); in-memory = wire for canonical sections; legalization NIR→NIR; MLIR stays a backend (§3a) |

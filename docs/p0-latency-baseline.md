@@ -149,19 +149,20 @@ quadratic.
 
 1. **IR passes are still the largest stage on linear code after #561** (44–53%).
    Taking the fixed-point pipeline off the critical path moves *up*:
-   - a single-round "cheap" pass level on today's IR as a quick win;
-   - folding and CSE inside the conversion (plan P4) ahead of the flat
-     trace (P2-d).
+   folding and CSE inside the conversion come right after the foundations
+   (milestone M3 in [nautilus-2.md](nautilus-2.md); everything ships in one
+   release, so there is no interim quick-win step on today's IR).
 2. **Replay dominates branchy code** (70–78%). Three changes follow:
-   - the explicit control-flow API (#300) moves from "deferred" into the
-     release;
+   - the explicit control-flow API (#300) moves from "deferred" into 2.0;
    - the replay cursor gets a dedicated fix (index-based walk; no
      reconciliation loop calling `getCurrentBlock`);
    - `region()` guidance gets automated statistics.
 3. **Tag-trie fan-out is cheap to fix and worth about 3x tracing** on code
-   with many call sites (real operators). P1-b stays first in line.
-4. **AsmJit's call handling is superlinear.** Investigate and fix as a quick
-   win: it is 70–76% of compile time on call-heavy code.
+   with many call sites (real operators). It is part of the frontend
+   milestone (M2).
+4. **AsmJit's call handling is superlinear:** 70–76% of compile time on
+   call-heavy code. It argues against keeping AsmJit as a default; the
+   single-pass backend replaces it (M4).
 5. **The backend share is 11–30%.** The single-pass backend remains
    important, but behind items 1–3 for latency on large functions. For small
    functions on MLIR, the fixed cost (#561) matters most.
