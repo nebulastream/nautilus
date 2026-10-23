@@ -32,6 +32,49 @@
 #include <mlir/Transforms/Inliner.h>
 namespace nautilus::compiler::mlir {
 
+namespace {
+
+/// How many compiles share one MLIRContext before it is replaced. A context
+/// keeps every type and attribute it has uniqued -- constants, symbol names,
+/// locations -- for its lifetime, so a context kept forever would grow with
+/// every distinct kernel; replacing it now and then bounds that.
+constexpr size_t CONTEXT_REUSE_LIMIT = 256;
+
+/// The compiling thread's MLIRContext, with the backend's dialects loaded.
+///
+/// A fresh context per compile loads and later destroys every dialect (the
+/// LLVM dialect alone registers hundreds of operations and attributes), which
+/// for a small kernel costs about as much as lowering it. The module a compile
+/// builds is destroyed by the end of that compile, so the next compile on the
+/// thread can reuse the context. Per thread because a context is not safe to
+/// share between concurrent compiles.
+::mlir::MLIRContext& threadLocalContext(bool multithreading) {
+	struct CachedContext {
+		std::unique_ptr<::mlir::MLIRContext> context;
+		size_t uses = 0;
+	};
+	thread_local CachedContext cached[2];
+	auto& entry = cached[multithreading ? 1 : 0];
+	if (entry.context == nullptr || entry.uses == CONTEXT_REUSE_LIMIT) {
+		::mlir::DialectRegistry registry;
+		registry.insert<::mlir::arith::ArithDialect, ::mlir::cf::ControlFlowDialect, ::mlir::math::MathDialect,
+		                ::mlir::LLVM::LLVMDialect, ::mlir::func::FuncDialect>();
+		::mlir::func::registerAllExtensions(registry);
+		registerBuiltinDialectTranslation(registry);
+		registerLLVMDialectTranslation(registry);
+		::mlir::LLVM::registerInlinerInterface(registry);
+		entry.context = std::make_unique<::mlir::MLIRContext>(registry);
+		if (!multithreading) {
+			entry.context->disableMultithreading();
+		}
+		entry.uses = 0;
+	}
+	++entry.uses;
+	return *entry.context;
+}
+
+} // namespace
+
 MLIRCompilationBackend::MLIRCompilationBackend() {
 	// Initialize information about the local machine in LLVM.
 	llvm::InitializeNativeTarget();
@@ -49,19 +92,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 
 	// 1. Create the MLIRLoweringProvider and lower the given Nautilus IR. Return
 	// an MLIR module.
-	::mlir::DialectRegistry registry;
-	registry.insert<::mlir::arith::ArithDialect, ::mlir::cf::ControlFlowDialect, ::mlir::math::MathDialect,
-	                ::mlir::LLVM::LLVMDialect, ::mlir::func::FuncDialect>();
-	::mlir::func::registerAllExtensions(registry);
-	registerBuiltinDialectTranslation(registry);
-	registerLLVMDialectTranslation(registry);
-
-	::mlir::LLVM::registerInlinerInterface(registry);
-
-	::mlir::MLIRContext context(registry);
-	if (not options.getOptionOrDefault("mlir.enableMultithreading", true)) {
-		context.disableMultithreading();
-	}
+	auto& context = threadLocalContext(options.getOptionOrDefault("mlir.enableMultithreading", true));
 
 	// Register all intrinsics in the intrinsic manager
 	MLIRIntrinsicManager intrinsicManager;
