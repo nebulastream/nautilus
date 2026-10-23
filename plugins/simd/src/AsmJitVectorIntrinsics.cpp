@@ -41,23 +41,23 @@ static Gp argGp(IntrinsicCallContext& ctx, size_t idx) {
 	return std::get<Gp>(ctx.frame.getValue(ctx.call->getInputArguments()[idx]->getIdentifier()));
 }
 
-static Xmm argXmm(IntrinsicCallContext& ctx, size_t idx) {
-	return std::get<Xmm>(ctx.frame.getValue(ctx.call->getInputArguments()[idx]->getIdentifier()));
+static Vec argXmm(IntrinsicCallContext& ctx, size_t idx) {
+	return std::get<Vec>(ctx.frame.getValue(ctx.call->getInputArguments()[idx]->getIdentifier()));
 }
 
 // Load a 128-bit vector from a Gp address into a fresh Xmm.
-static Xmm loadVec(Compiler& cc, const Gp& ptr) {
-	auto v = cc.newXmm();
+static Vec loadVec(Compiler& cc, const Gp& ptr) {
+	auto v = cc.new_xmm();
 	cc.movdqu(v, x86::ptr(ptr));
 	return v;
 }
 
 // Store a 128-bit vector into a fresh 16-byte aligned stack slot; return a Gp
 // holding the slot's address. The slot is valid for the rest of the function.
-static Gp storeVecToStack(Compiler& cc, const Xmm& v) {
-	auto slot = cc.newStack(16, 16); // returns Mem (sp-relative)
+static Gp storeVecToStack(Compiler& cc, const Vec& v) {
+	auto slot = cc.new_stack(16, 16); // returns Mem (sp-relative)
 	cc.movdqu(slot, v);
-	auto p = cc.newIntPtr();
+	auto p = cc.new_gp_ptr();
 	cc.lea(p, slot);
 	return p;
 }
@@ -204,8 +204,8 @@ static bool handleAbsFloat(IntrinsicCallContext& ctx) {
 	auto a = loadVec(cc, argGp(ctx, 0));
 	// Build the mask vector in a fresh xmm via two-step: load 64-bit immediate
 	// to Gp → movq → pshufd to splat.
-	auto maskScratch = cc.newXmm();
-	auto tmpGp = cc.newUInt64();
+	auto maskScratch = cc.new_xmm();
+	auto tmpGp = cc.new_gp64();
 	if constexpr (std::is_same_v<ElemT, float>) {
 		cc.mov(tmpGp, uint64_t(0x7FFFFFFF7FFFFFFFULL));
 		cc.movq(maskScratch, tmpGp);
@@ -225,8 +225,8 @@ template <typename ElemT, int N>
 static bool handleNegFloat(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto a = loadVec(cc, argGp(ctx, 0));
-	auto signMask = cc.newXmm();
-	auto tmpGp = cc.newUInt64();
+	auto signMask = cc.new_xmm();
+	auto tmpGp = cc.new_gp64();
 	if constexpr (std::is_same_v<ElemT, float>) {
 		cc.mov(tmpGp, uint64_t(0x8000000080000000ULL));
 		cc.movq(signMask, tmpGp);
@@ -259,7 +259,7 @@ template <typename ElemT, int N>
 static bool handleNegInt(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto a = loadVec(cc, argGp(ctx, 0));
-	auto zero = cc.newXmm();
+	auto zero = cc.new_xmm();
 	cc.pxor(zero, zero);
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
 		cc.psubd(zero, a);
@@ -298,7 +298,7 @@ static bool handleReduceAddFloat(IntrinsicCallContext& ctx) {
 	auto v = loadVec(cc, argGp(ctx, 0));
 	if constexpr (std::is_same_v<ElemT, float>) {
 		// v = [a, b, c, d]
-		auto t = cc.newXmm();
+		auto t = cc.new_xmm();
 		cc.movaps(t, v);
 		cc.shufps(t, t, ::asmjit::Imm(0b10'11'00'01)); // [b, a, d, c]
 		cc.addps(v, t);                                // [a+b, a+b, c+d, c+d]
@@ -306,16 +306,16 @@ static bool handleReduceAddFloat(IntrinsicCallContext& ctx) {
 		cc.shufps(t, t, ::asmjit::Imm(0b01'00'11'10)); // [c+d, c+d, a+b, a+b]
 		cc.addps(v, t);                                // total in every lane
 		// scalar result lives in xmm[0]
-		auto out = cc.newXmmSs();
+		auto out = cc.new_xmm_ss();
 		cc.movss(out, v);
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	} else {
 		// v = [a, b]
-		auto t = cc.newXmm();
+		auto t = cc.new_xmm();
 		cc.movapd(t, v);
 		cc.shufpd(t, t, ::asmjit::Imm(0b01)); // [b, a]
 		cc.addpd(v, t);                       // [a+b, a+b]
-		auto out = cc.newXmmSd();
+		auto out = cc.new_xmm_sd();
 		cc.movsd(out, v);
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	}
@@ -327,7 +327,7 @@ static bool handleReduceMinMaxFloat(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto v = loadVec(cc, argGp(ctx, 0));
 	if constexpr (std::is_same_v<ElemT, float>) {
-		auto t = cc.newXmm();
+		auto t = cc.new_xmm();
 		cc.movaps(t, v);
 		cc.shufps(t, t, ::asmjit::Imm(0b10'11'00'01));
 		if constexpr (IsMin)
@@ -340,18 +340,18 @@ static bool handleReduceMinMaxFloat(IntrinsicCallContext& ctx) {
 			cc.minps(v, t);
 		else
 			cc.maxps(v, t);
-		auto out = cc.newXmmSs();
+		auto out = cc.new_xmm_ss();
 		cc.movss(out, v);
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	} else {
-		auto t = cc.newXmm();
+		auto t = cc.new_xmm();
 		cc.movapd(t, v);
 		cc.shufpd(t, t, ::asmjit::Imm(0b01));
 		if constexpr (IsMin)
 			cc.minpd(v, t);
 		else
 			cc.maxpd(v, t);
-		auto out = cc.newXmmSd();
+		auto out = cc.new_xmm_sd();
 		cc.movsd(out, v);
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	}
@@ -363,13 +363,13 @@ template <typename ElemT, int N>
 static bool handleReduceAddInt(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto v = loadVec(cc, argGp(ctx, 0));
-	auto slot = cc.newStack(16, 16);
+	auto slot = cc.new_stack(16, 16);
 	cc.movdqu(slot, v);
-	auto acc = cc.newInt64();
+	auto acc = cc.new_gp64();
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
-		auto base = cc.newIntPtr();
+		auto base = cc.new_gp_ptr();
 		cc.lea(base, slot);
-		auto e = cc.newInt32();
+		auto e = cc.new_gp32();
 		cc.movsxd(acc, x86::dword_ptr(base, 0));
 		cc.movsxd(e.r64(), x86::dword_ptr(base, 4));
 		cc.add(acc, e.r64());
@@ -378,9 +378,9 @@ static bool handleReduceAddInt(IntrinsicCallContext& ctx) {
 		cc.movsxd(e.r64(), x86::dword_ptr(base, 12));
 		cc.add(acc, e.r64());
 	} else {
-		auto base = cc.newIntPtr();
+		auto base = cc.new_gp_ptr();
 		cc.lea(base, slot);
-		auto e = cc.newInt64();
+		auto e = cc.new_gp64();
 		cc.mov(acc, x86::qword_ptr(base, 0));
 		cc.mov(e, x86::qword_ptr(base, 8));
 		cc.add(acc, e);
@@ -395,7 +395,7 @@ static bool handleReduceMinMaxInt(IntrinsicCallContext& ctx) {
 	auto v = loadVec(cc, argGp(ctx, 0));
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
 		// Two-step shuffle reduction with SSE4.1 pmins/pmaxs.
-		auto t = cc.newXmm();
+		auto t = cc.new_xmm();
 		cc.movdqa(t, v);
 		cc.pshufd(t, t, ::asmjit::Imm(0b10'11'00'01));
 		if constexpr (IsMin)
@@ -409,8 +409,8 @@ static bool handleReduceMinMaxInt(IntrinsicCallContext& ctx) {
 		else
 			cc.pmaxsd(v, t);
 		// Result is in lane 0.
-		auto out = cc.newInt64();
-		auto out32 = cc.newInt32();
+		auto out = cc.new_gp64();
+		auto out32 = cc.new_gp32();
 		cc.movd(out32, v);
 		cc.movsxd(out, out32);
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
@@ -470,9 +470,9 @@ static bool handleCmpIntImpl(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto a = loadVec(cc, argGp(ctx, 0));
 	auto b = loadVec(cc, argGp(ctx, 1));
-	auto ones = cc.newXmm();
+	auto ones = cc.new_xmm();
 	cc.pcmpeqd(ones, ones); // all-1s for invert
-	auto result = cc.newXmm();
+	auto result = cc.new_xmm();
 	cc.movdqa(result, a);
 	if constexpr (Width == 32) {
 		switch (Pred) {
@@ -497,7 +497,7 @@ static bool handleCmpIntImpl(IntrinsicCallContext& ctx) {
 			break;
 		}
 		case FCmp::Ge: { // !(b > a)
-			auto tmp = cc.newXmm();
+			auto tmp = cc.new_xmm();
 			cc.movdqa(tmp, b);
 			cc.pcmpgtd(tmp, a);
 			cc.movdqa(result, tmp);
@@ -528,7 +528,7 @@ static bool handleCmpIntImpl(IntrinsicCallContext& ctx) {
 			break;
 		}
 		case FCmp::Ge: {
-			auto tmp = cc.newXmm();
+			auto tmp = cc.new_xmm();
 			cc.movdqa(tmp, b);
 			cc.pcmpgtq(tmp, a);
 			cc.movdqa(result, tmp);
@@ -574,7 +574,7 @@ static bool handleBitwise(IntrinsicCallContext& ctx) {
 template <typename ElemT, int N>
 static bool handleBroadcast(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
-	auto v = cc.newXmm();
+	auto v = cc.new_xmm();
 	if constexpr (std::is_same_v<ElemT, float>) {
 		auto scalar = argXmm(ctx, 0);
 		cc.movaps(v, scalar);
@@ -606,24 +606,24 @@ static bool handleExtract(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto vecPtr = argGp(ctx, 0);
 	auto idxGp = argGp(ctx, 1);
-	auto idx64 = cc.newInt64();
+	auto idx64 = cc.new_gp64();
 	cc.movsxd(idx64, idxGp.r32());
 	if constexpr (std::is_same_v<ElemT, float>) {
-		auto out = cc.newXmmSs();
+		auto out = cc.new_xmm_ss();
 		cc.movss(out, x86::dword_ptr(vecPtr, idx64, 2)); // shift=2: *4 bytes
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	} else if constexpr (std::is_same_v<ElemT, double>) {
-		auto out = cc.newXmmSd();
+		auto out = cc.new_xmm_sd();
 		cc.movsd(out, x86::qword_ptr(vecPtr, idx64, 3)); // shift=3: *8 bytes
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	} else if constexpr (std::is_same_v<ElemT, int32_t>) {
-		auto out = cc.newInt64();
-		auto tmp32 = cc.newInt32();
+		auto out = cc.new_gp64();
+		auto tmp32 = cc.new_gp32();
 		cc.mov(tmp32, x86::dword_ptr(vecPtr, idx64, 2));
 		cc.movsxd(out, tmp32);
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	} else {
-		auto out = cc.newInt64();
+		auto out = cc.new_gp64();
 		cc.mov(out, x86::qword_ptr(vecPtr, idx64, 3));
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	}
@@ -637,16 +637,16 @@ static bool handleInsert(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto srcVecPtr = argGp(ctx, 0);
 	auto idxGp = argGp(ctx, 2);
-	auto idx64 = cc.newInt64();
+	auto idx64 = cc.new_gp64();
 	cc.movsxd(idx64, idxGp.r32());
 
 	// Copy source vector to a fresh stack slot, mutate the slot, return its
 	// address. Same memory model as every other op (each call has its own
 	// result slot).
-	auto slot = cc.newStack(16, 16);
+	auto slot = cc.new_stack(16, 16);
 	auto vec = loadVec(cc, srcVecPtr);
 	cc.movdqu(slot, vec);
-	auto base = cc.newIntPtr();
+	auto base = cc.new_gp_ptr();
 	cc.lea(base, slot);
 
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -677,30 +677,30 @@ static bool handleGather(IntrinsicCallContext& ctx) {
 	auto base = argGp(ctx, 0);
 	auto indicesPtr = argGp(ctx, 1);
 
-	auto slot = cc.newStack(16, 16);
-	auto slotBase = cc.newIntPtr();
+	auto slot = cc.new_stack(16, 16);
+	auto slotBase = cc.new_gp_ptr();
 	cc.lea(slotBase, slot);
 
 	constexpr int Shift = (sizeof(ElemT) == 1) ? 0 : (sizeof(ElemT) == 2) ? 1 : (sizeof(ElemT) == 4) ? 2 : 3;
 	for (int i = 0; i < N; ++i) {
-		auto idx = cc.newInt32();
+		auto idx = cc.new_gp32();
 		cc.mov(idx, x86::dword_ptr(indicesPtr, i * 4));
-		auto idx64 = cc.newInt64();
+		auto idx64 = cc.new_gp64();
 		cc.movsxd(idx64, idx);
 		if constexpr (std::is_same_v<ElemT, float>) {
-			auto tmp = cc.newInt32();
+			auto tmp = cc.new_gp32();
 			cc.mov(tmp, x86::dword_ptr(base, idx64, Shift));
 			cc.mov(x86::dword_ptr(slotBase, i * 4), tmp);
 		} else if constexpr (std::is_same_v<ElemT, double>) {
-			auto tmp = cc.newInt64();
+			auto tmp = cc.new_gp64();
 			cc.mov(tmp, x86::qword_ptr(base, idx64, Shift));
 			cc.mov(x86::qword_ptr(slotBase, i * 8), tmp);
 		} else if constexpr (std::is_same_v<ElemT, int32_t>) {
-			auto tmp = cc.newInt32();
+			auto tmp = cc.new_gp32();
 			cc.mov(tmp, x86::dword_ptr(base, idx64, Shift));
 			cc.mov(x86::dword_ptr(slotBase, i * 4), tmp);
 		} else {
-			auto tmp = cc.newInt64();
+			auto tmp = cc.new_gp64();
 			cc.mov(tmp, x86::qword_ptr(base, idx64, Shift));
 			cc.mov(x86::qword_ptr(slotBase, i * 8), tmp);
 		}
@@ -720,16 +720,16 @@ static bool handleScatter(IntrinsicCallContext& ctx) {
 
 	constexpr int Shift = (sizeof(ElemT) == 1) ? 0 : (sizeof(ElemT) == 2) ? 1 : (sizeof(ElemT) == 4) ? 2 : 3;
 	for (int i = 0; i < N; ++i) {
-		auto idx = cc.newInt32();
+		auto idx = cc.new_gp32();
 		cc.mov(idx, x86::dword_ptr(indicesPtr, i * 4));
-		auto idx64 = cc.newInt64();
+		auto idx64 = cc.new_gp64();
 		cc.movsxd(idx64, idx);
 		if constexpr (sizeof(ElemT) == 4) {
-			auto tmp = cc.newInt32();
+			auto tmp = cc.new_gp32();
 			cc.mov(tmp, x86::dword_ptr(vecPtr, i * 4));
 			cc.mov(x86::dword_ptr(dest, idx64, Shift), tmp);
 		} else {
-			auto tmp = cc.newInt64();
+			auto tmp = cc.new_gp64();
 			cc.mov(tmp, x86::qword_ptr(vecPtr, i * 8));
 			cc.mov(x86::qword_ptr(dest, idx64, Shift), tmp);
 		}
@@ -748,9 +748,9 @@ static bool handleBlend(IntrinsicCallContext& ctx) {
 	auto mask = loadVec(cc, argGp(ctx, 0));
 	auto a = loadVec(cc, argGp(ctx, 1));
 	auto b = loadVec(cc, argGp(ctx, 2));
-	auto zero = cc.newXmm();
+	auto zero = cc.new_xmm();
 	cc.pxor(zero, zero);
-	auto cmp = cc.newXmm();
+	auto cmp = cc.new_xmm();
 	cc.movdqa(cmp, mask);
 	// pcmpeqd on 32-bit lanes works for any element width as long as zero
 	// detection per element is consistent: if any 32-bit half of a 64-bit
@@ -758,7 +758,7 @@ static bool handleBlend(IntrinsicCallContext& ctx) {
 	// vector comparisons), every lane is all-0 or all-1s, so this is exact.
 	cc.pcmpeqd(cmp, zero);
 	// cmp = 1s where mask==0 → pick b; 0s where mask!=0 → pick a.
-	auto tmp = cc.newXmm();
+	auto tmp = cc.new_xmm();
 	cc.movdqa(tmp, cmp);
 	cc.pandn(tmp, a); // tmp = (~cmp) & a
 	cc.pand(cmp, b);  // cmp  = cmp & b
@@ -788,7 +788,7 @@ static Vec argVec(IntrinsicCallContext& ctx, size_t idx) {
 
 // Returns a fresh full 128-bit Vec viewed as Q (vN.16b for raw access).
 static Vec newQ(Compiler& cc) {
-	return cc.newVecQ();
+	return cc.new_vec_q();
 }
 
 // View helpers — NEON instructions need lane-typed views (.4s, .2d, .16b).
@@ -812,10 +812,10 @@ static Vec loadVec(Compiler& cc, const Gp& ptr) {
 }
 
 static Gp storeVecToStack(Compiler& cc, const Vec& v) {
-	auto slot = cc.newStack(16, 16);
+	auto slot = cc.new_stack(16, 16);
 	cc.str(v, slot);
-	auto p = cc.newIntPtr();
-	cc.loadAddressOf(p, slot);
+	auto p = cc.new_gp_ptr();
+	cc.load_address_of(p, slot);
 	return p;
 }
 
@@ -1015,11 +1015,11 @@ static bool handleReduceAddFloat(IntrinsicCallContext& ctx) {
 		// pairwise adds: faddp .4s → .4s, then 2-operand faddp (scalar form).
 		auto tmp = newQ(cc);
 		cc.faddp(tmp.s4(), v.s4(), v.s4()); // [a+b, c+d, a+b, c+d]
-		auto out = cc.newVecS();
+		auto out = cc.new_vec_s();
 		cc.faddp(out, tmp.s2()); // (a+b)+(c+d) — 2-operand scalar form
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	} else {
-		auto out = cc.newVecD();
+		auto out = cc.new_vec_d();
 		cc.faddp(out, v.d2());
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	}
@@ -1031,7 +1031,7 @@ static bool handleReduceMinMaxFloat(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto v = loadVec(cc, argGp(ctx, 0));
 	if constexpr (std::is_same_v<ElemT, float>) {
-		auto out = cc.newVecS();
+		auto out = cc.new_vec_s();
 		if constexpr (IsMin)
 			cc.fminv(out, v.s4());
 		else
@@ -1048,16 +1048,16 @@ template <typename ElemT, int N>
 static bool handleReduceAddInt(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto v = loadVec(cc, argGp(ctx, 0));
-	auto out = cc.newIntPtr(); // 64-bit Xn
+	auto out = cc.new_gp_ptr(); // 64-bit Xn
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
-		auto acc = cc.newVecS();
+		auto acc = cc.new_vec_s();
 		cc.addv(acc, v.s4());
-		auto w = cc.newInt32();
+		auto w = cc.new_gp32();
 		cc.fmov(w, acc); // umov w, acc.s[0]; fmov is the GP variant
 		cc.sxtw(out, w);
 	} else {
-		auto e0 = cc.newInt64();
-		auto e1 = cc.newInt64();
+		auto e0 = cc.new_gp64();
+		auto e1 = cc.new_gp64();
 		cc.umov(e0, v.d(0));
 		cc.umov(e1, v.d(1));
 		cc.add(out, e0, e1);
@@ -1071,13 +1071,13 @@ static bool handleReduceMinMaxInt(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto v = loadVec(cc, argGp(ctx, 0));
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
-		auto acc = cc.newVecS();
+		auto acc = cc.new_vec_s();
 		if constexpr (IsMin)
 			cc.sminv(acc, v.s4());
 		else
 			cc.smaxv(acc, v.s4());
-		auto out = cc.newIntPtr();
-		auto w = cc.newInt32();
+		auto out = cc.new_gp_ptr();
+		auto w = cc.new_gp32();
 		cc.fmov(w, acc);
 		cc.sxtw(out, w);
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
@@ -1202,27 +1202,27 @@ static bool handleExtract(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto vecPtr = argGp(ctx, 0);
 	auto idxGp = argGp(ctx, 1);
-	auto idx64 = cc.newIntPtr();
+	auto idx64 = cc.new_gp_ptr();
 	cc.sxtw(idx64, idxGp.w());
 	// Element-size shift for `[base, idx, LSL #shift]` mem operand.
 	constexpr uint32_t Shift = (sizeof(ElemT) == 4) ? 2u : 3u;
 	if constexpr (std::is_same_v<ElemT, float>) {
-		auto out = cc.newVecS();
-		cc.ldr(out, a64::ptr(vecPtr, idx64, ::asmjit::arm::lsl(Shift)));
+		auto out = cc.new_vec_s();
+		cc.ldr(out, a64::ptr(vecPtr, idx64, ::asmjit::a64::lsl(Shift)));
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	} else if constexpr (std::is_same_v<ElemT, double>) {
-		auto out = cc.newVecD();
-		cc.ldr(out, a64::ptr(vecPtr, idx64, ::asmjit::arm::lsl(Shift)));
+		auto out = cc.new_vec_d();
+		cc.ldr(out, a64::ptr(vecPtr, idx64, ::asmjit::a64::lsl(Shift)));
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	} else if constexpr (std::is_same_v<ElemT, int32_t>) {
-		auto out = cc.newIntPtr();
-		auto w = cc.newInt32();
-		cc.ldr(w, a64::ptr(vecPtr, idx64, ::asmjit::arm::lsl(Shift)));
+		auto out = cc.new_gp_ptr();
+		auto w = cc.new_gp32();
+		cc.ldr(w, a64::ptr(vecPtr, idx64, ::asmjit::a64::lsl(Shift)));
 		cc.sxtw(out, w);
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	} else {
-		auto out = cc.newIntPtr();
-		cc.ldr(out, a64::ptr(vecPtr, idx64, ::asmjit::arm::lsl(Shift)));
+		auto out = cc.new_gp_ptr();
+		cc.ldr(out, a64::ptr(vecPtr, idx64, ::asmjit::a64::lsl(Shift)));
 		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
 	}
 	return true;
@@ -1233,17 +1233,17 @@ static bool handleInsert(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto srcVecPtr = argGp(ctx, 0);
 	auto idxGp = argGp(ctx, 2);
-	auto idx64 = cc.newIntPtr();
+	auto idx64 = cc.new_gp_ptr();
 	cc.sxtw(idx64, idxGp.w());
 
-	auto slot = cc.newStack(16, 16);
+	auto slot = cc.new_stack(16, 16);
 	auto vec = loadVec(cc, srcVecPtr);
 	cc.str(vec, slot);
-	auto base = cc.newIntPtr();
-	cc.loadAddressOf(base, slot);
+	auto base = cc.new_gp_ptr();
+	cc.load_address_of(base, slot);
 
 	constexpr uint32_t Shift = (sizeof(ElemT) == 4) ? 2u : 3u;
-	auto memAt = a64::ptr(base, idx64, ::asmjit::arm::lsl(Shift));
+	auto memAt = a64::ptr(base, idx64, ::asmjit::a64::lsl(Shift));
 	if constexpr (std::is_same_v<ElemT, float>) {
 		auto val = argVec(ctx, 1);
 		cc.str(val.s(), memAt);
@@ -1267,23 +1267,23 @@ static bool handleGather(IntrinsicCallContext& ctx) {
 	auto base = argGp(ctx, 0);
 	auto indicesPtr = argGp(ctx, 1);
 
-	auto slot = cc.newStack(16, 16);
-	auto slotBase = cc.newIntPtr();
-	cc.loadAddressOf(slotBase, slot);
+	auto slot = cc.new_stack(16, 16);
+	auto slotBase = cc.new_gp_ptr();
+	cc.load_address_of(slotBase, slot);
 
 	constexpr uint32_t Shift = (sizeof(ElemT) == 4) ? 2u : 3u;
 	for (int i = 0; i < N; ++i) {
-		auto idx = cc.newInt32();
+		auto idx = cc.new_gp32();
 		cc.ldr(idx, a64::ptr(indicesPtr, i * 4));
-		auto idx64 = cc.newIntPtr();
+		auto idx64 = cc.new_gp_ptr();
 		cc.sxtw(idx64, idx);
-		auto srcMem = a64::ptr(base, idx64, ::asmjit::arm::lsl(Shift));
+		auto srcMem = a64::ptr(base, idx64, ::asmjit::a64::lsl(Shift));
 		if constexpr (sizeof(ElemT) == 4) {
-			auto tmp = cc.newInt32();
+			auto tmp = cc.new_gp32();
 			cc.ldr(tmp, srcMem);
 			cc.str(tmp, a64::ptr(slotBase, i * 4));
 		} else {
-			auto tmp = cc.newInt64();
+			auto tmp = cc.new_gp64();
 			cc.ldr(tmp, srcMem);
 			cc.str(tmp, a64::ptr(slotBase, i * 8));
 		}
@@ -1301,17 +1301,17 @@ static bool handleScatter(IntrinsicCallContext& ctx) {
 
 	constexpr uint32_t Shift = (sizeof(ElemT) == 4) ? 2u : 3u;
 	for (int i = 0; i < N; ++i) {
-		auto idx = cc.newInt32();
+		auto idx = cc.new_gp32();
 		cc.ldr(idx, a64::ptr(indicesPtr, i * 4));
-		auto idx64 = cc.newIntPtr();
+		auto idx64 = cc.new_gp_ptr();
 		cc.sxtw(idx64, idx);
-		auto destMem = a64::ptr(dest, idx64, ::asmjit::arm::lsl(Shift));
+		auto destMem = a64::ptr(dest, idx64, ::asmjit::a64::lsl(Shift));
 		if constexpr (sizeof(ElemT) == 4) {
-			auto tmp = cc.newInt32();
+			auto tmp = cc.new_gp32();
 			cc.ldr(tmp, a64::ptr(vecPtr, i * 4));
 			cc.str(tmp, destMem);
 		} else {
-			auto tmp = cc.newInt64();
+			auto tmp = cc.new_gp64();
 			cc.ldr(tmp, a64::ptr(vecPtr, i * 8));
 			cc.str(tmp, destMem);
 		}

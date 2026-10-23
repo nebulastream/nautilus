@@ -1,7 +1,7 @@
 // This file is part of AsmJit project <https://asmjit.com>
 //
-// See asmjit.h or LICENSE.md for license and copyright information
-// SPDX-License-Identifier: (Zlib or Unlicense)
+// See <asmjit/core.h> or LICENSE.md for license and copyright information
+// SPDX-License-Identifier: Zlib
 
 "use strict";
 

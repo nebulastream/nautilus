@@ -47,7 +47,7 @@ Gp argGp(IntrinsicCallContext& ctx, size_t idx) {
 /// pulls the line into cache, just not in an exclusive state). This mirrors what clang does for
 /// `__builtin_prefetch(addr, 1, n)` without `-mprfchw`.
 bool hostHasPrefetchW() {
-	static const bool has = CpuInfo::host().features().x86().hasPREFETCHW();
+	static const bool has = CpuInfo::host().features().x86().has_prefetchw();
 	return has;
 }
 

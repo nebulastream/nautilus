@@ -213,7 +213,7 @@ private:
 		// All integer types are mapped to 64-bit GP; floats to XMM.
 		AsmReg allocReg(Type t);
 		static ::asmjit::x86::Gp toGp(const AsmReg& r);
-		static ::asmjit::x86::Xmm toXmm(const AsmReg& r);
+		static ::asmjit::x86::Vec toXmm(const AsmReg& r);
 
 		// Re-sign/zero-extend a GP register's low `stamp`-width bits across the
 		// full 64-bit register per `stamp`'s signedness. Integer arithmetic on

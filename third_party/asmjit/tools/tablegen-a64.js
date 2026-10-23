@@ -1,13 +1,12 @@
 // This file is part of AsmJit project <https://asmjit.com>
 //
-// See asmjit.h or LICENSE.md for license and copyright information
+// See <asmjit/core.h> or LICENSE.md for license and copyright information
 // SPDX-License-Identifier: Zlib
 
 "use strict";
 
 const core = require("./tablegen.js");
 const commons = require("./generator-commons.js");
-const hasOwn = Object.prototype.hasOwnProperty;
 
 const asmdb = core.asmdb;
 const kIndent = commons.kIndent;
@@ -84,7 +83,7 @@ class ArmTableGen extends core.TableGen {
   // --------------------------------------------------------------------------
 
   parse() {
-    const rawData = this.dataOfFile("src/asmjit/arm/a64instdb.cpp");
+    const rawData = this.dataOfFile("asmjit/arm/a64_inst_db.cpp");
     const stringData = StringUtils.extract(rawData, "// ${InstInfo:Begin}", "// ${InstInfo:End");
 
     const re = new RegExp(
@@ -132,8 +131,8 @@ class ArmTableGen extends core.TableGen {
 
     var m;
     while ((m = re.exec(stringData)) !== null) {
-      var enum_ = m[1];
-      var name = enum_ === "None" ? "" : enum_.toLowerCase();
+      var enumName = m[1];
+      var name = enumName === "None" ? "" : enumName.toLowerCase();
       var encoding = m[2].trim();
       var opcodeData = m[3].trim();
       var rwInfo = m[4].trim();
@@ -149,11 +148,11 @@ class ArmTableGen extends core.TableGen {
           encodingDataIndex === "encodingDataIndex")
         continue;
 
-      this.addInst({
+      this.addInstruction({
         id                : 0,               // Instruction id (numeric value).
         name              : name,            // Instruction name.
         displayName       : displayName,     // Instruction name to display.
-        enum              : enum_,           // Instruction enum without `kId` prefix.
+        enum              : enumName,        // Instruction enum without `kId` prefix.
         encoding          : encoding,        // Opcode encoding.
         opcodeData        : opcodeData,      // Opcode data.
         opcodeDataIndex   : -1,              // Opcode data index.
@@ -187,11 +186,11 @@ class ArmTableGen extends core.TableGen {
 
   onBeforeRun() {
     this.load([
-      "src/asmjit/arm/a64emitter.h",
-      "src/asmjit/arm/a64globals.h",
-      "src/asmjit/arm/a64instdb.cpp",
-      "src/asmjit/arm/a64instdb.h",
-      "src/asmjit/arm/a64instdb_p.h"
+      "asmjit/arm/a64_emitter.h",
+      "asmjit/arm/a64_globals.h",
+      "asmjit/arm/a64_inst_db.cpp",
+      "asmjit/arm/a64_inst_db.h",
+      "asmjit/arm/a64_inst_db_p.h"
     ]);
     this.parse();
   }
@@ -258,7 +257,7 @@ class EncodingTable extends core.Task {
       const encoding = inst.encoding;
       const opcodeData = inst.opcodeData.replace(/\(/g, "{ ").replace(/\)/g, " }");
 
-      if (!hasOwn.call(map, encoding))
+      if (!Object.hasOwn(map, encoding))
         map[encoding] = [];
 
       if (inst.opcodeData === "(_)") {

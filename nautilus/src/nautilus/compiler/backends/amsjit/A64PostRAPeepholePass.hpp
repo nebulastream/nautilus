@@ -35,11 +35,11 @@ namespace nautilus::compiler::asmjit {
 /// `asmjit.peephole.selfMovesRemoved` and `asmjit.peephole.jumpsRemoved`.
 class A64PostRAPeepholePass : public ::asmjit::Pass {
 public:
-	explicit A64PostRAPeepholePass(CompilationStatistics* statistics) noexcept
-	    : ::asmjit::Pass("A64PostRAPeepholePass"), statistics_(statistics) {
+	A64PostRAPeepholePass(::asmjit::BaseBuilder& cb, CompilationStatistics* statistics) noexcept
+	    : ::asmjit::Pass(cb, "A64PostRAPeepholePass"), statistics_(statistics) {
 	}
 
-	::asmjit::Error run(::asmjit::Zone* zone, ::asmjit::Logger* logger) override;
+	::asmjit::Error run(::asmjit::axl::Arena& arena, ::asmjit::Logger* logger) override;
 
 private:
 	CompilationStatistics* statistics_ = nullptr;
