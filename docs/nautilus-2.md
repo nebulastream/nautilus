@@ -78,6 +78,127 @@ corpus functions, 3 backends):
 The extension registry (§4.5) sits beside all of it: every stage looks up
 ops and types through it.
 
+## 3a. Does a unified IR make sense?
+
+"Unified" can mean several things. Each has a different answer.
+
+| Option | What it means | Verdict |
+|---|---|---|
+| **A. One encoding and infrastructure** | Trace and IR share the instruction format, id scheme, `extra`, `ConstPool`, pointer table, extension registry, verifier framework, printer and serializer | **Yes**: the core of Nautilus 2 |
+| **B. One level** | The trace *is* the SSA IR: tracing writes SSA directly | **No**, while implicit control flow exists (see below) |
+| **C. In-memory = wire format** | Images load in place; the cache key hashes the image; the C API reads records | **Yes, for canonical sections only.** Derived data stays out of the wire format |
+| **D. One IR for every backend** | No backend-specific IR in core | **Yes up to legalization.** Backends keep their own internal forms (bytecode, MLIR, machine code) |
+| **E. MLIR as the IR** | Nautilus IR becomes an MLIR dialect | **No**: incompatible with the latency goal |
+| **F. One IR for host and GPU** | Kernels are NIR with extension ops and address-space types | **Yes** |
+
+### Why A: one infrastructure
+
+Today the trace and the IR have separate data structures, printers,
+verifiers and (in #532) a third, serialized representation. #531 adds a
+fourth view for the C API. Every new feature touches all of them: regions
+needed trace fields, IR fields, dump support and conversion; #527 and #529
+had to carry provenance and binding evidence through each layer.
+
+With one encoding:
+
+- **A feature is defined once** (op, type, payload, extension), and
+  tracing, conversion, serialization, the C API and the printer pick it up.
+- **Plugins register once.** An extension op recorded by `traceExtOp` is the
+  same record the conversion folds, the serializer writes and a backend
+  lowers.
+- **Tooling works at both levels.** A serialized *trace* (not only the IR)
+  becomes a reproducer for tracing and conversion bugs, which helps the
+  fuzzer, the playground and bug reports.
+- **The P0 costs shrink:** no second materialization of differently shaped
+  objects, and the conversion becomes array-to-array.
+
+### Why not B: two levels, one format
+
+Implicit control-flow tracing needs things SSA must not have:
+
+| Trace level | SSA level |
+|---|---|
+| **Variables** (`ASSIGN` redefines a value ref); SSA does not exist yet | Every value defined once; block arguments at merges |
+| **Recording order;** blocks are split at merge points while tracing runs | **Layout order** (RPO, loops contiguous) with `BlockInfo` |
+| Ops must keep stable ids during splits (the tag map points at them) | Ids are dense and may be renumbered by copy passes |
+| Snapshot side array, tag map, replay cursor | None of these |
+| Append-only, discarded after conversion | Build once, rewrite by copying, persisted |
+
+Forcing one level would either put variables and recording-order artifacts
+into the persisted IR, where every consumer must handle them, or force
+tracing to build SSA before the CFG is final. The second is exactly what
+Braun-style construction on a complete CFG avoids.
+
+The design therefore has **two levels of one format**. Every function
+carries `level ∈ {Trace, SSA}`:
+
+- the verifier enforces each level's invariants;
+- the conversion is the only path from `Trace` to `SSA`;
+- everything downstream (passes, backends, serializer images, caches, the
+  C API) accepts only `SSA`;
+- trace-level images exist for debugging and reproduction, never for
+  execution.
+
+**When explicit control flow is used throughout** (§4.1.2), the CFG is
+known while tracing. Such functions could later be emitted directly at the
+SSA level, with no conversion pass: option B for the explicit subset. That
+is a 2.x optimization. The two-level split keeps the door open without
+paying for it now.
+
+### Why C, but only for canonical sections
+
+Making the in-memory layout the wire layout gives zero-copy loading, a
+cache key that is a hash over contiguous bytes, and a C API that reads
+records directly. The cost is that the in-memory format can no longer
+change freely. The split that bounds this cost:
+
+- **Canonical sections** are serialized, hashed and versioned: `insts`,
+  `extra`, `ConstPool`, `pointers`, `functions`, the canonical part of
+  `blocks`, `names` and the extension table.
+- **Derived sections** are recomputed or rebuilt after load and are never
+  serialized: `useCount`, `forward`, loop depth and loop end, CSE tables,
+  snapshot arrays, debug tags. They may change layout at any time.
+- **Canonicalization before hashing and writing:** copy-compact the
+  `forward` replacements, renumber densely, and intern names in
+  first-use order. Two structurally equal modules then produce equal bytes
+  (L2 cache, deterministic output as in #532).
+
+### Why D, with a legalization step
+
+There is no separate core "LIR": every backend reads SSA-level NIR. What
+differs per target is **legalization**, a NIR→NIR rewrite in the same
+format:
+
+- extension ops without a handler on the target expand to their fallback;
+- extension types without support become their memory fallback;
+- calls are lowered to the target ABI where a backend asks for it.
+
+Below that, backends keep their own forms (bytecode, MLIR, machine code).
+Those are implementation details, not a second shared IR.
+
+### Why not E: MLIR as the core IR
+
+MLIR would provide dialects, passes and bytecode serialization for free.
+But P0 and #561 measure its fixed cost at 3–10 ms per compile, plus
+per-operation costs for creating ops, attributes and uniquing that are an
+order of magnitude above the 16 B-record budget. The single-pass backend
+and the cache hit path must not depend on it. MLIR stays the
+peak-performance backend, fed from NIR.
+
+### Costs of unifying
+
+- **One format to evolve.** Mitigated by versioning discipline: per-section
+  strides, feature bits, extension `name@version`.
+- **Risk of a "god IR"** that every feature wants to grow. Mitigated by
+  keeping core small (the core opcode list stays near today's 30 kinds)
+  and pushing everything else into extensions.
+- **Migration touches everything at once.** Mitigated by the bridge from
+  `IRGraph` to NIR and backend-by-backend porting (§6).
+
+**Decision D7:** adopt A, C (canonical sections) and D; two levels instead
+of B, with direct SSA emission for explicit control flow as a 2.x option;
+reject E.
+
 ## 4. Components
 
 ### 4.1 Frontend
@@ -136,9 +257,9 @@ with no snapshots or tag-map lookups. Tags are then needed only for source
 locations, which are recorded lazily. Implicit control flow remains the
 default and the compatibility path.
 
-### 4.2 Flat trace
+### 4.2 Flat trace (NIR, trace level)
 
-As designed in [ir-representation-latency.md §12](ir-representation-latency.md):
+NIR at `level = Trace` (§3a), as designed in [ir-representation-latency.md §12](ir-representation-latency.md):
 
 - 16 B records indexed by global op id;
 - a snapshot side array (written in record mode only);
@@ -151,9 +272,9 @@ As designed in [ir-representation-latency.md §12](ir-representation-latency.md)
 The explicit constructs (§4.1.2) write the same format and skip the
 snapshot array.
 
-### 4.3 NIR: the flat IR
+### 4.3 NIR: the flat IR (SSA level)
 
-As designed in [ir-representation-latency.md §13](ir-representation-latency.md),
+NIR at `level = SSA` (§3a), as designed in [ir-representation-latency.md §13](ir-representation-latency.md),
 with one more constraint: **the in-memory layout is the wire layout**.
 
 - **Instructions:** 16 B `Inst {u16 op, u8 type, u8 flags, u32 a, b, c}`.
@@ -459,3 +580,4 @@ Why this order:
 | D4 | Annotation policy for runtime calls (S3) | Derived from `noexcept`; explicit opt-in otherwise |
 | D5 | Land the cache stack (#527–#529) and #532 on today's IR as v1 (1.x-c), or wait for NIR | Land as v1: the warm-start win (−67%) is large and already validated |
 | D6 | Keep `bc` beside `tbc` | Keep in 2.0; revisit merging in 2.x |
+| D7 | Unified IR: what exactly to unify | One encoding and infrastructure; two levels (trace, SSA); in-memory = wire for canonical sections; legalization NIR→NIR; MLIR stays a backend (§3a) |
