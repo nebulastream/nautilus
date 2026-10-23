@@ -35,6 +35,11 @@ Artifact
   payload. This merges #527's bytecode-repair path and #532's cross-backend
   loading into one rule. NIR replaces MLIR bytecode as the portable payload;
   MLIR is regenerated from NIR.
+- **Native payloads come from MLIR/LLVM in 0.4.** The single-pass and
+  bytecode backends embed process addresses in their output, so their
+  artifacts use the NIR image. Recompiling from it skips tracing and costs
+  at most the conversion-free part of a compile (legalization and
+  codegen).
 - **Native payloads keep #527's contract:**
   - exactly one relocatable object;
   - imports identified by ELF build ID and load-bias-relative offset,
@@ -42,7 +47,7 @@ Artifact
   - exception-personality and unwind-resume bridges;
   - no second ORC implementation.
 - **The NIR image follows the canonical-section rules** of
-  [02-nir.md §3.4](02-nir.md): deterministic bytes, per-section strides,
+  [02-nir.md §3.6](02-nir.md): deterministic bytes, per-section strides,
   feature bits, CRC-32C, framing via the total size.
 - **`inspect(image)`** reads names, signatures, options and extensions
   without materializing anything (#532's `inspectModule`).
@@ -113,9 +118,11 @@ pass**:
 - **Pointers:** each `pointers` entry carries its kind and whether it can be
   resolved portably. Extensions declare whether their payloads are portable
   ([04](04-extensions.md)).
-- **Eligibility:** an artifact's native payload or a portable image is
-  produced only if no reachable instruction depends on a `RawProcessValue`
-  constant, an unresolvable pointer or a non-portable extension payload.
+- **Eligibility:** a native payload or a `Portable` image is produced only
+  if no reachable instruction depends on a `RawProcessValue` constant, an
+  unresolvable pointer or a non-portable extension payload. `ProcessLocal`
+  images (the L0 cache) need no eligibility check: they are only valid in
+  the process that produced them.
   The check runs **before optimization**, so folding cannot hide a raw
   value, and replay disagreement never upgrades evidence (#527).
 - **Failure:** fail closed. The module still compiles normally; the

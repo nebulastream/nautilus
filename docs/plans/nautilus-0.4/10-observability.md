@@ -1,8 +1,8 @@
 # Component: Observability and Tooling
 
 Part of the [Nautilus 0.4 design](README.md) · Milestones M1 (corpus in CI),
-then every milestone · Builds on #561 (statistics), #562 (latency corpus),
-#524 (backend explorer)
+then every milestone · Builds on #561 (statistics), #524 (backend explorer)
+and the latency corpus of the design study (closed #562)
 
 ## 1. Purpose
 
@@ -11,9 +11,9 @@ and keeps them in CI.
 
 ## 2. The latency corpus
 
-`nautilus-latency-corpus` (introduced in #562; moves to `nautilus-0.4` in
-M1) compiles scalable functions through the public engine API, single-tier
-per backend. Per (function, size, backend) it reports:
+`nautilus-latency-corpus` (written for the design study in the closed #562;
+added to `nautilus-0.4` in M1) compiles scalable functions through the
+public engine API, single-tier per backend. Per (function, size, backend) it reports:
 - the medians of the per-stage timings;
 - IR operations after conversion;
 - heap allocations during the compile (by replacing the global
@@ -49,7 +49,7 @@ CI:
 
 | Area | Keys |
 |---|---|
-| Tracing | `tracing.ms`, `tracing.firstRun.ms`, `tracing.rerun.ms`, `tracing.iterations`, `tracing.replayedOperations`, `tracing.snapshots`, `tracing.copies`, `tracing.operations` (#561) |
+| Tracing | from #561: `tracing.ms`, `tracing.firstRun.ms`, `tracing.rerun.ms`, `tracing.iterations`, `tracing.replayedOperations`, `tracing.snapshots`, `tracing.copies`, `tracing.operations`; new ([01 §4](01-tracing-frontend.md)): `tracing.rerun.{follow,record,paused}.ms`, `tracing.pausedOperations`, per-scope re-run counts, `tracing.copies.{construct,assign,explicit}` |
 | Conversion | `conversion.ms`, `conversion.folded`, `conversion.cse`, `conversion.deadBlocks` |
 | Passes | `irPasses.<pass>.ms`, `.runs`, `.changes` (#561) |
 | Backend | `backend.totalMs`, per-backend sub-stages, code size |
@@ -64,7 +64,7 @@ an increment per counter and no walks.
 - **One printer** for both NIR levels. `dump.*` options print the trace,
   the SSA level after conversion, after legalization and after optional
   passes.
-- **Trace-level images** ([01 §5](01-tracing-frontend.md)) as reproducers,
+- **Trace-level images** ([01 §6](01-tracing-frontend.md)) as reproducers,
   attached to fuzzer findings and bug reports, and loadable by the
   playground.
 - **The backend explorer (#524)** reads NIR and the statistics to compare

@@ -7,6 +7,30 @@ here ships together in the 0.4 release. Each component has its own
 document, listed in §4; this document holds the goals, the evidence, the
 architecture, the decisions, compatibility, the release plan and the risks.
 
+**How to read this plan:**
+
+- Start with §1–§3 for goals and architecture, and §6 for the release plan.
+- Then read the component documents in order. Each one has the same
+  structure: purpose, today and what it costs, design, migration from the
+  open PRs, milestone exit criteria, risks.
+- [p0-baseline.md](p0-baseline.md) has the measurements every claim about
+  cost refers to.
+
+**Terms:**
+
+| Term | Meaning |
+|---|---|
+| NIR | The flat intermediate representation of 0.4 ([02](02-nir.md)) |
+| Trace level / SSA level | The two levels of NIR: what tracing records, and what everything after the conversion uses |
+| Canonical / derived data | NIR sections that are serialized and hashed, and sections that are rebuilt after load |
+| Conversion | The single optimizing pass from trace level to SSA level ([03](03-conversion-and-passes.md)) |
+| Legalization | The NIR→NIR rewrite that prepares a module for one backend |
+| Extension | A plugin-defined operation, type, rule or pass ([04](04-extensions.md)) |
+| Artifact | A serialized module: NIR image, optional native payloads, compatibility descriptor ([07](07-serialization.md)) |
+| L0 / L1 / L2 | In-process, semantic-key and structural caches ([08](08-caching.md)) |
+| Re-run | A repeated execution of a traced body to explore another branch direction ([01](01-tracing-frontend.md)) |
+| M1–M7, D1–D7 | Milestones (§6) and decisions (§8) |
+
 ## 1. Summary
 
 Nautilus 0.4 is built around **one flat, extensible, serializable
@@ -29,19 +53,36 @@ Goals, in priority order:
 4. **One source of truth.** A single IR format for in-memory compilation,
    the wire format, the cache and the C API.
 
-Not in 0.4: changes to multi-tier promotion, lazy per-function compilation,
-a new optimizing tier, and any TPDE backend or adapter. TPDE, Flying Start,
-MIR, copy-and-patch and the Wasm baseline compilers are related work only.
+**Scope:**
+
+- **Platforms:** Linux x86-64 and AArch64, macOS AArch64. Persisted native
+  payloads target Linux ELF (x86-64 first; AArch64 if the loader work
+  allows). Every other platform reuses artifacts through the portable NIR
+  image.
+- **Concurrency:** concurrent compiles stay safe, as in 0.3. Each compile
+  owns its trace and NIR arenas, and a finished NIR module is immutable.
+  The extension registry is frozen after the first compile, and caches
+  lock per key ([02 §3.4](02-nir.md), [08](08-caching.md)).
+- **Not in 0.4:**
+  - changes to multi-tier promotion;
+  - lazy per-function compilation;
+  - a new optimizing tier;
+  - any TPDE backend or adapter.
+
+  TPDE, Flying Start, MIR, copy-and-patch and the Wasm baseline compilers
+  are related work only.
 
 ## 2. Evidence: what P0 measured
 
-From [p0-baseline.md](p0-baseline.md): `main` and #561, six scalable corpus
-functions, three backends, callgrind profiles.
+From [p0-baseline.md](p0-baseline.md) (`main` and #561, six scalable corpus
+functions, three backends, callgrind profiles), plus #561's TPC-H analysis
+from nautilus-duck.
 
 | Finding | Consequence |
 |---|---|
 | **IR passes are the largest stage on linear code:** 62–68% of the compile on `main`, still 44–53% with #561. Building `FunctionRewriter` tables is 44% of all instructions | Optimization moves into the conversion, and the fixed-point pipeline leaves the critical path ([03](03-conversion-and-passes.md)) |
 | **Replay dominates branchy code:** 69–78% of the compile; 270,300 replayed ops for 300 `if`s, 900 with `region()` | Explicit control flow that can be mixed with implicit control flow; a cheaper replay cursor ([01](01-tracing-frontend.md)) |
+| **On TPC-H (#561), 61% of tracing is re-runs** (4,687 re-runs replaying 631,000 recorded ops), and **39% of recorded ops are `val` copies** | Cheaper follow and paused paths, early end of paused passes, fewer copies ([01 §4](01-tracing-frontend.md)) |
 | **Tag-trie fan-out costs about 3x tracing per op** with many distinct call sites | Hashed trie children ([01](01-tracing-frontend.md)) |
 | **3–5 heap allocations per IR op on linear code, 18–25 on branchy code;** every op materialized twice | Flat trace and NIR in recycled arrays ([02](02-nir.md)) |
 | **AsmJit is superlinear on call-heavy code** (~4 µs per call at 5000 calls) | A single-pass native backend replaces it as the default ([05](05-backends.md)) |
@@ -93,7 +134,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 
 | # | Document | Content | Built on |
 |---|---|---|---|
-| 01 | [Tracing frontend](01-tracing-frontend.md) | Cheaper implicit tracing; explicit `If`/`While`/`For` on region scopes, mixable with implicit control flow; the flat trace | #300, #561 (statistics) |
+| 01 | [Tracing frontend](01-tracing-frontend.md) | Cheaper implicit tracing; fewer and cheaper re-runs and copies; explicit `If`/`While`/`For` on region scopes, mixable with implicit control flow; the flat trace | #300, #561 (statistics) |
 | 02 | [NIR](02-nir.md) | Instruction format, sections, levels, canonical vs. derived data, mutation model, unified-IR rationale | #532 (format rules) |
 | 03 | [Conversion and passes](03-conversion-and-passes.md) | Optimizing trace→SSA conversion, legalization, optional and plugin passes | — |
 | 04 | [Extensions](04-extensions.md) | Extension operations, types, rules and passes; registry lifecycle; migration of the in-tree plugins | — |
@@ -102,8 +143,8 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 07 | [Serialization](07-serialization.md) | Artifacts, pointers, runtime bindings, provenance | #527, #529, #532 |
 | 08 | [Caching](08-caching.md) | L0 in-process, L1 semantic, L2 structural caches | #528 |
 | 09 | [C API](09-c-api.md) | The C interface to NIR and the engine | #531 |
-| 10 | [Observability](10-observability.md) | Statistics, the latency corpus, dumps, tooling | #561, #524, #562 |
-| — | [P0 baseline](p0-baseline.md) | Measurements behind this design | #562 |
+| 10 | [Observability](10-observability.md) | Statistics, the latency corpus, dumps, tooling | #561, #524 |
+| — | [P0 baseline](p0-baseline.md) | Measurements behind this design | design study (closed #562) |
 
 ## 5. Compatibility and versioning
 
@@ -111,7 +152,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 |---|---|
 | `val<T>`, `static_val`, `region()`, `nautilus::function`, `invoke`, engine, module, options | **Source-compatible.** Renamed options keep deprecated aliases through 0.4.x |
 | Explicit control flow | **New**, opt-in, mixable with implicit control flow |
-| Exception default of `invoke` | **Breaking:** callees that may throw must opt in. Detected from `noexcept(false)` where the signature allows ([06](06-semantics.md)) |
+| Exception default of `invoke` | **Breaking (if D4 = a):** callees that are not `noexcept` are assumed not to throw; callees that throw opt in with `invoke<may_throw>` or the `throws` attribute; a debug-mode check finds missing opt-ins ([06](06-semantics.md)) |
 | Plugin intrinsic API (`IntrinsicRegistry`, `MLIRIntrinsicPlugin`, `AsmJitBackendIntrinsic`) | **Replaced** by the extension API. A deprecated shim registers old intrinsics as extension ops through 0.4.x |
 | `IRGraph`, `ir::Operation`, IR passes | **Removed** (internal) |
 | IR text dumps, `test/data` | **New format** |
@@ -145,13 +186,13 @@ releases and no temporary formats.
 
 | Milestone | Content | Exit criterion |
 |---|---|---|
-| **M1 Foundations** | NIR format with levels and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; bridge `IRGraph` → NIR (internal, removed before release); latency corpus in CI | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
-| **M2 Frontend** | Flat trace with the tag-trie, tag-map, replay-cursor and value-ref fixes; explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
+| **M1 Foundations** | NIR format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; bridge `IRGraph` → NIR (internal, removed before release); latency corpus driver added and running in CI | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
+| **M2 Frontend** | Flat trace with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; TPC-H re-run share ≤ 35% of tracing; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
 | **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
 | **M4 Backends** | `bc`/`tbc`, `cpp`, MLIR and GPU on NIR; single-pass native backend on x86-64, then AArch64, exceptions and extension lowering; decision D3 | End to end ≤ 0.5 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
 | **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold; every #527/#528 negative test ported and failing closed |
 | **M6 Semantics and extensions** | Optimistic call semantics; signless integers; extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
-| **M7 Release** | Remove `IRGraph`, the old passes, the bridge and (per D3) `asmjit`; migration guide; documentation; NebulaStream integration; x86-64 and AArch64; sanitizers | Release criteria below |
+| **M7 Release** | Remove `IRGraph`, the old passes, the bridge and (per D3) `asmjit`; migration guide; user documentation (§6.2); NebulaStream integration; x86-64 and AArch64; sanitizers | Release criteria below |
 
 **Order and parallelism:**
 
@@ -177,6 +218,42 @@ releases and no temporary formats.
 5. Migration guide: plugin intrinsics → extensions, throwing `invoke`
    callees, renamed options.
 
+### 6.1 Testing and validation
+
+These rules apply to every milestone:
+
+- **The differential fuzzer** (production-ready since #544) compares
+  backends and the interpreter on every change. It is extended with:
+  - mixed implicit and explicit control flow;
+  - extension ops with handlers enabled and disabled;
+  - serialization round trips and cache hits;
+  - signless-integer edge cases.
+- **The bridge** (M1) lets each new component be compared against 0.3's
+  pipeline on the same input until the bridge is removed in M7.
+- **Reference dumps** (`test/data`) are regenerated once per format change,
+  in isolated and reviewed commits, never together with behavior changes.
+- **The latency corpus and benchmarks** run on `nautilus-0.4` with the 200%
+  alert. Each milestone's exit criterion is checked on them.
+- **The CI matrix of `main`** runs on `nautilus-0.4` (GCC 14, Clang 19/21,
+  macOS, ARM, sanitizers), plus NebulaStream and nautilus-duck (TPC-H).
+
+### 6.2 User documentation
+
+M7 updates the user-facing documents in `docs/` to 0.4:
+
+| Document | Update |
+|---|---|
+| `tracing.md`, `graphs.md` | the new pipeline and the NIR dumps |
+| `control-flow.md`, `loops.md`, `region.md` | explicit control flow |
+| `functions.md` | the `invoke` exception default |
+| `options.md`, `engine.md` | options, caches, artifacts |
+| `simd.md`, `builtin.md`, `std-plugin.md` | extension types; the ring-buffer lifetime rule disappears |
+| `exception_handling.md` | landing pads in NIR |
+| `getting-started.md` | the default backend |
+
+New documents: the extension API, serialization and caching, the C API, and
+the migration guide from 0.3.
+
 ## 7. Risks
 
 | Risk | Mitigation |
@@ -187,7 +264,7 @@ releases and no temporary formats.
 | In-memory = wire layout constrains evolution | Per-section strides and feature bits; derived data never serialized |
 | Provenance classes miss a raw-address path | Fail closed by default; #527's negative tests |
 | The single-pass backend reaches parity late | `tbc` is a complete default; MLIR available; `asmjit` can be ported as a stopgap |
-| Breaking `invoke` default | Derive from `noexcept`; compile-time warnings; debug-mode checks |
+| Breaking `invoke` default | Debug-mode check that names every callee throwing without an opt-in; migration guide; option (b) of D4 as the fallback |
 | L2 hash collisions | 128-bit hash plus a full image comparison on hit |
 
 ## 8. Decisions
@@ -197,7 +274,7 @@ releases and no temporary formats.
 | D1 | Order of the work | As in §6: foundations first, then frontend and conversion (the measured hot spots) |
 | D2 | Native backend | **Decided:** our own single-pass backend; no TPDE backend or adapter |
 | D3 | Default backend | Proposed: single-pass native where available, `tbc` elsewhere; `asmjit` removed at parity |
-| D4 | Exception policy for runtime calls | Proposed: derived from `noexcept`; explicit opt-in otherwise |
+| D4 | Exception default of `invoke` | Proposed: (a) optimistic default with explicit `may_throw` opt-in; alternative (b) keeps 0.3's default ([06 §3](06-semantics.md)) |
 | D5 | Cache and serialization PRs | **Decided:** ported onto NIR; no separate 0.3 formats |
 | D6 | Keep `bc` beside `tbc` | Proposed: keep in 0.4; revisit later |
 | D7 | Scope of the unified IR | Proposed: as in §3.1 |

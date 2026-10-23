@@ -5,7 +5,7 @@ the [Nautilus 0.4 design](README.md) · Feeds decision D1.
 
 ## 1. Setup
 
-- **Driver:** `nautilus-latency-corpus` (`nautilus/test/benchmark/LatencyCorpus.cpp`, introduced in #562,
+- **Driver:** `nautilus-latency-corpus` (`nautilus/test/benchmark/LatencyCorpus.cpp`; written for the design study in the now-closed #562 and added to `nautilus-0.4` in M1,
   built with `ENABLE_BENCHMARKS=ON`). For each (function, size, backend) it
   compiles through the public engine API with `engine.backend` set
   (single-tier) and reports:
@@ -130,6 +130,9 @@ quadratic.
   median kernel is 266 MLIR ops.
 
 ## 3. Verdicts on the design hypotheses
+
+The design study stated these hypotheses before measuring. H = IR
+representation and passes, T = tracing, B = backends.
 
 | # | Hypothesis | Verdict | Evidence |
 |---|---|---|---|

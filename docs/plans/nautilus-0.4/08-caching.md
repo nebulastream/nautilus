@@ -13,9 +13,9 @@ produce and consume the artifacts of [07-serialization.md](07-serialization.md).
 
 | Level | Key | Lookup point | Hit skips | Scope |
 |---|---|---|---|---|
-| **L0 in-process** | hash of the canonical NIR image; `ProcessLocal` pointers allowed | after conversion | legalization, passes, code generation | one process, in memory |
-| **L1 semantic** | caller-supplied `engine.cache.key` + compatibility identity | **before tracing** | tracing, conversion, passes, code generation (native payload) | persistent directory |
-| **L2 structural** | hash of the canonical NIR image (names, not ids; portable pointers; options; extension versions) | after conversion | legalization, passes, code generation | persistent directory |
+| **L0 in-process** | hash of the canonical NIR image + backend + options; `ProcessLocal` pointers allowed | after conversion | everything after conversion: the executable already in memory is reused | one process, in memory |
+| **L1 semantic** | caller-supplied `engine.cache.key` + compatibility identity | **before tracing** | tracing and conversion; code generation too when a native payload matches (otherwise recompiled from the NIR image) | persistent directory |
+| **L2 structural** | hash of the canonical NIR image (names, not ids; portable pointers; options; extension versions) + backend | after conversion | code generation, via a matching native payload | persistent directory |
 
 ### L1: semantic key (#528)
 
@@ -45,9 +45,13 @@ produce and consume the artifacts of [07-serialization.md](07-serialization.md).
   the generated code, and the key includes options, extension versions and
   the backend.
 - **Cheap:** hashing a flat image is one linear pass over contiguous memory
-  after canonicalization ([02 §3.4](02-nir.md)).
+  after canonicalization ([02 §3.6](02-nir.md)).
 - **Catches what L1 cannot express:** structurally equal queries from
   different call sites or sessions.
+- **Only for backends with native payloads** (MLIR/LLVM in 0.4,
+  [07 §2](07-serialization.md)). For the other backends, recompiling from
+  NIR is about as cheap as loading, so they use L0 in-process and L1 to
+  skip tracing.
 - **Collisions:** a 128-bit hash, plus a full image comparison on hit
   (images are small and flat).
 

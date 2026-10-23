@@ -53,6 +53,9 @@ struct TypeInfo {
   lifetime limit.
 - **Types are interned,** so equal parameters give the same `TypeId`. SIMD
   picks the lane count per CPU when it creates the type.
+- **Constants of extension types** (an `i128` literal, a vector splat) are
+  `ConstPool` entries holding `size` raw bytes plus the type. Serialization
+  writes them with the type's `name@version`.
 
 ### 3.3 Extension operations
 
@@ -68,7 +71,8 @@ struct OpInfo {
 	VerifyFn verify = nullptr;
 	PrintFn print = nullptr;    // payload in `extra` (masks, immediates)
 	bool portable = true;       // payloads contain no process addresses
-	Fallback fallback;          // REQUIRED
+	TargetSet targets = all;    // backends/targets the op is valid on
+	Fallback fallback;          // required unless `targets` is restricted
 };
 ```
 
@@ -77,6 +81,10 @@ struct OpInfo {
   **expansion** into core ops (and other extension ops) applied by
   legalization ([03](03-conversion-and-passes.md)). Every backend therefore
   supports every extension, and a handler is only an optimization.
+- **The one exception is target-restricted ops.** Ops that only exist on
+  some targets (GPU thread ids, barriers) declare `targets` and may omit the
+  fallback. The verifier rejects them in a module compiled for any other
+  target.
 - **Traits make extension ops first-class** for the conversion's folding,
   simplification and CSE. A `Pure` op is merged with identical ops and
   hoisted. An op with effects joins the effect chain.
@@ -144,7 +152,7 @@ registration API per backend.
 | `simd` | `vec<T>` as a pointer; ring-buffer fallback | types `simd.vec<T,N>`; pure ops and mask ops; stack-slot fallback; **ring buffer removed** |
 | `specialization` assume | intrinsic | `spec.assume`, a fact consumed by fold and simplify; fallback = no-op |
 | `std` | wrappers over `invoke` | unchanged, plus effect declarations ([06](06-semantics.md)) |
-| `gpu` | backend plugin | backend on NIR; GPU-only ops (thread id, barriers) as extension ops with no native fallback, allowed only for GPU targets (checked by the verifier) |
+| `gpu` | backend plugin | backend on NIR; GPU-only ops (thread id, barriers) as target-restricted extension ops (§3.3) |
 | `inlining` | LLVM hooks | unchanged |
 | `profiling` | runtime plugin | unchanged |
 

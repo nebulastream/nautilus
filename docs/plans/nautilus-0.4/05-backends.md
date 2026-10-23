@@ -36,6 +36,16 @@ Backends take 11–30% of a compile on `bc`/`tbc`/`asmjit`
 | `asmjit` | Removed in 0.4 once the single-pass backend reaches parity; otherwise ported to NIR as a fallback | Its superlinear call handling argues against keeping it as a default |
 | GPU (CUDA, Metal) | Plugin backends on NIR | GPU intrinsics as extension ops |
 
+**Tiered compilation keeps its structure** (`TieredJITCompiler`, tier 0
+compiled synchronously, tier 1 in the background). Two things change:
+- tier 0 defaults to the single-pass backend (`tbc` where it is not
+  available), and tier 1 stays MLIR;
+- the IR both tiers share is SSA-level NIR, which is immutable after
+  conversion, so tier 1 can read it concurrently without copying.
+
+Promotion policy is unchanged in 0.4 (§7). `engine.backend=<x>` still
+selects single-tier compilation with exactly that backend.
+
 ## 4. The single-pass native backend
 
 Nautilus implements its own single-pass backend. There is no TPDE backend
@@ -49,8 +59,9 @@ related work for the technique. What they share:
 ### 4.1 Analysis
 
 - NIR's `BlockInfo` already provides layout order (RPO, loop bodies
-  contiguous), loop depth and loop end; `useCount` comes from the
-  conversion.
+  contiguous), loop depth and loop end, and `useCount` comes from the
+  conversion. Loop data and use counts are derived data, rebuilt in one
+  linear pass after an artifact load ([02 §3.6](02-nir.md)).
 - The backend's only pass of its own is a linear backward sweep for
   last-use positions. Per value it records the start block, the end block,
   and whether liveness ends inside the end block (Kohn et al.).
@@ -80,6 +91,8 @@ related work for the technique. What they share:
   lowering in today's `X64LoweringProvider`/`A64LoweringProvider` carries
   over. Encoder snippets can optionally be generated with the
   `tools/stencils` toolchain.
+- **Executable memory** comes from AsmJit's `JitRuntime`, as today, which
+  already handles W^X and `MAP_JIT` on macOS.
 - **Calls** use the platform ABI directly. Internal calls are labels in one
   code holder. Cost is linear in the number of calls.
 - **Exceptions** reuse the unwind and personality machinery of today's

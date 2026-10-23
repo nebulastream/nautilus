@@ -17,7 +17,7 @@ P0 ([p0-baseline.md](p0-baseline.md)):
 |---|---|
 | Linear code on `main` | **62–68%** |
 | Linear code with #561 | **44–53%** (the largest stage) |
-| Branchy code with #561 | 10–23% |
+| Branchy code (`main` and #561) | 10–40% |
 
 On `main`, building `FunctionRewriter` tables is 44% of all instructions,
 and most pass runs change nothing (#561's pass statistics). The pipeline
@@ -70,6 +70,15 @@ dense tables and Braun-style SSA construction on the complete trace CFG.
    bodies contiguous) and fills `BlockInfo` with loop depth and loop end.
    The tracer already marks control-flow merge blocks (loop-header
    candidates) and knows the back edges.
+7. **Exceptions.** The work of today's `ExceptionRegionPreparationPass`
+   happens during emission: landing pads are keyed by their ordered
+   destructor set and shared, and unwinding calls point at them
+   ([02 §3.4](02-nir.md)).
+8. **Attributes.** Until declared call effects land (M6,
+   [06](06-semantics.md)), the analyses of `NoThrowInferencePass` and
+   `FunctionAttributeInferencePass` run once inside the conversion, on the
+   function table, instead of as separate passes. After M6 the attributes
+   come from the declarations, and the inference becomes an optional check.
 
 ## 4. Legalization (NIR → NIR)
 
@@ -102,7 +111,9 @@ internal form below this point ([05](05-backends.md)).
 
 ## 6. Exit criteria (M3)
 
-- `irPasses.totalMs` ≈ 0 on default compiles.
+- `irPasses.totalMs` ≈ 0 on default compiles, and the conversion itself at
+  most 0.25 µs/op on linear corpus code (0.3: IR generation ~0.15 µs/op plus
+  passes 0.6–1.6 µs/op).
 - IR op counts at most those of 0.3 after its full pipeline, on every
   corpus function and on TPC-H (nautilus-duck) kernels.
 - Differential fuzzer clean, including merge-heavy corpora: regions, nested
