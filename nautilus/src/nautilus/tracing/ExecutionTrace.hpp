@@ -126,8 +126,23 @@ public:
 
 	std::string toString() const;
 
+	/// What tracing the module took, beyond the trace itself.
+	struct TracingCounts {
+		/// Scopes traced: every function, and every region() body traced anew.
+		uint64_t scopes = 0;
+		/// Runs of a scope's body: one per path the symbolic execution explored.
+		uint64_t iterations = 0;
+	};
+	TracingCounts& getTracingCounts() {
+		return tracingCounts;
+	}
+	const TracingCounts& getTracingCounts() const {
+		return tracingCounts;
+	}
+
 private:
 	std::unordered_map<std::string, TraceFunctionDefinition> functions;
+	TracingCounts tracingCounts;
 };
 
 /**
@@ -271,6 +286,7 @@ public:
 	 * @return std::vector<Block*>&
 	 */
 	std::vector<Block*>& getBlocks();
+	const std::vector<Block*>& getBlocks() const;
 
 	/**
 	 * @brief Returns a reference to the underlying arena used to allocate

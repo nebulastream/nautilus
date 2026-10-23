@@ -38,6 +38,7 @@
 #include "nautilus/compiler/ir/passes/StrengthReductionPass.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/CopyAttribution.hpp"
+#include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
@@ -103,6 +104,33 @@ std::string createCompilationUnitID() {
 }
 
 namespace {
+
+/// Records what tracing took and what it recorded: how many scopes (functions
+/// and region() bodies) it traced and how often their bodies ran -- once per
+/// path the symbolic execution explored -- and the size of the trace, of which
+/// `tracing.copies` are the ASSIGNs a val<T> copy records.
+void recordTraceStatistics(const tracing::TraceModule& module, CompilationStatistics& statistics) {
+	int64_t blocks = 0;
+	int64_t operations = 0;
+	int64_t copies = 0;
+	const auto functionNames = module.getFunctionNames();
+	for (const auto& name : functionNames) {
+		for (const auto* block : module.getFunction(name)->getBlocks()) {
+			++blocks;
+			operations += static_cast<int64_t>(block->operations.size());
+			for (const auto* operation : block->operations) {
+				copies += operation->op == tracing::ASSIGN ? 1 : 0;
+			}
+		}
+	}
+	const auto& counts = module.getTracingCounts();
+	statistics.set("tracing.functions", static_cast<int64_t>(functionNames.size()));
+	statistics.set("tracing.scopes", static_cast<int64_t>(counts.scopes));
+	statistics.set("tracing.iterations", static_cast<int64_t>(counts.iterations));
+	statistics.set("tracing.blocks", blocks);
+	statistics.set("tracing.operations", operations);
+	statistics.set("tracing.copies", copies);
+}
 
 /// The cleanup that makes trace-generated IR small: registers the fixed-point
 /// group and the analyses feeding it. At `ArgumentPruning` only the pruning
@@ -235,6 +263,7 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	std::shared_ptr<tracing::TraceModule> traceModule = tracing::TraceContext::Trace(functions, moduleOptions, arena);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
+		recordTraceStatistics(*traceModule, *statistics);
 	}
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
 	// Not part of dump.all: resolving every copy's call stack through the debug information is slow.

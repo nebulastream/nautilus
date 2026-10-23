@@ -524,6 +524,11 @@ private:
 	std::string currentFunctionName_;
 	SourceLocation currentFunctionLocation_;
 
+	/// Scopes traced and runs of their bodies in this session (session-owned; see
+	/// session_), handed to the TraceModule as its TracingCounts.
+	uint64_t tracedScopes_ = 0;
+	uint64_t traceIterations_ = 0;
+
 	/// " in function 'name' (registered at file:line:column)" for the function currently
 	/// being traced, or empty before any function has started. Used to extend an
 	/// "Invalid region()" diagnostic with the enclosing function's identity.

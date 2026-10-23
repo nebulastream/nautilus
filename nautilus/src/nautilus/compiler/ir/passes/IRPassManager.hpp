@@ -39,7 +39,9 @@ namespace nautilus::compiler::ir {
  * records per-pass durations under @c irPasses.<name>.ms and the pipeline
  * total under @c irPasses.totalMs. With `ir.passStatistics` enabled it also
  * records baseline IR counts under @c irPasses.baseline.* and per-pass
- * entity deltas under @c irPasses.<name>.{blocks,operations}Delta. When a
+ * entity deltas under @c irPasses.<name>.{blocks,operations}Delta, and
+ * how often each pass ran and reported a change under
+ * @c irPasses.<name>.{runs,changes}. When a
  * pass runs more than once (inside a
  * fixed-point group), its `.ms`/`.blocksDelta`/`.operationsDelta` entries
  * accumulate across every iteration it ran rather than reflecting only the

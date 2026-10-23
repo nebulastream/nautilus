@@ -549,8 +549,10 @@ bool TraceContext::traceBool(const TypedValueRef& value, const double probabilit
 void TraceContext::runScope(std::function<void()>& body) {
 	auto& symbolicExecutionContext = state->symbolicExecutionContext;
 	auto traceIteration = 0;
+	++session_->tracedScopes_;
 	while (symbolicExecutionContext.shouldContinue()) {
 		traceIteration = traceIteration + 1;
+		++session_->traceIterations_;
 		log::trace("Trace Iteration {}", traceIteration);
 		log::trace("{}", state->executionTrace);
 
@@ -799,6 +801,8 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
                                                       const engine::Options& options, Arena& arena) {
 	log::debug("Initialize Tracing");
 	auto traceModule = std::make_unique<TraceModule>();
+	tracedScopes_ = 0;
+	traceIterations_ = 0;
 	functionsToTrace = functions;
 	registeredFunctions.clear();
 	usedFunctionNames.clear();
@@ -867,6 +871,7 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 		log::trace("Final trace: {}", executionTrace);
 	}
 
+	traceModule->getTracingCounts() = {.scopes = tracedScopes_, .iterations = traceIterations_};
 	// activeTracer is cleared by ActiveTracerGuard.
 	return traceModule;
 }
