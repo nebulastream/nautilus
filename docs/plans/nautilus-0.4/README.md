@@ -67,6 +67,7 @@ Goals, in priority order:
   - changes to multi-tier promotion;
   - lazy per-function compilation;
   - a new optimizing tier;
+  - a new native backend (the `asmjit` backend is improved instead);
   - any TPDE backend or adapter.
 
   TPDE, Flying Start, MIR, copy-and-patch and the Wasm baseline compilers
@@ -85,7 +86,7 @@ from nautilus-duck.
 | **On TPC-H (#561), 61% of tracing is re-runs** (4,687 re-runs replaying 631,000 recorded ops), and **39% of recorded ops are `val` copies** | Cheaper follow and paused paths, early end of paused passes, fewer copies ([01 §4](01-tracing-frontend.md)) |
 | **Tag-trie fan-out costs about 3x tracing per op** with many distinct call sites | Hashed trie children ([01](01-tracing-frontend.md)) |
 | **3–5 heap allocations per IR op on linear code, 18–25 on branchy code;** every op materialized twice | Flat trace and NIR in recycled arrays ([02](02-nir.md)) |
-| **AsmJit is superlinear on call-heavy code** (~4 µs per call at 5000 calls) | A single-pass native backend replaces it as the default ([05](05-backends.md)) |
+| **AsmJit is superlinear on call-heavy code** (~4 µs per call at 5000 calls) | The `asmjit` backend gets a single-pass `fast` mode with linear call handling ([05](05-backends.md)) |
 | **MLIR has a fixed cost of 3–10 ms per compile** | #561's per-thread state reuse becomes part of the MLIR backend ([05](05-backends.md)) |
 
 ## 3. Architecture
@@ -105,7 +106,7 @@ from nautilus-duck.
      └───┬───────────────┬──────────────────┬────────────────┬────────────┘
          │               │                  │                │
    legalization,     backends           serializer        IR-hash cache key
-   optional passes   single-pass ·       artifacts:            │
+   optional passes   asmjit (fast) ·     artifacts:            │
                      tbc · bc · MLIR ·   NIR image +           │
                      cpp · GPU           native payloads       │
                          │                  │                  │
@@ -138,7 +139,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 02 | [NIR](02-nir.md) | Instruction format, sections, levels, canonical vs. derived data, mutation model, unified-IR rationale | #532 (format rules) |
 | 03 | [Conversion and passes](03-conversion-and-passes.md) | Optimizing trace→SSA conversion, legalization, optional and plugin passes | — |
 | 04 | [Extensions](04-extensions.md) | Extension operations, types, rules and passes; registry lifecycle; migration of the in-tree plugins | — |
-| 05 | [Backends](05-backends.md) | Backend roles; the single-pass native backend; MLIR; bytecode; C++; GPU | #561 (MLIR state reuse) |
+| 05 | [Backends](05-backends.md) | Backend roles; the improved `asmjit` backend with a single-pass mode; MLIR; bytecode; C++; GPU | #561 (MLIR state reuse) |
 | 06 | [Semantics](06-semantics.md) | Declared call effects and cheaper exception handling (exception default unchanged); signless integers | — |
 | 07 | [Serialization](07-serialization.md) | Artifacts, pointers, runtime bindings, provenance | #527, #529, #532 |
 | 08 | [Caching](08-caching.md) | L0 in-process, L1 semantic, L2 structural caches | #528 |
@@ -189,10 +190,10 @@ releases and no temporary formats.
 | **M1 Foundations** | NIR format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; bridge `IRGraph` → NIR (internal, removed before release); latency corpus driver added and running in CI | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
 | **M2 Frontend** | Flat trace with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; TPC-H re-run share ≤ 35% of tracing; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
 | **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
-| **M4 Backends** | `bc`/`tbc`, `cpp`, MLIR and GPU on NIR; single-pass native backend on x86-64, then AArch64, exceptions and extension lowering; decision D3 | End to end ≤ 0.5 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
+| **M4 Backends** | `bc`/`tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR (`optimized` mode), then its single-pass `fast` mode on x86-64 and AArch64; decision D3 | End to end ≤ 0.5 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
 | **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold; every #527/#528 negative test ported and failing closed |
 | **M6 Semantics and extensions** | Declared call effects and cheaper exception handling; signless integers; extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
-| **M7 Release** | Remove `IRGraph`, the old passes, the bridge and (per D3) `asmjit`; migration guide; user documentation (§6.2); NebulaStream integration; x86-64 and AArch64; sanitizers | Release criteria below |
+| **M7 Release** | Remove `IRGraph`, the old passes and the bridge; migration guide; user documentation (§6.2); NebulaStream integration; x86-64 and AArch64; sanitizers | Release criteria below |
 
 **Order and parallelism:**
 
@@ -263,7 +264,7 @@ the migration guide from 0.3.
 | Region-based explicit control flow has corner cases | `region()`'s rules and diagnostics; fuzzer with mixed functions; #300's tests as the base |
 | In-memory = wire layout constrains evolution | Per-section strides and feature bits; derived data never serialized |
 | Provenance classes miss a raw-address path | Fail closed by default; #527's negative tests |
-| The single-pass backend reaches parity late | `tbc` is a complete default; MLIR available; `asmjit` can be ported as a stopgap |
+| `asmjit`'s `fast` mode reaches parity late | `optimized` mode stays the default until it does; `tbc` and MLIR remain available |
 | Wrong `nothrow`/`pure` declarations | Debug-mode checks (terminate handler, shadow effect checks) ([06 §3.3](06-semantics.md)) |
 | L2 hash collisions | 128-bit hash plus a full image comparison on hit |
 
@@ -272,8 +273,8 @@ the migration guide from 0.3.
 | # | Question | Decision or proposal |
 |---|---|---|
 | D1 | Order of the work | As in §6: foundations first, then frontend and conversion (the measured hot spots) |
-| D2 | Native backend | **Decided:** our own single-pass backend; no TPDE backend or adapter |
-| D3 | Default backend | Proposed: single-pass native where available, `tbc` elsewhere; `asmjit` removed at parity |
+| D2 | Native backend | **Decided:** improve the existing `asmjit` backend with a single-pass `fast` mode; no new backend, no TPDE |
+| D3 | Default backend | Proposed: `asmjit` in `fast` mode on x86-64 and AArch64, `tbc` elsewhere |
 | D4 | Exception default of `invoke` | **Decided: (b)** keep 0.3's default; add optional `nothrow` and effect declarations; cheaper exception handling ([06 §3](06-semantics.md)) |
 | D5 | Cache and serialization PRs | **Decided:** ported onto NIR; no separate 0.3 formats |
 | D6 | Keep `bc` beside `tbc` | Proposed: keep in 0.4; revisit later |

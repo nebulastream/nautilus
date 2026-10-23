@@ -44,7 +44,7 @@ a breaking change and a migration step for every throwing callee.
 ### 3.2 Cheaper exception handling
 
 A call that may unwind needs two things today:
-- a **capture thunk**, because interpreted and single-pass frames have no
+- a **capture thunk**, because interpreted and AsmJit frames have no
   unwind tables, so an exception must be caught before it crosses them;
 - a **landing pad** with the destructors to run.
 
@@ -56,7 +56,7 @@ A call that may unwind needs two things today:
 - **No capture thunk where unwind tables exist.** MLIR/LLVM code has unwind
   tables, so a may-unwind call with no cleanup can let the exception
   propagate through the generated frame directly. Backends without unwind
-  tables (`bc`, `tbc`, the single-pass backend) keep the thunk.
+  tables (`bc`, `tbc`, `asmjit`) keep the thunk.
 - **Shared landing pads.** Pads are keyed by their ordered destructor set and
   shared per function. The conversion does this during emission
   ([03](03-conversion-and-passes.md)).

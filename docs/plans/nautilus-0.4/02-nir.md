@@ -242,7 +242,7 @@ IR operation.
   conversion (M3) exists. The bridge is removed before release.
 - **Consumers:**
   - `bc`/`tbc` become a near 1:1 translation;
-  - the single-pass backend and `asmjit` iterate `insts` with `BlockInfo`;
+  - `asmjit` (both modes) iterates `insts` with `BlockInfo`;
   - MLIR builds `cf`/`arith` from blocks and terminators.
 - **Dumps:** one printer for both levels; `test/data` regenerated once per
   format change, in isolated commits.

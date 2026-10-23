@@ -35,7 +35,7 @@ Artifact
   payload. This merges #527's bytecode-repair path and #532's cross-backend
   loading into one rule. NIR replaces MLIR bytecode as the portable payload;
   MLIR is regenerated from NIR.
-- **Native payloads come from MLIR/LLVM in 0.4.** The single-pass and
+- **Native payloads come from MLIR/LLVM in 0.4.** The `asmjit` and
   bytecode backends embed process addresses in their output, so their
   artifacts use the NIR image. Recompiling from it skips tracing and costs
   at most the conversion-free part of a compile (legalization and
