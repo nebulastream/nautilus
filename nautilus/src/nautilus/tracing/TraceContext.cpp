@@ -581,13 +581,23 @@ void TraceContext::runScope(std::function<void()>& body) {
 		// After each iteration, the static variable stack must be empty.
 		// Since the body completes normally, all destructors fire in order.
 		assert(staticVars.empty() && "static variable stack not empty after tracing iteration");
-		const auto ownTime = (std::chrono::steady_clock::now() - runStart) - (session_->scopeTime_ - nestedBefore);
-		(traceIteration == 1 ? session_->firstRunTime_ : session_->rerunTime_) += ownTime;
+		session_->recordRun(traceIteration,
+		                    (std::chrono::steady_clock::now() - runStart) - (session_->scopeTime_ - nestedBefore));
 	}
 	// Adds this scope's time net of its nested scopes, which added theirs: an
 	// enclosing scope's run then sees exactly this scope's total.
 	session_->scopeTime_ += (std::chrono::steady_clock::now() - scopeStart) - (session_->scopeTime_ - nestedAtStart);
 	log::debug("Scope traced with {} iterations", traceIteration);
+}
+
+// Out of line on purpose: a tag is the chain of return addresses up to the
+// traced function, so runScope must call the body from one call site in every
+// run. Comparing the run number inside runScope's loop invites the optimizer
+// to peel the first run into a copy of the loop body (clang does, with logging
+// compiled out), and the first run's operations then carry other tags than
+// the re-runs'.
+[[gnu::noinline]] void TraceContext::recordRun(uint64_t run, std::chrono::steady_clock::duration time) {
+	(run == 1 ? firstRunTime_ : rerunTime_) += time;
 }
 
 TraceContext::RegionScopeState& TraceContext::regionState() {

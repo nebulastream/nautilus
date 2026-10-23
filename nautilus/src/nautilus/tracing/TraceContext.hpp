@@ -536,6 +536,8 @@ private:
 	/// Time spent in finished scopes, net of the scopes nested in them: what a
 	/// scope's run subtracts for the scopes it entered.
 	std::chrono::steady_clock::duration scopeTime_ {};
+	/// Adds @p time, one run of a scope's body, to the first-run or re-run total.
+	void recordRun(uint64_t run, std::chrono::steady_clock::duration time);
 
 	/// " in function 'name' (registered at file:line:column)" for the function currently
 	/// being traced, or empty before any function has started. Used to extend an
