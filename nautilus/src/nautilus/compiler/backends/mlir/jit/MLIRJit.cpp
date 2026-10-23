@@ -264,8 +264,11 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		return std::make_unique<ThreadLocalTargetMachineCompiler>(
 		    llvm::orc::irManglingOptionsFromTargetOptions(builder.getOptions()), level);
 	};
+	// The data layout is passed along too: LLJIT otherwise builds a
+	// TargetMachine of its own just to ask it for one.
 	auto jitOrErr = llvm::orc::LLJITBuilder()
 	                    .setJITTargetMachineBuilder(std::move(*tmBuilderOrError))
+	                    .setDataLayout(llvmModule->getDataLayout())
 	                    .setCompileFunctionCreator(compileFunctionCreator)
 	                    .setObjectLinkingLayerCreator(objectLinkingLayerCreator)
 	                    .create();
