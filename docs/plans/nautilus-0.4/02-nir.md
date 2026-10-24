@@ -9,7 +9,7 @@ Part of the [Nautilus 0.4 design](README.md) · Milestone M1 · Builds on #532
 format; this document explains the design behind it.
 
 NIR is the one representation every 0.4 stage reads and writes:
-- the frontend (trace level);
+- the frontend (pre-SSA level);
 - the conversion, passes and backends (SSA level);
 - the serializer, the caches and the C API.
 
@@ -113,7 +113,7 @@ size (~30 kinds). Everything else is an extension ([04](04-extensions.md)).
 | Runtime state | `bind.addr` ([07 §4](07-serialization.md)) | — (new; from #529) |
 | Values | `blockarg`; constants live in `ConstPool` and are not instructions | `BasicBlockArgument`, `Const*Op` |
 | Control flow | `br`, `condbr` (probability in `extra`), `ret`, `resume` (ends a landing pad) | `BranchOp`, `IfOp`, `ReturnOp`, `BlockInvocation`; landing pads of `FunctionExceptionRegion` |
-| Trace level only | `assign` (variable redefinition) | `ASSIGN` in today's trace |
+| Pre-SSA level only | `assign` (variable redefinition) | `ASSIGN` in today's trace |
 
 `FunctionOp` becomes the `functions` section, and `MLIR_YIELD` disappears.
 Signedness moves from types onto the operations that need it
@@ -151,17 +151,17 @@ Signedness moves from types onto the operations that need it
 
 ### 3.5 Levels
 
-Every function carries `level ∈ {Trace, SSA}`. The format is the same; the
+Every function carries `level ∈ {PreSSA, SSA}`. The format is the same; the
 invariants differ:
 
-| | Trace level | SSA level |
+| | Pre-SSA level | SSA level |
 |---|---|---|
 | Values | **Variables:** `assign` redefines a value ref | Every value defined once; block arguments at merges |
 | Order | Recording order; blocks split at merges during tracing | Layout order (RPO, loops contiguous) |
 | Ids | Stable during splits (the tag map points at them) | Dense; copy passes renumber |
 | Extra state | Snapshots, tag map, replay cursor | `useCount`, `forward`, loop info |
 | Lifetime | Append-only; discarded after conversion | Build once, rewrite by copying; persisted |
-| Consumers | The conversion only; trace-level images for debugging | Passes, backends, serializer, caches, C API |
+| Consumers | The conversion only; pre-SSA images for debugging | Passes, backends, serializer, caches, C API |
 
 The verifier enforces each level's invariants, and the conversion
 ([03](03-conversion-and-passes.md)) is the only path from trace to SSA.

@@ -71,7 +71,7 @@ an increment per counter and no walks.
 - **One printer** for both NIR levels. `dump.*` options print the trace,
   the SSA level after conversion, after legalization and after optional
   passes.
-- **Trace-level images** ([01 §6](01-tracing-frontend.md)) as reproducers,
+- **Pre-SSA images** ([01 §6](01-tracing-frontend.md)) as reproducers,
   attached to fuzzer findings and bug reports, and loadable by the
   playground.
 - **The backend explorer (#524)** reads NIR and the statistics to compare

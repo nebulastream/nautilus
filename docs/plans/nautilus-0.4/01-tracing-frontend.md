@@ -6,7 +6,7 @@ Part of the [Nautilus 0.4 design](README.md) · Milestone M2 · Builds on #300
 ## 1. Purpose
 
 The frontend turns a C++ function written with `val<T>` into a trace: NIR
-at the trace level ([02-nir.md](02-nir.md)). Implicit tracing stays the
+at the pre-SSA level ([02-nir.md](02-nir.md)). Implicit tracing stays the
 default and keeps its semantics. 0.4 makes it cheaper and adds explicit
 control-flow constructs that trace in a single pass and can be mixed with
 implicit control flow.
@@ -210,9 +210,9 @@ tests (`ExplicitControlFlowTest.cpp`) and its single-pass guarantees.
 Replace its tag-free block emission with region-scope emission, and turn
 its mixing guard into mixing tests.
 
-## 6. The flat trace (NIR, trace level)
+## 6. The flat trace (NIR, pre-SSA level)
 
-The trace is NIR with `level = Trace` ([02-nir.md](02-nir.md)). It shares
+The trace is NIR with `level = PreSSA` ([02-nir.md](02-nir.md)). It shares
 the instruction format, `extra`, `ConstPool`, the pointer table and the
 extension registry with the SSA level.
 
@@ -238,7 +238,7 @@ struct FlatTrace {                     // per function
   and stable, so `tagMap` entries never change.
 - **Plugins record their ops through one entry point:**
   `traceExtOp(op, type, inputs)` ([04-extensions.md](04-extensions.md)).
-- **Trace-level images can be serialized** for debugging and reproducing
+- **Pre-SSA images can be serialized** for debugging and reproducing
   tracing or conversion bugs (fuzzer, playground). They are never executed.
 
 ## 7. Exit criteria (M2)

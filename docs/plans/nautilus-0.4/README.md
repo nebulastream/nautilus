@@ -21,9 +21,9 @@ architecture, the decisions, compatibility, the release plan and the risks.
 | Term | Meaning |
 |---|---|
 | NIR | The flat intermediate representation of 0.4 ([02](02-nir.md)) |
-| Trace level / SSA level | The two levels of NIR: what tracing records, and what everything after the conversion uses |
+| Pre-SSA level / SSA level | The two levels of NIR: what tracing records (variables, recording order; not yet in SSA form), and what everything after the conversion uses |
 | Canonical / derived data | NIR sections that are serialized and hashed, and sections that are rebuilt after load |
-| Conversion | The single optimizing pass from trace level to SSA level ([03](03-conversion-and-passes.md)) |
+| Conversion | The single optimizing pass from pre-SSA level to SSA level ([03](03-conversion-and-passes.md)) |
 | Legalization | The NIR→NIR rewrite that prepares a module for one backend |
 | Extension | A plugin-defined operation, type, rule or pass ([04](04-extensions.md)) |
 | Artifact | A serialized module: NIR image, optional native payloads, compatibility descriptor ([07](07-serialization.md)) |
@@ -101,7 +101,7 @@ from nautilus-duck.
             │ explicit If/While/For (region-based) │      │ deserializer         │
             └──────────────┬───────────────────────┘      └──────────┬───────────┘
                            ▼                                         │
-                 NIR, trace level (flat trace)                       │
+                 NIR, pre-SSA level (flat trace)                     │
                            ▼                                         │
       optimizing conversion: SSA + fold + CSE + use counts           │
                            ▼                                         ▼

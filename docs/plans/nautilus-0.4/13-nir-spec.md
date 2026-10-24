@@ -45,7 +45,7 @@ need a new major version or a conversion step.
   pool and are referenced from operands (§3.2).
 - **Data objects** are read-only byte arrays owned by the module, with an
   address (§4.10). They hold constant tables and strings.
-- Every function has a **level**, `Trace` or `SSA` (§6). Both levels use
+- Every function has a **level**, `PreSSA` or `SSA` (§6). Both levels use
   the same records; they differ in invariants and in how blocks list their
   instructions (§4.3).
 
@@ -129,7 +129,7 @@ entry**, one `u32`:
 | both | `0xFFFFFFFF` (`NO_UNWIND`) | the instruction cannot throw |
 | SSA | `0xFFFFFFFE` (`NO_CLEANUP`) | may throw; nothing to clean up; the exception propagates to the caller |
 | SSA | block id | may throw; on an exception, control enters this landing-pad block |
-| Trace | `extra` offset | may throw; the offset points to a **cleanup list** `[n, (destructor₀, object₀), …]`: `n` pairs of a `pointers` index (kind destructor) and a value reference to the object's address, in destruction order. `n` = 0 means no cleanup |
+| Pre-SSA | `extra` offset | may throw; the offset points to a **cleanup list** `[n, (destructor₀, object₀), …]`: `n` pairs of a `pointers` index (kind destructor) and a value reference to the object's address, in destruction order. `n` = 0 means no cleanup |
 
 The conversion turns cleanup lists into shared landing pads
 ([03 §3](03-conversion-and-passes.md)).
@@ -203,9 +203,9 @@ struct ConstRecord {     // 16 bytes
 ```c
 struct BlockRecord {     // 16 bytes
 	uint32_t first;      // SSA: function-local id of the first instruction
-	                     // Trace: extra offset of the block's op-id list
+	                     // PreSSA: extra offset of the block's op-id list
 	uint32_t count;      // number of instructions, including blockargs and the terminator
-	uint16_t argCount;   // SSA: the first argCount instructions are blockarg; Trace: 0
+	uint16_t argCount;   // SSA: the first argCount instructions are blockarg; PreSSA: 0
 	uint16_t flags;      // bit 0: landing pad (SSA only); other bits 0
 	uint32_t pad;        // 0
 };
@@ -214,7 +214,7 @@ struct BlockRecord {     // 16 bytes
 - **SSA level:** a block is the contiguous range `[first, first + count)`
   of the function's instructions, and blocks are contiguous and in layout
   order, so the function's instructions are exactly its blocks in order.
-- **Trace level:** instructions are in recording order, and a block lists
+- **Pre-SSA level:** instructions are in recording order, and a block lists
   its instructions' ids in `extra[first … first + count)`. This lets
   tracing split a block without moving instructions or changing ids
   ([01 §6](01-tracing-frontend.md)). Every instruction belongs to exactly
@@ -371,7 +371,7 @@ struct FunctionRecord {  // 40 bytes
 	uint32_t firstBlock, blockCount;   // range in blocks
 	uint32_t firstAlloca, allocaCount; // range in allocas
 	uint32_t attrs;      // attribute bits (§4.6)
-	uint8_t  level;      // 0 Trace, 1 SSA
+	uint8_t  level;      // 0 PreSSA, 1 SSA
 	uint8_t  visibility; // 0 internal, 1 exported
 	uint16_t pad;        // 0
 };
@@ -412,7 +412,7 @@ struct AllocaRecord {    // 8 bytes
   - Calls between internal functions may use any convention the backend
     chooses.
 - **Parameters.** The entry block's parameters are the function's
-  parameters: at the SSA level its leading `blockarg`s, at the trace level
+  parameters: at the SSA level its leading `blockarg`s, at the pre-SSA level
   the first `paramCount` instructions, which are `blockarg`s.
 - **Signatures** have no variadic form and pass only core scalars and
   extension types; aggregates are passed by pointer, as in 0.3.
@@ -757,16 +757,16 @@ in a later version and must be 0.
 
 | Op | Code | Operands | Result | Notes |
 |---|---|---|---|---|
-| `blockarg` | 40 | a: argument position | any non-`void` type | SSA: only the first `argCount` instructions of a block; Trace: only function parameters |
+| `blockarg` | 40 | a: argument position | any non-`void` type | SSA: only the first `argCount` instructions of a block; pre-SSA: only function parameters |
 | `br` | 48 | a: target *blk*; c: *x* → `[argc, args…]` | `void` | terminator |
 | `condbr` | 49 | a: `bool` condition; b: true *blk*; c: *x* → `[prob, trueArgc, trueArgs…, falseBlk, falseArgc, falseArgs…]` | `void` | terminator |
 | `ret` | 50 | a: value, or `NONE` for a `void` function | `void` | terminator |
 | `resume` | 51 | — | `void` | terminator; only in landing pads; continues unwinding the current exception |
-| `assign` | 56 | a: variable (value id); b: new value | `void` | **Trace level only** (§6.2) |
+| `assign` | 56 | a: variable (value id); b: new value | `void` | **Pre-SSA level only** (§6.2) |
 
 - `prob` is the probability that the condition is true, as
   `round(P × 0xFFFFFFFE)`; `0xFFFFFFFF` means unknown.
-- At the trace level, argument counts are always 0.
+- At the pre-SSA level, argument counts are always 0.
 - Codes 1–255 not listed here are reserved for core opcodes of later minor
   versions (§8.2). NIR 1.0 has no `unreachable` terminator: tracing always
   ends a block with one of the terminators above.
@@ -823,7 +823,7 @@ in a later version and must be 0.
 9. Imports are unique by `(module, function)` and never name the module
    itself. A deserialized image has no imports (§8.5).
 
-### 6.2 Trace level
+### 6.2 Pre-SSA level
 
 - **Variables.** A value id may be redefined by `assign`. Its operand `a`
   must be the id of an earlier non-`void` instruction (the variable's
@@ -840,7 +840,7 @@ in a later version and must be 0.
   (§4.3).
 - Snapshots, the tag map and the replay cursor are derived data
   ([01 §6](01-tracing-frontend.md)).
-- A trace-level function is never executed and never passed to a backend;
+- A pre-SSA function is never executed and never passed to a backend;
   the conversion ([03](03-conversion-and-passes.md)) is the only way to the
   SSA level.
 
@@ -886,7 +886,7 @@ never passed to a backend. Each rule has a positive and a negative test
 A canonical module is the form that is serialized and hashed
 ([02 §3.6](02-nir.md), [08](08-caching.md)). **Canonical form, hashing,
 caching and bundling (§8.5) apply to modules whose functions are all at the
-SSA level.** A module with trace-level functions is serialized as it is, for
+SSA level.** A module with pre-SSA functions is serialized as it is, for
 debugging and reproducers only; it is never hashed, cached or executed.
 
 Canonicalization:
@@ -1085,9 +1085,9 @@ func @divideFirst(%0: ptr, %1: i64) -> i64 {
   `cmp`, `.checked` for checked division, the kind for `cast`.
 - Extension operations print by name (`simd.add`).
 - Unwind entries print as `unwind(caller)` for `NO_CLEANUP`, `unwind(^bN)`
-  for a landing pad, `cleanup(...)` for a trace-level cleanup list, and
+  for a landing pad, `cleanup(...)` for a pre-SSA cleanup list, and
   nothing for `NO_UNWIND`.
-- Trace-level functions print `assign %v, %w` and list blocks in recording
+- Pre-SSA functions print `assign %v, %w` and list blocks in recording
   order.
 
 ## 10. Decisions taken for 1.0
@@ -1101,7 +1101,7 @@ These questions were open in the draft and are settled here:
 | Atomic operations | not in 1.0; data races are undefined (§5.0). Candidates for 1.1 if atomics through `invoke` show a measured cost |
 | Fast-math | not in 1.0; flag bits reserved (§5.1) |
 | Pointer arithmetic | `add`/`sub` on `ptr` with an `i64` byte offset, as 0.3's `ADD` on pointers (§5.1) |
-| Destructors at the trace level | cleanup lists in the unwind entry (§3.4), turned into shared landing pads by the conversion |
+| Destructors at the pre-SSA level | cleanup lists in the unwind entry (§3.4), turned into shared landing pads by the conversion |
 | 0.3's unused trace op `FREE` | dropped |
 | Extension versioning | `version` plus `minCompatibleVersion` (§8.4) |
 | Structural hash | XXH3-128 over the canonical image plus options and extension versions (§7) |
@@ -1133,3 +1133,4 @@ These questions were open in the draft and are settled here:
 | Version | Change |
 |---|---|
 | 1.0 RC | Initial specification, including read-only data objects (§4.10) |
+| 1.0 RC | The level formerly called `Trace` is named `PreSSA` (value 0, unchanged) |

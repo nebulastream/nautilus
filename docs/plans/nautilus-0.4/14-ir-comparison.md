@@ -78,7 +78,7 @@ which NIR replaces with derived arrays built on demand
 
 | IR | SSA form | Merges | Control flow |
 |---|---|---|---|
-| **NIR** | SSA level; trace level with variables (`assign`) | block arguments | CFG with `br`, `condbr`, `ret`, `resume`; layout invariant (RPO, loops contiguous) |
+| **NIR** | SSA level; pre-SSA level with variables (`assign`) | block arguments | CFG with `br`, `condbr`, `ret`, `resume`; layout invariant (RPO, loops contiguous) |
 | LLVM IR | SSA | `phi` | CFG; `switch`, `indirectbr`, `invoke`, `callbr` |
 | MLIR | SSA | block arguments | regions: unstructured (`cf`) or structured (`scf.if`, `scf.for`, `scf.while`) |
 | WebAssembly | not SSA: a typed stack machine with locals | locals | **structured only:** `block`, `loop`, `if`, branches to enclosing labels, `br_table` |
@@ -167,7 +167,7 @@ effect for data objects, whose loads fold or hoist.
 
 | IR | Model |
 |---|---|
-| **NIR** | unwind entries on calls and checked division: `NO_UNWIND`, `NO_CLEANUP` or a landing-pad block ending in `resume`; trace-level cleanup lists; capture thunks for backends without unwind tables |
+| **NIR** | unwind entries on calls and checked division: `NO_UNWIND`, `NO_CLEANUP` or a landing-pad block ending in `resume`; pre-SSA cleanup lists; capture thunks for backends without unwind tables |
 | LLVM IR | `invoke` with `landingpad`/`resume` (Itanium), funclets (`catchswitch`, `cleanuppad`) for Windows |
 | MLIR | none in core; the `llvm` dialect mirrors LLVM |
 | WebAssembly | exception handling (Wasm 3.0): `throw`, `try_table` with catch clauses, `exnref` |
@@ -178,7 +178,7 @@ effect for data objects, whose loads fold or hoist.
 **Reading:** NIR's model is LLVM's Itanium model reduced to cleanup only:
 Nautilus code never catches, it only runs destructors and continues
 unwinding to the host. Two things have no counterpart elsewhere: cleanup
-lists at the trace level, turned into shared landing pads by the conversion,
+lists at the pre-SSA level, turned into shared landing pads by the conversion,
 and the defined bridge to backends without unwind tables.
 
 ### 3.7 Modules, linking and call targets

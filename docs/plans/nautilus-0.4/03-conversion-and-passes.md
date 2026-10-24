@@ -4,7 +4,7 @@ Part of the [Nautilus 0.4 design](README.md) · Milestone M3
 
 ## 1. Purpose
 
-The conversion turns trace-level NIR into SSA-level NIR. In 0.4 it also does
+The conversion turns pre-SSA NIR into SSA-level NIR. In 0.4 it also does
 the cleanup that today's fixed-point pass pipeline does, so the pipeline
 leaves the critical path. Legalization prepares SSA-level NIR for a specific
 backend. Expensive optimizations remain available as optional passes.
@@ -71,7 +71,7 @@ dense tables and Braun-style SSA construction on the complete trace CFG.
    The tracer already marks control-flow merge blocks (loop-header
    candidates) and knows the back edges.
 7. **Exceptions.** The work of today's `ExceptionRegionPreparationPass`
-   happens during emission: the trace level's cleanup lists
+   happens during emission: the pre-SSA level's cleanup lists
    ([13 §3.4](13-nir-spec.md)) become landing pads, keyed by their ordered
    destructor set and shared, and unwinding calls point at them
    ([02 §3.4](02-nir.md)).

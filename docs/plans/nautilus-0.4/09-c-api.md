@@ -48,7 +48,7 @@ bound mechanically from other languages (Rust via bindgen, Python, Zig).
 - **Serialization:** `nautilus_ir_save`, `nautilus_ir_load` and
   `nautilus_ir_inspect` expose [07-serialization.md](07-serialization.md).
 - **Levels:** C builders produce SSA-level NIR directly. The verifier
-  rejects trace-level constructs.
+  rejects pre-SSA constructs.
 - **Modules and call targets** follow [13 §4.4–§4.6](13-nir-spec.md): a
   builder names its module, marks functions exported or internal, declares
   imports by module name, function name, signature and assumed attributes,
