@@ -27,8 +27,8 @@ need a new major version or a conversion step.
 - A **module** is the unit of compilation, loading, caching and
   serialization (§4.4). It has a name, **exports** (its exported functions),
   **imports** (functions it uses from other modules), and the tables its
-  functions share: constants, names, signatures, callees, allocas,
-  pointers, bindings and extensions.
+  functions share: constants, read-only data objects, names, signatures,
+  callees, allocas, pointers, bindings and extensions.
 - A **function** is defined in a module: a name, a signature, attributes,
   a visibility, a level and a list of **blocks** (§4.5). Each block holds
   **instructions**; the last instruction of a block, and only that one, is
@@ -43,6 +43,8 @@ need a new major version or a conversion step.
   entry block.
 - **Constants** are not instructions. They live in the module's constant
   pool and are referenced from operands (§3.2).
+- **Data objects** are read-only byte arrays owned by the module, with an
+  address (§4.10). They hold constant tables and strings.
 - Every function has a **level**, `Trace` or `SSA` (§6). Both levels use
   the same records; they differ in invariants and in how blocks list their
   instructions (§4.3).
@@ -166,7 +168,9 @@ of an image ([02 §3.6](02-nir.md)).
 | 20 | `imports` | `ImportRecord`, 16 B (§4.4) | canonical in memory; always empty in a serialized image (§8.5) |
 | 21 | `debugNames` | `{u32 offset, u32 length}` into `debugNameBytes`, 8 B | optional |
 | 22 | `debugNameBytes` | UTF-8 bytes, not NUL-terminated | optional |
-| 23–1023 | — | reserved for later versions | — |
+| 23 | `data` | `DataRecord`, 16 B (§4.10) | canonical |
+| 24 | `dataBytes` | the contents of the data objects | canonical |
+| 25–1023 | — | reserved for later versions | — |
 | ≥ 1024 | — | vendor and experimental sections; ignored by readers that do not know them | optional |
 
 The instructions of one function are contiguous in `insts`; so are its
@@ -565,6 +569,38 @@ struct RegionRecord {    // 16 bytes; one region() call site (docs/region.md)
 - Debug data does not change semantics. Consumers must work without it, and
   the structural hash never covers it (§7).
 
+### 4.10 Data objects
+
+```c
+struct DataRecord {      // 16 bytes
+	uint32_t size;       // > 0
+	uint32_t align;      // a power of two, at most 4096
+	uint32_t byteOffset; // into dataBytes, aligned to align
+	uint32_t flags;      // reserved, 0
+};
+```
+
+- **Read-only.** A data object is an immutable byte array owned by the
+  module. Writing to it is undefined. Its contents are part of the image and
+  of the structural hash, and have `Literal` provenance
+  ([07 §5](07-serialization.md)), so a module whose constant tables live in
+  data objects stays persistable.
+- **Address and lifetime.** `data.addr` (§5.8) yields its address. The
+  engine places each data object once per module, in read-only memory, and
+  every tier and every promotion of the module uses the same address. The
+  address stays valid until the module is released (§4.4.1).
+- **Identity.** Data objects with equal size, alignment and contents may
+  share an address, as C++ string literals may. Programs must not rely on
+  distinct data objects having distinct addresses.
+- **No relocations in 1.0.** Data contains bytes only, never addresses of
+  functions or other data, so it is position-independent. A relocation
+  table can be added in a minor version (§8.2).
+- **No mutable globals.** Mutable module state is a runtime binding (§4.8),
+  owned by the application ([07 §4](07-serialization.md)).
+- **Not exported or imported.** Data objects are private to their module.
+  Bundling (§8.5) and cross-module inlining (§4.4.3) copy the data objects
+  they need.
+
 ## 5. Operations
 
 ### 5.0 Execution model
@@ -705,11 +741,17 @@ in a later version and must be 0.
   exception that escapes a destructor while a landing pad runs terminates
   the process, as in C++.
 
-### 5.8 Runtime state
+### 5.8 Runtime state and data
 
 | Op | Code | Operands | Result |
 |---|---|---|---|
 | `bind.addr` | 36 | a: binding index (§4.8) | `ptr` |
+| `data.addr` | 37 | a: data object index (§4.10) | `ptr` |
+
+- **Loads from data fold.** A `load` whose address is `data.addr d` plus a
+  constant byte offset, entirely within `d` and aligned as the load states,
+  reads the known bytes and may be replaced by a constant. A load outside
+  the object is undefined.
 
 ### 5.9 Values and control flow
 
@@ -768,9 +810,9 @@ in a later version and must be 0.
 3. Operand and result types follow §2 and §5; reserved flag bits and unused
    operand fields are 0.
 4. Branch argument counts and types match the target block's `blockarg`s.
-5. Every table index (callee, signature, alloca, binding, pointer, name,
-   extension, `extra` offset) is in range, and every `extra` list is in
-   bounds.
+5. Every table index (callee, signature, alloca, binding, pointer, data
+   object, name, extension, `extra` offset) is in range, and every `extra`
+   list and data object is in bounds of its section.
 6. A function's `ret` operands match its signature's result type.
 7. Calls match their signatures; a `noUnwind` callee has `NO_UNWIND`.
 8. Exactly one `module` record. Function names are unique; every exported
@@ -854,14 +896,17 @@ Canonicalization:
 2. orders functions: exported functions by name, then the other functions
    in order of first reference from the functions before them; orders
    imports by `(module name, function name)`;
-3. drops unused constants, names, signatures, callees, allocas, pointers and
-   bindings, and orders each table by **first use** in this scan order:
+3. drops unused constants, data objects, names, signatures, callees,
+   allocas, pointers and bindings, and orders each table by **first use** in this scan order:
    functions in canonical order; within a function, its signature, then its
    instructions in order; within an instruction, the fields `a`, `b`, `c`,
    then its `extra` list word by word; a referenced record (a callee, an
    import, a signature) is scanned at its first reference, before
    continuing;
-4. interns names, constants and signatures, so no table holds duplicates;
+4. interns names, constants, signatures and data objects (equal size,
+   alignment and contents), so no table holds duplicates; writes
+   `dataBytes` in data-object order, each object at the next offset aligned
+   to its alignment, padding with zeros;
 5. numbers extension opcodes and types image-locally in first-use order
    (§8.4);
 6. writes `extra` without gaps in this order: the parameter lists of the
@@ -932,7 +977,7 @@ struct SectionEntry {         // 24 bytes; sectionCount entries directly after t
   configurable limits (defaults in brackets): `totalSize` [1 GiB], functions
   per module [2²⁰], instructions per function [2²⁸], blocks per function
   [2²⁴], entries per table [2²⁸], `extra` words [2²⁸], extension entries
-  [2¹⁶]. An image above a limit is rejected before any section is
+  [2¹⁶], `dataBytes` [256 MiB]. An image above a limit is rejected before any section is
   materialized.
 
 ### 8.2 Versioning
@@ -998,7 +1043,8 @@ imports, so loading an image never needs another module.
 3. **Rewrite** every callee of kind `imported` into kind `internal`,
    pointing at the copy, with the copy's attributes (invariant 8 of §6.1),
    and leave the `imports` section empty.
-4. **Merge the tables:** constants and signatures are interned; pointers
+4. **Merge the tables:** constants, signatures and data objects are
+   interned; pointers
    are copied (a `ProcessLocal` pointer keeps the image process-local, as
    for any module); runtime bindings are merged by name, and two bindings
    with the same name but different schemas fail the export; extensions
@@ -1033,7 +1079,8 @@ func @divideFirst(%0: ptr, %1: i64) -> i64 {
 }
 ```
 
-- Values print as `%id`, constants as `value:type`, blocks as `^bN`.
+- Values print as `%id`, constants as `value:type`, blocks as `^bN`, data
+  objects as `@dN` (defined once at the top as `data @dN align A = x"…"`).
 - Flags print as suffixes: `.s`/`.u` for signedness, the predicate for
   `cmp`, `.checked` for checked division, the kind for `cast`.
 - Extension operations print by name (`simd.add`).
@@ -1062,6 +1109,7 @@ These questions were open in the draft and are settled here:
 | Call targets | four callee kinds: internal, external, imported, intrinsic (§4.6) |
 | Memory effects | four independent guarantee bits (no reads/writes of argument memory and of other memory), zero = no guarantee, implication by bitwise subset (§4.6.2) |
 | `funcaddr` | stable forwarding stubs, valid until the module is released (§5.7) |
+| Global data | read-only data objects with `data.addr`, folded loads, no relocations, no mutable globals (§4.10) |
 | Interning imports | never at import or link time; inlining is a separate optional pass that works across modules (§4.4.3); exported images always bundle their imports and are self-contained (§8.5) |
 
 ## 11. Conformance and change control
@@ -1084,4 +1132,4 @@ These questions were open in the draft and are settled here:
 
 | Version | Change |
 |---|---|
-| 1.0 RC | Initial specification |
+| 1.0 RC | Initial specification, including read-only data objects (§4.10) |

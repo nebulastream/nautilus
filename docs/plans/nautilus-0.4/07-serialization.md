@@ -115,6 +115,10 @@ relationships across modules and loads.
 On NIR these become **scans of the side tables plus a short dataflow
 pass**:
 
+- **Data objects** ([13 §4.10](13-nir-spec.md)) are `Literal` by
+  construction: their bytes are part of the image. Constant tables created
+  with `constData` therefore never block persistence, unlike traced
+  pointers to host arrays.
 - **Constants:** each `ConstPool` entry carries a provenance class:
   `Literal`, `AuditedInvariant` (from `cacheLiteral`/`cacheInvariant`) or
   `RawProcessValue` (a native scalar traced without an audit).

@@ -52,7 +52,8 @@ bound mechanically from other languages (Rust via bindgen, Python, Zig).
 - **Modules and call targets** follow [13 §4.4–§4.6](13-nir-spec.md): a
   builder names its module, marks functions exported or internal, declares
   imports by module name, function name, signature and assumed attributes,
-  and adds external, imported and intrinsic callees. `nautilus_ir_save`
+  and adds external, imported and intrinsic callees, and read-only data
+  objects. `nautilus_ir_save`
   writes a self-contained image that bundles every import
   ([13 §8.5](13-nir-spec.md)).
 

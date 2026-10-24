@@ -59,6 +59,14 @@ Unchanged: replay, tags, snapshots, merge detection at any operation,
 | **Arena-backed block lists;** call names resolved lazily from the callee identity (already the default via `engine.resolveFunctionNames`) | Heap allocations per op |
 | **#561's statistics** (`tracing.iterations`, `tracing.replayedOperations`, `tracing.copies`, `tracing.firstRun.ms`/`rerun.ms`), plus a diagnostic that flags scopes whose replay exceeds a threshold and suggests `region()` or the explicit API; extended by R1 and C1 (§4) | Makes replay visible to users |
 
+**Constant data.** `nautilus::constData(std::span<const T>)` (and a string
+overload) copies a host array into a read-only data object of the module at
+trace time and returns a `val<const T*>` to it
+([13 §4.10](13-nir-spec.md)). It replaces tracing a pointer to host memory
+for lookup tables, strings and seeds: the module no longer depends on that
+host memory, loads from the table can fold, and the module stays
+persistable.
+
 The frame-pointer walk itself stays the main per-operation cost of record
 mode. That cost belongs to implicit control flow. The explicit API (§5) is
 how users avoid it.
