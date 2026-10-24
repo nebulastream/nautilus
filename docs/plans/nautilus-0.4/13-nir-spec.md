@@ -19,11 +19,19 @@ stated otherwise. Ranges are written `[first, first + count)`.
 
 ## 1. Data model
 
-- A **module** holds functions and the tables they share: constants,
-  names, signatures, callees, allocas, pointers, bindings and extensions.
-- A **function** has a signature, attributes, a level and a list of
-  **blocks**. Each block holds **instructions**; the last instruction of a
-  block, and only that one, is a terminator.
+- A **module** is the unit of compilation, loading, caching and
+  serialization (§4.4). It has a name, **exports** (its exported functions),
+  **imports** (functions it uses from other modules), and the tables its
+  functions share: constants, names, signatures, callees, allocas,
+  pointers, bindings and extensions.
+- A **function** is defined in a module: a name, a signature, attributes,
+  a visibility, a level and a list of **blocks** (§4.5). Each block holds
+  **instructions**; the last instruction of a block, and only that one, is
+  a terminator.
+- A **call target** (callee) is one of four kinds (§4.6): a function of the
+  same module (*internal*), a function exported by another module
+  (*imported*), a native function of the host process (*external*), or a
+  function registered by a plugin and known by name (*intrinsic*).
 - An instruction produces **at most one value**. A value's **id** is the
   function-local index of its instruction, starting at 0.
 - A **block id** is the function-local index of the block. Block 0 is the
@@ -136,20 +144,22 @@ of an image ([02 §3.6](02-nir.md)).
 | 3 | `consts` | `ConstRecord`, 16 B (§4.2) | canonical |
 | 4 | `constBytes` | bytes, for constants wider than 8 bytes | canonical |
 | 5 | `blocks` | `BlockRecord`, 16 B (§4.3) | canonical |
-| 6 | `functions` | `FunctionRecord`, 40 B (§4.4) | canonical |
-| 7 | `signatures` | `SignatureRecord`, 12 B (§4.4) | canonical |
-| 8 | `callees` | `CalleeRecord`, 16 B (§4.5) | canonical |
-| 9 | `allocas` | `AllocaRecord`, 8 B (§4.4) | canonical |
-| 10 | `pointers` | `PointerRecord`, 24 B (§4.6) | canonical |
-| 11 | `bindings` | `BindingRecord`, 16 B (§4.7) | canonical |
+| 6 | `functions` | `FunctionRecord`, 40 B (§4.5) | canonical |
+| 7 | `signatures` | `SignatureRecord`, 12 B (§4.5) | canonical |
+| 8 | `callees` | `CalleeRecord`, 16 B (§4.6) | canonical |
+| 9 | `allocas` | `AllocaRecord`, 8 B (§4.5) | canonical |
+| 10 | `pointers` | `PointerRecord`, 24 B (§4.7) | canonical |
+| 11 | `bindings` | `BindingRecord`, 16 B (§4.8) | canonical |
 | 12 | `names` | `{u32 offset, u32 length}` into `nameBytes`, 8 B | canonical |
 | 13 | `nameBytes` | UTF-8 bytes, not NUL-terminated | canonical |
-| 14 | `extensions` | `ExtensionRecord`, 8 B (§8.4) | canonical |
+| 14 | `extensions` | `ExtensionRecord`, 8 B: extension operations, types and intrinsics (§8.4) | canonical |
 | 15 | `debugLocations` | `{u32 file (name id), u32 line, u32 column}`, 12 B | optional |
 | 16 | `debugInstLocations` | `u32` per instruction, parallel to `insts`: index in `debugLocations`, or `0xFFFFFFFF` | optional |
-| 17 | `debugRegions` | `RegionRecord`, 16 B (§4.8) | optional |
+| 17 | `debugRegions` | `RegionRecord`, 16 B (§4.9) | optional |
 | 18 | `debugInstRegions` | `u32` per instruction, parallel to `insts`: index in `debugRegions`, or `0xFFFFFFFF` | optional |
-| 19–1023 | — | reserved for later versions | — |
+| 19 | `module` | `ModuleRecord`, 16 B, exactly one (§4.4) | canonical; the name is excluded from the structural hash (§7) |
+| 20 | `imports` | `ImportRecord`, 16 B (§4.4) | canonical |
+| 21–1023 | — | reserved for later versions | — |
 | ≥ 1024 | — | vendor and experimental sections; ignored by readers that do not know them | optional |
 
 The instructions of one function are contiguous in `insts`; so are its
@@ -199,7 +209,116 @@ struct BlockRecord {     // 16 bytes
   ([01 §6](01-tracing-frontend.md)). Every instruction belongs to exactly
   one block.
 
-### 4.4 Functions, signatures, allocas
+### 4.4 Modules
+
+```c
+struct ModuleRecord {    // 16 bytes; exactly one per module (section 19)
+	uint32_t nameId;     // module name; 0xFFFFFFFF for an anonymous module
+	uint32_t flags;      // reserved, 0
+	uint64_t reserved;   // 0
+};
+
+struct ImportRecord {    // 16 bytes (section 20)
+	uint32_t moduleNameId;   // name of the exporting module
+	uint32_t functionNameId; // name of the exported function
+	uint32_t signature;      // the signature the importer was built against
+	uint32_t attrs;          // the attributes the importer assumed (§4.6)
+};
+```
+
+- **Name.** A module that other modules import from must have a name. Names
+  are UTF-8, unique among the modules linked together (§4.4.2), and
+  conventionally dot-separated (`nes.query42.pipeline3`). The name is not
+  part of the structural hash (§7), so equal modules under different names
+  share cache entries.
+- **Exports** are the module's functions with visibility `exported`
+  (§4.5). An export is identified by `(module name, function name)`; its
+  signature and attributes are part of its interface.
+- **Imports** are the functions the module calls in other modules, listed
+  in the `imports` section and called through callees of kind `imported`
+  (§4.6). An import names the exporter by module and function name, never by
+  address, so images with imports stay portable.
+
+#### 4.4.1 Lifecycle
+
+A module is in one of four states:
+
+| State | Meaning |
+|---|---|
+| **built** | produced by the tracer, the C API or a deserializer; verified; not executable |
+| **linked** | every import is resolved against a loaded exporter (§4.4.2) |
+| **compiled** | an executable exists for at least one backend; may be promoted to another tier ([11](11-tiered-compilation.md)) |
+| **released** | no handle refers to it; its code is freed once no importer and no running call uses it |
+
+#### 4.4.2 Linking imports
+
+Linking happens when a module is compiled or loaded, against the
+**module registry** of its engine: the set of compiled modules with a name.
+
+1. **Resolve.** Each import is looked up by `(moduleNameId, functionNameId)`.
+   The exporter must be compiled and the function exported.
+2. **Check the signature.** The export's signature must equal the import's
+   signature exactly (types, count, result).
+3. **Check the attributes.** The export's attributes must imply the ones
+   the importer assumed: its memory effect at most as strong (`pure` ⊂
+   `readonly` ⊂ `argmemonly` ⊂ `ModRef`), and `noUnwind` and `willReturn`
+   set wherever the import has them. An importer that assumes nothing uses
+   `ModRef` with no flags, which every export satisfies.
+4. **Bind.** The importer gets one **import slot** per import: a pointer to
+   the exporter's current entry point. Calls go through the slot (§5.7).
+5. **Pin.** The importer holds a reference to the exporter, so an exporter
+   is not released while an importer exists.
+
+Any failure is a **link error**: the compile or load fails with a message
+naming the import and the reason (missing module, missing or non-exported
+function, signature mismatch, attributes not implied, cycle). No partial
+linking.
+
+- **The import graph is acyclic.** A module cannot import, directly or
+  transitively, from itself. Mutually recursive functions belong in one
+  module.
+- **Tier changes are transparent.** When an exporter is promoted
+  ([11](11-tiered-compilation.md)), the engine updates the import slots of
+  its importers with a release store. Calls already running finish in the
+  old code, which stays alive as long as it may be executing (as for
+  `ModuleFunction`, #506).
+- **Importers see only the interface.** An importer's code depends on the
+  export's signature and attributes, never on its body, so recompiling or
+  promoting the exporter never invalidates an importer. Cross-module
+  inlining is not in 1.0.
+- **Assumed attributes.** When an importer is built while its exporter is
+  already compiled (always the case for the C++ frontend, since the graph is
+  acyclic), the builder copies the export's attributes into the import
+  record. A producer that builds against an interface it cannot see (the C
+  API, a deserialized image) states the attributes itself, or `ModRef` with
+  no flags.
+- **Exceptions** cross module boundaries like any call: the import's
+  `noUnwind` decides whether the call site needs an unwind entry, and the
+  engine bridges the exporter's and the importer's exception-propagation
+  modes in the import slot's entry point when they differ.
+
+#### 4.4.3 Host API (informative)
+
+```cpp
+auto math = engine.createModule("lib.math");
+math.registerFunction("hash", hashFn);            // exported
+auto lib = math.compile();                        // registered as "lib.math"
+
+auto q = engine.createModule("nes.query42");
+auto hash = q.importFunction<uint64_t(uint64_t)>("lib.math", "hash");
+q.registerFunction("run", [&](val<uint64_t*> p, val<int64_t> n) {
+	...
+	auto h = hash(p[i]);                           // traced as a call to an imported callee
+	...
+});
+auto compiled = q.compile();                      // links "lib.math"."hash"
+```
+
+`importFunction` checks the signature against the registry when the
+exporter is already compiled, and the link step (§4.4.2) checks it again.
+The C API has the same operations ([09](09-c-api.md)).
+
+### 4.5 Functions
 
 ```c
 struct FunctionRecord {  // 40 bytes
@@ -208,9 +327,9 @@ struct FunctionRecord {  // 40 bytes
 	uint32_t firstInst, instCount;     // range in insts
 	uint32_t firstBlock, blockCount;   // range in blocks
 	uint32_t firstAlloca, allocaCount; // range in allocas
-	uint32_t attrs;      // attribute bits (§4.5)
+	uint32_t attrs;      // attribute bits (§4.6)
 	uint8_t  level;      // 0 Trace, 1 SSA
-	uint8_t  exported;   // 1: callable from outside the module by name
+	uint8_t  visibility; // 0 internal, 1 exported
 	uint16_t pad;        // 0
 };
 
@@ -226,27 +345,94 @@ struct AllocaRecord {    // 8 bytes
 };
 ```
 
-- The entry block's parameters are the function's parameters: at the SSA
-  level they are its leading `blockarg`s, at the trace level they are the
-  first `paramCount` instructions, which are `blockarg`s.
-- Signatures have no variadic form and pass only scalars, pointers and
+- **Every function in a module is a definition**, with a body. Declarations
+  of functions defined elsewhere are callees (§4.6), not functions.
+- **Visibility.**
+  - `exported`: part of the module's interface, callable from the host
+    (`CompiledModule::getFunction`) and from importing modules. Its name and
+    signature are fixed by the user; it is never removed.
+  - `internal`: callable only from the same module. Unreferenced internal
+    functions are removed by canonicalization (§7), and a backend may
+    inline them.
+  - In C++, functions registered on a module (`registerFunction`) are
+    exported; `nautilus::function` callees traced into the module are
+    internal.
+- **Calling convention.**
+  - An exported function's entry point uses the platform's C calling
+    convention for its signature, with each NIR type passed as the
+    corresponding C type (`i64` as `int64_t`, `ptr` as `void*`, `bool` as
+    `bool`, extension types by their `TypeInfo`). The host calls it through
+    a plain function pointer (or the `Invocable` wrapper when the backend's
+    exception mode needs one, as in 0.3).
+  - Calls between internal functions may use any convention the backend
+    chooses.
+- **Parameters.** The entry block's parameters are the function's
+  parameters: at the SSA level its leading `blockarg`s, at the trace level
+  the first `paramCount` instructions, which are `blockarg`s.
+- **Signatures** have no variadic form and pass only core scalars and
   extension types; aggregates are passed by pointer, as in 0.3.
+- **Attributes** (§4.6) are inferred by the conversion, or declared, and
+  for exported functions become part of the interface.
 
-### 4.5 Callees and attributes
+### 4.6 Callees and attributes
 
 Every direct call and every `funcaddr` goes through the callee table.
 
 ```c
 struct CalleeRecord {    // 16 bytes
-	uint8_t  kind;       // 0 internal function, 1 external native function
+	uint8_t  kind;       // see below
 	uint8_t  pad[3];     // 0
-	uint32_t target;     // function index (kind 0) or pointers index, kind callee (kind 1)
-	uint32_t signature;  // must equal the function's signature for kind 0
+	uint32_t target;     // depends on kind
+	uint32_t signature;
 	uint32_t attrs;      // attribute bits below
 };
 ```
 
-Attribute bits, used by `FunctionRecord.attrs` and `CalleeRecord.attrs`:
+| Kind | Name | `target` | What is called | Portable in an image |
+|---|---|---|---|---|
+| 0 | **internal** | function index | a function defined in this module | yes |
+| 1 | **external** | `pointers` index, kind callee | a native C/C++ function of the host process, called with `invoke` in C++ | only if the pointer is `Portable` (§4.7) |
+| 2 | **imported** | `imports` index | an exported function of another module, through its import slot (§4.4.2) | yes, by name |
+| 3 | **intrinsic** | `extensions` index of kind intrinsic | a plugin function registered by name, with a native fallback (§4.6.1) | yes, by name |
+
+- `signature` must equal the target's: the function's signature (kind 0),
+  the import's (kind 2), the registered intrinsic's (kind 3), or the
+  traced C++ function type (kind 1).
+- `attrs` are what calls through this callee may assume. For kind 0 they
+  equal the function's attributes; for kind 2 they are the import's
+  assumed attributes; for kinds 1 and 3 they come from the registration
+  (`noexcept`, `nothrow`, declared effects, [06 §3](06-semantics.md)).
+
+#### 4.6.1 Intrinsics
+
+An intrinsic is a function that a plugin registers by name in the
+`ExtensionRegistry` ([04 §3.7](04-extensions.md)), with:
+- a name and version (`builtin.prefetch@1`) and a `minCompatibleVersion`;
+- a signature and attributes;
+- a **native fallback**: a C function with exactly that signature, which
+  defines the intrinsic's semantics;
+- optional per-backend lowerings that replace the call with inline code.
+
+Rules:
+- **The fallback defines the semantics.** A lowering must behave exactly as
+  a call to the fallback (the invariant of 0.3's intrinsics). A backend
+  without a lowering calls the fallback.
+- **Identified by name, not address.** An image refers to an intrinsic
+  through the `extensions` section, so it is portable; the loader resolves
+  it in the receiving process's registry. A missing intrinsic or an
+  incompatible version rejects the image (§8.4).
+- **Intrinsic or extension operation?** Both are plugin-defined. An
+  intrinsic keeps call semantics: operands are a signature's arguments, it
+  may throw (with an unwind entry) and its effects are call attributes. An
+  extension operation (§5.11) is a value-level instruction: it can take
+  extension types, fold, simplify and join CSE through its traits, and
+  never throws. 0.3's `IntrinsicRegistry` entries become intrinsics
+  unchanged; plugins move operations that benefit from folding or extension
+  types to extension operations ([04 §4](04-extensions.md)).
+
+#### 4.6.2 Attribute bits
+
+Used by `FunctionRecord.attrs`, `CalleeRecord.attrs` and `ImportRecord.attrs`:
 
 | Bits | Meaning |
 |---|---|
@@ -261,7 +447,7 @@ reads but does not write it. `argmemonly`: accesses only memory reachable
 through its pointer arguments. A wrong declaration is undefined
 ([06 §7](06-semantics.md)).
 
-### 4.6 Pointers
+### 4.7 Pointers
 
 ```c
 struct PointerRecord {   // 24 bytes
@@ -281,7 +467,7 @@ struct PointerRecord {   // 24 bytes
   mode 2 against the loaded module with that build id
   ([07 §3](07-serialization.md)).
 
-### 4.7 Runtime bindings
+### 4.8 Runtime bindings
 
 ```c
 struct BindingRecord {   // 16 bytes
@@ -296,7 +482,7 @@ struct BindingRecord {   // 16 bytes
 ([07 §4](07-serialization.md)). Bindings with equal schemas stay distinct
 identities.
 
-### 4.8 Debug data (optional)
+### 4.9 Debug data (optional)
 
 ```c
 struct RegionRecord {    // 16 bytes; one region() call site (docs/region.md)
@@ -415,11 +601,19 @@ in a later version and must be 0.
 
 | Op | Code | Operands | Result |
 |---|---|---|---|
-| `call` | 32 | a: callee index (§4.5); c: *x* → `[argc, arg₀ … argₙ₋₁, unwind, thunk]` | the signature's result type |
+| `call` | 32 | a: callee index (§4.6); c: *x* → `[argc, arg₀ … argₙ₋₁, unwind, thunk]` | the signature's result type |
 | `call.indirect` | 33 | a: `ptr` callee (*v*); b: signature index; c: *x* as `call` | the signature's result type |
-| `funcaddr` | 34 | a: callee index | `ptr` |
+| `funcaddr` | 34 | a: callee index of kind internal, external or imported | `ptr` |
 
 - Arguments are value references matching the signature's parameter types.
+- **By callee kind:** an internal call may use the backend's own convention
+  (§4.5); an external call calls the native function; an imported call
+  loads the import slot and calls the exporter's entry point (one indirect
+  call); an intrinsic call is lowered inline by a backend that has a
+  lowering, and otherwise calls the fallback.
+- `funcaddr` of an internal function yields its C-convention entry point;
+  of an imported function, the exporter's current entry point at the time
+  of the call. Intrinsics have no address.
 - `unwind` is an unwind entry (§3.4). It must be `NO_UNWIND` if the callee
   has `noUnwind`.
 - `thunk` is a `pointers` index of kind capture thunk, or `0xFFFFFFFF`.
@@ -436,7 +630,7 @@ in a later version and must be 0.
 
 | Op | Code | Operands | Result |
 |---|---|---|---|
-| `bind.addr` | 36 | a: binding index (§4.7) | `ptr` |
+| `bind.addr` | 36 | a: binding index (§4.8) | `ptr` |
 
 ### 5.9 Values and control flow
 
@@ -500,6 +694,11 @@ in a later version and must be 0.
    bounds.
 6. A function's `ret` operands match its signature's result type.
 7. Calls match their signatures; a `noUnwind` callee has `NO_UNWIND`.
+8. Exactly one `module` record. Function names are unique; every exported
+   function has a name. Callee and import signatures match §4.6; a callee's
+   attributes for an internal function equal the function's.
+9. Imports are unique by `(module, function)` and never name the module
+   itself.
 
 ### 6.2 Trace level
 
@@ -551,7 +750,8 @@ A canonical module is the form that is serialized and hashed
 1. applies pending replacements and compacts each function, so ids are
    dense and, at the SSA level, in layout order;
 2. orders functions: exported functions by name, then the other functions
-   in order of first reference from the functions before them;
+   in order of first reference from the functions before them; orders
+   imports by `(module name, function name)`;
 3. drops unused constants, names, signatures, callees, allocas, pointers and
    bindings, and orders each table by first use, scanning functions and
    their instructions in order;
@@ -565,8 +765,11 @@ A canonical module is the form that is serialized and hashed
 Two structurally equal modules have byte-identical canonical images.
 
 **The structural hash** (the L2 key, [08](08-caching.md)) is XXH3-128 over
-the canonical sections of the canonical image, followed by the effective
-compile options and the `name@version` of every extension in use. It is a
+the canonical sections of the canonical image, without the module name,
+followed by the effective compile options and the `name@version` of every
+extension in use. Imports are hashed by name, signature and assumed
+attributes, so an importer's hash does not change when an exporter's body
+does. It is a
 cache key, not a security property; a hit is confirmed by comparing the
 images.
 
@@ -623,7 +826,7 @@ struct SectionEntry {         // 24 bytes; sectionCount entries directly after t
 | Bit | Name | Class | Meaning |
 |---|---|---|---|
 | 0 | `DEBUG_V1` | compat | the debug sections 15–18 are present |
-| 1 | `EXTENSIONS` | incompat | the module uses extension operations or types |
+| 1 | `EXTENSIONS` | incompat | the module uses extension operations, types or intrinsics |
 | 2 | `PROCESS_LOCAL` | incompat | the module contains `ProcessLocal` pointers (mode 0) |
 
 ### 8.4 Extensions in images
@@ -631,13 +834,14 @@ struct SectionEntry {         // 24 bytes; sectionCount entries directly after t
 ```c
 struct ExtensionRecord { // 8 bytes
 	uint32_t nameId;     // "name@version", e.g. "simd.add@1"
-	uint8_t  kind;       // 0 operation, 1 type
+	uint8_t  kind;       // 0 operation, 1 type, 2 intrinsic
 	uint8_t  pad[3];     // 0
 };
 ```
 
 - Image opcode 256 + *i* is the *i*-th entry of kind 0; image type 16 + *j*
-  is the *j*-th entry of kind 1. Names are `<plugin>.<name>`, and the
+  is the *j*-th entry of kind 1. Intrinsic callees (kind 2) refer to their
+  entry by its index in the section. Names are `<plugin>.<name>`, and the
   version is a decimal `u32` after `@`.
 - **Loading maps them to process ids** in one pass over `insts` and the
   type fields of all records. An image without extensions is used in
@@ -683,7 +887,7 @@ These questions were open in the draft and are settled here:
 
 | Question | 1.0 |
 |---|---|
-| Encoding of debug data | optional sections 15–18 (§4.1, §4.8), feature bit `DEBUG_V1` |
+| Encoding of debug data | optional sections 15–18 (§4.1, §4.9), feature bit `DEBUG_V1` |
 | `unreachable` terminator | not in 1.0; tracing ends every block with a real terminator (§5.9) |
 | Atomic operations | not in 1.0; data races are undefined (§5.0). Candidates for 1.1 if atomics through `invoke` show a measured cost |
 | Fast-math | not in 1.0; flag bits reserved (§5.1) |
@@ -692,3 +896,5 @@ These questions were open in the draft and are settled here:
 | 0.3's unused trace op `FREE` | dropped |
 | Extension versioning | `version` plus `minCompatibleVersion` (§8.4) |
 | Structural hash | XXH3-128 over the canonical image plus options and extension versions (§7) |
+| Modules and imports | named modules with exports and imports; linking against the engine's module registry, by name and signature, acyclic; import slots updated on promotion (§4.4) |
+| Call targets | four callee kinds: internal, external, imported, intrinsic (§4.6) |

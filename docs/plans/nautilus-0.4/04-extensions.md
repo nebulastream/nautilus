@@ -142,10 +142,13 @@ registration API per backend.
   extensions must be registered before the first compile. The registry is
   never mutated while compiles may read it. An engine-scoped registry for
   late-loaded plugins is a possible later step.
-- **One `ExtensionRegistry`** holds types, ops and passes, and absorbs
-  `IntrinsicRegistry`. A deprecated shim registers old-style intrinsics as
-  extension ops with `fallback = native function`, so existing plugins keep
-  working through 0.4.x.
+- **One `ExtensionRegistry`** holds types, ops, intrinsics and passes, and
+  absorbs `IntrinsicRegistry`. 0.3's intrinsics become **intrinsics** in the
+  sense of [13 §4.6.1](13-nir-spec.md): call targets known by name, with a
+  native fallback and optional per-backend lowerings. Existing plugins keep
+  working unchanged through a compatibility shim in 0.4.x. Plugins move an
+  intrinsic to an extension operation (§3.3) where folding, CSE or extension
+  types pay off.
 - **Verification:** `IRVerifier` checks every extension instruction against
   its `Signature` and `verify` hook in debug builds, naming the plugin on a
   mismatch.

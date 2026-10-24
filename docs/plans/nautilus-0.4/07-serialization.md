@@ -53,6 +53,11 @@ Artifact
   without materializing anything (#532's `inspectModule`).
 - **Loading checks** root signatures against the requested C++ signature,
   including width and signedness (#532).
+- **Imports are resolved at load** by module and function name, against the
+  loading engine's module registry ([13 §4.4.2](13-nir-spec.md)). An image
+  whose imports cannot be linked fails to load; it is never loaded
+  partially. Native payloads call imports through import slots, so they
+  stay valid when the exporter is recompiled or promoted.
 
 API, carried over from #532 and #527:
 
