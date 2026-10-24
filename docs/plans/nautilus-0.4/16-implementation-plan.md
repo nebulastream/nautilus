@@ -14,16 +14,57 @@ step is proven done*. Every work package (WP) has:
 - its tests;
 - a "done when" check that a reviewer can verify.
 
-Each WP lands as one or a few PRs against `nautilus-0.4`, titled
-`[M2.4] …`. A WP's PRs are merged only with the full CI matrix green.
+Work packages are units of planning and review, not of merging: they are
+grouped into **21 larger PRs** (§1.1), each of which lands one coherent
+capability. Inside a PR, each WP is one or a few commits, so the PR can be
+reviewed commit by commit.
 
 **Sizes** are rough engineering effort for sequencing, not commitments:
 **S** ≤ 1 week, **M** 1–3 weeks, **L** 3–6 weeks, **XL** 6–10 weeks.
 
+### 1.1 Pull requests
+
+Every PR targets `nautilus-0.4`, is titled `[PR n] <capability>`, and is
+merged only with the full CI matrix green. Reference-dump regenerations
+stay separate commits inside the PR (§2 rule 6). A PR may be opened as a
+draft early and kept up to date with `nautilus-0.4`, but it merges only
+when every WP in it meets its "done when".
+
+| PR | Capability | Work packages | Needs | Size |
+|---|---|---|---|---|
+| 1 | NIR format: data structures, verifier, text form, canonical form and hash, binary image, loader fuzzer | M1.1–M1.6 | — | XL |
+| 2 | NIR from today's pipeline; one extension registry | M1.7, M1.8 | 1 | L |
+| 3 | Chunk pool; `bc` removed | M1.9, M1.10 | — | L |
+| 4 | Measurement and agent infrastructure: corpus, reference machine, NebulaStream job, doc check, skills | M1.11–M1.13 | 1 | L |
+| 5 | Flat trace (S1): statistics, flat records, trie, cleanup lists, source tags | M2.0–M2.2, M2.8, M2.9 | 1 | XL |
+| 6 | Cheaper re-runs and copies; tracing diagnostics; TPC-H job | M2.3–M2.5 | 5 | L |
+| 7 | Explicit control flow; constant data | M2.6, M2.7 | 5 | L |
+| 8 | Optimizing conversion | M3.1–M3.6, M3.10 | 5 | XL |
+| 9 | Legalization, optional passes, plugin pass hooks | M3.7–M3.9 | 2, 8 | L |
+| 10 | Backends on NIR, part 1 (S2): backend interface, `tbc`, `cpp`, runtime-state ops | M4.0, M4.1, M4.4, M4.6 | 2 | XL |
+| 11 | `asmjit` on NIR; debug info and profiling | M4.2, M4.9 | 10 | XL |
+| 12 | MLIR and GPU on NIR | M4.3, M4.5 | 9, 10 | XL |
+| 13 | Modules and linking; promotion service; `explain()` | M4.7, M4.8, M4.10 | 10, 12 | XL |
+| 14 | Switch-over S3: NIR pipeline by default, dumps regenerated, D3 | M4.11 | 8, 11, 12, 13 | M |
+| 15 | Portable reuse: pointers, bindings, provenance, self-contained images, save/load API, compatibility fixtures | M5.1–M5.4, M5.6, M5.9 | 1, 13 | XL |
+| 16 | Native payloads and caches L0/L1/L2 | M5.5, M5.7 | 12, 15 | XL |
+| 17 | External interfaces: C API, playground MCP server | M5.8, M5.10 | 13, 15 | L |
+| 18 | Semantics: D10/D11, declared effects, cheaper exceptions, signless plugin API | M6.1–M6.4 | 14 | L |
+| 19 | Extension types and plugin migration; diagnostics catalog and compiled docs | M6.5–M6.7 | 14 | XL |
+| 20 | Legacy pipeline and bridge deleted (S4) | M7.1 | 18, 19 | M |
+| 21 | Documentation, migration guide, release validation, merge and tag | M7.2–M7.4 | 20 | L |
+
+M2.10 (lazy copies) is an investigation; if it is adopted, it lands as its
+own PR after PR 6.
+
+The PRs follow the tracks of §4: PRs 1, 15 (format); 5–7 (frontend); 8, 9
+(conversion); 2, 10–12 (backends); 3, 13, 16 (runtime); 4, 17 (infra and
+agents). Right after PR 1, PRs 2–5 can be worked on at the same time.
+
 ## 2. Ground rules
 
-1. **The tree always works.** From the first WP to the release, every
-   commit on `nautilus-0.4` builds and passes every test on the CI matrix.
+1. **The tree always works.** From the first PR to the release, every
+   merge into `nautilus-0.4` builds and passes every test on the CI matrix.
    New code lands next to old code and takes over at a switch-over point
    (§4). Nothing is half-replaced.
 2. **Two pipelines until M4 ends.** An internal option
@@ -49,7 +90,8 @@ Each WP lands as one or a few PRs against `nautilus-0.4`, titled
    tables are generated from it. This shrinks the `ir-change` checklist and
    keeps the C enum in step with the wire values (09 §3).
 6. **Reference dumps change only in isolated commits,** never together with
-   a behavior change (`regenerate-dumps` skill).
+   a behavior change (`regenerate-dumps` skill); a PR that regenerates dumps
+   carries them as their own commit.
 7. **CI legs added by this plan** (each added by the WP that needs it):
 
    | Leg | From | What it runs |
@@ -714,6 +756,7 @@ each milestone exit.
 
 | Risk | Mitigation |
 |---|---|
+| Large PRs are hard to review and drift from the branch | one commit (or a few) per WP, reviewable in order; drafts opened early and merged with `nautilus-0.4` weekly; the "done when" of each WP is a checklist in the PR description |
 | Two pipelines double the test load | the `nir-pipeline` leg runs only the backends ported so far; legacy is deleted in M7 |
 | Bridge B hides conversion bugs (it starts from optimized IR) | the conversion is compared on results and op counts, not on IR equality; the fuzzer runs on the NIR pipeline from S2 |
 | The legacy conversion adapted to the flat trace (M2.1) breaks 0.3 behavior | it is covered by every execution and tracing test before S1 lands |
