@@ -37,7 +37,9 @@ creating.
 
 Today's `TraceToIRConversionPhase` already converts in one linear pass with
 dense tables and Braun-style SSA construction on the complete trace CFG.
-0.4 extends it into an optimizing builder:
+0.4's conversion is a new component (`conversion/`) that reads pre-SSA NIR
+and keeps that approach, extended into an optimizing builder. It is tested
+on its own until the cut-over ([16 §2](16-implementation-plan.md)):
 
 1. **Visit blocks in RPO,** predecessors before successors except along
    back edges:
@@ -99,7 +101,8 @@ internal form below this point ([05](05-backends.md)).
 - **Optional passes:** LICM, strength reduction and **inlining**, rewritten
   as copy passes ([02 §4](02-nir.md)). They are off on latency-critical
   compiles and enabled per module. Inlining works on internal and imported
-  callees, across modules ([13 §4.4.3](13-nir-spec.md)).
+  callees, across modules ([13 §4.4.3](13-nir-spec.md)); inlining of
+  imported callees lands with linking in M4.
 - **Plugin passes** register at named points (`afterConversion`,
   `beforeLowering`), each marked *required* (correctness, for example GPU
   kernel outlining) or *optional*. Only required passes run on

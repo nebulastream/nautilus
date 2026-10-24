@@ -240,6 +240,14 @@ struct FlatTrace {                     // per function
   `traceExtOp(op, type, inputs)` ([04-extensions.md](04-extensions.md)).
 - **Pre-SSA images can be serialized** for debugging and reproducing
   tracing or conversion bugs (fuzzer, playground). They are never executed.
+- **Implemented as a second tracer.** `val<T>` reaches the tracer only
+  through the abstract `tracing::TracingInterface`, set per trace. The NIR
+  tracer is a new implementation of that interface (`tracing/nir/`), built
+  next to 0.3's `TraceContext` and tested on its own until the cut-over
+  replaces the old one ([16 §2](16-implementation-plan.md)). It maps
+  today's `Type` and `Op` values to NIR widths and flags at the interface,
+  so the public headers do not change. The tag trie and symbolic execution
+  are shared and kept.
 
 ## 7. Exit criteria (M2)
 

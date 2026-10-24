@@ -13,7 +13,8 @@ types. 0.4 changes both:
   backend allows it. This is not a breaking change for users.
 - **Integer values become signless.** This breaks plugins and IR consumers,
   which is acceptable in 0.4 because the IR and the plugin API change
-  anyway.
+  anyway. NIR and the NIR tracer are signless from the start (M1, M2); M6
+  moves the plugin-facing API to widths and op flags.
 
 ## 2. Root causes
 

@@ -39,7 +39,7 @@ Backends take 11–30% of a compile on `bc`/`tbc`/`asmjit`
 | **`asmjit`** (§4) | **Default** on x86-64 and AArch64 (decision D3) | Reads NIR directly; AsmJit's allocator; code quality of 0.3 |
 | `tbc` (+ copy-and-patch) | Portable default; iOS and platforms without JIT; the only interpreting backend | Near 1:1 from NIR |
 | ~~`bc`~~ | **Removed in 0.4** (D6, §6) | Not ported to NIR |
-| MLIR → LLVM | Peak performance; produces the persisted native payloads ([07](07-serialization.md)) | #561's per-thread state reuse; reads NIR; maps extension types |
+| MLIR → LLVM | Peak performance; produces the persisted native payloads ([07](07-serialization.md)) | #561's per-thread state reuse; reads NIR; maps extension types (from M6) |
 | `cpp` | Debugging and reference | |
 | GPU (CUDA, Metal) | Plugin backends on NIR | GPU intrinsics as extension ops |
 
@@ -150,8 +150,13 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
 - `tbc` lowers NIR almost one to one. Its register allocator works on value
   ids, and its handler table is indexed by extension opcode.
 - `cpp` prints from NIR. Extension ops use expression templates or calls.
-- GPU backends read NIR. Address spaces are extension types, and GPU-only
-  ops are target-restricted extension ops ([04 §3.3](04-extensions.md)).
+- GPU backends read NIR (M4). GPU-only ops are target-restricted extension
+  ops ([04 §3.3](04-extensions.md)); address spaces become extension types
+  with the plugin migration in M6.
+- **Every port is built next to the 0.3 lowering** it replaces and tested
+  with `nautilus-nir-run` (a `.nir` file on one backend) until the cut-over,
+  which deletes the 0.3 lowerings. `tbc` is ported first: the cut-over needs
+  only `tbc` ([16 §2](16-implementation-plan.md)).
 
 ### 6.1 Removing `bc` (D6)
 

@@ -164,7 +164,7 @@ registration API per backend.
 | `simd` | `vec<T>` as a pointer; ring-buffer fallback | types `simd.vec<T,N>`; pure ops and mask ops; stack-slot fallback; **ring buffer removed** |
 | `specialization` assume | intrinsic | `spec.assume`, a fact consumed by fold and simplify; fallback = no-op |
 | `std` | wrappers over `invoke` | unchanged, plus effect declarations ([06](06-semantics.md)) |
-| `gpu` | backend plugin | backend on NIR; GPU-only ops (thread id, barriers) as target-restricted extension ops (§3.3) |
+| `gpu` | backend plugin | backend on NIR with GPU-only ops (thread id, barriers) as target-restricted extension ops (§3.3), ported in M4; address spaces as extension types in M6 |
 | `inlining` | LLVM hooks | unchanged |
 | `profiling` | runtime plugin | unchanged |
 

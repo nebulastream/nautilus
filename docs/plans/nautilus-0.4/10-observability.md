@@ -49,6 +49,12 @@ How it is measured (D9):
   reported, not gated; a regression there is confirmed only after a rerun.
 - The release criteria ([README §6](README.md)) are checked on both the
   instruction counts and the reference machine.
+- **0.3 is not run beside 0.4.** "No slower than 0.3" and "op counts ≤ 0.3"
+  compare with **recorded 0.3 baselines** (corpus instruction counts and
+  stage timings, IR op counts after 0.3's passes, `asmjit` assembly of the
+  corpus, `ExecutionBenchmark`, TPC-H), taken at the branch point and
+  refreshed from `main` by the `baselines-0.3` job
+  ([16 §2](16-implementation-plan.md)).
 
 ## 3. Statistics
 
@@ -85,6 +91,6 @@ an increment per counter and no walks.
 ## 5. Exit criteria
 
 - **M1:** the corpus runs in CI on `nautilus-0.4`; the P0 baseline numbers
-  are reproduced as the reference.
+  are reproduced as the reference; the 0.3 baselines are recorded.
 - **Each later milestone:** its exit criterion is met on the corpus, and no
   other corpus case regresses by more than noise.

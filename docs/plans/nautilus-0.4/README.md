@@ -31,6 +31,7 @@ architecture, the decisions, compatibility, the release plan and the risks.
 | Artifact | A serialized module: NIR image, optional native payloads, compatibility descriptor ([07](07-serialization.md)) |
 | L0 / L1 / L2 | In-process, semantic-key and structural caches ([08](08-caching.md)) |
 | Re-run | A repeated execution of a traced body to explore another branch direction ([01](01-tracing-frontend.md)) |
+| Cut-over | The one PR that switches the engine from the 0.3 pipeline to the 0.4 pipeline and deletes the 0.3 trace, IR and lowerings ([16 §2](16-implementation-plan.md)) |
 | M1–M7, D1–D18 | Milestones (§6) and decisions (§8) |
 
 ## 1. Summary
@@ -198,14 +199,15 @@ releases and no temporary formats.
   | #531 C API | the C API on NIR | M5 |
   | #561 | MLIR state reuse (M4); tracing statistics (M2) | M2, M4 |
 
-- **The milestones are internal checkpoints.** Each is merged into
-  `nautilus-0.4` when green, with the full CI matrix and the latency corpus
-  running on the branch.
+- **The milestones are internal checkpoints.** Work lands as the 17 PRs of
+  [16 §4](16-implementation-plan.md); a milestone is reached when its exit
+  criterion holds on `nautilus-0.4`, measured with the CI matrix and the
+  latency corpus.
 
 | Milestone | Content | Exit criterion |
 |---|---|---|
 | **M1 Foundations** | NIR specification 1.0 ([13](13-nir-spec.md)) implemented: format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; latency corpus driver added and running in CI; recorded 0.3 baselines and the frozen API-compat suite ([16 §2](16-implementation-plan.md)); bounded chunk pool for arenas ([02 §4.1](02-nir.md)); `bc` backend removed (D6); validation infrastructure of [12 §5](12-validation.md): loader/verifier fuzzer, reference machine, NebulaStream CI job against `nautilus-0.4` (D16) | Every opcode round-trips through builder, printer, parser, serializer and loader; golden images load or are rejected as specified; every in-tree intrinsic visible through the registry |
-| **M2 Frontend** | Flat trace with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; TPC-H re-run share ≤ 35% of tracing; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
+| **M2 Frontend** | The NIR tracer, a second `TracingInterface` implementation that writes the flat trace, with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; TPC-H re-run share ≤ 35% of tracing; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
 | **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
 | **M4 Backends** | `tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; **the cut-over:** the engine switches to the 0.4 pipeline and the 0.3 trace, `IRGraph`, passes and lowerings are deleted ([16 §2](16-implementation-plan.md)); modules and linking; the promotion service of [11](11-tiered-compilation.md); decision D3 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
 | **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold; every #527/#528 negative test ported and failing closed |
@@ -236,7 +238,9 @@ releases and no temporary formats.
 3. No execution-time regression per backend on `ExecutionBenchmark` and on
    TPC-H (nautilus-duck), `asmjit` included ([05 §4.3](05-backends.md)).
 4. Warm NebulaStream suite ≥ 60% faster than cold.
-5. Migration guide: plugin intrinsics → extensions, signless integers in
+5. `test/api-compat/` (0.3's user-API tests and examples, frozen at the
+   branch point) passes unchanged on every backend.
+6. Migration guide: plugin intrinsics → extensions, signless integers in
    plugins, renamed options.
 
 ### 6.1 Testing and validation
