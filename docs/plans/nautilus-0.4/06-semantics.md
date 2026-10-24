@@ -101,6 +101,9 @@ A call that may unwind needs two things today:
   | Division or remainder by zero; signed `MIN / -1`, `MIN % -1` | undefined: a hardware trap on native backends, never folded | **throws `nautilus::ArithmeticException`** through the normal exception path ([02 §3.4](02-nir.md)) |
   | Shift by ≥ the bit width, or by a negative amount | undefined | **the amount is masked** to the bit width (`amount & (width − 1)`) |
 
+  - **A checked division may throw,** so it carries an unwind entry like a
+    call ([13 §5.10](13-nir-spec.md)), and landing pads run destructors
+    as for any throwing call.
   - **Division checks cost a compare and a branch** per division whose
     divisor is not known to be non-zero (or not `-1` for signed `MIN`). The
     conversion drops the check when folding proves the divisor safe. The

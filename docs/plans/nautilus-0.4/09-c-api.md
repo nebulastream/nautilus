@@ -37,7 +37,8 @@ bound mechanically from other languages (Rust via bindgen, Python, Zig).
 
 - **Handles are `u32` ids into the flat sections:** functions, blocks and
   values. Builders append instructions; inspection reads records.
-- **Opcodes and record layouts are versioned NIR wire values.** The C enums
+- **Opcodes and record layouts are versioned NIR wire values,** as defined in
+  [13-nir-spec.md](13-nir-spec.md). The C enums
   map one-to-one, without #531's `switch` mapping layer between C and C++
   enums. Opcodes added later still surface as `NAUTILUS_IR_OP_UNKNOWN` to
   older bindings.

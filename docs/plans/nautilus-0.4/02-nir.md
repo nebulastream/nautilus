@@ -5,6 +5,9 @@ Part of the [Nautilus 0.4 design](README.md) · Milestone M1 · Builds on #532
 
 ## 1. Purpose
 
+[13-nir-spec.md](13-nir-spec.md) is the normative specification of the
+format; this document explains the design behind it.
+
 NIR is the one representation every 0.4 stage reads and writes:
 - the frontend (trace level);
 - the conversion, passes and backends (SSA level);
@@ -69,6 +72,9 @@ struct Inst {          // 16 B; a value's id is its index
   predecessor objects.
 
 ### 3.2 Sections
+
+The normative list of sections, with record layouts, is in
+[13-nir-spec.md §4](13-nir-spec.md); this table summarizes it.
 
 | Section | Content | Canonical? |
 |---|---|---|
