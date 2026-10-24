@@ -1,7 +1,8 @@
 # NIR Specification
 
 Part of the [Nautilus 0.4 design](README.md) · Format version **1.0** ·
-Status: **final**; normative from M1 on
+Status: **release candidate**; final at the M1 exit, once the verifier, the
+serializer and the round-trip tests implement it unchanged (§11)
 
 This document is the normative definition of NIR: its data model, types,
 binary encoding, operations and their semantics, the invariants of each
@@ -16,6 +17,10 @@ violates one is *invalid*, and the verifier rejects it. "Undefined" means
 the program's behavior is not constrained, as in C++. All integers in the
 binary encoding are little-endian. Sizes and offsets are in bytes unless
 stated otherwise. Ranges are written `[first, first + count)`.
+
+**Targets.** NIR 1.0 is defined for little-endian targets with 64-bit
+pointers (Linux x86-64 and AArch64, macOS AArch64 in 0.4). Other targets
+need a new major version or a conversion step.
 
 ## 1. Data model
 
@@ -153,13 +158,15 @@ of an image ([02 §3.6](02-nir.md)).
 | 12 | `names` | `{u32 offset, u32 length}` into `nameBytes`, 8 B | canonical |
 | 13 | `nameBytes` | UTF-8 bytes, not NUL-terminated | canonical |
 | 14 | `extensions` | `ExtensionRecord`, 8 B: extension operations, types and intrinsics (§8.4) | canonical |
-| 15 | `debugLocations` | `{u32 file (name id), u32 line, u32 column}`, 12 B | optional |
+| 15 | `debugLocations` | `{u32 file (index in debugNames), u32 line, u32 column}`, 12 B | optional |
 | 16 | `debugInstLocations` | `u32` per instruction, parallel to `insts`: index in `debugLocations`, or `0xFFFFFFFF` | optional |
 | 17 | `debugRegions` | `RegionRecord`, 16 B (§4.9) | optional |
 | 18 | `debugInstRegions` | `u32` per instruction, parallel to `insts`: index in `debugRegions`, or `0xFFFFFFFF` | optional |
 | 19 | `module` | `ModuleRecord`, 16 B, exactly one (§4.4) | canonical; the name is excluded from the structural hash (§7) |
 | 20 | `imports` | `ImportRecord`, 16 B (§4.4) | canonical in memory; always empty in a serialized image (§8.5) |
-| 21–1023 | — | reserved for later versions | — |
+| 21 | `debugNames` | `{u32 offset, u32 length}` into `debugNameBytes`, 8 B | optional |
+| 22 | `debugNameBytes` | UTF-8 bytes, not NUL-terminated | optional |
+| 23–1023 | — | reserved for later versions | — |
 | ≥ 1024 | — | vendor and experimental sections; ignored by readers that do not know them | optional |
 
 The instructions of one function are contiguous in `insts`; so are its
@@ -256,7 +263,7 @@ A module is in one of four states:
 | **built** | produced by the tracer, the C API or a deserializer; verified; not executable |
 | **linked** | every import is resolved against a loaded exporter (§4.4.2) |
 | **compiled** | an executable exists for at least one backend; may be promoted to another tier ([11](11-tiered-compilation.md)) |
-| **released** | no handle refers to it; its code is freed once no importer and no running call uses it |
+| **released** | no handle, importer or running call refers to it; its code and its `funcaddr` stubs are freed. Calling a stub of a released module is undefined |
 
 #### 4.4.2 Linking imports
 
@@ -267,11 +274,10 @@ Linking happens when a module is compiled or loaded, against the
    The exporter must be compiled and the function exported.
 2. **Check the signature.** The export's signature must equal the import's
    signature exactly (types, count, result).
-3. **Check the attributes.** The export's attributes must imply the ones
-   the importer assumed: its memory effect at most as strong (`pure` ⊂
-   `readonly` ⊂ `argmemonly` ⊂ `ModRef`), and `noUnwind` and `willReturn`
-   set wherever the import has them. An importer that assumes nothing uses
-   `ModRef` with no flags, which every export satisfies.
+3. **Check the attributes.** The export must guarantee everything the
+   importer assumed: `(import.attrs & ~export.attrs & GUARANTEE_MASK) == 0`
+   (§4.6.2). An importer that assumes nothing has no guarantee bits set,
+   which every export satisfies.
 4. **Bind.** The importer gets one **import slot** per import: a pointer to
    the exporter's current entry point. Calls go through the slot (§5.7).
 5. **Pin.** The importer holds a reference to the exporter, so an exporter
@@ -315,6 +321,10 @@ compiled module keeps its canonical NIR ([07 §2](07-serialization.md)):
   `imported`, whose body is taken from the exporter's SSA-level NIR. External
   callees are native code and cannot be inlined; intrinsics are lowered by
   backends, not inlined.
+- **Bindings stay with their module.** A function whose body, or whose
+  inlined callees, contain `bind.addr` is inlined only within its own
+  module. Across modules it is called, so its bindings resolve against its
+  own module.
 - **Semantics do not change.** An inlined call behaves exactly as the call.
   Since a registered name refers to one module (§4.4), an inlined export
   never goes stale while the importer is linked.
@@ -390,7 +400,9 @@ struct AllocaRecord {    // 8 bytes
   - An exported function's entry point uses the platform's C calling
     convention for its signature, with each NIR type passed as the
     corresponding C type (`i64` as `int64_t`, `ptr` as `void*`, `bool` as
-    `bool`, extension types by their `TypeInfo`). The host calls it through
+    `bool`). An extension type may appear in an exported signature only if
+    its `TypeInfo` defines a C ABI type for it (for example `__m256` for
+    `simd.vec<f32,8>`); the verifier rejects others. The host calls it through
     a plain function pointer (or the `Invocable` wrapper when the backend's
     exception mode needs one, as in 0.3).
   - Calls between internal functions may use any convention the backend
@@ -448,8 +460,9 @@ Rules:
   without a lowering calls the fallback.
 - **Identified by name, not address.** An image refers to an intrinsic
   through the `extensions` section, so it is portable; the loader resolves
-  it in the receiving process's registry. A missing intrinsic or an
-  incompatible version rejects the image (§8.4).
+  it in the receiving process's registry. A missing intrinsic, an
+  incompatible version, or a callee signature that differs from the
+  registered signature rejects the image (§8.4).
 - **Intrinsic or extension operation?** Both are plugin-defined. An
   intrinsic keeps call semantics: operands are a signature's arguments, it
   may throw (with an unwind entry) and its effects are call attributes. An
@@ -461,20 +474,42 @@ Rules:
 
 #### 4.6.2 Attribute bits
 
-Used by `FunctionRecord.attrs`, `CalleeRecord.attrs` and `ImportRecord.attrs`:
+Attributes are **guarantees**: each set bit promises something, and a clear
+bit promises nothing. Zero is therefore always the safe default, and one set
+of attributes implies another exactly when it has every guarantee bit the
+other has. Used by `FunctionRecord.attrs`, `CalleeRecord.attrs` and
+`ImportRecord.attrs`:
 
-| Bits | Meaning |
+| Bit | Name | Guarantee |
+|---|---|---|
+| 0 | `noArgRead` | never reads memory reachable through its pointer arguments |
+| 1 | `noArgWrite` | never writes memory reachable through its pointer arguments |
+| 2 | `noOtherRead` | never reads any other memory: globals, the heap through other pointers, runtime bindings |
+| 3 | `noOtherWrite` | never writes any other memory |
+| 4 | `noUnwind` | never throws (`noexcept`, a `nothrow` declaration, or inferred) |
+| 5 | `willReturn` | always returns or throws; never loops forever or exits the process |
+| 6 | `declared` | bits 0–5 come from a user declaration, not from inference; not a guarantee |
+| 7–31 | — | reserved, 0 |
+
+`GUARANTEE_MASK` is bits 0–5. The names users declare
+([06 §3.3](06-semantics.md)) map to bit sets:
+
+| Declaration | Bits |
 |---|---|
-| 0–1 | memory effects: 0 `ModRef`, 1 `argmemonly`, 2 `readonly`, 3 `pure` ([06 §3.3](06-semantics.md)) |
-| 2 | `noUnwind`: never throws (`noexcept`, a `nothrow` declaration, or inferred) |
-| 3 | `willReturn`: always returns or throws, never loops forever |
-| 4 | `declared`: bits 0–3 come from a user declaration, not from inference |
-| 5–31 | reserved, 0 |
+| `ModRef` (the default) | none |
+| `readonly` | `noArgWrite`, `noOtherWrite` |
+| `argmemonly` | `noOtherRead`, `noOtherWrite` |
+| `argmemonly readonly` | `noArgWrite`, `noOtherRead`, `noOtherWrite` |
+| `writeonly` | `noArgRead`, `noOtherRead` |
+| `pure` | bits 0–3 |
 
-`pure`: reads and writes no memory reachable by the caller. `readonly`:
-reads but does not write it. `argmemonly`: accesses only memory reachable
-through its pointer arguments. A wrong declaration is undefined
-([06 §7](06-semantics.md)).
+- **Implication** is a bitwise subset test, so every combination has a
+  defined order and there is no lattice to get wrong.
+- **Freedom to optimize.** A call with `noArgWrite`, `noOtherWrite`,
+  `noUnwind` and `willReturn` may be merged with an identical earlier call
+  when no write lies between them; with bits 0–5 all set it may also be
+  hoisted or removed if unused ([03](03-conversion-and-passes.md)).
+- A wrong guarantee is undefined ([06 §7](06-semantics.md)).
 
 ### 4.7 Pointers
 
@@ -516,17 +551,19 @@ identities.
 ```c
 struct RegionRecord {    // 16 bytes; one region() call site (docs/region.md)
 	uint32_t function;   // function index
-	uint32_t nameId;     // user-supplied region name, or 0xFFFFFFFF
+	uint32_t nameId;     // user-supplied region name (index in debugNames), or 0xFFFFFFFF
 	uint32_t location;   // index in debugLocations of the call site, or 0xFFFFFFFF
 	uint32_t parent;     // enclosing region index, or 0xFFFFFFFF
 };
 ```
 
-- The four debug sections (15–18) are present only when a debug or
+- The debug sections (15–18, 21, 22) are present only when a debug or
   profiling option was set ([05 §7](05-backends.md)), always together, and
   signalled by feature bit `DEBUG_V1`.
-- They do not change semantics. Consumers must work without them, and
-  canonicalization drops them before hashing.
+- Debug data has its own string table (`debugNames`), so it never adds to
+  the canonical `names` section.
+- Debug data does not change semantics. Consumers must work without it, and
+  the structural hash never covers it (§7).
 
 ## 5. Operations
 
@@ -535,12 +572,12 @@ struct RegionRecord {    // 16 bytes; one region() call site (docs/region.md)
 - A function executes from block 0. Within a block, instructions execute in
   order; a terminator transfers control.
 - **Observable behavior** is the sequence of memory writes and reads
-  through pointers, calls to external functions, thrown exceptions and the
+  through pointers, calls to external and imported functions and to
+  intrinsics (as far as their guarantees allow), thrown exceptions and the
   returned value. A transformation may reorder, merge or remove other
   instructions as long as observable behavior is preserved.
-- Instructions with effects (`load`, `store`, calls without `pure`, and
-  checked division) keep their relative order, except as their attributes
-  allow.
+- Instructions with effects (`load`, `store`, calls, checked division)
+  keep their relative order, except as their guarantees (§4.6.2) allow.
 - **Memory model:** plain loads and stores only. Concurrent accesses by
   several threads to the same location, at least one of them a write,
   without synchronization through external calls, are undefined (C++'s
@@ -607,8 +644,10 @@ in a later version and must be 0.
 - `fptosi`/`fptoui` **saturate**: NaN gives 0, and values outside the
   target range give its minimum or maximum (D11).
 - `fptrunc` rounds to nearest even; `fpext` is exact.
-- `bitcast` requires equal sizes and scalar types other than `bool`.
-  `ptrtoint` gives `i64`; `inttoptr` takes `i64`.
+- `bitcast` requires equal sizes and scalar types other than `bool` and
+  `ptr`. Conversions between `ptr` and integers use only `ptrtoint`
+  (giving `i64`) and `inttoptr` (taking `i64`), so pointer provenance stays
+  visible.
 
 ### 5.6 Memory
 
@@ -640,17 +679,28 @@ in a later version and must be 0.
   loads the import slot and calls the exporter's entry point (one indirect
   call); an intrinsic call is lowered inline by a backend that has a
   lowering, and otherwise calls the fallback.
-- `funcaddr` of an internal function yields its C-convention entry point;
-  of an imported function, the exporter's current entry point at the time
-  of the call. Intrinsics have no address.
+- **`funcaddr` yields a stable address.** For an internal function it is
+  the address of a forwarding stub with the function's C convention that
+  always reaches the module's current code; for an imported function, a
+  stub that calls through the import slot; for an external function, the
+  native address. A stub stays valid until the module that took the
+  address is released (§4.4.1), across every promotion. Code may store
+  the address and call it later. Intrinsics have no address.
 - `unwind` is an unwind entry (§3.4). It must be `NO_UNWIND` if the callee
   has `noUnwind`.
-- `thunk` is a `pointers` index of kind capture thunk, or `0xFFFFFFFF`.
-  Backends without unwind tables call the callee through its thunk when the
-  call may throw ([06 §3.2](06-semantics.md)).
-- A `pure` or `readonly` call with `NO_UNWIND` and `willReturn` has no
-  effect beyond its result and may be merged or hoisted
-  ([03](03-conversion-and-passes.md)).
+- `thunk` is a `pointers` index of kind capture thunk, or `0xFFFFFFFF`. It
+  is used only by external calls and by intrinsic calls that reach the
+  fallback; internal, imported and indirect calls set `0xFFFFFFFF`, because
+  the engine bridges exceptions between Nautilus frames itself. Backends
+  without unwind tables call through the thunk when the call may throw
+  ([06 §3.2](06-semantics.md)).
+- **Freedom to optimize** follows the callee's guarantee bits (§4.6.2).
+- **A call with `NO_UNWIND` that throws is undefined.** Debug builds detect
+  it with a terminate handler ([06 §3.3](06-semantics.md)).
+- **`call.indirect` has no callee record,** so it guarantees nothing: its
+  memory effects are unknown, and it may throw unless its unwind entry is
+  `NO_UNWIND`, which the producer may state only when it knows every
+  possible target cannot throw.
 - **Calls inside landing pads** must have `NO_UNWIND` or `NO_CLEANUP`. An
   exception that escapes a destructor while a landing pad runs terminates
   the process, as in C++.
@@ -711,8 +761,8 @@ in a later version and must be 0.
 
 ### 6.1 Both levels
 
-1. Every block ends in exactly one terminator; terminators appear nowhere
-   else. Every block has at least its terminator.
+1. Every function has at least one block. Every block ends in exactly one
+   terminator; terminators appear nowhere else.
 2. Every value reference points to an instruction with a non-`void` result
    in the same function, or to an existing constant.
 3. Operand and result types follow §2 and §5; reserved flag bits and unused
@@ -725,16 +775,21 @@ in a later version and must be 0.
 7. Calls match their signatures; a `noUnwind` callee has `NO_UNWIND`.
 8. Exactly one `module` record. Function names are unique; every exported
    function has a name. Callee and import signatures match §4.6; a callee's
-   attributes for an internal function equal the function's.
+   attributes for an internal function equal the function's. Reserved
+   attribute bits are 0. Exported signatures use only types with a C ABI
+   (§4.5).
 9. Imports are unique by `(module, function)` and never name the module
    itself. A deserialized image has no imports (§8.5).
 
 ### 6.2 Trace level
 
-- **Variables.** A value id may be redefined by `assign`. A use of a
-  variable sees the value of the most recent `assign` (or its defining
-  instruction) on the path executed so far. Every use must be reached by a
-  definition on every path.
+- **Variables.** A value id may be redefined by `assign`. Its operand `a`
+  must be the id of an earlier non-`void` instruction (the variable's
+  definition), and `b` must have the same type. A use of a variable sees the
+  value of the most recent `assign` (or the defining instruction) on the
+  path executed so far. Every use must be reached by a definition on every
+  path. `assign` cannot target a constant or a parameter's `blockarg`
+  differently from any other variable; parameters are ordinary variables.
 - **No block arguments** except the function parameters, and branch
   argument lists are empty. Merges are expressed through variables.
 - **No landing pads.** Instructions that may throw carry cleanup lists
@@ -771,10 +826,28 @@ debug builds after every producer. A module that fails verification is
 never passed to a backend. Each rule has a positive and a negative test
 ([12](12-validation.md)).
 
+### 6.5 Concurrency
+
+- A finished SSA-level module is **immutable**. Any number of threads may
+  read, compile, hash, serialize or inline from it concurrently.
+- Building and rewriting a module are single-threaded per module.
+- The module registry is thread-safe: registering, looking up, linking and
+  releasing modules may happen concurrently. Linking pins exporters under the
+  registry's lock (§4.4.2).
+- An import slot is written with a release store and read with an acquire
+  load (or a load the target orders equivalently).
+- The extension registry is frozen after the first compile
+  ([04 §3.7](04-extensions.md)).
+
 ## 7. Canonical form
 
 A canonical module is the form that is serialized and hashed
-([02 §3.6](02-nir.md), [08](08-caching.md)). Canonicalization:
+([02 §3.6](02-nir.md), [08](08-caching.md)). **Canonical form, hashing,
+caching and bundling (§8.5) apply to modules whose functions are all at the
+SSA level.** A module with trace-level functions is serialized as it is, for
+debugging and reproducers only; it is never hashed, cached or executed.
+
+Canonicalization:
 
 1. applies pending replacements and compacts each function, so ids are
    dense and, at the SSA level, in layout order;
@@ -782,22 +855,36 @@ A canonical module is the form that is serialized and hashed
    in order of first reference from the functions before them; orders
    imports by `(module name, function name)`;
 3. drops unused constants, names, signatures, callees, allocas, pointers and
-   bindings, and orders each table by first use, scanning functions and
-   their instructions in order;
+   bindings, and orders each table by **first use** in this scan order:
+   functions in canonical order; within a function, its signature, then its
+   instructions in order; within an instruction, the fields `a`, `b`, `c`,
+   then its `extra` list word by word; a referenced record (a callee, an
+   import, a signature) is scanned at its first reference, before
+   continuing;
 4. interns names, constants and signatures, so no table holds duplicates;
 5. numbers extension opcodes and types image-locally in first-use order
    (§8.4);
-6. writes `extra` lists in instruction order, without gaps;
+6. writes `extra` without gaps in this order: the parameter lists of the
+   signatures in signature order, then the lists of the instructions in
+   function and instruction order;
 7. zeroes all padding, unused fields and reserved bits, and drops the debug
    sections for hashing.
 
 Two structurally equal modules have byte-identical canonical images.
 
-**The structural hash** (the L2 key, [08](08-caching.md)) is XXH3-128 over
-the canonical sections of the canonical image, without the module name,
-followed by the effective compile options and the `name@version` of every
-extension in use. It is a cache key, not a security property; a hit is
-confirmed by comparing the images.
+**The structural hash** (the L2 key, [08](08-caching.md)) is XXH3-128 over:
+1. the canonical sections of the canonical image of the module **as if it
+   were anonymous**: the `module` record's `nameId` set to `0xFFFFFFFF` and
+   the name omitted from `names` unless something else uses it;
+2. the **effective compile options**: the options marked code-affecting in
+   the option registry, as a list sorted by key, each entry encoded as
+   `u32 keyLength, key bytes, u8 kind (0 bool, 1 i64, 2 f64, 3 string),
+   value` (bool: one byte; i64 and f64: eight bytes, f64 by bit pattern;
+   string: `u32 length` and bytes), preceded by the `u32` entry count;
+3. the `name@version` of every extension in use, in `extensions` order.
+
+It is a cache key, not a security property; a hit is confirmed by comparing
+the images.
 
 - **In memory** (the L0 cache), imports are hashed by name, signature and
   assumed attributes, so an importer's key does not change when the
@@ -841,11 +928,20 @@ struct SectionEntry {         // 24 bytes; sectionCount entries directly after t
   verifier. Any failure rejects the image; a malformed image must never
   cause undefined behavior.
 
+- **Limits.** Before allocating, the loader checks the image against
+  configurable limits (defaults in brackets): `totalSize` [1 GiB], functions
+  per module [2²⁰], instructions per function [2²⁸], blocks per function
+  [2²⁴], entries per table [2²⁸], `extra` words [2²⁸], extension entries
+  [2¹⁶]. An image above a limit is rejected before any section is
+  materialized.
+
 ### 8.2 Versioning
 
 | Change | Version |
 |---|---|
-| New core opcode, new optional section, new attribute or flag bit, wider stride with appended fields | minor. An old reader rejects an image that uses a new opcode and ignores the rest |
+| New core opcode, new attribute or flag bit | minor. An image that uses it is rejected by older readers (they see an unknown opcode or a non-zero reserved bit), which is safe; images that do not use it stay loadable |
+| New optional section | minor. Older readers ignore it |
+| Field appended to a record (wider `stride`) | minor, only if a zero value keeps the old meaning; older readers skip it. A field whose non-zero value older readers must not ignore also needs an `incompatFeatures` bit |
 | New canonical section a reader must understand | minor, plus an `incompatFeatures` bit |
 | Changed meaning or encoding of an existing field, opcode or rule | major |
 
@@ -860,7 +956,7 @@ struct SectionEntry {         // 24 bytes; sectionCount entries directly after t
 
 | Bit | Name | Class | Meaning |
 |---|---|---|---|
-| 0 | `DEBUG_V1` | compat | the debug sections 15–18 are present |
+| 0 | `DEBUG_V1` | compat | the debug sections 15–18, 21 and 22 are present |
 | 1 | `EXTENSIONS` | incompat | the module uses extension operations, types or intrinsics |
 | 2 | `PROCESS_LOCAL` | incompat | the module contains `ProcessLocal` pointers (mode 0) |
 
@@ -896,10 +992,12 @@ imports, so loading an image never needs another module.
    imported function, and everything it calls in its own module and through
    its own imports.
 2. **Copy** each collected function into the image as an `internal`
-   function named `<module>::<function>` (unique within the image), together
-   with the internal functions it calls.
+   function named `<module>::<function>`, with `#2`, `#3`, … appended if
+   that name is already taken, together with the internal functions it
+   calls.
 3. **Rewrite** every callee of kind `imported` into kind `internal`,
-   pointing at the copy, and leave the `imports` section empty.
+   pointing at the copy, with the copy's attributes (invariant 8 of §6.1),
+   and leave the `imports` section empty.
 4. **Merge the tables:** constants and signatures are interned; pointers
    are copied (a `ProcessLocal` pointer keeps the image process-local, as
    for any module); runtime bindings are merged by name, and two bindings
@@ -930,7 +1028,7 @@ func @divideFirst(%0: ptr, %1: i64) -> i64 {
   ret 0:i64
 ^b2(%3: i64):
   %4 = load.i64 %0
-  %5 = div.s.checked %4, %3 unwind(none)
+  %5 = div.s.checked %4, %3 unwind(caller)
   ret %5
 }
 ```
@@ -939,7 +1037,7 @@ func @divideFirst(%0: ptr, %1: i64) -> i64 {
 - Flags print as suffixes: `.s`/`.u` for signedness, the predicate for
   `cmp`, `.checked` for checked division, the kind for `cast`.
 - Extension operations print by name (`simd.add`).
-- Unwind entries print as `unwind(none)` for `NO_CLEANUP`, `unwind(^bN)`
+- Unwind entries print as `unwind(caller)` for `NO_CLEANUP`, `unwind(^bN)`
   for a landing pad, `cleanup(...)` for a trace-level cleanup list, and
   nothing for `NO_UNWIND`.
 - Trace-level functions print `assign %v, %w` and list blocks in recording
@@ -951,7 +1049,7 @@ These questions were open in the draft and are settled here:
 
 | Question | 1.0 |
 |---|---|
-| Encoding of debug data | optional sections 15–18 (§4.1, §4.9), feature bit `DEBUG_V1` |
+| Encoding of debug data | optional sections 15–18, 21, 22 with their own string table (§4.1, §4.9), feature bit `DEBUG_V1` |
 | `unreachable` terminator | not in 1.0; tracing ends every block with a real terminator (§5.9) |
 | Atomic operations | not in 1.0; data races are undefined (§5.0). Candidates for 1.1 if atomics through `invoke` show a measured cost |
 | Fast-math | not in 1.0; flag bits reserved (§5.1) |
@@ -962,4 +1060,28 @@ These questions were open in the draft and are settled here:
 | Structural hash | XXH3-128 over the canonical image plus options and extension versions (§7) |
 | Modules and imports | named modules with exports and imports; linking against the engine's module registry, by name and signature, acyclic; import slots updated on promotion (§4.4) |
 | Call targets | four callee kinds: internal, external, imported, intrinsic (§4.6) |
+| Memory effects | four independent guarantee bits (no reads/writes of argument memory and of other memory), zero = no guarantee, implication by bitwise subset (§4.6.2) |
+| `funcaddr` | stable forwarding stubs, valid until the module is released (§5.7) |
 | Interning imports | never at import or link time; inlining is a separate optional pass that works across modules (§4.4.3); exported images always bundle their imports and are self-contained (§8.5) |
+
+## 11. Conformance and change control
+
+- **Becoming final.** This specification is a release candidate. It becomes
+  final at the M1 exit, when the verifier, the serializer, the loader and
+  the round-trip tests implement it without changes to the text. Changes
+  found during M1 are made here first.
+- **Conformance material,** maintained with the specification:
+  - a hex dump of a small canonical image with every byte explained;
+  - a corpus of golden images (valid and invalid), each with the expected
+    verifier or loader result;
+  - a positive and a negative test per rule of §6 and per opcode of §5
+    ([12](12-validation.md)).
+- **Change control.** After 1.0 is final, every change to this document
+  states its version effect (§8.2), is recorded in a change log at the end
+  of this document, and needs review by a maintainer of the format.
+
+## Change log
+
+| Version | Change |
+|---|---|
+| 1.0 RC | Initial specification |

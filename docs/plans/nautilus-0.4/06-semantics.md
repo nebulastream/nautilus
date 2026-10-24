@@ -67,8 +67,10 @@ A call that may unwind needs two things today:
 
 ### 3.3 Declared effects
 
-- **A call declares its memory behavior:** `pure`, `readonly`, `argmemonly`
-  or `ModRef`. `ModRef` stays the default, so this is non-breaking.
+- **A call declares its memory behavior:** `pure`, `readonly`, `argmemonly`,
+  `argmemonly readonly`, `writeonly` or `ModRef`. `ModRef` stays the
+  default, so this is non-breaking. In NIR these are sets of independent
+  guarantee bits ([13 §4.6.2](13-nir-spec.md)).
 - **`pure` and `readonly` calls become values** the conversion can merge and
   hoist ([03](03-conversion-and-passes.md)). Every other call stays a barrier.
 - **Declarations and inference coexist.** The analyses of
