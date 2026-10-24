@@ -788,8 +788,8 @@ in a later version and must be 0.
   definition), and `b` must have the same type. A use of a variable sees the
   value of the most recent `assign` (or the defining instruction) on the
   path executed so far. Every use must be reached by a definition on every
-  path. `assign` cannot target a constant or a parameter's `blockarg`
-  differently from any other variable; parameters are ordinary variables.
+  path. `a` is never a constant. Parameters are variables like any other
+  and may be assigned.
 - **No block arguments** except the function parameters, and branch
   argument lists are empty. Merges are expressed through variables.
 - **No landing pads.** Instructions that may throw carry cleanup lists
