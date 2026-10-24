@@ -30,36 +30,38 @@ stay separate commits inside the PR (§2 rule 6). A PR may be opened as a
 draft early and kept up to date with `nautilus-0.4`, but it merges only
 when every WP in it meets its "done when".
 
-| PR | Capability | Work packages | Needs | Size |
+| PR | Capability | Work packages | Needs | Effort (eng-weeks) |
 |---|---|---|---|---|
-| 1 | NIR format: data structures, verifier, text form, canonical form and hash, binary image, loader fuzzer | M1.1–M1.6 | — | XL |
-| 2 | NIR from today's pipeline; one extension registry | M1.7, M1.8 | 1 | L |
-| 3 | Chunk pool; `bc` removed | M1.9, M1.10 | — | L |
-| 4 | Measurement and agent infrastructure: corpus, reference machine, NebulaStream job, doc check, skills | M1.11–M1.13 | 1 | L |
-| 5 | Flat trace (S1): statistics, flat records, trie, cleanup lists, source tags | M2.0–M2.2, M2.8, M2.9 | 1 | XL |
-| 6 | Cheaper re-runs and copies; tracing diagnostics; TPC-H job | M2.3–M2.5 | 5 | L |
-| 7 | Explicit control flow; constant data | M2.6, M2.7 | 5 | L |
-| 8 | Optimizing conversion | M3.1–M3.6, M3.10 | 5 | XL |
-| 9 | Legalization, optional passes, plugin pass hooks | M3.7–M3.9 | 2, 8 | L |
-| 10 | Backends on NIR, part 1 (S2): backend interface, `tbc`, `cpp`, runtime-state ops | M4.0, M4.1, M4.4, M4.6 | 2 | XL |
-| 11 | `asmjit` on NIR; debug info and profiling | M4.2, M4.9 | 10 | XL |
-| 12 | MLIR and GPU on NIR | M4.3, M4.5 | 9, 10 | XL |
-| 13 | Modules and linking; promotion service; `explain()` | M4.7, M4.8, M4.10 | 10, 12 | XL |
-| 14 | Switch-over S3: NIR pipeline by default, dumps regenerated, D3 | M4.11 | 8, 11, 12, 13 | M |
-| 15 | Portable reuse: pointers, bindings, provenance, self-contained images, save/load API, compatibility fixtures | M5.1–M5.4, M5.6, M5.9 | 1, 13 | XL |
-| 16 | Native payloads and caches L0/L1/L2 | M5.5, M5.7 | 12, 15 | XL |
-| 17 | External interfaces: C API, playground MCP server | M5.8, M5.10 | 13, 15 | L |
-| 18 | Semantics: D10/D11, declared effects, cheaper exceptions, signless plugin API | M6.1–M6.4 | 14 | L |
-| 19 | Extension types and plugin migration; diagnostics catalog and compiled docs | M6.5–M6.7 | 14 | XL |
-| 20 | Legacy pipeline and bridge deleted (S4) | M7.1 | 18, 19 | M |
-| 21 | Documentation, migration guide, release validation, merge and tag | M7.2–M7.4 | 20 | L |
+| 1 | NIR format: data structures, verifier, text form, canonical form and hash, binary image, loader fuzzer | M1.1–M1.6 | — | 10–22 |
+| 2 | NIR from today's pipeline; one extension registry | M1.7, M1.8 | 1 | 2–6 |
+| 3 | Chunk pool; `bc` removed | M1.9, M1.10 | — | 1.5–4 |
+| 4 | Measurement and agent infrastructure: corpus, reference machine, NebulaStream job, doc check, skills | M1.11–M1.13 | 1 | 2.5–7 |
+| 5 | Flat trace (S1): statistics, flat records, trie, cleanup lists, source tags | M2.0–M2.2, M2.8, M2.9 | 1 | 8–14 |
+| 6 | Cheaper re-runs and copies; tracing diagnostics; TPC-H job | M2.3–M2.5 | 5 | 3–9 |
+| 7 | Explicit control flow; constant data | M2.6, M2.7 | 5 | 3.5–7 |
+| 8 | Optimizing conversion; NIR pipeline end to end (S2) | M3.1–M3.6, M3.10 | 5, 10 | 8–20 |
+| 9 | Legalization, optional passes, plugin pass hooks | M3.7–M3.9 | 2, 8 | 4.5–10 |
+| 10 | Backends on NIR, part 1: backend interface, `tbc`, `cpp`, data and function addresses; 0.3 lowerings of `tbc` and `cpp` deleted | M4.0, M4.1, M4.4, M4.6 | 2 | 5–11 |
+| 11 | `asmjit` on NIR; debug info and profiling; its 0.3 lowering deleted | M4.2, M4.9 | 10 | 7–13 |
+| 12 | MLIR and GPU on NIR; their 0.3 lowerings deleted | M4.3, M4.5 | 9, 10 | 4–9 |
+| 13 | Modules and linking; promotion service; `explain()` | M4.7, M4.8, M4.10 | 10, 12 | 5–12 |
+| 14 | Switch-over S3: NIR pipeline by default, dumps regenerated, D3 | M4.11 | 8, 11, 12, 13 | 1–3 |
+| 15 | Portable reuse: pointers, bindings, provenance, self-contained images, save/load API, compatibility fixtures | M5.1–M5.4, M5.6, M5.9 | 10, 13 | 4.5–12 |
+| 16 | Native payloads and caches L0/L1/L2 | M5.5, M5.7 | 12, 15 | 6–12 |
+| 17 | External interfaces: C API, playground MCP server | M5.8, M5.10 | 13, 15 | 4–9 |
+| 18 | Semantics: D10/D11, declared effects, cheaper exceptions, signless plugin API | M6.1–M6.4 | 14 | 3.5–10 |
+| 19 | Extension types and plugin migration; `extension-plugin` skill; diagnostics catalog and compiled docs | M6.5–M6.7 | 14 | 7–15 |
+| 20 | Legacy pipeline and bridge deleted (S4) | M7.1 | 18, 19 | 1–3 |
+| 21 | Documentation, migration guide, release validation, merge and tag | M7.2–M7.4 | 20 | 2.5–7 |
 
 M2.10 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 6.
 
 The PRs follow the tracks of §4: PRs 1, 15 (format); 5–7 (frontend); 8, 9
 (conversion); 2, 10–12 (backends); 3, 13, 16 (runtime); 4, 17 (infra and
-agents). Right after PR 1, PRs 2–5 can be worked on at the same time.
+agents). Right after PR 1, PRs 2–5 can be worked on at the same time. PR 10
+comes before PR 8 on purpose: the conversion is validated by running its
+output on `tbc`.
 
 ## 2. Ground rules
 
@@ -67,19 +69,33 @@ agents). Right after PR 1, PRs 2–5 can be worked on at the same time.
    merge into `nautilus-0.4` builds and passes every test on the CI matrix.
    New code lands next to old code and takes over at a switch-over point
    (§4). Nothing is half-replaced.
-2. **Two pipelines until M4 ends.** An internal option
-   `engine.pipeline=legacy|nir` selects the 0.3 pipeline (tracing →
-   `IRGraph` → passes → backends) or the 0.4 pipeline (flat trace →
-   conversion → legalization → NIR backends). `legacy` is the default until
-   switch-over S3; `legacy` is deleted in M7. CI runs both from
-   switch-over S2 on (rule 7).
+2. **Two pipelines until M4 ends, one lowering per backend.** An internal
+   option `engine.pipeline=legacy|nir` selects:
+   - `legacy`: the 0.3 frontend and passes (`IRGraph`), then the backend.
+     A backend that is already ported to NIR is reached through bridge B
+     (rule 3); one that is not yet ported keeps its 0.3 lowering;
+   - `nir`: flat trace → conversion → legalization → NIR backends.
+
+   **Each backend's porting PR deletes its 0.3 lowering** and moves its
+   legacy tests onto bridge B, so no backend ever has two lowerings to
+   maintain. `legacy` is the default until switch-over S3 and is deleted in
+   M7. CI runs both pipelines from switch-over S2 on (rule 7).
 3. **Two bridges, both temporary.**
    - **Bridge B** (M1.7): `IRGraph` after the 0.3 passes → SSA-level NIR. It
-     lets the serializer, backends and caches start before the new
-     conversion exists, and is the comparison baseline for the conversion.
+     feeds ported backends in the `legacy` pipeline, lets the serializer,
+     backends and caches be built and tested before the new conversion
+     exists, and is the comparison baseline for the conversion.
    - **The legacy conversion reads the flat trace** after M2.1, so the
-     tracer is changed once and both pipelines share it.
-   - Bridge B and the legacy pipeline are deleted together in M7.
+     tracer is changed once and both pipelines share it. The flat trace is
+     signless (13 §2) while 0.3's IR needs signed types, so until S4 the
+     trace also records a **derived side table of 0.3 types per op id**
+     (`legacyType[]`), read only by the legacy conversion, never serialized,
+     and deleted with it.
+   - **Every change to the flat trace ships its legacy adapter** in the same
+     PR: the legacy conversion must turn it back into 0.3 IR (M2.1 lists the
+     adapters).
+   - Bridge B, `legacyType[]` and the legacy pipeline are deleted together
+     in M7.
 4. **The spec comes first.** A WP that finds a gap or error in
    [13-nir-spec.md](13-nir-spec.md) changes the spec in the same PR, before
    the code. After the M1 exit (spec final), every change follows §11 of the
@@ -99,7 +115,7 @@ agents). Right after PR 1, PRs 2–5 can be worked on at the same time.
    | `nir-roundtrip` | M1.7 | every execution test with `NAUTILUS_NIR_ROUNDTRIP=1`: bridge → print → parse → serialize → load, byte-identical |
    | `latency-corpus` | M1.11 | corpus under callgrind (gated) and wall clock (reported) |
    | `nebulastream-0.4` | M1.12 | NebulaStream against `nautilus-0.4` (D16) |
-   | `nir-pipeline` | M4.1 (S2) | every execution test with `engine.pipeline=nir` on the NIR backends ported so far |
+   | `nir-pipeline` | M3.1 (S2) | every execution test with `engine.pipeline=nir` on the NIR backends ported so far |
    | `tpch-duck` | M2.4 | nautilus-duck TPC-H tracing and execution |
    | `asm-diff` | M4.2 | `asmjit` assembly of the corpus against the recorded 0.3 baseline |
    | `doc-check` | M1.13 | paths, targets, options and skills named in `AGENTS.md` and skills exist |
@@ -109,6 +125,12 @@ agents). Right after PR 1, PRs 2–5 can be worked on at the same time.
    skills ([15 §3.1](15-agent-experience.md)).
 9. **Measure before and after.** Every WP with a performance claim records
    the corpus numbers before and after in its PR description.
+10. **A PR that breaks NebulaStream fixes it.** When the `nebulastream-0.4`
+    job turns red because of an API or behavior change (D16), the PR ships
+    the NebulaStream patch (a branch of NebulaStream referenced from the PR)
+    and is merged only with the job green. Expected cases: `bc` removal,
+    `Module` and promotion APIs, the signless plugin API, `nothrow`
+    annotations.
 
 ## 3. Source layout at the end of 0.4
 
@@ -129,8 +151,9 @@ agents). Right after PR 1, PRs 2–5 can be worked on at the same time.
 | `nautilus/include/nautilus/control_flow.hpp`, `data.hpp` | explicit control flow; `constData` | M2 |
 | `third_party/xxhash/` | XXH3-128 for the structural hash (BSD-2) | M1 |
 
-**Deleted in 0.4:** `compiler/backends/bc/` (M1.10);
-`compiler/ir/` including `IRGraph`, 40 operation classes, `passes/`,
+**Deleted in 0.4:** `compiler/backends/bc/` (M1.10); the 0.3 lowering of
+each backend, in that backend's porting PR (M4.1–M4.5);
+`compiler/ir/` including `IRGraph`, the operation classes, `passes/`,
 `FunctionRewriter` and `IntrinsicRegistry` (M7, except the shim);
 `tracing/TraceOperation.*`, `tracing/Block.*` and the old
 `ExecutionTrace` records (M2.1); the bridge (M7).
@@ -145,7 +168,7 @@ M1.1 NIR core ──┬─► M1.2 verifier ─► M1.3 printer/parser ─► M1
                                    └─► M3.1 conversion skeleton ◄───────┤ (compare)
 M1.9 chunk pool, M1.10 drop bc, M1.11 corpus, M1.12 NebulaStream (independent)
                                                                         ▼
-                         M4.0 backend interface ─► M4.1 tbc ─► (S2: nir pipeline runs on tbc)
+                         M4.0 backend interface ─► M4.1 tbc (legacy via bridge B) ─► + M3.1 = S2
                                                      ├─► M4.2 asmjit ─┐
 M3.2…M3.10 conversion, legalization, passes ─────────┤   M4.3 MLIR ───┤
                                                      │   M4.4 cpp, M4.5 GPU, M4.6–M4.10
@@ -158,19 +181,20 @@ M3.2…M3.10 conversion, legalization, passes ─────────┤   M
 ```
 
 **Critical path:** two chains of similar length meet at M4.11:
-- frontend and conversion: M1.1 → M2.1 → M3.1 → M3.2–M3.5;
+- frontend and conversion: M1.1 → M2.1 → M3.1 (needs M4.1) → M3.2–M3.5;
 - backends: M1.1 → M1.7 → M4.0 → M4.1 → M4.2 (and M4.3 → M4.8).
 
 After M4.11 it continues M5.5 → M5.7 → M6.5 → M6.6 → M7. The `tbc` port
-(M4.1) is deliberately early: once it runs NIR, the conversion's output can
-be executed and fuzzed before the other backends are ported.
+(M4.1) is deliberately early: it runs NIR from bridge B first, so when the
+conversion lands, its output can be executed and fuzzed right away, before
+the other backends are ported.
 
 **Switch-overs:**
 
 | Id | When | What changes for users of `nautilus-0.4` |
 |---|---|---|
 | S1 | end of M2.1 | the tracer records the flat trace; both pipelines read it |
-| S2 | end of M4.1 | `engine.pipeline=nir` works end to end on `tbc`; the `nir-pipeline` CI leg starts |
+| S2 | M3.1, which needs M4.1 | `engine.pipeline=nir` works end to end on `tbc`; the `nir-pipeline` CI leg starts |
 | S3 | end of M4 (M4.11) | `nir` becomes the default with every backend; `test/data` regenerated in NIR format; `legacy` kept only as a fallback |
 | S4 | M7.1 | `legacy`, bridge B and the 0.3 IR are deleted |
 
@@ -179,11 +203,11 @@ be executed and fuzzed before the other backends are ported.
 | Track | Work packages |
 |---|---|
 | A: format | M1.2–M1.6, then M5.1–M5.6 |
-| B: frontend | M2.1–M2.11 |
+| B: frontend | M2.0–M2.10 |
 | C: conversion | M3.1–M3.10 |
-| D: backends | M1.7, M4.0–M4.5, M4.10 |
+| D: backends | M1.7, M4.0–M4.5 |
 | E: runtime | M1.9, M1.10, M4.6–M4.9, M5.7 |
-| F: infra and agents | M1.11–M1.13, CI legs, agent items per milestone |
+| F: infra and agents | M1.11–M1.13, M4.10, M6.7, CI legs, agent items per milestone |
 
 ## 5. M1 Foundations
 
@@ -314,7 +338,8 @@ criteria: README §6 and [02 §8](02-nir.md).
 - **Builds:** the corpus driver from the design study (closed #562) as
   `tools/latency-corpus/` (target `nautilus-latency-corpus`) with JSON
   output; callgrind gates in CI; the dedicated reference machine set up and
-  recorded ([10 §2](10-observability.md)).
+  recorded ([10 §2](10-observability.md)). The machine has to be procured
+  and needs an owner (§13).
 - **Done when:** the P0 numbers are reproduced and stored as the baseline;
   the `latency-corpus` leg runs.
 
@@ -329,7 +354,7 @@ criteria: README §6 and [02 §8](02-nir.md).
   `steward` skill (PR conventions for this branch); `fuzz-triage` (M1.6).
 - **Done when:** `doc-check` passes and fails on a planted stale path.
 
-**M1 exit:** the spec is marked final ([13 §11](13-nir-spec.md)); M1.1–M1.12
+**M1 exit:** the spec is marked final ([13 §11](13-nir-spec.md)); M1.1–M1.13
 done; README §6 M1 criterion met.
 
 ## 6. M2 Frontend
@@ -352,7 +377,14 @@ can be mixed with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
   op id (merge splits move one list tail, no map rewrites); the index-based
   replay cursor; the value-ref free list (R2). The legacy
   `TraceToIRConversionPhase` is adapted to read the flat trace (switch-over
-  S1).
+  S1), with these adapters (§2 rule 3):
+  - signless types and op flags → 0.3 types, from `legacyType[]`;
+  - `traceExtOp` records → 0.3 intrinsic calls (until M6 every plugin op is
+    still an intrinsic, so this is a 1:1 mapping);
+  - cleanup lists (M2.8) → 0.3 exception regions;
+  - explicit control flow (M2.6) → ordinary trace blocks, which 0.3's
+    conversion already handles;
+  - `data.addr` (M2.7) → a constant pointer into module-owned memory.
 - **Files:** `tracing/TraceContext.*`, `tracing/ExecutionTrace.*` (rewritten
   on NIR), `tracing/Snapshot.*`; delete `tracing/TraceOperation.*` and
   `tracing/Block.*`; `tracing/phases/TraceToIRConversionPhase.cpp`
@@ -378,7 +410,8 @@ can be mixed with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
   is decided from fuzzer, NebulaStream and TPC-H data and recorded.
 
 #### M2.4 TPC-H tracing job and copy reduction (C2) · M · deps: M2.0
-- **Builds:** the `tpch-duck` CI leg; `const val<T>&` parameters in the
+- **Builds:** the `tpch-duck` CI leg (it builds the external nautilus-duck
+  repository and needs an owner, §13); `const val<T>&` parameters in the
   `std` plugin and hot helpers; `nautilus-review` flags by-value `val`
   parameters.
 - **Done when:** recorded copies on TPC-H fall by at least a quarter (with
@@ -398,7 +431,8 @@ can be mixed with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
 - **Files:** `include/nautilus/control_flow.hpp`; `tracing/` region support;
   `test/execution-tests/ExplicitControlFlowTest.cpp` from #300, with its
   mixing guard turned into mixing tests; fuzzer generator for explicit
-  constructs and a mode that forces restarts.
+  constructs and a mode that forces restarts. The tests run on both
+  pipelines.
 - **Done when:** explicit `chainedIf` traces in one pass with zero replayed
   ops at every corpus size; mixed functions clean under the fuzzer.
 
@@ -409,12 +443,14 @@ can be mixed with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
   memory until S3.
 - **Files:** `include/nautilus/data.hpp`.
 - **Done when:** a lookup table traced with `constData` produces a
-  persistable module and loads from it fold (after M3.2).
+  persistable module and loads from it fold (after M3.2); the legacy
+  pipeline runs it through its adapter.
 
 #### M2.8 Cleanup lists in the trace · S · deps: M2.1
 - **Builds:** destructor cleanup lists in unwind entries at the pre-SSA
   level ([13 §3.4](13-nir-spec.md)) instead of 0.3's exception-region
-  bookkeeping on the trace.
+  bookkeeping on the trace, plus the legacy adapter that turns them back
+  into exception regions.
 - **Done when:** exception tests green on both pipelines.
 
 #### M2.9 Source tags on request · S · deps: M2.1
@@ -434,23 +470,25 @@ can be mixed with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
 Goal: one optimizing conversion replaces the fixed-point pipeline on the
 critical path. Exit criteria: [03 §6](03-conversion-and-passes.md).
 
-#### M3.1 Conversion skeleton · L · deps: M2.1, M1.2
+#### M3.1 Conversion skeleton · L · deps: M2.1, M1.2, M4.1
 - **Builds:** pre-SSA → SSA in RPO with Braun-style SSA construction,
   live-edge tracking, layout order (RPO, loops contiguous), `BlockInfo`
   loop depth and end, `useCount` while emitting. No folding yet.
-  `engine.pipeline=nir` wired up to it; until `tbc` runs NIR (S2), its
-  output is verified and compared against bridge B.
+  `engine.pipeline=nir` wired up end to end: conversion, a pass-through
+  legalization (filled in by M3.7), and `tbc` (switch-over S2).
 - **Files:** `conversion/Conversion.{hpp,cpp}`, `conversion/SSABuilder.*`,
   `conversion/Layout.*`.
 - **Tests:** verifier on every converted function; op counts compared with
-  bridge B output (report).
-- **Done when:** every execution test converts and verifies.
+  bridge B output (report); the `nir-pipeline` CI leg on `tbc`.
+- **Done when:** every execution test passes with `engine.pipeline=nir
+  engine.backend=tbc`.
 
 #### M3.2 Folding and simplification rules · M · deps: M3.1
 - **Builds:** the rules of `ConstantFoldingAndCopyPropagationPass` and
   `AlgebraicSimplificationPass` as builder rules, following IEEE (D11: no
   `x + 0.0 → x`) and wrapping arithmetic; extension `fold`/`simplify` hooks;
-  loads from data objects fold.
+  loads from data objects fold. Until checked division exists (M6.1), a
+  division or remainder by zero and `MIN / -1` are never folded, as in 0.3.
 - **Files:** `conversion/FoldRules.*`, `conversion/SimplifyRules.*`.
 - **Tests:** a `.nir` test per rule (M1.3); fuzzer.
 
@@ -496,8 +534,9 @@ critical path. Exit criteria: [03 §6](03-conversion-and-passes.md).
 
 #### M3.10 Op-count report and M3 gate · S · deps: M3.2–M3.5
 - **Builds:** the bridge-vs-conversion op-count report in the corpus output;
-  compile-fail suite for the public headers and the `extension-plugin` skill
-  (agent items for M3, [15 §5](15-agent-experience.md)).
+  the compile-fail suite for the public headers (agent item for M3,
+  [15 §5](15-agent-experience.md); the `extension-plugin` skill waits for
+  the final extension API, M6.7).
 - **Done when:** [03 §6](03-conversion-and-passes.md) holds on the corpus
   and TPC-H kernels.
 
@@ -511,22 +550,27 @@ promotion service replaces thread-per-module. Exit criteria:
 - **Builds:** `CompilationBackend` takes a legalized `nir::Module`; array
   side tables helpers (value → slot, block → label); per-backend extension
   lowering tables (`extLowering`, `extTypes`) and their registration API,
-  replacing `MLIRIntrinsicPlugin` and `AsmJitBackendIntrinsic` (shims kept).
+  replacing `MLIRIntrinsicPlugin` and `AsmJitBackendIntrinsic` (shims kept);
+  the `legacy` pipeline's hand-off to bridge B for ported backends (§2
+  rule 2).
 - **Files:** `compiler/backends/CompilationBackend.*`, `compiler/Frame.hpp`
   (removed in favor of arrays).
 
 #### M4.1 `tbc` on NIR · L · deps: M4.0
 - **Builds:** near 1:1 lowering; register allocation on value ids; handler
-  table indexed by extension opcode; copy-and-patch mode kept.
-- **Done when:** switch-over S2: every execution test passes with
-  `engine.pipeline=nir engine.backend=tbc`; the `nir-pipeline` leg runs.
+  table indexed by extension opcode; copy-and-patch mode kept. The 0.3
+  `TBCLoweringProvider` path is deleted; `legacy` reaches `tbc` through
+  bridge B.
+- **Done when:** every execution test passes on `tbc` through `legacy` and
+  bridge B, with no execution-time regression on `ExecutionBenchmark`.
 
 #### M4.2 `asmjit` on NIR · XL · deps: M4.1
 - **Builds:** the steps of [05 §4.4](05-backends.md): providers on NIR with
   array side tables and `ConstPool` immediates; virtual registers created on
   first use and reused after last use; #565's call-heavy fix confirmed on
   NIR on x86-64 and AArch64. AsmJit's `Compiler`, RA and post-RA peepholes
-  unchanged.
+  unchanged. The 0.3 lowering is deleted; `legacy` reaches `asmjit` through
+  bridge B.
 - **Files:** `compiler/backends/asmjit/*LoweringProvider.*`,
   `AsmJitCompilationBackend.*`; `asm-diff` CI leg and skill.
 - **Done when:** [05 §4.3](05-backends.md): assembly diff shows no
@@ -537,24 +581,26 @@ promotion service replaces thread-per-module. Exit criteria:
 - **Builds:** NIR blocks and terminators → `cf`, arithmetic → `arith`,
   extension types through the plugin type mapping; #561's per-thread
   `TargetMachine` and `MLIRContext` reuse, single verification, data layout
-  for `LLJIT`; DWARF from the debug sections.
+  for `LLJIT`; DWARF from the debug sections. The 0.3 lowering is deleted;
+  `legacy` reaches MLIR through bridge B.
 - **Files:** `compiler/backends/mlir/MLIRLoweringProvider.*`,
   `MLIRCompilationBackend.*`, `JITCompiler.*`; `test/llvm-ir-test/` reference
   IR regenerated in an isolated commit.
 
 #### M4.4 `cpp` on NIR · S · deps: M4.0
 - **Builds:** printing from NIR; extension ops as expression templates or
-  calls.
+  calls; the 0.3 lowering deleted.
 
 #### M4.5 GPU backends on NIR · M · deps: M4.0, M3.7
 - **Builds:** CUDA and Metal plugin backends read NIR; thread ids and
   barriers as target-restricted extension ops; address spaces as extension
   types (D15: CUDA compile-only in CI, Metal where the runner exposes a
-  device).
+  device); the 0.3 lowerings deleted.
 
-#### M4.6 Runtime-state ops in every backend · S · deps: M4.1–M4.4
-- **Builds:** `bind.addr` (addresses supplied by the module until M5.2),
-  `data.addr`, `funcaddr` with stable forwarding stubs.
+#### M4.6 Data and function addresses in every backend · S · deps: M4.1–M4.4
+- **Builds:** `data.addr` and `funcaddr` with stable forwarding stubs.
+  `bind.addr` waits for M5.2, which brings the first producer of runtime
+  bindings (#529).
 
 #### M4.7 Module registry and linking · M · deps: M4.6
 - **Builds:** [13 §4.4](13-nir-spec.md): named modules, exports, import
@@ -601,17 +647,20 @@ promotion service replaces thread-per-module. Exit criteria:
 
 Goal: modules can be saved, loaded and cached; the C API is available.
 Exit criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
-[09 §4](09-c-api.md). M5.1–M5.4 can start after M1.5 on bridge output.
+[09 §4](09-c-api.md). M5.1 and M5.3 can start right after M1.5, on bridge
+B output; M5.2 needs the NIR backends (M4.1–M4.4) and M5.4 needs linking
+(M4.7).
 
 #### M5.1 Pointers: process-local and portable · M · deps: M1.5
 - **Builds:** pointer kinds; `ProcessLocal` with a per-process token;
   `Portable` through `SymbolNamer`/`SymbolResolver` (`SymbolTable`,
   `dladdr`/`dlsym`) and ELF build ID plus offset ([07 §3](07-serialization.md)).
 
-#### M5.2 Runtime bindings · M · deps: M5.1, M4.6
-- **Builds:** port of #529 onto `bind.addr` and the `bindings` section:
-  `RuntimeBinding<T>`, address-free schema, fresh resolution per load,
-  identities never merged by aliasing (no `bc` path).
+#### M5.2 Runtime bindings · M · deps: M5.1, M4.1–M4.4
+- **Builds:** port of #529 onto the `bindings` section: `RuntimeBinding<T>`,
+  address-free schema, fresh resolution per load, identities never merged by
+  aliasing; `bind.addr` in the tracer, the conversion and every backend (no
+  `bc` path).
 
 #### M5.3 Provenance and eligibility · M · deps: M5.1
 - **Builds:** provenance classes on constants, allocation evidence, pointer
@@ -705,9 +754,10 @@ the old signed `Type` enum from the plugin-facing API.
 - **Tests:** every plugin suite on every backend; fuzzer with handlers on
   and off; debug mode that ignores traits.
 
-#### M6.7 Agent items for M6 · M · deps: M2.5
+#### M6.7 Agent items for M6 · M · deps: M2.5, M6.5
 - **Builds:** `docs/diagnostics.md` complete; `docs/` code examples
-  extracted and compiled in CI.
+  extracted and compiled in CI; the `extension-plugin` skill on the final
+  extension API.
 
 ## 11. M7 Release
 
@@ -738,14 +788,17 @@ the old signed `Type` enum from the plugin-facing API.
 
 | Milestone | WPs | Rough effort |
 |---|---|---|
-| M1 | 13 | 20–35 engineer-weeks |
-| M2 | 11 | 18–32 |
-| M3 | 10 | 15–28 |
-| M4 | 12 | 25–45 |
-| M5 | 10 | 15–33 |
-| M6 | 7 | 11–25 |
-| M7 | 4 | 4–10 |
-| **Total** | **67** | **≈ 110–210 engineer-weeks** |
+| M1 | 13 | 16–39 engineer-weeks |
+| M2 | 11 | 16–33 (including the optional M2.10) |
+| M3 | 10 | 12–30 |
+| M4 | 12 | 22–48 |
+| M5 | 10 | 14–33 |
+| M6 | 7 | 10–25 |
+| M7 | 4 | 3.5–10 |
+| **Total** | **67** | **≈ 95–220 engineer-weeks** |
+
+The per-PR numbers in §1.1 add up to these totals; both are sums of the WP
+sizes (S 0.5–1, M 1–3, L 3–6, XL 6–10 weeks).
 
 With tracks A–F of §4 running in parallel, the critical path (§4) is about
 40–60 weeks of elapsed time; it is dominated by M2.1, M3.1, M4.1–M4.3,
@@ -759,8 +812,10 @@ each milestone exit.
 | Large PRs are hard to review and drift from the branch | one commit (or a few) per WP, reviewable in order; drafts opened early and merged with `nautilus-0.4` weekly; the "done when" of each WP is a checklist in the PR description |
 | Two pipelines double the test load | the `nir-pipeline` leg runs only the backends ported so far; legacy is deleted in M7 |
 | Bridge B hides conversion bugs (it starts from optimized IR) | the conversion is compared on results and op counts, not on IR equality; the fuzzer runs on the NIR pipeline from S2 |
-| The legacy conversion adapted to the flat trace (M2.1) breaks 0.3 behavior | it is covered by every execution and tracing test before S1 lands |
+| The legacy conversion adapted to the flat trace (M2.1) breaks 0.3 behavior | it is covered by every execution and tracing test before S1 lands; `legacyType[]` carries 0.3's signed types, so no signedness is reconstructed |
+| A backend port regresses the `legacy` pipeline | after the port, `legacy` reaches the backend through bridge B, whose round trip is checked by the `nir-roundtrip` leg since M1.7 |
 | M2.1 is large and blocks M3.1 | M3.2–M3.9 develop rule and pass code against bridge B and `.nir` tests while M2.1 is in progress |
 | Spec changes after M1 ripple through the code | spec-first rule (§2 rule 4); `Opcodes.def` generates the dependent tables |
 | `asmjit` port regresses code quality | the `asm-diff` leg against the 0.3 baseline from the first M4.2 PR |
 | `main` diverges | weekly merges of `main` into `nautilus-0.4` (README §6) |
+| External prerequisites without an owner | the dedicated reference machine (M1.11) and the `tpch-duck` job on the external nautilus-duck repository (M2.4) each get a named owner before M1 starts; until then gates use callgrind counts only |
