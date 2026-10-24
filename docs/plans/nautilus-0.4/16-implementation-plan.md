@@ -158,7 +158,7 @@ opened as drafts early and kept up to date with the branch.
 | 15 | Semantics: D10/D11, declared effects, cheaper exceptions, plugin API on widths | M6.1–M6.4 | 11 | 3.5–10 |
 | 16 | Extension types and plugin migration; diagnostics catalog and compiled docs | M6.5–M6.7 | 11 | 7–15 |
 | 17 | GPU core ([17](17-gpu.md)): device ops, launch, partition, runtime, memory, errors, grid emulator, CUDA and Metal device compilers | M7.1–M7.4 | 10, 11, 15 | 13–25 |
-| 18 | GPU production features and validation: shared memory, atomics, warp ops, math; caching and artifacts; manual hardware validation tooling, benchmarks, `docs/gpu.md` | M7.5–M7.7 | 13, 17 | 5–12 |
+| 18 | GPU production features and validation: shared memory, atomics, warp ops, math; caching and artifacts; Metal benchmarks and validation tooling, `docs/gpu.md` | M7.5–M7.7 | 13, 17 | 5–12 |
 | 19 | Documentation, migration guide, release validation, merge and tag | M8.1–M8.3 | 13–18 | 2.5–7 |
 
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
@@ -833,8 +833,9 @@ validation (PR 18).
   `lowerToCUDA` on NIR (device code only); CUDA references of
   `GPUCodegenTest` regenerated in their own commit; the `cuda-compile` leg.
 - **Done when:** every test kernel compiles through NVRTC and `ptxas` in CI;
-  the Linux GPU legs are restored; the 0.3 GPU tests pass on CUDA hardware in
-  a recorded manual run ([17 §5](17-gpu.md)).
+  the 0.3 GPU tests pass on the emulator with CUDA-style code; the Linux GPU
+  legs are restored. CUDA is experimental: there is no NVIDIA hardware to
+  execute it on ([17 §1, §5](17-gpu.md)).
 
 #### M7.4 Metal device compiler · M · deps: M7.3
 - **Builds:** MSL from the shared emitter, compiled with
@@ -851,7 +852,7 @@ validation (PR 18).
   math intrinsics ([17 §4.2](17-gpu.md)).
 - **Done when:** every op gives the same results on Metal, on the emulator
   and through its fallback, and compiles for CUDA; a shared-memory reduction
-  kernel passes; the CUDA results are confirmed in the next manual run.
+  kernel passes.
 
 #### M7.6 Caching, artifacts and observability · M · deps: M7.4, M5.7
 - **Builds:** L0 cache of loaded kernels and pipeline states; PTX and Metal
@@ -862,9 +863,9 @@ validation (PR 18).
   toolkit mismatch recompiles from the NIR image.
 
 #### M7.7 GPU validation and documentation · M · deps: M7.5, M7.6
-- **Builds:** `tools/gpu-validate/` for the recorded manual runs (suite,
-  `compute-sanitizer`, fuzzer, benchmarks, report with GPU, driver and
-  toolkit versions) and `plugins/gpu/validation/` for the reports; the GPU
+- **Builds:** `tools/gpu-validate/` (Metal benchmarks on an Apple-silicon
+  Mac now; the CUDA run of [17 §5.3](17-gpu.md) whenever NVIDIA hardware is
+  available) and `plugins/gpu/validation/` for the reports; the GPU
   fuzzer mode on the emulator and Metal in CI; the §4.8 benchmarks against
   hand-written kernels; the 0.3 GPU tests and `DemoGPU.cpp` in
   `test/api-compat/`; `docs/gpu.md` ([17 §5](17-gpu.md)).
@@ -881,7 +882,7 @@ validation (PR 18).
 
 #### M8.2 Release validation · M · deps: M6, M7
 - **Builds:** the release criteria of README §6 on x86-64 and AArch64 with
-  ASan/UBSan and TSan; `test/api-compat/` on every backend; the GPU manual
+  ASan/UBSan and TSan; `test/api-compat/` on every backend; the manual Metal
   run (D15); reference-machine numbers in the release notes; NebulaStream
   and nautilus-duck on the release candidate.
 - **Done when:** every release criterion is met and recorded.
@@ -923,5 +924,5 @@ numbers are for order and staffing and are revised at each milestone exit.
 | Spec changes after M1 ripple through the code | spec-first rule; `Opcodes.def` generates the dependent tables |
 | `asmjit` port regresses code quality | the `asm-diff` leg against the recorded 0.3 assembly |
 | GPU support is off from the cut-over to M7 | declared in [17](17-gpu.md); the user API headers stay in the tree; the 0.3 GPU tests and reference sources are ported, not rewritten |
-| No GPU runner | D21: Metal on the hosted macOS runner, the grid emulator and the CUDA compile leg on every PR; CUDA execution, sanitizers and performance in recorded manual runs before PR 17, PR 18 and the release; without NVIDIA hardware, CUDA ships as experimental ([17 §5](17-gpu.md)) |
+| No GPU runner and no NVIDIA hardware | D21: Metal on the hosted macOS runner (production ready); the grid emulator and the CUDA compile leg on every PR; CUDA ships as experimental ([17 §1, §5](17-gpu.md)) |
 | External prerequisites without an owner | the reference machine (M1.10) and the `tpch-duck` job (M2.3) each get a named owner before M1 starts; until then gates use callgrind counts only |

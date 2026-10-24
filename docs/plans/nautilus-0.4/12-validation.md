@@ -65,9 +65,8 @@ criteria in each component document refer to these tests.
 - **GPU (D15, D21):** there is no GPU runner. Metal kernels execute on the
   hosted macOS runner (Apple silicon), with Metal API and shader validation
   from M7 on. CUDA is checked in CI by the CPU grid emulator and by compiling
-  every kernel with NVRTC and `ptxas`; CUDA execution, `compute-sanitizer`
-  and the GPU benchmarks run in recorded manual runs on an NVIDIA machine
-  ([17 §5](17-gpu.md)). A manual run on GPU hardware stays on the M8 release
+  every kernel with NVRTC and `ptxas`; with no NVIDIA hardware, CUDA ships as
+  experimental ([17 §5](17-gpu.md)). A manual Metal run on an Apple-silicon Mac stays on the M8 release
   checklist. From the cut-over until M7 the GPU plugin is off and the GPU
   legs build without it ([17 §3](17-gpu.md)).
 - **AArch64:** the ARM runner covers `asmjit`, `tbc` and MLIR.
@@ -84,5 +83,5 @@ criteria in each component document refer to these tests.
   passes on `tbc` after it.
 - **Each later milestone:** the rows of §3 for its components are green.
 - **M7:** [17 §6](17-gpu.md).
-- **M8:** every row is green on x86-64 and AArch64, and the GPU manual run
+- **M8:** every row is green on x86-64 and AArch64, and the manual Metal run
   is recorded.
