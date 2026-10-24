@@ -1061,8 +1061,12 @@ imports, so loading an image never needs another module.
 
 ## 9. Text form
 
-The printer writes a text form for dumps, tests and bug reports. It is
-informative and not parsed in 0.4.
+The printer writes a text form for dumps, tests and bug reports, and 0.4
+also **parses** it, so tests can be written as `.nir` text
+([15 §3.3](15-agent-experience.md)). Printing, parsing and printing again
+gives identical text. The text form is a view of the binary format, not a
+second format: every construct prints, and parsing produces the same module
+as the binary image of that text.
 
 ```
 nir 1.0
@@ -1134,3 +1138,4 @@ These questions were open in the draft and are settled here:
 |---|---|
 | 1.0 RC | Initial specification, including read-only data objects (§4.10) |
 | 1.0 RC | The level formerly called `Trace` is named `PreSSA` (value 0, unchanged) |
+| 1.0 RC | The text form is parsed as well as printed (§9) |
