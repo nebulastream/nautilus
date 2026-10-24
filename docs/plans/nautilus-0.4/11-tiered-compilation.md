@@ -219,7 +219,7 @@ and the tier-0 executable is then discarded unused.
 | A small pool delays tier 1 under load | `promotion.queueMs` makes it visible; `engine.tiered.promotionThreads` tunes it |
 | Cancellation points inside MLIR/LLVM are coarse | Stage boundaries are enough: a running job costs at most one compile per worker |
 | Early start (§4.5) runs tier 0 and tier 1 at once | Workers run at lower OS priority (§4.1), so the caller's tier 0 keeps its core |
-| Callers relying on `waitForPendingPromotions()` | Kept as a deprecated alias of `NautilusEngine::waitForPromotions()` through 0.4.x |
+| Callers relying on `waitForPendingPromotions()` | It is internal (`TieredJITCompiler`); `NautilusEngine::waitForPromotions()` replaces it without an alias (D17) |
 
 ## 9. Not in 0.4
 

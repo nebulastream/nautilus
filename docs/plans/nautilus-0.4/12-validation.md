@@ -32,20 +32,25 @@ criteria in each component document refer to these tests.
   bytes and queue lengths are exact; RSS on shared runners is not.
 - **Every new option, API or format gets a negative test:** an invalid
   value is rejected with a clear error.
-- **Deprecated surfaces keep a test** (D17): each shim (old intrinsic API,
-  renamed options, `waitForPendingPromotions`) is exercised by a test that
-  checks it still works and warns once.
+- **Deprecated surfaces keep a test** (D17): each deprecated alias of the
+  user-facing API (renamed options) is exercised by a test that checks it
+  still works and warns once.
+- **The user-facing API is checked by `test/api-compat/`,** 0.3's user-API
+  tests and examples frozen at the branch point, from the cut-over on
+  ([16 §2](16-implementation-plan.md)).
 - **The whole matrix runs on `nautilus-0.4`:** GCC 14, Clang 19/21, macOS,
   ARM, ASan/UBSan, TSan, `ENABLE_COMPILER=OFF`, plus NebulaStream from M1
-  on (D16).
+  on, gating from the M4 exit (D16).
+- **Comparisons with 0.3 use recorded baselines,** refreshed from `main`
+  ([16 §2](16-implementation-plan.md)).
 
 ## 3. Tests per component
 
 | Component | Correctness | Performance and resources | New infrastructure |
 |---|---|---|---|
 | **01 Tracing** | `tracing/` reference dumps (regenerated once); fuzzer with mixed implicit and explicit control flow; #300's tests, with its mixing guard turned into mixing tests; a fuzzer mode that forces optimistic arms to restart | R1/C1 counters on the corpus and TPC-H; explicit `chainedIf`: one pass and zero replayed ops, checked exactly; no `malloc` per recorded op (corpus allocation counter) | TPC-H tracing (nautilus-duck) as a CI job; fuzzer generator for explicit constructs |
-| **02 NIR, 13 spec** | Verifier unit tests for both levels, one positive and one negative test per rule of [13 §6](13-nir-spec.md) and per opcode of §5; round trip bridge → printer → serializer → loader, byte-identical, on every execution test; arena chunk-pool unit tests (budget, decay, `trimMemory`, page release) | Pool counters after a large compile return to the budget; the long-running engine test (40,000 modules) on counters | **A loader and verifier fuzzer** on malformed images: no crash, no undefined behavior, a clean rejection |
-| **03 Conversion** | Fuzzer on every backend; the bridge comparison (0.3 pipeline vs. conversion on the same trace: same results, op counts no higher); merge-heavy corpora (regions, nested loops, `break`) | `irPasses.totalMs` ≈ 0; conversion instruction count per op; op counts ≤ 0.3 on the corpus and TPC-H kernels | An op-count comparison report (bridge vs. conversion) |
+| **02 NIR, 13 spec** | Verifier unit tests for both levels, one positive and one negative test per rule of [13 §6](13-nir-spec.md) and per opcode of §5; round trip builder → printer → parser → serializer → loader, byte-identical, on every opcode and golden image; arena chunk-pool unit tests (budget, decay, `trimMemory`, page release) | Pool counters after a large compile return to the budget; the long-running engine test (40,000 modules) on counters | **A loader and verifier fuzzer** on malformed images: no crash, no undefined behavior, a clean rejection |
+| **03 Conversion** | Fuzzer on every backend; every execution-test function through new tracer → conversion → `tbc` before the cut-over (`NirChain`); merge-heavy corpora (regions, nested loops, `break`) | `irPasses.totalMs` ≈ 0; conversion instruction count per op; op counts ≤ the recorded 0.3 baseline on the corpus and TPC-H kernels | An op-count report against the recorded baseline |
 | **04 Extensions** | Every plugin suite on every backend; fuzzer with each handler on and off; a debug mode that ignores traits (A/B); late registration rejected with an error (D13) | No lock on the lookup path (TSan plus a lock-count check) | Fuzzer generation of extension ops (`simd.vec`, `builtin.i128`) |
 | **05 Backends** | Execution tests and fuzzer per backend; for `asmjit`, an assembly diff against 0.3 on the corpus (code quality by construction); exception tests per backend; debug info and profiling tests (D14) | Backend instruction count per op; `calls` linear in N; `ExecutionBenchmark` and TPC-H run time per backend on the reference machine | A CI job that diffs `asmjit` assembly dumps against a recorded baseline |
 | **06 Semantics** | Exception tests plus MLIR calls without cleanup; fuzzer across all widths and signedness; division by zero, `MIN / -1` and oversized shifts generated on purpose and checked against the defined semantics (D10); float edge cases: NaN, signed zero, infinities (D11) | Share of call sites with exception handling, from the statistics; cost of division checks and shift masks on `ExecutionBenchmark` | Tests with a wrongly declared `nothrow`/`pure` callee, which the debug-mode checks must catch |

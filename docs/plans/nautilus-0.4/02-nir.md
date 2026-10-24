@@ -309,14 +309,16 @@ IR operation.
     extension versions.
   - **The pull toward a "god IR":** core opcodes stay near today's ~30
     kinds, and everything else is an extension.
-  - **A migration that touches everything:** the bridge (§7) and
-    backend-by-backend porting.
+  - **A migration that touches everything:** the new pipeline is built
+    next to the old one and replaces it in one cut-over (§7).
 
 ## 7. Migration
 
-- **M1 adds an internal bridge `IRGraph` → NIR,** run after today's passes.
-  Backend work (M4) and the serializer (M5) can start before the new
-  conversion (M3) exists. The bridge is removed before release.
+- **No bridge.** The new tracer, the conversion and the NIR backends are
+  built next to the 0.3 pipeline and tested on their own (`.nir` text tests,
+  `nautilus-nir-run`, golden pre-SSA dumps). The engine switches to them in
+  one cut-over, which deletes `IRGraph` and the 0.3 trace
+  ([16 §2](16-implementation-plan.md)).
 - **Consumers:**
   - `tbc` becomes a near 1:1 translation (`bc` is removed in M1);
   - `asmjit` iterates `insts` with `BlockInfo` in one pass;
@@ -328,8 +330,9 @@ IR operation.
 
 - NIR format, verifier (both levels), printer and serializer merged with
   unit tests.
-- Every execution test's IR round-trips through bridge → printer →
-  serializer → loader with byte-identical re-serialization.
+- Every opcode round-trips through builder → printer → parser →
+  serializer → loader with byte-identical re-serialization; the golden
+  images load or are rejected as specified.
 - No hash map on any NIR per-operand path.
 - The chunk pool of §4.1 in place: after a large compile, held memory and
   RSS return to the budget; no compile-latency regression on the corpus.

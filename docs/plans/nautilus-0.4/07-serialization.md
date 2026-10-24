@@ -132,8 +132,12 @@ pass**:
   unresolvable pointer or a non-portable extension payload. `ProcessLocal`
   images (the L0 cache) need no eligibility check: they are only valid in
   the process that produced them.
-  The check runs **before optimization**, so folding cannot hide a raw
-  value, and replay disagreement never upgrades evidence (#527).
+  The check runs **on the pre-SSA level, before the conversion folds
+  anything** ([03](03-conversion-and-passes.md) folds while it emits), and
+  folding gives every folded constant the strongest provenance of its
+  inputs, so folding cannot hide a raw value. Modules built through the C
+  API have no pre-SSA level and are checked at the SSA level. Replay
+  disagreement never upgrades evidence (#527).
 - **Failure:** fail closed. The module still compiles normally; the
   statistics record why it was not persistable.
 - **Trust:** artifacts and cache directories are trusted executable input.

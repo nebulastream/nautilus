@@ -145,10 +145,11 @@ registration API per backend.
 - **One `ExtensionRegistry`** holds types, ops, intrinsics and passes, and
   absorbs `IntrinsicRegistry`. 0.3's intrinsics become **intrinsics** in the
   sense of [13 §4.6.1](13-nir-spec.md): call targets known by name, with a
-  native fallback and optional per-backend lowerings. Existing plugins keep
-  working unchanged through a compatibility shim in 0.4.x. Plugins move an
-  intrinsic to an extension operation (§3.3) where folding, CSE or extension
-  types pay off.
+  native fallback and optional per-backend lowerings. The plugin API is not
+  part of 0.4's compatibility promise (README §5), so there is no shim: the
+  in-tree plugins are migrated, and the migration guide covers external
+  ones. Plugins move an intrinsic to an extension operation (§3.3) where
+  folding, CSE or extension types pay off.
 - **Verification:** `IRVerifier` checks every extension instruction against
   its `Signature` and `verify` hook in debug builds, naming the plugin on a
   mismatch.
@@ -169,8 +170,9 @@ registration API per backend.
 
 ## 5. Exit criteria
 
-- **M1:** all in-tree intrinsics registered through `ExtensionRegistry`
-  with no behavior change; no mutex on the lookup path.
+- **M1:** every in-tree intrinsic visible through `ExtensionRegistry`; no
+  mutex on the lookup path. The plugins register with it directly from the
+  cut-over on ([16 §2](16-implementation-plan.md)).
 - **M6:**
   - every plugin suite green on every backend;
   - SIMD tests pass without the 32-value lifetime rule;

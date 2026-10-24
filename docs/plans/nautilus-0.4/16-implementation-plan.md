@@ -1,821 +1,842 @@
 # Implementation Plan
 
 Part of the [Nautilus 0.4 design](README.md) · All milestones · Turns the
-component documents (01–15) into ordered work packages
+component documents (01–15) into ordered work packages and pull requests
 
 ## 1. Purpose and how to use it
 
 The component documents say *what* 0.4 builds and why. This document says
-*in which order*, *in which files*, *behind which switches*, and *how each
-step is proven done*. Every work package (WP) has:
+*in which order*, *in which files*, *how it is tested*, and *how each step
+is proven done*. Every work package (WP) has:
 
 - an id (`M2.4`), a size and its dependencies;
 - what it builds, and which files it creates, changes or deletes;
 - its tests;
 - a "done when" check that a reviewer can verify.
 
-Work packages are units of planning and review, not of merging: they are
-grouped into **21 larger PRs** (§1.1), each of which lands one coherent
-capability. Inside a PR, each WP is one or a few commits, so the PR can be
-reviewed commit by commit.
+Work packages are units of planning and review. They are grouped into **17
+larger PRs** (§4), each landing one coherent capability. Inside a PR, each
+WP is one or a few commits, so the PR can be reviewed commit by commit.
 
 **Sizes** are rough engineering effort for sequencing, not commitments:
-**S** ≤ 1 week, **M** 1–3 weeks, **L** 3–6 weeks, **XL** 6–10 weeks.
+**S** 0.5–1 week, **M** 1–3 weeks, **L** 3–6 weeks, **XL** 6–10 weeks.
 
-### 1.1 Pull requests
+## 2. Strategy: build alongside, cut over once
 
-Every PR targets `nautilus-0.4`, is titled `[PR n] <capability>`, and is
-merged only with the full CI matrix green. Reference-dump regenerations
-stay separate commits inside the PR (§2 rule 6). A PR may be opened as a
-draft early and kept up to date with `nautilus-0.4`, but it merges only
-when every WP in it meets its "done when".
+**The only compatibility requirement** is the user-facing C++ API of
+README §5: `val<T>`, `static_val`, `region()`, `nautilus::function`,
+`invoke`, the engine, modules and options (renamed options keep deprecated
+aliases). Everything internal may change, including the plugin API, the
+dump formats and the on-disk formats. Not every PR has to work end to end.
+
+That allows a simple strategy with **no bridge between the 0.3 IR and NIR,
+and no second pipeline in the engine**:
+
+1. **Phase A, before the cut-over.** The new pipeline is built next to the
+   old one, in new libraries that the engine does not call yet:
+   - NIR, its verifier, printer, parser and image (PR 1);
+   - a new tracer that writes pre-SSA NIR. `val<T>` reaches the tracer
+     only through the abstract `tracing::TracingInterface`, set per trace,
+     so the new tracer is a second implementation of that interface; it
+     maps today's `Type`/`Op` to widths and flags at that boundary (PR 3);
+   - the conversion (PR 4) and the NIR backends (PRs 5, 7, 8).
+
+   Each is tested on its own (§3 rule 6). A test-only fixture, `NirChain`,
+   runs the existing execution-test functions through new tracer →
+   conversion → `tbc`, so the chain is exercised on real programs before
+   the engine uses it. The old pipeline stays untouched and keeps running
+   every existing test.
+2. **The cut-over (PR 6),** as soon as the chain new tracer → conversion →
+   legalization → `tbc` passes every execution test in `NirChain`:
+   - the engine switches to the new pipeline;
+   - the old tracer implementation, `ExecutionTrace`, the trace-to-IR
+     conversion, `compiler/ir/` (`IRGraph`, operations, passes,
+     `IntrinsicRegistry`) and every backend's 0.3 lowering are deleted;
+   - backends whose NIR port has not landed yet are switched off in CMake
+     with a message, until their port PR;
+   - `test/data` is regenerated in NIR format, in its own commit;
+   - `NirChain` is deleted; the engine is the chain.
+3. **Phase B, after the cut-over.** The remaining backends, frontend
+   features, modules and tiering, reuse, semantics and extensions, each
+   built once, on NIR only.
+
+**What replaces side-by-side comparison with 0.3:** recorded baselines
+(M1.10). A job records 0.3's numbers once at the branch point and refreshes
+them from `main`: corpus instruction counts and stage timings, IR op counts
+after 0.3's passes, `asmjit` assembly of the corpus, `ExecutionBenchmark`
+and TPC-H times. "No slower than 0.3", "op counts ≤ 0.3" and "no
+code-quality regression" are checked against them. Correctness needs no 0.3
+at all: the differential fuzzer has its own C++ oracle.
+
+**What proves API compatibility:** `test/api-compat/`, a copy of 0.3's
+user-API tests and the `example/` programs taken at the branch point and
+never edited (M1.10). It must compile and pass unchanged from the cut-over
+on, on every enabled backend.
+
+## 3. Ground rules
+
+1. **The branch always builds**, and its component tests pass. Before the
+   cut-over, every existing test also passes (the old pipeline is
+   untouched). From the cut-over on, every test passes on every enabled
+   backend, and `test/api-compat/` passes.
+2. **The spec comes first.** A WP that finds a gap or error in
+   [13-nir-spec.md](13-nir-spec.md) changes the spec in the same PR, before
+   the code. After the M1 exit (spec final), every change follows §11 of the
+   spec.
+3. **One opcode table.** Opcodes, their operand shapes, flags, verifier
+   rules and text names are defined once in `nir/Opcodes.def` (an X-macro
+   table). The verifier, printer, parser, C API enum and backend dispatch
+   tables are generated from it. This shrinks the `ir-change` checklist and
+   keeps the C enum in step with the wire values ([09 §3](09-c-api.md)).
+4. **Reference dumps change only in isolated commits,** never together with
+   a behavior change (`regenerate-dumps` skill).
+5. **CI legs added by this plan:**
+
+   | Leg | From | What it runs | Gates |
+   |---|---|---|---|
+   | `nir-components` | PR 1 | `nautilus-nir-tests`: unit tests, `.nir` text tests, golden images | always |
+   | `nir-chain` | PR 4 | execution-test functions through `NirChain` | until the cut-over, then replaced by the normal matrix |
+   | `api-compat` | PR 6 | `test/api-compat/` on every enabled backend | from the cut-over |
+   | `latency-corpus` | PR 2 | corpus under callgrind against the recorded baselines (gated), wall clock (reported) | from the cut-over (before: reports the 0.3 pipeline) |
+   | `baselines-0.3` | PR 2 | on `main`: refreshes the recorded 0.3 baselines | — |
+   | `nebulastream-0.4` | PR 2 | NebulaStream against `nautilus-0.4` (D16) | from the M4 exit (before: reports) |
+   | `tpch-duck` | PR 9 | nautilus-duck TPC-H tracing and execution | from the M4 exit (before: reports) |
+   | `asm-diff` | PR 7 | `asmjit` assembly of the corpus against the 0.3 baseline | from PR 7 |
+   | `doc-check` | PR 2 | paths, targets, options and skills named in `AGENTS.md` and skills exist | always |
+
+6. **How components are tested before they are wired together:**
+   - NIR and passes: `.nir` text tests run through `nautilus-nir-opt`
+     (parse → pass → print, compared with expected text);
+   - backends: `nautilus-nir-run` executes a `.nir` file on one backend with
+     given arguments and compares the result;
+   - the tracer: every execution-test function traced with the new tracer;
+     pre-SSA output verified and compared with golden pre-SSA dumps;
+   - the chain: `NirChain` (rule 5).
+7. **Agent docs are part of the change.** A WP that adds, moves or renames a
+   component updates the `AGENTS.md` that describes it and the affected
+   skills ([15 §3.1](15-agent-experience.md)).
+8. **Measure against the baselines.** Every WP with a performance claim
+   records the corpus numbers against the recorded 0.3 baselines in its PR
+   description.
+9. **NebulaStream.** From the M4 exit on, a PR that turns the
+   `nebulastream-0.4` job red ships the NebulaStream patch (a NebulaStream
+   branch referenced from the PR) and merges only with the job green.
+   Because the user-facing API does not change, this is expected only for
+   behavior changes and for NebulaStream's own plugins.
+10. **Merges from `main`.** Weekly, as in README §6. After the cut-over, a
+    fix on `main` to code that no longer exists is re-implemented on NIR or
+    recorded as obsolete; every fix on `main` brings a regression test,
+    which carries over unchanged.
+
+## 4. Pull requests
+
+Every PR targets `nautilus-0.4`, is titled `[PR n] <capability>`, and merges
+only when rule 1 holds and every WP in it meets its "done when". PRs may be
+opened as drafts early and kept up to date with the branch.
 
 | PR | Capability | Work packages | Needs | Effort (eng-weeks) |
 |---|---|---|---|---|
 | 1 | NIR format: data structures, verifier, text form, canonical form and hash, binary image, loader fuzzer | M1.1–M1.6 | — | 10–22 |
-| 2 | NIR from today's pipeline; one extension registry | M1.7, M1.8 | 1 | 2–6 |
-| 3 | Chunk pool; `bc` removed | M1.9, M1.10 | — | 1.5–4 |
-| 4 | Measurement and agent infrastructure: corpus, reference machine, NebulaStream job, doc check, skills | M1.11–M1.13 | 1 | 2.5–7 |
-| 5 | Flat trace (S1): statistics, flat records, trie, cleanup lists, source tags | M2.0–M2.2, M2.8, M2.9 | 1 | 8–14 |
-| 6 | Cheaper re-runs and copies; tracing diagnostics; TPC-H job | M2.3–M2.5 | 5 | 3–9 |
-| 7 | Explicit control flow; constant data | M2.6, M2.7 | 5 | 3.5–7 |
-| 8 | Optimizing conversion; NIR pipeline end to end (S2) | M3.1–M3.6, M3.10 | 5, 10 | 8–20 |
-| 9 | Legalization, optional passes, plugin pass hooks | M3.7–M3.9 | 2, 8 | 4.5–10 |
-| 10 | Backends on NIR, part 1: backend interface, `tbc`, `cpp`, data and function addresses; 0.3 lowerings of `tbc` and `cpp` deleted | M4.0, M4.1, M4.4, M4.6 | 2 | 5–11 |
-| 11 | `asmjit` on NIR; debug info and profiling; its 0.3 lowering deleted | M4.2, M4.9 | 10 | 7–13 |
-| 12 | MLIR and GPU on NIR; their 0.3 lowerings deleted | M4.3, M4.5 | 9, 10 | 4–9 |
-| 13 | Modules and linking; promotion service; `explain()` | M4.7, M4.8, M4.10 | 10, 12 | 5–12 |
-| 14 | Switch-over S3: NIR pipeline by default, dumps regenerated, D3 | M4.11 | 8, 11, 12, 13 | 1–3 |
-| 15 | Portable reuse: pointers, bindings, provenance, self-contained images, save/load API, compatibility fixtures | M5.1–M5.4, M5.6, M5.9 | 10, 13 | 4.5–12 |
-| 16 | Native payloads and caches L0/L1/L2 | M5.5, M5.7 | 12, 15 | 6–12 |
-| 17 | External interfaces: C API, playground MCP server | M5.8, M5.10 | 13, 15 | 4–9 |
-| 18 | Semantics: D10/D11, declared effects, cheaper exceptions, signless plugin API | M6.1–M6.4 | 14 | 3.5–10 |
-| 19 | Extension types and plugin migration; `extension-plugin` skill; diagnostics catalog and compiled docs | M6.5–M6.7 | 14 | 7–15 |
-| 20 | Legacy pipeline and bridge deleted (S4) | M7.1 | 18, 19 | 1–3 |
-| 21 | Documentation, migration guide, release validation, merge and tag | M7.2–M7.4 | 20 | 2.5–7 |
+| 2 | Foundations and infrastructure: extension registry, chunk pool, `bc` removed, corpus and 0.3 baselines, API-compat suite, NebulaStream job, agent items | M1.7–M1.12 | 1 | 5–14 |
+| 3 | The NIR tracer | M2.0, M2.1 | 2 | 6.5–11 |
+| 4 | Optimizing conversion; `NirChain` | M3.1–M3.6 | 3, 5 | 7.5–19 |
+| 5 | Backend interface, `nautilus-nir-run`, `tbc` on NIR | M4.0, M4.1 | 2 | 4–9 |
+| 6 | **Cut-over:** legalization; the engine on the new pipeline; the 0.3 pipeline deleted | M3.7, M4.2 | 4, 5 | 2–6 |
+| 7 | `cpp` and `asmjit` on NIR | M4.3, M4.4 | 5 | 6.5–11 |
+| 8 | MLIR and GPU on NIR | M4.5, M4.6 | 6 | 4–9 |
+| 9 | Frontend features: cheaper re-runs, TPC-H job and fewer copies, tracing diagnostics, explicit control flow, constant data | M2.2–M2.6 | 6 | 6.5–16 |
+| 10 | Optional passes, plugin pass hooks, M3 gate | M3.8–M3.10 | 6 | 4–8 |
+| 11 | Modules and linking, promotion service, debug info and profiling, `explain()`; M4 exit | M4.7–M4.11 | 7, 8, 9 | 6.5–16 |
+| 12 | Portable reuse: pointers, bindings, provenance, self-contained images, save/load, compatibility fixtures | M5.1–M5.5, M5.9 | 11 | 4.5–12 |
+| 13 | Native payloads and caches L0/L1/L2 | M5.6, M5.7 | 12 | 6–12 |
+| 14 | External interfaces: C API, playground MCP server | M5.8, M5.10 | 12 | 4–9 |
+| 15 | Semantics: D10/D11, declared effects, cheaper exceptions, plugin API on widths | M6.1–M6.4 | 11 | 3.5–10 |
+| 16 | Extension types and plugin migration; diagnostics catalog and compiled docs | M6.5–M6.7 | 11 | 7–15 |
+| 17 | Documentation, migration guide, release validation, merge and tag | M7.1–M7.3 | 13–16 | 2.5–7 |
 
-M2.10 (lazy copies) is an investigation; if it is adopted, it lands as its
-own PR after PR 6.
+M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
+own PR after PR 9.
 
-The PRs follow the tracks of §4: PRs 1, 15 (format); 5–7 (frontend); 8, 9
-(conversion); 2, 10–12 (backends); 3, 13, 16 (runtime); 4, 17 (infra and
-agents). Right after PR 1, PRs 2–5 can be worked on at the same time. PR 10
-comes before PR 8 on purpose: the conversion is validated by running its
-output on `tbc`.
+**Before the cut-over,** PRs 1–5 and 7 can land: they add code the engine
+does not call yet (PR 7's backends are switched on by PR 6). After PR 1,
+PRs 2 and 5 can be worked on in parallel with PR 3, and PR 7 with PR 4.
 
-## 2. Ground rules
+## 5. Source layout at the end of 0.4
 
-1. **The tree always works.** From the first PR to the release, every
-   merge into `nautilus-0.4` builds and passes every test on the CI matrix.
-   New code lands next to old code and takes over at a switch-over point
-   (§4). Nothing is half-replaced.
-2. **Two pipelines until M4 ends, one lowering per backend.** An internal
-   option `engine.pipeline=legacy|nir` selects:
-   - `legacy`: the 0.3 frontend and passes (`IRGraph`), then the backend.
-     A backend that is already ported to NIR is reached through bridge B
-     (rule 3); one that is not yet ported keeps its 0.3 lowering;
-   - `nir`: flat trace → conversion → legalization → NIR backends.
-
-   **Each backend's porting PR deletes its 0.3 lowering** and moves its
-   legacy tests onto bridge B, so no backend ever has two lowerings to
-   maintain. `legacy` is the default until switch-over S3 and is deleted in
-   M7. CI runs both pipelines from switch-over S2 on (rule 7).
-3. **Two bridges, both temporary.**
-   - **Bridge B** (M1.7): `IRGraph` after the 0.3 passes → SSA-level NIR. It
-     feeds ported backends in the `legacy` pipeline, lets the serializer,
-     backends and caches be built and tested before the new conversion
-     exists, and is the comparison baseline for the conversion.
-   - **The legacy conversion reads the flat trace** after M2.1, so the
-     tracer is changed once and both pipelines share it. The flat trace is
-     signless (13 §2) while 0.3's IR needs signed types, so until S4 the
-     trace also records a **derived side table of 0.3 types per op id**
-     (`legacyType[]`), read only by the legacy conversion, never serialized,
-     and deleted with it.
-   - **Every change to the flat trace ships its legacy adapter** in the same
-     PR: the legacy conversion must turn it back into 0.3 IR (M2.1 lists the
-     adapters).
-   - Bridge B, `legacyType[]` and the legacy pipeline are deleted together
-     in M7.
-4. **The spec comes first.** A WP that finds a gap or error in
-   [13-nir-spec.md](13-nir-spec.md) changes the spec in the same PR, before
-   the code. After the M1 exit (spec final), every change follows §11 of the
-   spec.
-5. **One opcode table.** Opcodes, their operand shapes, flags, verifier
-   rules and text names are defined once in `nir/Opcodes.def` (an X-macro
-   table). The verifier, printer, parser, C API enum and backend dispatch
-   tables are generated from it. This shrinks the `ir-change` checklist and
-   keeps the C enum in step with the wire values (09 §3).
-6. **Reference dumps change only in isolated commits,** never together with
-   a behavior change (`regenerate-dumps` skill); a PR that regenerates dumps
-   carries them as their own commit.
-7. **CI legs added by this plan** (each added by the WP that needs it):
-
-   | Leg | From | What it runs |
-   |---|---|---|
-   | `nir-roundtrip` | M1.7 | every execution test with `NAUTILUS_NIR_ROUNDTRIP=1`: bridge → print → parse → serialize → load, byte-identical |
-   | `latency-corpus` | M1.11 | corpus under callgrind (gated) and wall clock (reported) |
-   | `nebulastream-0.4` | M1.12 | NebulaStream against `nautilus-0.4` (D16) |
-   | `nir-pipeline` | M3.1 (S2) | every execution test with `engine.pipeline=nir` on the NIR backends ported so far |
-   | `tpch-duck` | M2.4 | nautilus-duck TPC-H tracing and execution |
-   | `asm-diff` | M4.2 | `asmjit` assembly of the corpus against the recorded 0.3 baseline |
-   | `doc-check` | M1.13 | paths, targets, options and skills named in `AGENTS.md` and skills exist |
-
-8. **Agent docs are part of the change.** A WP that adds, moves or renames
-   a component updates the `AGENTS.md` that describes it and the affected
-   skills ([15 §3.1](15-agent-experience.md)).
-9. **Measure before and after.** Every WP with a performance claim records
-   the corpus numbers before and after in its PR description.
-10. **A PR that breaks NebulaStream fixes it.** When the `nebulastream-0.4`
-    job turns red because of an API or behavior change (D16), the PR ships
-    the NebulaStream patch (a branch of NebulaStream referenced from the PR)
-    and is merged only with the job green. Expected cases: `bc` removal,
-    `Module` and promotion APIs, the signless plugin API, `nothrow`
-    annotations.
-
-## 3. Source layout at the end of 0.4
-
-| Path | Content | Created in |
+| Path | Content | PR |
 |---|---|---|
-| `nautilus/src/nautilus/nir/` | `Opcodes.def`, `Types`, `Inst`, `Module` (sections), `ConstPool`, `Builder`, `Rewriter`, `Verifier`, `Printer`, `Parser`, `Canonicalize`, `Hash`, `Image` (writer, loader, inspect) | M1 |
-| `nautilus/src/nautilus/extensions/` | `ExtensionRegistry`, `OpInfo`/`TypeInfo`, intrinsic shim | M1 |
-| `nautilus/src/nautilus/common/ChunkPool.*` | the bounded chunk pool and its arenas | M1 |
-| `nautilus/src/nautilus/tracing/` | flat-trace recorder, tag trie and tag map, replay cursor, explicit control flow | M2 |
-| `nautilus/src/nautilus/conversion/` | optimizing conversion, fold/simplify rules, CSE, landing pads, attribute inference | M3 |
-| `nautilus/src/nautilus/passes/` | legalization; optional copy passes (LICM, strength reduction, inlining); plugin pass hooks | M3 |
-| `nautilus/src/nautilus/compiler/backends/*` | the backends, reading NIR | M4 |
-| `nautilus/src/nautilus/compiler/PromotionService.*` | tier-1 workers, jobs, status | M4 |
-| `nautilus/src/nautilus/link/` | module registry, import slots, `funcaddr` stubs | M4 |
-| `nautilus/src/nautilus/serialization/` | pointers, bindings, provenance, artifacts, self-contained export | M5 |
-| `plugins/cache/` | L0/L1/L2 cache provider (`ENABLE_CACHE_PLUGIN`) | M5 |
-| `nautilus/include/nautilus/c/` | `common.h`, `ir.h`, `engine.h` | M5 |
-| `nautilus/include/nautilus/control_flow.hpp`, `data.hpp` | explicit control flow; `constData` | M2 |
-| `third_party/xxhash/` | XXH3-128 for the structural hash (BSD-2) | M1 |
+| `nautilus/src/nautilus/nir/` | `Opcodes.def`, `Types`, `Inst`, `Module` (sections), `ConstPool`, `Builder`, `Rewriter`, `Verifier`, `Diagnostics.def`, `Printer`, `Parser`, `Canonicalize`, `Hash`, `Image` (writer, loader, inspect) | 1 |
+| `nautilus/src/nautilus/extensions/` | `ExtensionRegistry`, `OpInfo`/`TypeInfo`, lowering-table registration | 2 |
+| `nautilus/src/nautilus/common/ChunkPool.*` | the bounded chunk pool and its arenas | 2 |
+| `nautilus/src/nautilus/tracing/nir/` | the NIR tracer (`TracingInterface` implementation), tag map, replay cursor, explicit control flow; `tracing/tag/` and `symbolic_execution/` are shared and kept | 3 |
+| `nautilus/src/nautilus/conversion/` | optimizing conversion, fold/simplify rules, CSE, landing pads, attribute inference | 4 |
+| `nautilus/src/nautilus/passes/` | legalization; optional copy passes (LICM, strength reduction, inlining); plugin pass hooks | 6, 10 |
+| `nautilus/src/nautilus/compiler/backends/*` | the backends, reading NIR; `FunctionStubs.*` for `funcaddr` | 5, 7, 8 |
+| `nautilus/src/nautilus/compiler/PromotionService.*` | tier-1 workers, jobs, status | 11 |
+| `nautilus/src/nautilus/link/` | module registry, import slots | 11 |
+| `nautilus/src/nautilus/serialization/` | pointers, bindings, provenance, artifacts, self-contained export | 12, 13 |
+| `plugins/cache/` | L0/L1/L2 cache provider (`ENABLE_CACHE_PLUGIN`) | 13 |
+| `nautilus/include/nautilus/c/` | `common.h`, `ir.h`, `engine.h` | 14 |
+| `nautilus/include/nautilus/control_flow.hpp`, `data.hpp` | explicit control flow; `constData` | 9 |
+| `nautilus/test/nir-tests/` | unit tests, `text/` (`.nir` tests), `images/` (golden images), `compat/` (D12 fixtures) | 1, 12 |
+| `nautilus/test/api-compat/` | 0.3's user-API tests and examples, frozen | 2 |
+| `nautilus/test/baselines/0.3/` | recorded 0.3 baselines | 2 |
+| `tools/nautilus-nir-opt/`, `tools/nautilus-nir-run/` | text-form pass driver; `.nir` runner per backend | 1, 5 |
+| `tools/latency-corpus/`, `tools/agent/` | corpus driver; `affected-tests` | 2, 11 |
+| `third_party/xxhash/` | XXH3-128 for the structural hash (BSD-2) | 1 |
 
-**Deleted in 0.4:** `compiler/backends/bc/` (M1.10); the 0.3 lowering of
-each backend, in that backend's porting PR (M4.1–M4.5);
-`compiler/ir/` including `IRGraph`, the operation classes, `passes/`,
-`FunctionRewriter` and `IntrinsicRegistry` (M7, except the shim);
-`tracing/TraceOperation.*`, `tracing/Block.*` and the old
-`ExecutionTrace` records (M2.1); the bridge (M7).
+**Deleted:**
+- PR 2: `compiler/backends/bc/`, `tools/bc_guard.sh`,
+  `tools/bc_perf_verify.py`, `ENABLE_BC_BACKEND`, `dump.after_bc_generation`;
+- PR 6: `tracing/TraceContext.*` (the old implementation),
+  `tracing/ExecutionTrace.*`, `tracing/TraceOperation.*`, `tracing/Block.*`,
+  `tracing/phases/`, all of `compiler/ir/` (including `IntrinsicRegistry`
+  and `IRLocationMap`), `compiler/Frame.hpp`, every backend's 0.3 lowering
+  provider, `IRPassBenchmark`, `test/ir-pass-tests/`, the `NirChain`
+  fixture.
 
-## 4. Order, dependencies and switch-overs
+## 6. Order, dependencies and tracks
 
 ```
-M1.1 NIR core ──┬─► M1.2 verifier ─► M1.3 printer/parser ─► M1.4 canon+hash ─► M1.5 image
-                ├─► M1.7 bridge B ──────────────────────────────────────┐
-                ├─► M1.8 extension registry                             │
-                └─► M2.1 flat trace ─► M2.2…M2.9 frontend               │
-                                   └─► M3.1 conversion skeleton ◄───────┤ (compare)
-M1.9 chunk pool, M1.10 drop bc, M1.11 corpus, M1.12 NebulaStream (independent)
-                                                                        ▼
-                         M4.0 backend interface ─► M4.1 tbc (legacy via bridge B) ─► + M3.1 = S2
-                                                     ├─► M4.2 asmjit ─┐
-M3.2…M3.10 conversion, legalization, passes ─────────┤   M4.3 MLIR ───┤
-                                                     │   M4.4 cpp, M4.5 GPU, M4.6–M4.10
-                                                     ▼                ▼
-                                      S3: engine.pipeline=nir default (M4.11)
-                                                     ▼
-              M5 reuse (M5.1–M5.4 can start after M1.5; native payloads need M4.3)
-                                                     ▼
-              M6 semantics and extensions ─► M7 cleanup and release
+PR 1 NIR format ─┬─► PR 2 foundations, infra ─┬─► PR 3 NIR tracer ─► PR 4 conversion ─┐
+                 │                            └─► PR 5 nir-run, tbc ───────────────────┤
+                 │                                 └─► PR 7 cpp, asmjit (dormant)      ▼
+                 │                                                     PR 6 CUT-OVER (tbc, + PR 7)
+                 │                                                               │
+                 │        ┌──────────────┬──────────────┬────────────────────────┤
+                 │        ▼              ▼              ▼                        ▼
+                 │   PR 8 MLIR, GPU  PR 9 frontend  PR 10 passes          (PR 7 if later)
+                 │        └──────────────┴──────────────┴──────► PR 11 modules, tiering; M4 exit
+                 │                                                     │
+                 │                     ┌───────────────┬───────────────┼──────────────┐
+                 │                     ▼               ▼               ▼              ▼
+                 │                PR 12 portable  PR 15 semantics  PR 16 ext.   (PR 14 after 12)
+                 │                     ▼
+                 │                PR 13 native, caches ─────────────────────► PR 17 release
 ```
 
-**Critical path:** two chains of similar length meet at M4.11:
-- frontend and conversion: M1.1 → M2.1 → M3.1 (needs M4.1) → M3.2–M3.5;
-- backends: M1.1 → M1.7 → M4.0 → M4.1 → M4.2 (and M4.3 → M4.8).
+**Critical path:** PR 1 → PR 2 → PR 3 → PR 4 → PR 6 → PR 8 → PR 11 → PR 12
+→ PR 13 → PR 17. PR 5 and PR 7 run beside PR 3 and PR 4; PRs 9, 10, 15 and
+16 beside the reuse chain.
 
-After M4.11 it continues M5.5 → M5.7 → M6.5 → M6.6 → M7. The `tbc` port
-(M4.1) is deliberately early: it runs NIR from bridge B first, so when the
-conversion lands, its output can be executed and fuzzed right away, before
-the other backends are ported.
+**Tracks** (who can work in parallel):
 
-**Switch-overs:**
-
-| Id | When | What changes for users of `nautilus-0.4` |
-|---|---|---|
-| S1 | end of M2.1 | the tracer records the flat trace; both pipelines read it |
-| S2 | M3.1, which needs M4.1 | `engine.pipeline=nir` works end to end on `tbc`; the `nir-pipeline` CI leg starts |
-| S3 | end of M4 (M4.11) | `nir` becomes the default with every backend; `test/data` regenerated in NIR format; `legacy` kept only as a fallback |
-| S4 | M7.1 | `legacy`, bridge B and the 0.3 IR are deleted |
-
-**Parallel tracks** (who can work at the same time once M1.1 has landed):
-
-| Track | Work packages |
+| Track | PRs |
 |---|---|
-| A: format | M1.2–M1.6, then M5.1–M5.6 |
-| B: frontend | M2.0–M2.10 |
-| C: conversion | M3.1–M3.10 |
-| D: backends | M1.7, M4.0–M4.5 |
-| E: runtime | M1.9, M1.10, M4.6–M4.9, M5.7 |
-| F: infra and agents | M1.11–M1.13, M4.10, M6.7, CI legs, agent items per milestone |
+| A: format and reuse | 1, 12, 13, 14 |
+| B: frontend | 3, 9 |
+| C: conversion and passes | 4, 6 (legalization), 10 |
+| D: backends | 5, 7, 8 |
+| E: runtime | 2 (pool, `bc`), 11 |
+| F: semantics and extensions | 15, 16 |
+| G: infra and agents | 2 (corpus, baselines, CI), agent items in 11, 14, 16, 17 |
 
-## 5. M1 Foundations
+## 7. M1 Foundations
 
-Goal: NIR exists, is specified, verified, printed, parsed, serialized and
-fed from today's pipeline; the measuring infrastructure runs. Exit
-criteria: README §6 and [02 §8](02-nir.md).
+Goal: NIR exists, is specified, verified, printed, parsed and serialized;
+the measuring and compatibility infrastructure runs. Exit criteria:
+README §6 and [02 §8](02-nir.md).
 
 #### M1.1 NIR core data structures · L · deps: —
 - **Builds:** `Inst` (16 B), value references with the constant bit and
-  `NONE`, `extra`, `ConstPool` with interning and provenance class, every
-  section of [13 §4.1](13-nir-spec.md) as flat arrays, `Module`,
+  `NONE`, `extra`, `ConstPool` with interning and a provenance-class field,
+  every section of [13 §4.1](13-nir-spec.md) as flat arrays, `Module`,
   `Function`, `BlockInfo`; `Builder` (appends, mints dense ids, maintains
   `useCount`); `Rewriter` (copy with old→new map, `forward[]`); CSR use
-  table on request. Signless types and op flags from the start
-  ([13 §2](13-nir-spec.md)).
-- **Files:** new `nir/Opcodes.def`, `Types.hpp`, `Inst.hpp`, `Module.{hpp,cpp}`,
-  `ConstPool.{hpp,cpp}`, `Builder.{hpp,cpp}`, `Rewriter.{hpp,cpp}`; CMake
-  target `nautilus-nir` (no dependency on `compiler/ir`).
-- **Tests:** `test/nir-tests/` (new binary `nautilus-nir-tests`): record
-  sizes (`static_assert`), builder invariants, interning, rewriter
-  compaction, CSR uses.
-- **Done when:** a hand-built module of every opcode in `Opcodes.def` can
-  be built and rewritten; no hash map on a per-operand path.
+  table on request. Signless types and op flags ([13 §2](13-nir-spec.md)).
+- **Files:** `nir/Opcodes.def`, `Types.hpp`, `Inst.hpp`, `Module.*`,
+  `ConstPool.*`, `Builder.*`, `Rewriter.*`; CMake target `nautilus-nir`.
+- **Tests:** `nautilus-nir-tests`: record sizes (`static_assert`), builder
+  invariants, interning, rewriter compaction, CSR uses.
+- **Done when:** a module using every opcode of `Opcodes.def` is built and
+  rewritten in a test; no hash map on a per-operand path.
 
 #### M1.2 Verifier, both levels · M · deps: M1.1
-- **Builds:** every rule of [13 §6](13-nir-spec.md) and the per-opcode
-  operand rules from `Opcodes.def`; level-specific checks; extension
-  instructions against `Signature` and `verify`. Each rule has a stable code
-  (`NIR-V001`…) and a message naming function, block and value.
-- **Files:** `nir/Verifier.{hpp,cpp}`, `nir/Diagnostics.def` (codes).
-- **Tests:** one positive and one negative test per rule and per opcode;
-  `NAUTILUS_IR_VERIFY=1` also runs it on NIR.
-- **Done when:** the code list in `Diagnostics.def` and the spec agree, and
-  each code is triggered by a test.
+- **Builds:** every rule of [13 §6](13-nir-spec.md) and the per-opcode rules
+  from `Opcodes.def`; level-specific checks; stable codes (`NIR-V001`…) with
+  messages naming function, block and value. Checks of extension
+  instructions are added by M1.7.
+- **Files:** `nir/Verifier.*`, `nir/Diagnostics.def`.
+- **Tests:** one positive and one negative test per rule and per opcode.
+- **Done when:** `Diagnostics.def` and the spec agree, and each code is
+  triggered by a test.
 
-#### M1.3 Printer and parser · M · deps: M1.2
-- **Builds:** the text form of [13 §9](13-nir-spec.md) for both levels;
-  a parser producing the same module as the binary image; parse errors with
-  line and column.
-- **Files:** `nir/Printer.{hpp,cpp}`, `nir/Parser.{hpp,cpp}`; a
-  `nautilus-nir-opt` tool in `tools/` (parse → optional pass → print) used
-  by FileCheck-style tests.
+#### M1.3 Printer, parser, `nautilus-nir-opt` · M · deps: M1.2
+- **Builds:** the text form of [13 §9](13-nir-spec.md) for both levels; a
+  parser producing the same module as the binary image, with line and
+  column in errors; `tools/nautilus-nir-opt` (parse → optional pass →
+  print).
 - **Tests:** print → parse → print byte-identical on every test module;
-  `.nir` test files under `test/nir-tests/text/` with expected output.
-- **Done when:** a test can be written as a `.nir` file plus expected output
-  and run through ctest.
+  `.nir` tests under `test/nir-tests/text/`.
+- **Done when:** a test is a `.nir` file plus expected output, run by ctest.
 
 #### M1.4 Canonical form and structural hash · M · deps: M1.3
-- **Builds:** canonicalization of [13 §7](13-nir-spec.md) (apply
-  `forward`, compact, renumber, intern in first-use order); XXH3-128 over
-  the anonymous canonical image, typed sorted options and extension
-  versions; interface hashing of imports.
-- **Files:** `nir/Canonicalize.{hpp,cpp}`, `nir/Hash.{hpp,cpp}`,
-  `third_party/xxhash/` (vendored, pinned).
-- **Tests:** structurally equal modules built in different orders hash
-  equally; renaming the module does not change the hash; changing an option
-  does.
+- **Builds:** canonicalization of [13 §7](13-nir-spec.md); XXH3-128 over the
+  anonymous canonical image, typed sorted options and extension versions;
+  interface hashing of imports.
+- **Files:** `nir/Canonicalize.*`, `nir/Hash.*`, `third_party/xxhash/`
+  (vendored, pinned).
+- **Tests:** equal modules built in different orders hash equally; renaming
+  the module does not change the hash; changing an option does.
 - **Done when:** two processes produce the same hash for the same module
-  (the determinism test of [12 §3](12-validation.md) row 07).
+  ([12 §3](12-validation.md), row 07).
 
 #### M1.5 Binary image: writer, loader, inspect · L · deps: M1.4
 - **Builds:** [13 §8](13-nir-spec.md): layout, strides, feature bits,
-  CRC-32C, framing, load limits; zero-copy load (validate, then use in
-  place); `inspect` without materializing; extension names mapped to
-  process ids on load ([13 §8.4](13-nir-spec.md)). The format rules of #532
-  carried over; #532's own 0.3 format is not.
-- **Files:** `nir/Image.{hpp,cpp}`, `nir/ImageLoader.{hpp,cpp}`,
-  `nir/Inspect.{hpp,cpp}`.
-- **Tests:** golden images (valid and invalid) with expected results; the
-  annotated hex dump of [13 §11](13-nir-spec.md) checked byte for byte;
+  CRC-32C, framing, load limits; zero-copy load; `inspect` without
+  materializing. The format rules of #532 are carried over, its 0.3 format
+  is not. Mapping extension names to process ids on load is added by M1.7.
+- **Files:** `nir/Image.*`, `nir/ImageLoader.*`, `nir/Inspect.*`.
+- **Tests:** golden images (valid and invalid) under `test/nir-tests/images/`;
+  the annotated hex dump of [13 §11](13-nir-spec.md) checked byte for byte;
   re-serialization byte-identical.
 - **Done when:** every golden image loads or is rejected exactly as listed.
 
 #### M1.6 Loader and verifier fuzzer · S · deps: M1.5
 - **Builds:** a libFuzzer target over malformed images and mutated text,
-  seeded with the golden corpus; runs in the existing libFuzzer CI canary.
-- **Files:** `test/fuzz/NirImageFuzz.cpp`; `fuzz-triage` skill.
-- **Done when:** one CPU-hour without a crash or sanitizer report; the CI
-  canary includes it.
+  seeded with the golden images, in the existing libFuzzer CI canary;
+  `fuzz-triage` skill.
+- **Files:** `test/fuzz/NirImageFuzz.cpp`.
+- **Done when:** one CPU-hour without a crash or sanitizer report; the
+  canary runs it.
 
-#### M1.7 Bridge B: `IRGraph` → SSA NIR · M · deps: M1.1
-- **Builds:** a converter from the 0.3 IR after its passes to SSA-level
-  NIR: signed types → widths plus op flags, exception regions → landing
-  pads, intrinsic calls → intrinsic callees, constants → `ConstPool`.
-- **Files:** `nir/bridge/IRGraphToNIR.{hpp,cpp}` (deleted in M7);
-  `NAUTILUS_NIR_ROUNDTRIP` hook in `CompilationPipeline`.
-- **Tests:** the `nir-roundtrip` CI leg over every execution test.
-- **Done when:** every execution test's IR round-trips byte-identically
-  (02 §8).
-
-#### M1.8 `ExtensionRegistry` · M · deps: M1.1
+#### M1.7 `ExtensionRegistry` · M · deps: M1.1
 - **Builds:** one registry for ops, types, intrinsics and passes with dense
-  ids ([04 §3](04-extensions.md)); frozen after the first compile; lock-free
-  lookups; late registration throws (D13). `IntrinsicRegistry` becomes a
-  shim that registers 0.3 intrinsics as intrinsic callees and warns once
-  (D17).
-- **Files:** `extensions/ExtensionRegistry.{hpp,cpp}`, `extensions/OpInfo.hpp`,
-  `extensions/TypeInfo.hpp`; `compiler/ir/IntrinsicRegistry.*` forwards to it.
-- **Tests:** every plugin suite unchanged and green; late registration
-  test; TSan plus a lock-count check on lookups.
-- **Done when:** M1 exit criterion of [04 §5](04-extensions.md).
+  ids ([04 §3](04-extensions.md)); frozen after the first compile;
+  lock-free lookups; late registration throws (D13); extension checks in
+  the verifier and name mapping in the loader. Until the cut-over the
+  in-tree plugins keep registering with 0.3's `IntrinsicRegistry`, and the
+  registry imports that table once at freeze, so NIR backends see the
+  intrinsics as named callees with native fallbacks. **No public shim:**
+  the plugin API is not part of the compatibility promise (§2).
+- **Files:** `extensions/ExtensionRegistry.*`, `extensions/OpInfo.hpp`,
+  `extensions/TypeInfo.hpp`.
+- **Tests:** registration, freezing, late registration; TSan plus a
+  lock-count check on lookups; every in-tree intrinsic visible by name.
+- **Done when:** [04 §5](04-extensions.md) M1 criterion: every in-tree
+  intrinsic is visible through the registry; no mutex on lookups.
 
-#### M1.9 Bounded chunk pool · M · deps: —
+#### M1.8 Bounded chunk pool · M · deps: —
 - **Builds:** [02 §4.1](02-nir.md): fixed chunk sizes, dedicated large
   allocations, per-thread cache plus engine pool, byte budget with decay,
-  `mmap` and `madvise` release, `NautilusEngine::trimMemory()`, embedder
-  chunk provider, counters. Replaces both `ArenaPool`s.
-- **Files:** `common/ChunkPool.{hpp,cpp}`, `common/Arena.*` (adapted);
-  option `engine.arena.retainedBytes` in `docs/options.md`.
-- **Tests:** pool unit tests (budget, decay, trim, page release); the
-  40,000-module long-running test on counters.
+  `mmap`/`madvise` release, `NautilusEngine::trimMemory()`, embedder chunk
+  provider, counters. Replaces both `ArenaPool`s; the 0.3 pipeline uses it
+  until the cut-over, the new one after.
+- **Files:** `common/ChunkPool.*`, `common/Arena.*`;
+  `engine.arena.retainedBytes` in `docs/options.md`.
+- **Tests:** budget, decay, trim, page release; the 40,000-module
+  long-running test on counters.
 - **Done when:** after a 20,000-op compile, held bytes return to the budget;
-  no corpus latency regression.
+  no corpus regression against the baseline.
 
-#### M1.10 Remove `bc` · S · deps: —
-- **Builds:** [05 §6.1](05-backends.md): first confirm `tbc` passes every
-  test `bc` passes and is no slower on `ExecutionBenchmark`; then delete.
-- **Files:** delete `compiler/backends/bc/`, `tools/bc_guard.sh`,
-  `tools/bc_perf_verify.py`; `ENABLE_BC_BACKEND` removed with an obsolete
-  message; tier-0 fallback `asmjit` → `tbc` → interpreter; `bc` cases in
-  tests move to `tbc`; `example/src/DemoBackends.cpp`, `docs/engine.md`,
+#### M1.9 Remove `bc` · S · deps: —
+- **Builds:** [05 §6.1](05-backends.md): confirm `tbc` passes every test
+  `bc` passes and is no slower on `ExecutionBenchmark`, then delete;
+  tier-0 fallback `asmjit` → `tbc` → interpreter; `bc` cases move to `tbc`;
+  `example/src/DemoBackends.cpp`, `docs/engine.md`, `docs/options.md`,
   `.github/nebulastream/benchmark.toml`; check whether `third_party/dyncall`
   is still used.
-- **Done when:** no reference to `bc` remains outside the change log and
-  the migration notes; `engine.backend=bc` fails naming `tbc`.
+- **Done when:** no reference to `bc` remains outside the change log and the
+  migration notes; `engine.backend=bc` fails naming `tbc`.
 
-#### M1.11 Latency corpus and reference machine · M · deps: —
-- **Builds:** the corpus driver from the design study (closed #562) as
-  `tools/latency-corpus/` (target `nautilus-latency-corpus`) with JSON
-  output; callgrind gates in CI; the dedicated reference machine set up and
-  recorded ([10 §2](10-observability.md)). The machine has to be procured
-  and needs an owner (§13).
+#### M1.10 Corpus, 0.3 baselines, API-compat suite, reference machine · M · deps: —
+- **Builds:**
+  - the corpus driver from the design study (closed #562) as
+    `tools/latency-corpus/` with JSON output;
+  - the `baselines-0.3` job (§2) writing `test/baselines/0.3/`;
+  - `test/api-compat/`: 0.3's user-API tests (execution and value tests that
+    use only public headers) and `example/`, copied at the branch point;
+  - the dedicated reference machine set up and recorded
+    ([10 §2](10-observability.md)); it has to be procured and needs an owner
+    (§15).
 - **Done when:** the P0 numbers are reproduced and stored as the baseline;
-  the `latency-corpus` leg runs.
+  `test/api-compat/` builds and passes on the 0.3 pipeline.
 
-#### M1.12 NebulaStream job against `nautilus-0.4` · S · deps: —
-- **Builds:** the existing NebulaStream CI job parameterized on the branch
-  (D16).
+#### M1.11 NebulaStream job against `nautilus-0.4` · S · deps: —
+- **Builds:** the existing NebulaStream CI job parameterized on the branch;
+  reporting only until the M4 exit (§3 rule 9).
 - **Done when:** the job runs on every `nautilus-0.4` push.
 
-#### M1.13 Agent items for M1 · M · deps: M1.3
-- **Builds:** `doc-check` script and CI leg; `ir-change` skill rewritten
-  for NIR (pointing at `Opcodes.def` and the spec sections);
-  `steward` skill (PR conventions for this branch); `fuzz-triage` (M1.6).
+#### M1.12 Agent items for M1 · M · deps: M1.3
+- **Builds:** `doc-check` script and CI leg; `ir-change` skill rewritten for
+  NIR (pointing at `Opcodes.def` and the spec); `steward` skill (PR
+  conventions for this branch).
 - **Done when:** `doc-check` passes and fails on a planted stale path.
 
-**M1 exit:** the spec is marked final ([13 §11](13-nir-spec.md)); M1.1–M1.13
-done; README §6 M1 criterion met.
+**M1 exit:** M1.1–M1.12 done; the spec is marked final
+([13 §11](13-nir-spec.md)).
 
-## 6. M2 Frontend
+## 8. M2 Frontend
 
-Goal: the tracer writes pre-SSA NIR and is cheaper; explicit control flow
-can be mixed with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
+Goal: a tracer that writes pre-SSA NIR and is cheaper; explicit control
+flow mixable with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
 
-#### M2.0 Tracing statistics and counters · S · deps: —
-- **Builds:** port #561's tracing statistics; add R1 (follow, record and
-  paused time, `tracing.pausedOperations`, per-scope re-runs) and C1 (copies
-  per kind). Done first so every later WP is measured.
-- **Files:** `tracing/TraceContext.*`, `CompilationStatistics.*`.
-- **Done when:** all keys of [10 §3](10-observability.md) for tracing are
+#### M2.0 Tracing statistics and counters · S · deps: M1.1
+- **Builds:** #561's tracing statistics plus R1 (follow, record and paused
+  time, `tracing.pausedOperations`, per-scope re-runs) and C1 (copies per
+  kind) in the new tracer, with the same keys as the baselines.
+- **Done when:** the tracing keys of [10 §3](10-observability.md) are
   reported and unit-tested.
 
-#### M2.1 Flat trace · XL · deps: M1.1, M2.0
-- **Builds:** the recorder writes `FlatTrace` ([01 §6](01-tracing-frontend.md)):
-  16 B records, operands as value refs, global op ids, blocks as arena lists
-  of op ids, `traceExtOp`; the tag map as open addressing from snapshot to
-  op id (merge splits move one list tail, no map rewrites); the index-based
-  replay cursor; the value-ref free list (R2). The legacy
-  `TraceToIRConversionPhase` is adapted to read the flat trace (switch-over
-  S1), with these adapters (§2 rule 3):
-  - signless types and op flags → 0.3 types, from `legacyType[]`;
-  - `traceExtOp` records → 0.3 intrinsic calls (until M6 every plugin op is
-    still an intrinsic, so this is a 1:1 mapping);
-  - cleanup lists (M2.8) → 0.3 exception regions;
-  - explicit control flow (M2.6) → ordinary trace blocks, which 0.3's
-    conversion already handles;
-  - `data.addr` (M2.7) → a constant pointer into module-owned memory.
-- **Files:** `tracing/TraceContext.*`, `tracing/ExecutionTrace.*` (rewritten
-  on NIR), `tracing/Snapshot.*`; delete `tracing/TraceOperation.*` and
-  `tracing/Block.*`; `tracing/phases/TraceToIRConversionPhase.cpp`
-  (input side only).
-- **Tests:** every execution and tracing test; the trace dumps change format,
-  so `test/data/*/tracing/` is regenerated in an isolated commit right after.
-- **Done when:** no `malloc` per recorded op in steady state (corpus
-  allocation counter); results unchanged on every test.
+#### M2.1 The NIR tracer · XL · deps: M1.2, M1.7, M2.0
+- **Builds:** a `TracingInterface` implementation writing `FlatTrace`
+  ([01 §6](01-tracing-frontend.md)): 16 B records, value-ref operands,
+  global op ids, blocks as arena lists of op ids; the tag map as open
+  addressing from snapshot to op id; the index-based replay cursor and the
+  value-ref free list (R2); hashed trie children in the shared
+  `tag/Trie.hpp`; `traceExtOp`; destructor cleanup lists in unwind entries
+  ([13 §3.4](13-nir-spec.md)); source tags only on request (D14); `Type`/`Op`
+  mapped to widths and flags at the interface.
+- **Files:** `tracing/nir/NirTracer.*`, `tracing/nir/TagMap.*`,
+  `tracing/nir/ReplayCursor.*`; `tracing/tag/Trie.hpp`.
+- **Tests:** every execution-test function traced; pre-SSA output verified
+  and compared with golden dumps (`test/nir-tests/trace/`); allocation
+  counter in steady state.
+- **Done when:** every execution-test function traces and verifies; no
+  `malloc` per recorded op in steady state; `distinctSites1024` tag
+  creation linear.
 
-#### M2.2 Hashed trie children · S · deps: —
-- **Builds:** open-addressing children above ~8 per node in `tag/Trie.hpp`.
-- **Done when:** `distinctSites1024` tag creation is linear; part of the
-  ≥ 30% target.
-
-#### M2.3 Cheaper paused passes: R3, then R4 · M · deps: M2.1
-- **Builds:** R3, the minimal paused path; R4, unwinding paused passes with
-  a tracer-private exception, behind `tracing.unwindPausedPasses` (default
-  off), with fallback to R3 when user code swallows it; regions in follow
+#### M2.2 Cheaper paused passes: R3, R4, rest of R2 · M · deps: M4.2
+- **Builds:** the minimal paused path (R3); unwinding paused passes behind
+  `tracing.unwindPausedPasses` with fallback to R3 (R4); regions in follow
   mode look up their memo by region-entry op id.
-- **Tests:** fuzzer runs with R4 on and off; tests with `catch (...)` and
-  `noexcept` frames in traced code.
+- **Tests:** fuzzer with R4 on and off; `catch (...)` and `noexcept` frames
+  in traced code.
 - **Done when:** `tracing.pausedOperations` ≈ 0 with R4 on; the R4 default
-  is decided from fuzzer, NebulaStream and TPC-H data and recorded.
+  decided from fuzzer, NebulaStream and TPC-H data and recorded.
 
-#### M2.4 TPC-H tracing job and copy reduction (C2) · M · deps: M2.0
-- **Builds:** the `tpch-duck` CI leg (it builds the external nautilus-duck
-  repository and needs an owner, §13); `const val<T>&` parameters in the
-  `std` plugin and hot helpers; `nautilus-review` flags by-value `val`
-  parameters.
-- **Done when:** recorded copies on TPC-H fall by at least a quarter (with
-  M2.1) and the re-run share is reported per run.
+#### M2.3 TPC-H job and fewer copies (C2) · M · deps: M4.2
+- **Builds:** the `tpch-duck` CI leg (external nautilus-duck repository;
+  needs an owner, §15); `const val<T>&` in the `std` plugin and hot helpers;
+  `nautilus-review` flags by-value `val` parameters.
+- **Done when:** recorded copies on TPC-H at least a quarter below the 0.3
+  baseline; re-run share reported per run.
 
-#### M2.5 Replay diagnostics (R5) and tracing diagnostic codes · M · deps: M2.0
+#### M2.4 Tracing diagnostics (R5) · M · deps: M4.2
 - **Builds:** diagnostics with code, source location and hint
   (`NAUT-T001`…) for path explosion, replay share, constant loops and values
   escaping regions ([15 §4.1](15-agent-experience.md)); `debug-trace` skill.
 - **Done when:** each code has a test that triggers it.
 
-#### M2.6 Explicit control flow on region scopes · L · deps: M2.1
+#### M2.5 Explicit control flow on region scopes · L · deps: M4.2
 - **Builds:** port of #300 ([01 §5](01-tracing-frontend.md)): `If` (both
-  forms), `While`, `For`, `Break`, `Continue`, `Return`; arms and bodies as
-  region scopes; memoized like a region; optimistic recording with bounded
+  forms), `While`, `For`, `Break`, `Continue`, `Return`; region-scope arms
+  and bodies; memoized like a region; optimistic recording with bounded
   restart; direct mode runs lambdas natively.
-- **Files:** `include/nautilus/control_flow.hpp`; `tracing/` region support;
-  `test/execution-tests/ExplicitControlFlowTest.cpp` from #300, with its
-  mixing guard turned into mixing tests; fuzzer generator for explicit
-  constructs and a mode that forces restarts. The tests run on both
-  pipelines.
+- **Files:** `include/nautilus/control_flow.hpp`; `tracing/nir/`;
+  `ExplicitControlFlowTest.cpp` from #300, with its mixing guard turned
+  into mixing tests; fuzzer generator for explicit constructs and a mode
+  that forces restarts.
 - **Done when:** explicit `chainedIf` traces in one pass with zero replayed
   ops at every corpus size; mixed functions clean under the fuzzer.
 
-#### M2.7 Constant data · S · deps: M2.1
+#### M2.6 Constant data · S · deps: M4.2
 - **Builds:** `nautilus::constData` (span and string overloads) creating
-  data objects and `data.addr` ([13 §4.10](13-nir-spec.md)); the legacy
-  pipeline lowers `data.addr` to a constant pointer into module-owned
-  memory until S3.
+  data objects and `data.addr` ([13 §4.10](13-nir-spec.md)).
 - **Files:** `include/nautilus/data.hpp`.
-- **Done when:** a lookup table traced with `constData` produces a
-  persistable module and loads from it fold (after M3.2); the legacy
-  pipeline runs it through its adapter.
+- **Done when:** a lookup table traced with `constData` runs on every
+  enabled backend and its loads fold; persistability is checked in M5.3.
 
-#### M2.8 Cleanup lists in the trace · S · deps: M2.1
-- **Builds:** destructor cleanup lists in unwind entries at the pre-SSA
-  level ([13 §3.4](13-nir-spec.md)) instead of 0.3's exception-region
-  bookkeeping on the trace, plus the legacy adapter that turns them back
-  into exception regions.
-- **Done when:** exception tests green on both pipelines.
-
-#### M2.9 Source tags on request · S · deps: M2.1
-- **Builds:** `debugLocations`/`debugRegions` sections filled only when a
-  debug or profiling option is set (D14).
-- **Done when:** a default compile records no source tags (counter check).
-
-#### M2.10 Lazy copies (C4), investigation · M · deps: M2.1 · optional
-- **Builds:** a prototype behind a flag. Adopted only if the fuzzer and every
-  `tracing/` reference trace agree; otherwise the result is written up and
-  the flag removed.
+#### M2.7 Lazy copies (C4), investigation · M · deps: M4.2 · optional
+- **Builds:** a prototype behind a flag; adopted only if the fuzzer and
+  every golden trace agree, otherwise written up and removed.
 
 **M2 exit:** [01 §7](01-tracing-frontend.md) on the corpus and TPC-H.
 
-## 7. M3 Conversion and passes
+## 9. M3 Conversion and passes
 
-Goal: one optimizing conversion replaces the fixed-point pipeline on the
-critical path. Exit criteria: [03 §6](03-conversion-and-passes.md).
+Goal: one optimizing conversion replaces the fixed-point pipeline. Exit
+criteria: [03 §6](03-conversion-and-passes.md).
 
-#### M3.1 Conversion skeleton · L · deps: M2.1, M1.2, M4.1
+#### M3.1 Conversion skeleton and `NirChain` · L · deps: M2.1, M4.1
 - **Builds:** pre-SSA → SSA in RPO with Braun-style SSA construction,
-  live-edge tracking, layout order (RPO, loops contiguous), `BlockInfo`
-  loop depth and end, `useCount` while emitting. No folding yet.
-  `engine.pipeline=nir` wired up end to end: conversion, a pass-through
-  legalization (filled in by M3.7), and `tbc` (switch-over S2).
-- **Files:** `conversion/Conversion.{hpp,cpp}`, `conversion/SSABuilder.*`,
-  `conversion/Layout.*`.
-- **Tests:** verifier on every converted function; op counts compared with
-  bridge B output (report); the `nir-pipeline` CI leg on `tbc`.
-- **Done when:** every execution test passes with `engine.pipeline=nir
-  engine.backend=tbc`.
+  live-edge tracking, layout order, `BlockInfo` loop depth and end,
+  `useCount` while emitting; the test-only `NirChain` fixture (new tracer →
+  conversion → `tbc`) and the `nir-chain` CI leg.
+- **Files:** `conversion/Conversion.*`, `conversion/SSABuilder.*`,
+  `conversion/Layout.*`; `test/common/NirChain.hpp`.
+- **Done when:** every execution-test function converts, verifies and
+  returns the right result on `tbc` through `NirChain` (exceptions excepted
+  until M3.5).
 
 #### M3.2 Folding and simplification rules · M · deps: M3.1
 - **Builds:** the rules of `ConstantFoldingAndCopyPropagationPass` and
-  `AlgebraicSimplificationPass` as builder rules, following IEEE (D11: no
-  `x + 0.0 → x`) and wrapping arithmetic; extension `fold`/`simplify` hooks;
-  loads from data objects fold. Until checked division exists (M6.1), a
-  division or remainder by zero and `MIN / -1` are never folded, as in 0.3.
+  `AlgebraicSimplificationPass` as builder rules, IEEE-strict (D11: no
+  `x + 0.0 → x`) with wrapping arithmetic; extension `fold`/`simplify`
+  hooks; loads from data objects fold. Until M6.1, division or remainder by
+  zero, `MIN / -1` and shifts by at least the bit width are never folded,
+  as in 0.3.
 - **Files:** `conversion/FoldRules.*`, `conversion/SimplifyRules.*`.
-- **Tests:** a `.nir` test per rule (M1.3); fuzzer.
+- **Done when:** a `.nir` test per rule passes; op counts on the corpus at
+  most the 0.3 baseline for linear code.
 
 #### M3.3 Branch folding, dead blocks, threading · M · deps: M3.1
 - **Builds:** constant `condbr` adds only the taken edge; dead blocks never
-  emitted; single-predecessor jump threading (block merging, empty-block
-  elimination); sealing never waits on folded-away predecessors.
-- **Tests:** merge-heavy corpora (regions, nested loops, `break`).
+  emitted; single-predecessor jump threading; sealing never waits on
+  folded-away predecessors.
+- **Done when:** merge-heavy corpora (regions, nested loops, `break`) pass
+  in `NirChain`; branchy op counts at most the 0.3 baseline.
 
 #### M3.4 CSE · M · deps: M3.2
 - **Builds:** block-local CSE with an undo log; loads and calls keyed on the
   effect id; dominator-scoped CSE (Cooper–Harvey–Kennedy) behind a flag
-  until its fuzzing is clean.
+  until its fuzzing is clean; CSE off in debug builds that need per-call-site
+  provenance ([03 §7](03-conversion-and-passes.md)).
+- **Done when:** `.nir` tests for each CSE case pass; fuzzer clean with
+  block-local CSE on.
 
-#### M3.5 Landing pads · M · deps: M2.8, M3.1
+#### M3.5 Landing pads · M · deps: M3.1
 - **Builds:** cleanup lists → shared landing pads keyed by ordered
-  destructor set; "no cleanup" entries where nothing is live (replaces
-  `ExceptionRegionPreparationPass`).
-- **Tests:** every exception test on the NIR pipeline.
+  destructor set; "no cleanup" entries where nothing is live.
+- **Done when:** every exception test passes on `tbc` through `NirChain`.
 
-#### M3.6 Attribute inference in the conversion · S · deps: M3.1
+#### M3.6 Attribute inference · S · deps: M3.1
 - **Builds:** the analyses of `NoThrowInferencePass` and
-  `FunctionAttributeInferencePass` run once on the function table; guarantee
-  bits of [13 §4.6.2](13-nir-spec.md).
+  `FunctionAttributeInferencePass` once on the function table, producing
+  the guarantee bits of [13 §4.6.2](13-nir-spec.md).
+- **Done when:** inferred bits on the test functions match what 0.3's
+  passes infer (recorded in the baselines).
 
-#### M3.7 Legalization · M · deps: M3.1, M1.8
+#### M3.7 Legalization · M · deps: M3.1, M1.7
 - **Builds:** one copy pass per backend: extension ops without a handler →
-  fallback call or expansion; extension types without support → stack slots;
-  ABI lowering where a backend asks for it ([03 §4](03-conversion-and-passes.md)).
+  fallback call or expansion; extension types without support → stack
+  slots (used from M6.5); ABI lowering where a backend asks for it
+  ([03 §4](03-conversion-and-passes.md)).
 - **Files:** `passes/Legalization.*`.
+- **Done when:** `.nir` tests cover each rule; every intrinsic without a
+  handler runs through its fallback on `tbc`.
 
-#### M3.8 Optional passes as copy passes · L · deps: M3.1
-- **Builds:** LICM, strength reduction and inlining on NIR, off on
-  latency-critical compiles; inlining across modules records exporter hashes
-  and skips functions using `bind.addr` ([13 §4.4.3](13-nir-spec.md));
-  `ir.runOptimizationPasses` and `ir.disable*` kept; options of removed
-  passes warn.
-- **Files:** `passes/LICM.*`, `passes/StrengthReduction.*`, `passes/Inline.*`.
+#### M3.8 Optional passes as copy passes · L · deps: M4.2
+- **Builds:** LICM, strength reduction and inlining of internal callees on
+  NIR, off on latency-critical compiles; `ir.runOptimizationPasses` and
+  `ir.disable*` keep their meaning; options of removed passes warn.
+  Cross-module inlining is part of M4.7.
+- **Files:** `passes/LICM.*`, `passes/StrengthReduction.*`,
+  `passes/Inline.*`.
+- **Done when:** `.nir` tests per pass; fuzzer clean with every optional
+  pass enabled.
 
 #### M3.9 Plugin pass hooks · S · deps: M3.7
 - **Builds:** `afterConversion` and `beforeLowering` with required/optional
   marking ([03 §5](03-conversion-and-passes.md)).
+- **Done when:** a test plugin's required pass runs on latency-critical
+  compiles and its optional pass does not.
 
-#### M3.10 Op-count report and M3 gate · S · deps: M3.2–M3.5
-- **Builds:** the bridge-vs-conversion op-count report in the corpus output;
-  the compile-fail suite for the public headers (agent item for M3,
-  [15 §5](15-agent-experience.md); the `extension-plugin` skill waits for
-  the final extension API, M6.7).
+#### M3.10 M3 gate · S · deps: M3.2–M3.5
+- **Builds:** the op-count report against the 0.3 baseline in the corpus
+  output; the compile-fail suite for the public headers (agent item for
+  M3, [15 §5](15-agent-experience.md)).
 - **Done when:** [03 §6](03-conversion-and-passes.md) holds on the corpus
-  and TPC-H kernels.
+  and, once the `tpch-duck` job exists, on TPC-H kernels.
 
-## 8. M4 Backends and tiering
+## 10. M4 Backends, the cut-over, tiering
 
-Goal: every backend reads NIR; `nir` becomes the default pipeline; the
+Goal: every backend reads NIR; the engine runs the new pipeline; the
 promotion service replaces thread-per-module. Exit criteria:
 [05 §9](05-backends.md), [11 §7](11-tiered-compilation.md).
 
-#### M4.0 Backend interface on NIR · M · deps: M1.7, M1.8
-- **Builds:** `CompilationBackend` takes a legalized `nir::Module`; array
-  side tables helpers (value → slot, block → label); per-backend extension
-  lowering tables (`extLowering`, `extTypes`) and their registration API,
-  replacing `MLIRIntrinsicPlugin` and `AsmJitBackendIntrinsic` (shims kept);
-  the `legacy` pipeline's hand-off to bridge B for ported backends (§2
-  rule 2).
-- **Files:** `compiler/backends/CompilationBackend.*`, `compiler/Frame.hpp`
-  (removed in favor of arrays).
+**Every backend port implements the full core opcode set** of
+[13 §5](13-nir-spec.md), including `data.addr` and `funcaddr` (stable
+forwarding stubs in `compiler/backends/FunctionStubs.*`); imported calls
+are added by M4.7, `bind.addr` by M5.2, extension lowering by M6.5. A port
+that lands before the cut-over lives in new files next to its 0.3 lowering,
+which the cut-over deletes; until then it is tested with `nautilus-nir-run`,
+and its execution-test criteria are checked at the cut-over (M4.2).
+
+#### M4.0 Backend interface and `nautilus-nir-run` · M · deps: M1.5, M1.7
+- **Builds:** `CompilationBackend` on a legalized `nir::Module`; array side
+  tables helpers; per-backend extension lowering tables (`extLowering`,
+  `extTypes`) and their registration API, which replaces
+  `MLIRIntrinsicPlugin` and `AsmJitBackendIntrinsic` at the cut-over;
+  `tools/nautilus-nir-run`.
+- **Done when:** a test backend runs `.nir` files through `nautilus-nir-run`.
 
 #### M4.1 `tbc` on NIR · L · deps: M4.0
-- **Builds:** near 1:1 lowering; register allocation on value ids; handler
-  table indexed by extension opcode; copy-and-patch mode kept. The 0.3
-  `TBCLoweringProvider` path is deleted; `legacy` reaches `tbc` through
-  bridge B.
-- **Done when:** every execution test passes on `tbc` through `legacy` and
-  bridge B, with no execution-time regression on `ExecutionBenchmark`.
+- **Builds:** near 1:1 lowering in new files next to the 0.3 lowering;
+  register allocation on value ids; handler table indexed by extension
+  opcode; copy-and-patch mode.
+- **Done when:** every opcode's `.nir` tests pass on `tbc` in both modes.
 
-#### M4.2 `asmjit` on NIR · XL · deps: M4.1
-- **Builds:** the steps of [05 §4.4](05-backends.md): providers on NIR with
-  array side tables and `ConstPool` immediates; virtual registers created on
-  first use and reused after last use; #565's call-heavy fix confirmed on
-  NIR on x86-64 and AArch64. AsmJit's `Compiler`, RA and post-RA peepholes
-  unchanged. The 0.3 lowering is deleted; `legacy` reaches `asmjit` through
-  bridge B.
-- **Files:** `compiler/backends/asmjit/*LoweringProvider.*`,
-  `AsmJitCompilationBackend.*`; `asm-diff` CI leg and skill.
-- **Done when:** [05 §4.3](05-backends.md): assembly diff shows no
-  code-quality regression; backend ≤ 0.25 µs/op on linear code; every
-  `asmjit` test green on both architectures.
+#### M4.2 Cut-over · M · deps: M3.1–M3.7, M4.1
+- **Builds:** §2 step 2: the engine uses new tracer → conversion →
+  legalization → backend; deletions of §5; backends without a NIR port
+  switched off with a message; the in-tree plugins register intrinsics with
+  `ExtensionRegistry` directly (handlers come back with each backend port;
+  fallbacks until then); `test/data` regenerated in its own commit; the
+  `api-compat` leg starts.
+- **Done when:** every core and plugin test passes on `tbc` (and on the
+  backends of PR 7 if merged); `test/api-compat/` passes; the fuzzer is
+  clean on `tbc`.
 
-#### M4.3 MLIR on NIR with state reuse · L · deps: M4.0
-- **Builds:** NIR blocks and terminators → `cf`, arithmetic → `arith`,
-  extension types through the plugin type mapping; #561's per-thread
-  `TargetMachine` and `MLIRContext` reuse, single verification, data layout
-  for `LLJIT`; DWARF from the debug sections. The 0.3 lowering is deleted;
-  `legacy` reaches MLIR through bridge B.
-- **Files:** `compiler/backends/mlir/MLIRLoweringProvider.*`,
-  `MLIRCompilationBackend.*`, `JITCompiler.*`; `test/llvm-ir-test/` reference
-  IR regenerated in an isolated commit.
-
-#### M4.4 `cpp` on NIR · S · deps: M4.0
+#### M4.3 `cpp` on NIR · S · deps: M4.0
 - **Builds:** printing from NIR; extension ops as expression templates or
-  calls; the 0.3 lowering deleted.
+  calls.
+- **Done when:** every execution test passes on `cpp` (before the cut-over:
+  every `.nir` test).
 
-#### M4.5 GPU backends on NIR · M · deps: M4.0, M3.7
+#### M4.4 `asmjit` on NIR · XL · deps: M4.0
+- **Builds:** [05 §4.4](05-backends.md): providers on NIR with array side
+  tables and `ConstPool` immediates; virtual registers created on first use
+  and reused after last use; #565's call-heavy fix confirmed on NIR on
+  x86-64 and AArch64; AsmJit's `Compiler`, RA and post-RA peepholes
+  unchanged; intrinsic handlers re-registered through the new lowering API;
+  `asm-diff` leg and skill.
+- **Done when:** [05 §4.3](05-backends.md): no code-quality regression
+  against the recorded 0.3 assembly; backend ≤ 0.25 µs/op on linear code;
+  every test green on both architectures.
+
+#### M4.5 MLIR on NIR with state reuse · L · deps: M4.2
+- **Builds:** blocks and terminators → `cf`, arithmetic → `arith`; the hook
+  for extension type mappings (used from M6.5); #561's per-thread
+  `TargetMachine` and `MLIRContext` reuse, single verification, data layout
+  for `LLJIT`; DWARF from the debug sections; intrinsic handlers
+  re-registered; `test/llvm-ir-test/` reference IR regenerated in its own
+  commit.
+- **Done when:** every execution test passes on MLIR; `DebugInfoExecutionTest`
+  passes; MLIR fixed cost per compile at #561's level.
+
+#### M4.6 GPU backends on NIR · M · deps: M4.2
 - **Builds:** CUDA and Metal plugin backends read NIR; thread ids and
-  barriers as target-restricted extension ops; address spaces as extension
-  types (D15: CUDA compile-only in CI, Metal where the runner exposes a
-  device); the 0.3 lowerings deleted.
+  barriers as target-restricted extension ops (D15: CUDA compile-only in CI,
+  Metal where the runner exposes a device). Address spaces become extension
+  types in M6.6.
+- **Done when:** the GPU plugin suite passes in CI as D15 allows.
 
-#### M4.6 Data and function addresses in every backend · S · deps: M4.1–M4.4
-- **Builds:** `data.addr` and `funcaddr` with stable forwarding stubs.
-  `bind.addr` waits for M5.2, which brings the first producer of runtime
-  bindings (#529).
-
-#### M4.7 Module registry and linking · M · deps: M4.6
-- **Builds:** [13 §4.4](13-nir-spec.md): named modules, exports, import
+#### M4.7 Modules and linking · M · deps: M4.4, M4.5
+- **Builds:** [13 §4.4](13-nir-spec.md): named modules, exports and import
   declarations; linking by exact signature and guarantee bits, acyclic;
   import slots updated with a release store on promotion; lifecycle built →
-  linked → compiled → released; host API of §4.4.4.
-- **Files:** `link/ModuleRegistry.*`, `link/ImportSlots.*`; public API in
-  `include/nautilus/Module.hpp`.
-- **Tests:** cycles, signature mismatch and guarantee mismatch rejected;
-  promotion of an exporter seen by importers; release order.
+  linked → compiled → released; host API of §4.4.4; **imported calls in
+  every backend**; cross-module inlining (exporter hashes recorded,
+  functions using `bind.addr` skipped).
+- **Files:** `link/ModuleRegistry.*`, `link/ImportSlots.*`;
+  `include/nautilus/Module.hpp` (additions only).
+- **Done when:** cycles, signature and guarantee mismatches are rejected;
+  an exporter's promotion is seen by importers; release order holds; every
+  backend runs cross-module calls.
 
-#### M4.8 Promotion service · L · deps: M4.3
+#### M4.8 Promotion service · L · deps: M4.5
 - **Builds:** [11 §4](11-tiered-compilation.md): engine-wide worker pool,
   admission cap, lower OS priority; job states and cancellation at stage
-  boundaries; shutdown without held mutexes; status API
-  (`tier()`, `promotionStatus()`, `waitForPromotion`, `promote()`,
+  boundaries; shutdown without held mutexes; status API (`tier()`,
+  `promotionStatus()`, `waitForPromotion`, `promote()`,
   `NautilusEngine::waitForPromotions()`); policies `eager` and `manual`
   (D8); early start after conversion; options settable alone; one compile
-  path with linked unit IDs; `waitForPendingPromotions()` kept as a
-  deprecated alias.
+  path with linked unit IDs.
 - **Files:** `compiler/PromotionService.*`, `compiler/TieredCompiler.*`,
-  `include/nautilus/Module.hpp`, `docs/options.md`, `docs/engine.md`.
-- **Tests:** [11 §6](11-tiered-compilation.md) including fault injection.
+  `include/nautilus/Module.hpp` (additions only), `docs/options.md`,
+  `docs/engine.md`.
+- **Done when:** the tests of [11 §6](11-tiered-compilation.md) pass,
+  including fault injection.
 
-#### M4.9 Debug info and profiling (D14) · M · deps: M4.2, M4.1
+#### M4.9 Debug info and profiling (D14) · M · deps: M4.4, M4.5
 - **Builds:** `asmjit` symbols per function (and per region with source
-  locations) in `JitSymbolRegistry` and the jitdump; `tbc` handler ranges;
-  `DebugInfoExecutionTest` and `PerfJitDumpExecutionTest` on NIR; a
-  `perf.sample` test on `asmjit`.
+  locations) in `JitSymbolRegistry` and the jitdump; `tbc` handler ranges.
+- **Done when:** `DebugInfoExecutionTest` and `PerfJitDumpExecutionTest`
+  pass; a `perf.sample` test passes on `asmjit`.
 
 #### M4.10 Agent items for M4 · M · deps: M4.8
-- **Builds:** `CompiledModule::explain()` (JSON too);
+- **Builds:** `CompiledModule::explain()` (also as JSON; fields for
+  persistability and inlining decisions are filled as M3.8 and M5.3 land);
   `tools/agent/affected-tests`; `memory-check` skill
   ([15 §5](15-agent-experience.md)).
+- **Done when:** `explain()` is covered by a test; `affected-tests` maps a
+  sample of changed files to the expected targets.
 
-#### M4.11 Switch-over S3 · M · deps: M4.1–M4.9, M3 exit
-- **Builds:** `engine.pipeline=nir` becomes the default; `test/data`
-  regenerated in NIR format in one isolated commit; the M4 gates measured;
-  decision D3 taken and recorded in the README.
+#### M4.11 M4 exit · S · deps: M4.3–M4.10
+- **Builds:** every backend switched on; the M4 gates measured against the
+  baselines; decision D3 taken and recorded in the README; the
+  `nebulastream-0.4` and `tpch-duck` legs start gating.
 - **Done when:** [05 §9](05-backends.md) and [11 §7](11-tiered-compilation.md)
-  hold; NebulaStream and TPC-H green on the default pipeline.
+  hold; NebulaStream and TPC-H green.
 
-## 9. M5 Reuse
+## 11. M5 Reuse
 
-Goal: modules can be saved, loaded and cached; the C API is available.
-Exit criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
-[09 §4](09-c-api.md). M5.1 and M5.3 can start right after M1.5, on bridge
-B output; M5.2 needs the NIR backends (M4.1–M4.4) and M5.4 needs linking
-(M4.7).
+Goal: modules are saved, loaded and cached; the C API is available. Exit
+criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
+[09 §4](09-c-api.md).
 
-#### M5.1 Pointers: process-local and portable · M · deps: M1.5
+#### M5.1 Pointers: process-local and portable · M · deps: M4.11
 - **Builds:** pointer kinds; `ProcessLocal` with a per-process token;
   `Portable` through `SymbolNamer`/`SymbolResolver` (`SymbolTable`,
   `dladdr`/`dlsym`) and ELF build ID plus offset ([07 §3](07-serialization.md)).
+- **Done when:** a module with external callees and destructors saves
+  portably and resolves in a fresh process; a process-local image is
+  rejected in another process.
 
-#### M5.2 Runtime bindings · M · deps: M5.1, M4.1–M4.4
+#### M5.2 Runtime bindings · M · deps: M5.1
 - **Builds:** port of #529 onto the `bindings` section: `RuntimeBinding<T>`,
   address-free schema, fresh resolution per load, identities never merged by
-  aliasing; `bind.addr` in the tracer, the conversion and every backend (no
-  `bc` path).
+  aliasing; `bind.addr` in the tracer, the conversion and every backend.
+- **Done when:** #529's binding tests pass on every backend, including
+  concurrent modules.
 
 #### M5.3 Provenance and eligibility · M · deps: M5.1
 - **Builds:** provenance classes on constants, allocation evidence, pointer
-  portability, extension payload portability; eligibility scan before
-  optimization; fail closed with `artifact.ineligibleReason`
-  ([07 §5](07-serialization.md)).
-- **Tests:** every negative test of #527 and #528 ported.
+  portability, extension payload portability ([07 §5](07-serialization.md)).
+  The scan runs **on the pre-SSA level, before the conversion folds**, and
+  folding gives every folded constant the strongest provenance of its
+  inputs, so folding can never launder a raw value. Modules built through
+  the C API have no pre-SSA level and are scanned at the SSA level. Fail
+  closed with `artifact.ineligibleReason`.
+- **Done when:** every negative test of #527 and #528 is ported and fails
+  closed; a `constData` table is eligible, a traced host pointer is not.
 
-#### M5.4 Self-contained export · S · deps: M4.7, M1.5
+#### M5.4 Self-contained export · S · deps: M4.7, M5.1
 - **Builds:** saving bundles the transitive closure of imports as internal
   functions ([13 §8.5](13-nir-spec.md)); `imports` is empty in every image.
+- **Done when:** an image of an importer loads and runs in an engine that
+  has never seen the exporter.
 
-#### M5.5 Artifacts and native payloads · L · deps: M5.3, M4.3
+#### M5.5 Save, inspect and load NIR images · S · deps: M5.2–M5.4
+- **Builds:** `saveModule`, `inspectModule`, `loadModule` for the NIR-image
+  path, with signature checks including width and signedness; native
+  payloads are added by M5.6; `engine.retainIR` from #532 is not needed.
+- **Done when:** save on one engine, load on every backend: identical
+  results, identical bytes on re-save.
+
+#### M5.6 Artifacts and native payloads · L · deps: M5.5, M4.5
 - **Builds:** the artifact container and compatibility descriptor
   ([07 §2](07-serialization.md)); one relocatable object per payload from
   MLIR/LLVM with #527's import table, personality and unwind-resume bridges;
-  loader that falls back to the NIR image.
+  `loadModule` uses a matching payload and falls back to the NIR image.
 - **Done when:** a native hit in a fresh process with ASLR records no
-  tracing, conversion or codegen.
+  tracing, conversion or codegen; every corrupt or incompatible payload
+  falls back.
 
-#### M5.6 Public save/load API · S · deps: M5.5
-- **Builds:** `saveModule`, `inspectModule`, `loadModule` with signature
-  checks including width and signedness; `engine.retainIR` removed.
-
-#### M5.7 Caches L0, L1, L2 and tier interplay · L · deps: M5.6, M4.8
-- **Builds:** `plugins/cache/` from #528 (storage model unchanged), L0 in
-  memory with LRU, L1 semantic key with compatibility identity, L2
-  structural key with full comparison on hit; tier-1 cache hit skips tier 0;
+#### M5.7 Caches L0, L1, L2 and tiers · L · deps: M5.6, M4.8
+- **Builds:** `plugins/cache/` from #528 (storage model unchanged); L0 in
+  memory with LRU; L1 semantic key with compatibility identity; L2
+  structural key with full comparison on hit; a tier-1 hit skips tier 0;
   promotion results feed the caches ([11 §4.6](11-tiered-compilation.md));
   cache statistics; cache cases in the corpus.
 - **Done when:** [08 §5](08-caching.md) holds; warm NebulaStream ≥ 60%
   faster than cold.
 
-#### M5.8 C API on NIR · L · deps: M1.5, M4.7
+#### M5.8 C API on NIR · L · deps: M5.5
 - **Builds:** port of #531 ([09](09-c-api.md)): handles as `u32` ids, C
   enums generated from `Opcodes.def`, extension ops by name, modules,
   imports and data objects, save/load/inspect; `libnautilus-c` export test
   in the matrix; a Rust bindgen smoke test.
+- **Done when:** [09 §4](09-c-api.md).
 
-#### M5.9 Compatibility fixtures · S · deps: M5.6
-- **Builds:** images saved by this milestone checked into
-  `test/nir-tests/compat/` and loaded by every later build (D12).
+#### M5.9 Compatibility fixtures · S · deps: M5.5
+- **Builds:** images saved by this milestone in `test/nir-tests/compat/`,
+  loaded by every later build (D12).
+- **Done when:** the fixtures load and run on every backend in CI.
 
 #### M5.10 Playground MCP server · M · deps: M4.10
 - **Builds:** MCP tools `compile`, `stages`, `run`, `benchmark`, `explain`
   over the playground runner, local by default
   ([15 §4.4](15-agent-experience.md)).
+- **Done when:** each tool has an end-to-end test against the runner.
 
-## 10. M6 Semantics and extensions
+## 12. M6 Semantics and extensions
 
 Goal: the defined semantics of D10/D11, declared effects, and plugins on
 extension ops and types. Exit criteria: [06 §6](06-semantics.md),
-[04 §5](04-extensions.md).
-
-Signless integers are not a separate step here: NIR is signless from M1.1
-and the tracer emits signless types with op flags from M2.1. M6.4 removes
-the old signed `Type` enum from the plugin-facing API.
+[04 §5](04-extensions.md). NIR and the tracer are signless from M1 and M2;
+M6.4 moves the plugin-facing API to widths.
 
 #### M6.1 Defined integer and float semantics · M · deps: M4.11
 - **Builds:** checked `div`/`rem` with unwind entries throwing
-  `nautilus::ArithmeticException`, checks dropped where folding proves the
-  divisor safe; shift masks only where the target does not mask; saturating
-  float→int casts in every backend; fuzzer generation of the edge cases.
+  `nautilus::ArithmeticException`, checks dropped where folding proves them
+  unnecessary; constant shift amounts masked at conversion, dynamic ones
+  only where the target does not mask; saturating float→int casts on every
+  backend; fuzzer generation of the edge cases.
 - **Done when:** D10/D11 cases pass on every backend; the cost on
-  `ExecutionBenchmark` and TPC-H is measured and recorded (the `unchecked`
-  fallback of [06 §7](06-semantics.md) taken only if it is large).
+  `ExecutionBenchmark` and TPC-H is recorded (the `unchecked` fallback of
+  [06 §7](06-semantics.md) only if it is large).
 
-#### M6.2 Declared effects and `nothrow` · M · deps: M3.6
+#### M6.2 Declared effects and `nothrow` · M · deps: M3.6, M4.11
 - **Builds:** `invoke<no_throw>`, the `nothrow` attribute and effect
   declarations mapped to guarantee bits; declarations take precedence over
   inference; debug-mode checks (terminate handler, shadow effect checks).
-- **Tests:** wrongly declared callees caught by the debug checks.
+- **Done when:** wrongly declared callees are caught by the debug checks;
+  `pure` calls are merged and hoisted in `.nir` and execution tests.
 
-#### M6.3 Cheaper exception handling · M · deps: M6.2, M4.3
+#### M6.3 Cheaper exception handling · M · deps: M6.2
 - **Builds:** no capture thunk on MLIR call sites without cleanup;
   annotations in the `std` plugin and the NebulaStream hot runtime
   functions; share of call sites with exception handling in the statistics.
+- **Done when:** [06 §6](06-semantics.md): no thunk on MLIR call sites
+  without cleanup; the share is lower than the 0.3 baseline.
 
 #### M6.4 Plugin API on widths and op flags · S · deps: M4.11
-- **Builds:** `isUnsignedOp(inst)`; the signed `Type` enum removed from
-  plugin-facing headers; plugins switched.
+- **Builds:** `isUnsignedOp(inst)`; signed types removed from plugin-facing
+  headers; in-tree plugins switched.
+- **Done when:** no plugin source switches on a signed type.
 
-#### M6.5 Extension types · L · deps: M3.7, M4.2, M4.3
+#### M6.5 Extension types · L · deps: M3.7, M4.11
 - **Builds:** `TypeInfo`, interned parameterized types, multi-part values,
-  stack-slot fallback; `simd.vec<T,N>` and `builtin.i128` on every backend.
+  stack-slot fallback, type mappings in every backend; `simd.vec<T,N>` and
+  `builtin.i128`.
+- **Done when:** both types run on every backend, with and without handlers.
 
 #### M6.6 In-tree plugin migration · L · deps: M6.5
 - **Builds:** the table of [04 §4](04-extensions.md): `builtin` prefetch,
   overflow and int128; `simd` ops and **removal of the ring buffer**;
-  `specialization` assume; `gpu` ops; `std` effect declarations.
-- **Tests:** every plugin suite on every backend; fuzzer with handlers on
-  and off; debug mode that ignores traits.
+  `specialization` assume; `gpu` ops and address spaces as extension types;
+  `std` effect declarations.
+- **Done when:** [04 §5](04-extensions.md) M6 criteria: every plugin suite on
+  every backend; SIMD without the 32-value rule; fuzzer with handlers on
+  and off; the trait-ignoring debug mode passes.
 
-#### M6.7 Agent items for M6 · M · deps: M2.5, M6.5
+#### M6.7 Agent items for M6 · M · deps: M2.4, M6.5
 - **Builds:** `docs/diagnostics.md` complete; `docs/` code examples
   extracted and compiled in CI; the `extension-plugin` skill on the final
   extension API.
+- **Done when:** every diagnostic code has a catalog entry and a test; every
+  `docs/` example compiles in CI.
 
-## 11. M7 Release
+## 13. M7 Release
 
-#### M7.1 Delete the legacy pipeline (S4) · M · deps: M6
-- **Deletes:** `compiler/ir/` (except the intrinsic shim), bridge B,
-  `engine.pipeline`, the old passes, `IRPassBenchmark`, legacy
-  `TraceToIRConversionPhase`.
-- **Done when:** the tree builds without them and every suite is green.
-
-#### M7.2 Documentation and migration guide · M · deps: M7.1
+#### M7.1 Documentation and migration guide · M · deps: M6
 - **Builds:** README §6.2 updates; new documents (extension API,
-  serialization and caching, C API, migration guide from 0.3); `llms.txt`
-  and `docs/api.md`; user plugin with its skills, including
-  `migrate-0.3-to-0.4` ([15 §4.5](15-agent-experience.md)).
+  serialization and caching, C API, migration guide from 0.3 for plugin
+  authors); `llms.txt` and `docs/api.md`; the user plugin with its skills,
+  including `migrate-0.3-to-0.4` ([15 §4.5](15-agent-experience.md)).
+- **Done when:** `doc-check` passes; every page in README §6.2 is updated.
 
-#### M7.3 Release validation · M · deps: M7.1
-- The release criteria of README §6 on x86-64 and AArch64 with ASan/UBSan
-  and TSan; the GPU manual run recorded (D15); the reference-machine
-  numbers in the release notes; NebulaStream and nautilus-duck on the
-  release candidate.
+#### M7.2 Release validation · M · deps: M6
+- **Builds:** the release criteria of README §6 on x86-64 and AArch64 with
+  ASan/UBSan and TSan; `test/api-compat/` on every backend; the GPU manual
+  run (D15); reference-machine numbers in the release notes; NebulaStream
+  and nautilus-duck on the release candidate.
+- **Done when:** every release criterion is met and recorded.
 
-#### M7.4 Merge and tag · S · deps: M7.2, M7.3
-- `nautilus-0.4` merged into `main`; version set to 0.4.0; tag and release
-  notes. From then on, the session hook and `AGENTS.md` apply to every cloud
+#### M7.3 Merge and tag · S · deps: M7.1, M7.2
+- `nautilus-0.4` merged into `main`; version 0.4.0; tag and release notes.
+  From then on, the session hook and `AGENTS.md` apply to every cloud
   session.
 
-## 12. Effort summary
+## 14. Effort summary
 
-| Milestone | WPs | Rough effort |
+| Milestone | WPs | Rough effort (engineer-weeks) |
 |---|---|---|
-| M1 | 13 | 16–39 engineer-weeks |
-| M2 | 11 | 16–33 (including the optional M2.10) |
-| M3 | 10 | 12–30 |
+| M1 | 12 | 15–36 |
+| M2 | 8 | 13–27 (plus 1–3 for the optional M2.7) |
+| M3 | 10 | 12.5–30 |
 | M4 | 12 | 22–48 |
-| M5 | 10 | 14–33 |
-| M6 | 7 | 10–25 |
-| M7 | 4 | 3.5–10 |
-| **Total** | **67** | **≈ 95–220 engineer-weeks** |
+| M5 | 10 | 14.5–33 |
+| M6 | 7 | 10.5–25 |
+| M7 | 3 | 2.5–7 |
+| **Total** | **62** | **≈ 90–205** |
 
-The per-PR numbers in §1.1 add up to these totals; both are sums of the WP
-sizes (S 0.5–1, M 1–3, L 3–6, XL 6–10 weeks).
+These are sums of the WP sizes and agree with the per-PR numbers of §4.
+With the tracks of §6, the critical path is about 40–55 weeks elapsed. The
+numbers are for order and staffing and are revised at each milestone exit.
 
-With tracks A–F of §4 running in parallel, the critical path (§4) is about
-40–60 weeks of elapsed time; it is dominated by M2.1, M3.1, M4.1–M4.3,
-M5.5 and M6.6. The numbers are for planning order and staffing, and are revised at
-each milestone exit.
-
-## 13. Risks specific to the plan
+## 15. Risks specific to the plan
 
 | Risk | Mitigation |
 |---|---|
-| Large PRs are hard to review and drift from the branch | one commit (or a few) per WP, reviewable in order; drafts opened early and merged with `nautilus-0.4` weekly; the "done when" of each WP is a checklist in the PR description |
-| Two pipelines double the test load | the `nir-pipeline` leg runs only the backends ported so far; legacy is deleted in M7 |
-| Bridge B hides conversion bugs (it starts from optimized IR) | the conversion is compared on results and op counts, not on IR equality; the fuzzer runs on the NIR pipeline from S2 |
-| The legacy conversion adapted to the flat trace (M2.1) breaks 0.3 behavior | it is covered by every execution and tracing test before S1 lands; `legacyType[]` carries 0.3's signed types, so no signedness is reconstructed |
-| A backend port regresses the `legacy` pipeline | after the port, `legacy` reaches the backend through bridge B, whose round trip is checked by the `nir-roundtrip` leg since M1.7 |
-| M2.1 is large and blocks M3.1 | M3.2–M3.9 develop rule and pass code against bridge B and `.nir` tests while M2.1 is in progress |
-| Spec changes after M1 ripple through the code | spec-first rule (§2 rule 4); `Opcodes.def` generates the dependent tables |
-| `asmjit` port regresses code quality | the `asm-diff` leg against the 0.3 baseline from the first M4.2 PR |
-| `main` diverges | weekly merges of `main` into `nautilus-0.4` (README §6) |
-| External prerequisites without an owner | the dedicated reference machine (M1.11) and the `tpch-duck` job on the external nautilus-duck repository (M2.4) each get a named owner before M1 starts; until then gates use callgrind counts only |
+| Integration bugs show up at the cut-over instead of gradually | `NirChain` runs every execution-test function through the new chain before the cut-over; the cut-over needs only `tbc` |
+| Few backends between the cut-over and the M4 exit | PR 7 can land before the cut-over, so `asmjit` and `cpp` are on from the start; MLIR follows in PR 8 |
+| No side-by-side comparison with 0.3 | recorded baselines refreshed from `main`; correctness from the fuzzer's own oracle; `test/api-compat/` frozen at the branch point |
+| Merges from `main` get harder after the cut-over | §3 rule 10: re-implement or record as obsolete; every fix brings a regression test |
+| NebulaStream breaks late | its job reports from M1 and gates from the M4 exit; the user-facing API does not change |
+| Large PRs are hard to review and drift | one commit (or a few) per WP; drafts opened early and kept up to date; each WP's "done when" is a checklist in the PR description |
+| Spec changes after M1 ripple through the code | spec-first rule; `Opcodes.def` generates the dependent tables |
+| `asmjit` port regresses code quality | the `asm-diff` leg against the recorded 0.3 assembly |
+| External prerequisites without an owner | the reference machine (M1.10) and the `tpch-duck` job (M2.3) each get a named owner before M1 starts; until then gates use callgrind counts only |

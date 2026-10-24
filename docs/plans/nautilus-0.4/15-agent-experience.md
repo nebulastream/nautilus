@@ -146,10 +146,10 @@ separate marketplace entry) with skills for users:
 |---|---|
 | M1 | doc check in CI; NIR text parser and FileCheck-style tests; verifier error codes; `ir-change` rewritten for NIR |
 | M2 | tracing diagnostics with codes, locations and hints; `debug-trace` skill |
-| M3 | compile-fail suite for the public headers; `extension-plugin` skill |
+| M3 | compile-fail suite for the public headers |
 | M4 | `explain()`; `affected-tests`; `asm-diff` and `memory-check` skills |
 | M5 | playground MCP server |
-| M6 | diagnostics catalog complete; `docs/` examples compiled in CI |
+| M6 | diagnostics catalog complete; `docs/` examples compiled in CI; `extension-plugin` skill on the final extension API |
 | M7 | user plugin and its skills; `llms.txt` and `docs/api.md`; `migrate-0.3-to-0.4` |
 
 ## 6. Exit criteria

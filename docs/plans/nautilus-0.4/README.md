@@ -156,7 +156,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 13 | [NIR specification](13-nir-spec.md) | Normative definition of NIR: types, encoding, operations and semantics, level invariants, canonical form, binary image, versioning | #532 (format rules) |
 | 14 | [IR comparison](14-ir-comparison.md) | NIR compared with LLVM IR, MLIR, WebAssembly, Cranelift, QBE, SPIR-V, LuaJIT IR and Zig AIR; gaps and lessons | — |
 | 15 | [Agent experience](15-agent-experience.md) | Contributors: `AGENTS.md`, skills, doc check, NIR text parser, error codes; users: diagnostics with codes and hints, readable compile errors, `explain()`, playground MCP server, user plugin, docs that compile | agent tooling on `nautilus-0.4`, `tools/playground` |
-| 16 | [Implementation plan](16-implementation-plan.md) | Work packages per milestone with files, tests and done-when checks; switch-overs; the two temporary pipelines and bridges; CI legs; dependency graph, tracks and effort | 01–15 |
+| 16 | [Implementation plan](16-implementation-plan.md) | Work packages per milestone with files, tests and done-when checks, grouped into 17 PRs; build alongside, one cut-over, no bridge; recorded 0.3 baselines and the API-compat suite; CI legs; dependency graph, tracks and effort | 01–15 |
 | — | [P0 baseline](p0-baseline.md) | Measurements behind this design | design study (closed #562) |
 
 ## 5. Compatibility and versioning
@@ -167,7 +167,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | Explicit control flow | **New**, opt-in, mixable with implicit control flow |
 | Named modules and imports | **New:** modules can import exported functions of other modules by name, linked by reference; inlining across modules is an optional pass; saved images bundle their imports and are self-contained ([13 §4.4, §8.5](13-nir-spec.md)) |
 | Exception default of `invoke` | **Unchanged** (D4 = b). New, optional: `invoke<no_throw>`/`nothrow` and effect declarations ([06](06-semantics.md)) |
-| Plugin intrinsic API (`IntrinsicRegistry`, `MLIRIntrinsicPlugin`, `AsmJitBackendIntrinsic`) | **Replaced** by the extension API. A deprecated shim registers old intrinsics as extension ops through 0.4.x |
+| Plugin intrinsic API (`IntrinsicRegistry`, `MLIRIntrinsicPlugin`, `AsmJitBackendIntrinsic`) | **Replaced** by the extension API, without a shim: the plugin API is internal surface, and the migration guide covers it. The in-tree plugins are migrated |
 | `IRGraph`, `ir::Operation`, IR passes | **Removed** (internal) |
 | IR text dumps, `test/data` | **New format** |
 | `bc` backend | **Removed** (D6). `tbc` covers its roles; `engine.backend=bc` fails with an error that names `tbc` ([05 §6](05-backends.md)) |
@@ -204,22 +204,25 @@ releases and no temporary formats.
 
 | Milestone | Content | Exit criterion |
 |---|---|---|
-| **M1 Foundations** | NIR specification 1.0 ([13](13-nir-spec.md)) implemented: format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; bridge `IRGraph` → NIR (internal, removed before release); latency corpus driver added and running in CI; bounded chunk pool for arenas ([02 §4.1](02-nir.md)); `bc` backend removed (D6); validation infrastructure of [12 §5](12-validation.md): loader/verifier fuzzer, reference machine, NebulaStream CI job against `nautilus-0.4` (D16) | Every test's IR round-trips through the bridge, printer and serializer; plugin tests green on the registry |
+| **M1 Foundations** | NIR specification 1.0 ([13](13-nir-spec.md)) implemented: format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; latency corpus driver added and running in CI; recorded 0.3 baselines and the frozen API-compat suite ([16 §2](16-implementation-plan.md)); bounded chunk pool for arenas ([02 §4.1](02-nir.md)); `bc` backend removed (D6); validation infrastructure of [12 §5](12-validation.md): loader/verifier fuzzer, reference machine, NebulaStream CI job against `nautilus-0.4` (D16) | Every opcode round-trips through builder, printer, parser, serializer and loader; golden images load or are rejected as specified; every in-tree intrinsic visible through the registry |
 | **M2 Frontend** | Flat trace with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; TPC-H re-run share ≤ 35% of tracing; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
 | **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
-| **M4 Backends** | `tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; the promotion service of [11](11-tiered-compilation.md); decision D3 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
+| **M4 Backends** | `tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; **the cut-over:** the engine switches to the 0.4 pipeline and the 0.3 trace, `IRGraph`, passes and lowerings are deleted ([16 §2](16-implementation-plan.md)); modules and linking; the promotion service of [11](11-tiered-compilation.md); decision D3 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
 | **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold; every #527/#528 negative test ported and failing closed |
 | **M6 Semantics and extensions** | Declared call effects and cheaper exception handling; defined integer and float semantics (D10, D11); plugin API on signless widths (NIR itself is signless from M1); extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
-| **M7 Release** | Remove `IRGraph`, the old passes and the bridge; migration guide; user documentation (§6.2); NebulaStream integration; x86-64 and AArch64; sanitizers | Release criteria below |
+| **M7 Release** | Migration guide; user documentation (§6.2); NebulaStream on the release candidate; x86-64 and AArch64; sanitizers; the API-compat suite on every backend | Release criteria below |
 
 **Order and parallelism:**
 
 - M1 comes first: everything else writes or reads NIR.
-- M2 and M3 run in parallel after M1; M3 starts on the bridge's output.
-- M4 starts on the bridge's SSA output.
-- M5's portable path (NIR images, L0, L2) can start after M1; its native
-  payloads need M4.
-- M6 needs M3 and M4.
+- **The new pipeline is built next to the old one and replaces it in one
+  cut-over;** there is no bridge between the 0.3 IR and NIR
+  ([16 §2](16-implementation-plan.md)). The only compatibility requirement
+  is the user-facing API of §5.
+- The new tracer (M2), the conversion (M3) and the `tbc` port (M4) are
+  built and tested on their own before the cut-over; the cut-over needs
+  only `tbc`. The other backends, frontend features and passes follow.
+- M5 needs M4; M6 needs M3 and M4.
 - M7 closes.
 
 **Release criteria:**
@@ -247,8 +250,11 @@ measurement method (D9). These rules apply to every milestone:
   - extension ops with handlers enabled and disabled;
   - serialization round trips and cache hits;
   - signless-integer edge cases.
-- **The bridge** (M1) lets each new component be compared against 0.3's
-  pipeline on the same input until the bridge is removed in M7.
+- **Recorded 0.3 baselines** (corpus counts and timings, op counts,
+  `asmjit` assembly, `ExecutionBenchmark`, TPC-H), refreshed from `main`,
+  replace side-by-side comparison with 0.3; **the frozen API-compat suite**
+  (0.3's user-API tests and examples) proves the API is unchanged
+  ([16 §2](16-implementation-plan.md)).
 - **Reference dumps** (`test/data`) are regenerated once per format change,
   in isolated and reviewed commits, never together with behavior changes.
 - **The latency corpus and benchmarks** run on `nautilus-0.4` with the 200%
@@ -277,7 +283,7 @@ the migration guide from 0.3.
 
 | Risk | Mitigation |
 |---|---|
-| One release concentrates risk | Internal milestones with exit criteria; release criteria gate 0.4; the bridge lets each milestone be checked against 0.3 behavior |
+| One release concentrates risk | Internal milestones with exit criteria; release criteria gate 0.4; the new chain runs every execution-test function before the cut-over; recorded 0.3 baselines and the API-compat suite check each milestone against 0.3 |
 | `nautilus-0.4` drifts from `main` | `main` takes fixes only; weekly merges; full CI and corpus on the branch |
 | Region-based explicit control flow has corner cases | `region()`'s rules and diagnostics; fuzzer with mixed functions; #300's tests as the base |
 | In-memory = wire layout constrains evolution | Per-section strides and feature bits; derived data never serialized |
@@ -304,8 +310,8 @@ the migration guide from 0.3.
 | D13 | Extensions registered after the first compile | **Decided:** an error naming the extension; register everything before the first compile ([04 §3.7](04-extensions.md)) |
 | D14 | Debug info and profiling on NIR | **Decided:** source locations in the optional `debug` section, recorded only on request; `asmjit` and `tbc` register their code so `perf.sample` works with the default backend ([05 §7](05-backends.md)) |
 | D15 | GPU testing without GPU CI | **Decided:** CUDA compile-only in CI; Metal on the macOS runner where it exposes a device; a manual GPU run on the M7 checklist ([12 §4](12-validation.md)) |
-| D16 | NebulaStream migration | **Decided:** the NebulaStream CI job runs against `nautilus-0.4` from M1 on, so breakage shows per milestone; NebulaStream is ported milestone by milestone, not in M7 |
-| D17 | Deprecated surfaces | **Decided:** every shim (old intrinsic API, renamed options, `waitForPendingPromotions`) keeps a test that checks it still works and warns once ([12 §2](12-validation.md)) |
+| D16 | NebulaStream migration | **Decided:** the NebulaStream CI job runs against `nautilus-0.4` from M1 on; it reports until the M4 exit and gates from then on. The user-facing API does not change, so only behavior changes and NebulaStream's own plugins need patches, shipped by the PR that needs them |
+| D17 | Deprecated surfaces | **Decided:** deprecated aliases exist only for the user-facing API (renamed options); each keeps a test that checks it still works and warns once ([12 §2](12-validation.md)). Internal surfaces (the plugin intrinsic API, `TieredJITCompiler::waitForPendingPromotions`) are replaced without shims |
 | D18 | Agent experience | **Decided:** `AGENTS.md` as the contributor guide (imported by `CLAUDE.md`); skills, presets and a session hook on `nautilus-0.4` first; in 0.4 a NIR text parser, diagnostic codes with hints, `explain()`, a playground MCP server and a user plugin ([15](15-agent-experience.md)) |
 
 ## References
