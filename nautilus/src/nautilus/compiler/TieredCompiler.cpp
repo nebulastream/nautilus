@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <mutex>
+#include <system_error>
 #include <thread>
 
 namespace nautilus::compiler {
@@ -196,56 +197,92 @@ void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>
 		return;
 	}
 
-	pendingPromotions_.fetch_add(1, std::memory_order_relaxed);
-
 	std::lock_guard<std::mutex> lock(threadsMutex_);
-	// The IR and per-module options are owned per call and moved into the
-	// background thread, so concurrent promotions never share state.
-	promotionThreads_.emplace_back([weakState = std::move(state), ir = std::move(ir), config = config_,
-	                                options = std::move(options), &pendingCount = pendingPromotions_]() {
-		try {
-			auto* registry = CompilationBackendRegistry::getInstance();
-			auto* backend = registry->getBackend(config.tier1.backend);
+	// Without reaping, every finished thread keeps its stack mapped until the
+	// compiler is destroyed, and a long-running engine eventually fails to
+	// create threads at all.
+	reapFinishedPromotions();
+	// Reserve first so that once the thread exists, storing it cannot throw.
+	promotionThreads_.reserve(promotionThreads_.size() + 1);
 
-			auto compilationId = createPromotionUnitID();
-			auto dumpHandler = DumpHandler(options, compilationId);
+	auto finished = std::make_shared<std::atomic<bool>>(false);
+	pendingPromotions_.fetch_add(1, std::memory_order_relaxed);
+	std::thread thread;
+	try {
+		// The IR and per-module options are owned per call and moved into the
+		// background thread, so concurrent promotions never share state.
+		thread = std::thread([weakState = std::move(state), ir = std::move(ir), config = config_,
+		                      options = std::move(options), &pendingCount = pendingPromotions_, finished]() {
+			try {
+				auto* registry = CompilationBackendRegistry::getInstance();
+				auto* backend = registry->getBackend(config.tier1.backend);
 
-			auto statistics = std::make_shared<CompilationStatistics>();
-			statistics->set("compilation.unitId", compilationId);
-			statistics->set("tier", std::string {"tier1"});
-			statistics->set("backend.name", config.tier1.backend);
+				auto compilationId = createPromotionUnitID();
+				auto dumpHandler = DumpHandler(options, compilationId);
 
-			const auto promotionStart = std::chrono::steady_clock::now();
-			auto tier1Executable = backend->compile(ir, dumpHandler, options, statistics.get());
-			statistics->recordTimingMs("compilation.totalMs", promotionStart);
-			tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
+				auto statistics = std::make_shared<CompilationStatistics>();
+				statistics->set("compilation.unitId", compilationId);
+				statistics->set("tier", std::string {"tier1"});
+				statistics->set("backend.name", config.tier1.backend);
 
-			if (options.getOptionOrDefault("engine.logStatistics", false)) {
-				log::info("\n{}", statistics->formatReport(compilationId, config.tier1.backend));
+				const auto promotionStart = std::chrono::steady_clock::now();
+				auto tier1Executable = backend->compile(ir, dumpHandler, options, statistics.get());
+				statistics->recordTimingMs("compilation.totalMs", promotionStart);
+				tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
+
+				if (options.getOptionOrDefault("engine.logStatistics", false)) {
+					log::info("\n{}", statistics->formatReport(compilationId, config.tier1.backend));
+				}
+				appendStatisticsToFile(*statistics);
+
+				tier1Executable->setCompilationStatistics(
+				    std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
+
+				if (auto s = weakState.lock()) {
+					std::unique_lock<std::shared_mutex> lock(s->mutex);
+					s->executable = std::move(tier1Executable);
+					s->version.fetch_add(1, std::memory_order_release);
+				}
+			} catch (const std::exception& e) {
+				log::error("Tier 1 promotion failed: {}", e.what());
+			} catch (...) {
+				log::error("Tier 1 promotion failed with an exception not derived from std::exception");
 			}
-			appendStatisticsToFile(*statistics);
 
-			tier1Executable->setCompilationStatistics(
-			    std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
+			// Set before the pending count drops, so once allPromotionsComplete()
+			// holds, the next promotion reaps every finished thread.
+			finished->store(true, std::memory_order_release);
+			pendingCount.fetch_sub(1, std::memory_order_release);
+		});
+	} catch (const std::system_error& e) {
+		// The module keeps its tier-0 executable; failing the compile here
+		// would discard a working result.
+		pendingPromotions_.fetch_sub(1, std::memory_order_relaxed);
+		log::warn("Could not start the tier 1 promotion, the module stays on tier 0: {}", e.what());
+		return;
+	}
+	promotionThreads_.push_back({std::move(thread), std::move(finished)});
+}
 
-			if (auto s = weakState.lock()) {
-				std::unique_lock<std::shared_mutex> lock(s->mutex);
-				s->executable = std::move(tier1Executable);
-				s->version.fetch_add(1, std::memory_order_release);
-			}
-		} catch (const std::exception& e) {
-			log::error("Tier 1 promotion failed: {}", e.what());
+void TieredJITCompiler::reapFinishedPromotions() const {
+	for (auto& promotion : promotionThreads_) {
+		if (promotion.finished->load(std::memory_order_acquire)) {
+			promotion.thread.join();
 		}
+	}
+	std::erase_if(promotionThreads_, [](const PromotionThread& promotion) { return !promotion.thread.joinable(); });
+}
 
-		pendingCount.fetch_sub(1, std::memory_order_release);
-	});
+size_t TieredJITCompiler::retainedPromotionThreads() const {
+	std::lock_guard<std::mutex> lock(threadsMutex_);
+	return promotionThreads_.size();
 }
 
 void TieredJITCompiler::waitForPendingPromotions() const {
 	std::lock_guard<std::mutex> lock(threadsMutex_);
-	for (auto& t : promotionThreads_) {
-		if (t.joinable()) {
-			t.join();
+	for (auto& promotion : promotionThreads_) {
+		if (promotion.thread.joinable()) {
+			promotion.thread.join();
 		}
 	}
 	promotionThreads_.clear();
@@ -292,7 +329,7 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunct
 	throw RuntimeException("Jit not initialised");
 }
 std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableFunction>&, const engine::ModuleOptions&,
-                                                           const std::string&, const std::string&,
+                                                           const std::string&, const std::string&, IROptimizationLevel,
                                                            std::shared_ptr<ir::IRGraph>&) const {
 	throw RuntimeException("Jit not initialised");
 }
@@ -307,6 +344,9 @@ void TieredJITCompiler::waitForPendingPromotions() const {
 }
 bool TieredJITCompiler::allPromotionsComplete() const {
 	return true;
+}
+size_t TieredJITCompiler::retainedPromotionThreads() const {
+	return 0;
 }
 std::string TieredJITCompiler::getName() const {
 	return "";
