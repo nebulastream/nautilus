@@ -1,0 +1,80 @@
+{
+	"version": 6,
+	"cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+	"configurePresets": [
+		{
+			"name": "base",
+			"hidden": true,
+			"generator": "Ninja",
+			"binaryDir": "${sourceDir}/build/${presetName}",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release",
+				"CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+			}
+		},
+		{
+			"name": "dev",
+			"inherits": "base",
+			"displayName": "Fast iteration: no MLIR (no download), every other backend",
+			"cacheVariables": { "ENABLE_MLIR_BACKEND": "OFF" }
+		},
+		{
+			"name": "full",
+			"inherits": "base",
+			"displayName": "Everything CI builds by default, MLIR included (downloads ~500 MB once)"
+		},
+		{
+			"name": "debug",
+			"inherits": "base",
+			"displayName": "Debug build without MLIR (tracing behaves differently at -O0, see #450)",
+			"cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "ENABLE_MLIR_BACKEND": "OFF" }
+		},
+		{
+			"name": "asan",
+			"inherits": "base",
+			"displayName": "AddressSanitizer and LeakSanitizer, MLIR included",
+			"cacheVariables": { "ENABLE_ADDRESS_SANITIZER": "ON" }
+		},
+		{
+			"name": "tsan",
+			"inherits": "base",
+			"displayName": "ThreadSanitizer, MLIR included",
+			"cacheVariables": { "ENABLE_THREAD_SANITIZER": "ON" }
+		},
+		{
+			"name": "nocompiler",
+			"inherits": "base",
+			"displayName": "Interpreted-only build (ENABLE_COMPILER=OFF), as the CI leg",
+			"cacheVariables": { "ENABLE_COMPILER": "OFF" }
+		},
+		{
+			"name": "bench",
+			"inherits": "base",
+			"displayName": "Benchmarks, MLIR included",
+			"cacheVariables": { "ENABLE_BENCHMARKS": "ON" }
+		}
+	],
+	"buildPresets": [
+		{ "name": "dev", "configurePreset": "dev" },
+		{ "name": "full", "configurePreset": "full" },
+		{ "name": "debug", "configurePreset": "debug" },
+		{ "name": "asan", "configurePreset": "asan" },
+		{ "name": "tsan", "configurePreset": "tsan" },
+		{ "name": "nocompiler", "configurePreset": "nocompiler" },
+		{ "name": "bench", "configurePreset": "bench" }
+	],
+	"testPresets": [
+		{
+			"name": "base",
+			"hidden": true,
+			"output": { "outputOnFailure": true },
+			"execution": { "timeout": 300 }
+		},
+		{ "name": "dev", "inherits": "base", "configurePreset": "dev" },
+		{ "name": "full", "inherits": "base", "configurePreset": "full" },
+		{ "name": "debug", "inherits": "base", "configurePreset": "debug" },
+		{ "name": "asan", "inherits": "base", "configurePreset": "asan" },
+		{ "name": "tsan", "inherits": "base", "configurePreset": "tsan" },
+		{ "name": "nocompiler", "inherits": "base", "configurePreset": "nocompiler" }
+	]
+}
