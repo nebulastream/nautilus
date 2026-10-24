@@ -53,7 +53,7 @@ criteria in each component document refer to these tests.
 | **08 Caching** | #528's storage, compatibility and concurrency tests; an L2 hit across different caller keys; a debug mode that re-traces on hit and compares | Warm NebulaStream suite ≥ 60% faster than cold, measured as in #529 | Cold / L1 / L2 cases in the corpus |
 | **09 C API** | #531's strict C11 programs on every backend; the export test (`nautilus_*` only); C and C++ save paths byte-identical | — | A mechanical binding smoke test (Rust via bindgen) |
 | **10 Observability** | Statistics keys present and consistent (unit tests) | The P0 numbers reproduced as the M1 reference | The corpus driver (M1) |
-| **11 Tiered** | The tests of [11 §6](11-tiered-compilation.md): long-running engine, cancellation, waits, shutdown, failure, policy, cache hits; fuzzer with forced promotion | Thread and queue counters; hot-path cost of `calls:<N>`; time to tier 1 on the reference machine | Fault injection: a tier-1 backend that throws |
+| **11 Tiered** | The tests of [11 §6](11-tiered-compilation.md): long-running engine, cancellation, waits, shutdown, failure, policy, cache hits; fuzzer with forced promotion | Thread and queue counters; time to tier 1 on the reference machine | Fault injection: a tier-1 backend that throws |
 
 ## 4. Platforms without full CI coverage
 

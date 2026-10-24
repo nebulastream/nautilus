@@ -108,23 +108,25 @@ executables stay resident for as long as the handles that resolved them
 
 ### 4.4 Promotion policy (F8)
 
-`engine.tiered.promotion` selects when a module is promoted:
+`engine.tiered.promotion` selects when a module is promoted (D8, decided):
 
 | Value | Behavior |
 |---|---|
 | `eager` (default) | As in 0.3: queued right after conversion (§4.5) |
-| `calls:<N>` | Queued once the module's functions have been called N times in total |
 | `manual` | Only on `CompiledModule::promote()` |
 
 - **The default stays `eager`,** so behavior is unchanged unless a caller
   opts in.
-- **`calls:<N>` counts in the handle:** a plain counter in each
-  `ModuleFunction` cache, added to the module's atomic counter every 64
-  calls. The hot path gains one non-atomic increment and a compare; this is
-  checked on `ExecutionBenchmark` (§7).
 - **`manual` lets the embedder decide.** For example, NebulaStream can
   promote a query once it is known to be long-running, and never promote
   one-shot queries.
+- **No call-count policy in 0.4.** A `calls:<N>` policy would be the only
+  change to the call hot path (the header-only `ModuleFunction`) and would
+  need a threshold tuned per workload. Its benefit is small once
+  cancellation (§4.2) stops promotions of dropped modules and a tier-1
+  cache hit (§4.6) starts repeated queries on optimized code. It can be
+  added later without a format or API break if NebulaStream data shows a
+  need.
 
 ### 4.5 Start tier 1 as soon as NIR exists (F9)
 
@@ -172,7 +174,7 @@ and the tier-0 executable is then discarded unused.
 |---|---|---|
 | Promotion service, cancellation, shutdown (§4.1, §4.2) | 0.4, M4 | Builds on NIR's immutability and #561 |
 | Status API, statistics, one compile path (§4.3, §4.8) | 0.4, M4 | New public API |
-| Promotion policy (§4.4) | 0.4, M4, opt-in (D8) | Default unchanged |
+| Promotion policy (§4.4) | 0.4, M4, opt-in `manual` (D8) | Default unchanged |
 | Early start (§4.5), cache interplay (§4.6) | 0.4, M4/M5 | Needs NIR and the caches |
 | Configuration cleanup (§4.7) | 0.4, M4 | Behavior change for half-set options |
 
@@ -191,9 +193,9 @@ and the tier-0 executable is then discarded unused.
 - **Failure:** a tier-1 backend that throws a non-`std::exception` value
   leaves the module on tier 0 with the status `failed`.
 - **Policy:**
-  - `calls:<N>` promotes after N calls and not before;
-  - `manual` never promotes without `promote()`;
-  - both stay correct under concurrent handles.
+  - `manual` never promotes without `promote()`, and `promote()` from
+    several threads at once queues one job;
+  - `eager` queues exactly one job per module.
 - **Caches:** a warm L1/L2 hit runs tier 1 from the first call, with no tier-0
   compile recorded in the statistics.
 - **The differential fuzzer** runs with promotion forced (`eager`, one
@@ -203,8 +205,7 @@ and the tier-0 executable is then discarded unused.
 
 - No unbounded resource growth with the number of modules (the
   long-running test of §6).
-- With 0.3's defaults, `ExecutionBenchmark` and TPC-H are no slower. With
-  `calls:<N>`, the hot-path cost stays within benchmark noise.
+- With 0.3's defaults, `ExecutionBenchmark` and TPC-H are no slower.
 - With one worker per four cores, mean time to tier 1 on the NebulaStream
   suite is no worse than 0.3. The MLIR fixed cost per promotion after
   warm-up is at #561's level.
@@ -217,7 +218,6 @@ and the tier-0 executable is then discarded unused.
 |---|---|
 | A small pool delays tier 1 under load | `promotion.queueMs` makes it visible; `engine.tiered.promotionThreads` tunes it |
 | Cancellation points inside MLIR/LLVM are coarse | Stage boundaries are enough: a running job costs at most one compile per worker |
-| Counting calls costs on the hot path | Only with `calls:<N>`; batched per handle; measured |
 | Early start (§4.5) runs tier 0 and tier 1 at once | Workers run at lower OS priority (§4.1), so the caller's tier 0 keeps its core |
 | Callers relying on `waitForPendingPromotions()` | Kept as a deprecated alias of `NautilusEngine::waitForPromotions()` through 0.4.x |
 
@@ -229,3 +229,4 @@ and the tier-0 executable is then discarded unused.
   buffer, so a promotion takes effect at the next buffer.
 - Releasing superseded executables before their handles are destroyed.
 - Profile-guided tier-1 compilation (feeding tier-0 counters into MLIR).
+- A call-count promotion policy (`calls:<N>`, §4.4).
