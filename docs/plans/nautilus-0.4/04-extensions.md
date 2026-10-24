@@ -84,7 +84,7 @@ struct OpInfo {
   legalization ([03](03-conversion-and-passes.md)). Every backend therefore
   supports every extension, and a handler is only an optimization.
 - **The one exception is target-restricted ops.** Ops that only exist on
-  some targets (GPU thread ids, barriers) declare `targets` and may omit the
+  some targets declare `targets` and may omit the
   fallback. The verifier rejects them in a module compiled for any other
   target.
 - **Traits make extension ops first-class** for the conversion's folding,
@@ -164,7 +164,7 @@ registration API per backend.
 | `simd` | `vec<T>` as a pointer; ring-buffer fallback | types `simd.vec<T,N>`; pure ops and mask ops; stack-slot fallback; **ring buffer removed** |
 | `specialization` assume | intrinsic | `spec.assume`, a fact consumed by fold and simplify; fallback = no-op |
 | `std` | wrappers over `invoke` | unchanged, plus effect declarations ([06](06-semantics.md)) |
-| `gpu` | backend plugin | backend on NIR with GPU-only ops (thread id, barriers) as target-restricted extension ops (§3.3), ported in M4; address spaces as extension types in M6 |
+| `gpu` | backend plugin | migrated in M7 ([17](17-gpu.md)): thread-index and barrier ops as extension ops that keep 0.3's CPU fallbacks, `gpu.launch`, a required partition pass |
 | `inlining` | LLVM hooks | unchanged |
 | `profiling` | runtime plugin | unchanged |
 

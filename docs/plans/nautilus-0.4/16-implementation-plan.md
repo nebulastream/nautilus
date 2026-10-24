@@ -14,7 +14,7 @@ is proven done*. Every work package (WP) has:
 - its tests;
 - a "done when" check that a reviewer can verify.
 
-Work packages are units of planning and review. They are grouped into **17
+Work packages are units of planning and review. They are grouped into **18
 larger PRs** (§4), each landing one coherent capability. Inside a PR, each
 WP is one or a few commits, so the PR can be reviewed commit by commit.
 
@@ -53,7 +53,8 @@ and no second pipeline in the engine**:
      conversion, `compiler/ir/` (`IRGraph`, operations, passes,
      `IntrinsicRegistry`) and every backend's 0.3 lowering are deleted;
    - backends whose NIR port has not landed yet are switched off in CMake
-     with a message, until their port PR;
+     with a message, until their port PR; the GPU plugin stays off until
+     M7 ([17](17-gpu.md));
    - `test/data` is regenerated in NIR format, in its own commit;
    - `NirChain` is deleted; the engine is the chain.
 3. **Phase B, after the cut-over.** The remaining backends, frontend
@@ -103,6 +104,7 @@ on, on every enabled backend.
    | `tpch-duck` | PR 9 | nautilus-duck TPC-H tracing and execution | from the M4 exit (before: reports) |
    | `asm-diff` | PR 7 | `asmjit` assembly of the corpus against the 0.3 baseline | from PR 7 |
    | `doc-check` | PR 2 | paths, targets, options and skills named in `AGENTS.md` and skills exist | always |
+   | GPU legs (existing) | — | the three `-DENABLE_GPU_PLUGIN=ON` legs | build without the plugin from PR 6 to PR 17 ([17 §3](17-gpu.md)) |
 
 6. **How components are tested before they are wired together:**
    - NIR and passes: `.nir` text tests run through `nautilus-nir-opt`
@@ -143,16 +145,17 @@ opened as drafts early and kept up to date with the branch.
 | 5 | Backend interface, `nautilus-nir-run`, `tbc` on NIR | M4.0, M4.1 | 2 | 4–9 |
 | 6 | **Cut-over:** legalization; the engine on the new pipeline; the 0.3 pipeline deleted | M3.7, M4.2 | 4, 5 | 2–6 |
 | 7 | `cpp` and `asmjit` on NIR | M4.3, M4.4 | 5 | 6.5–11 |
-| 8 | MLIR and GPU on NIR | M4.5, M4.6 | 6 | 4–9 |
+| 8 | MLIR on NIR | M4.5 | 6 | 3–6 |
 | 9 | Frontend features: cheaper re-runs, TPC-H job and fewer copies, tracing diagnostics, explicit control flow, constant data | M2.2–M2.6 | 6 | 6.5–16 |
 | 10 | Optional passes, plugin pass hooks, M3 gate | M3.8–M3.10 | 6 | 4–8 |
-| 11 | Modules and linking, promotion service, debug info and profiling, `explain()`; M4 exit | M4.7–M4.11 | 7, 8, 9 | 6.5–16 |
+| 11 | Modules and linking, promotion service, debug info and profiling, `explain()`; M4 exit | M4.6–M4.10 | 7, 8, 9 | 6.5–16 |
 | 12 | Portable reuse: pointers, bindings, provenance, self-contained images, save/load, compatibility fixtures | M5.1–M5.5, M5.9 | 11 | 4.5–12 |
 | 13 | Native payloads and caches L0/L1/L2 | M5.6, M5.7 | 12 | 6–12 |
 | 14 | External interfaces: C API, playground MCP server | M5.8, M5.10 | 12 | 4–9 |
 | 15 | Semantics: D10/D11, declared effects, cheaper exceptions, plugin API on widths | M6.1–M6.4 | 11 | 3.5–10 |
 | 16 | Extension types and plugin migration; diagnostics catalog and compiled docs | M6.5–M6.7 | 11 | 7–15 |
-| 17 | Documentation, migration guide, release validation, merge and tag | M7.1–M7.3 | 13–16 | 2.5–7 |
+| 17 | GPU backends on NIR ([17](17-gpu.md)) | M7.1–M7.3 | 10, 11, 15 | 3–9 |
+| 18 | Documentation, migration guide, release validation, merge and tag | M7.4–M7.6 | 13–17 | 2.5–7 |
 
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 9.
@@ -177,6 +180,7 @@ PRs 2 and 5 can be worked on in parallel with PR 3, and PR 7 with PR 4.
 | `nautilus/src/nautilus/serialization/` | pointers, bindings, provenance, artifacts, self-contained export | 12, 13 |
 | `plugins/cache/` | L0/L1/L2 cache provider (`ENABLE_CACHE_PLUGIN`) | 13 |
 | `nautilus/include/nautilus/c/` | `common.h`, `ir.h`, `engine.h` | 14 |
+| `plugins/gpu/src/` | `gpu` extension ops, `gpu.partition` pass, shared NIR emitter, CUDA and Metal backends | 17 |
 | `nautilus/include/nautilus/control_flow.hpp`, `data.hpp` | explicit control flow; `constData` | 9 |
 | `nautilus/test/nir-tests/` | unit tests, `text/` (`.nir` tests), `images/` (golden images), `compat/` (D12 fixtures) | 1, 12 |
 | `nautilus/test/api-compat/` | 0.3's user-API tests and examples, frozen | 2 |
@@ -192,7 +196,8 @@ PRs 2 and 5 can be worked on in parallel with PR 3, and PR 7 with PR 4.
   `tracing/ExecutionTrace.*`, `tracing/TraceOperation.*`, `tracing/Block.*`,
   `tracing/phases/`, all of `compiler/ir/` (including `IntrinsicRegistry`
   and `IRLocationMap`), `compiler/Frame.hpp`, every backend's 0.3 lowering
-  provider, `IRPassBenchmark`, `test/ir-pass-tests/`, the `NirChain`
+  provider (including `plugins/gpu`'s `GPULoweringProviderBase` and its
+  CUDA and Metal providers), `IRPassBenchmark`, `test/ir-pass-tests/`, the `NirChain`
   fixture.
 
 ## 6. Order, dependencies and tracks
@@ -205,19 +210,20 @@ PR 1 NIR format ─┬─► PR 2 foundations, infra ─┬─► PR 3 NIR trace
                  │                                                               │
                  │        ┌──────────────┬──────────────┬────────────────────────┤
                  │        ▼              ▼              ▼                        ▼
-                 │   PR 8 MLIR, GPU  PR 9 frontend  PR 10 passes          (PR 7 if later)
+                 │   PR 8 MLIR       PR 9 frontend  PR 10 passes          (PR 7 if later)
                  │        └──────────────┴──────────────┴──────► PR 11 modules, tiering; M4 exit
                  │                                                     │
                  │                     ┌───────────────┬───────────────┼──────────────┐
                  │                     ▼               ▼               ▼              ▼
                  │                PR 12 portable  PR 15 semantics  PR 16 ext.   (PR 14 after 12)
                  │                     ▼
-                 │                PR 13 native, caches ─────────────────────► PR 17 release
+                 │                PR 13 native, caches ──────────┐
+                 │                          PR 17 GPU (after 15) ─┴──────────► PR 18 release
 ```
 
 **Critical path:** PR 1 → PR 2 → PR 3 → PR 4 → PR 6 → PR 8 → PR 11 → PR 12
-→ PR 13 → PR 17. PR 5 and PR 7 run beside PR 3 and PR 4; PRs 9, 10, 15 and
-16 beside the reuse chain.
+→ PR 13 → PR 18. PR 5 and PR 7 run beside PR 3 and PR 4; PRs 9, 10, 15, 16
+and 17 (GPU) beside the reuse chain.
 
 **Tracks** (who can work in parallel):
 
@@ -226,10 +232,10 @@ PR 1 NIR format ─┬─► PR 2 foundations, infra ─┬─► PR 3 NIR trace
 | A: format and reuse | 1, 12, 13, 14 |
 | B: frontend | 3, 9 |
 | C: conversion and passes | 4, 6 (legalization), 10 |
-| D: backends | 5, 7, 8 |
+| D: backends | 5, 7, 8, 17 |
 | E: runtime | 2 (pool, `bc`), 11 |
 | F: semantics and extensions | 15, 16 |
-| G: infra and agents | 2 (corpus, baselines, CI), agent items in 11, 14, 16, 17 |
+| G: infra and agents | 2 (corpus, baselines, CI), agent items in 11, 14, 16, 18 |
 
 ## 7. M1 Foundations
 
@@ -510,7 +516,7 @@ criteria: [03 §6](03-conversion-and-passes.md).
 - **Builds:** LICM, strength reduction and inlining of internal callees on
   NIR, off on latency-critical compiles; `ir.runOptimizationPasses` and
   `ir.disable*` keep their meaning; options of removed passes warn.
-  Cross-module inlining is part of M4.7.
+  Cross-module inlining is part of M4.6.
 - **Files:** `passes/LICM.*`, `passes/StrengthReduction.*`,
   `passes/Inline.*`.
 - **Done when:** `.nir` tests per pass; fuzzer clean with every optional
@@ -531,14 +537,14 @@ criteria: [03 §6](03-conversion-and-passes.md).
 
 ## 10. M4 Backends, the cut-over, tiering
 
-Goal: every backend reads NIR; the engine runs the new pipeline; the
+Goal: every backend except GPU (M7) reads NIR; the engine runs the new pipeline; the
 promotion service replaces thread-per-module. Exit criteria:
 [05 §9](05-backends.md), [11 §7](11-tiered-compilation.md).
 
 **Every backend port implements the full core opcode set** of
 [13 §5](13-nir-spec.md), including `data.addr` and `funcaddr` (stable
 forwarding stubs in `compiler/backends/FunctionStubs.*`); imported calls
-are added by M4.7, `bind.addr` by M5.2, extension lowering by M6.5. A port
+are added by M4.6, `bind.addr` by M5.2, extension lowering by M6.5. A port
 that lands before the cut-over lives in new files next to its 0.3 lowering,
 which the cut-over deletes; until then it is tested with `nautilus-nir-run`,
 and its execution-test criteria are checked at the cut-over (M4.2).
@@ -595,14 +601,7 @@ and its execution-test criteria are checked at the cut-over (M4.2).
 - **Done when:** every execution test passes on MLIR; `DebugInfoExecutionTest`
   passes; MLIR fixed cost per compile at #561's level.
 
-#### M4.6 GPU backends on NIR · M · deps: M4.2
-- **Builds:** CUDA and Metal plugin backends read NIR; thread ids and
-  barriers as target-restricted extension ops (D15: CUDA compile-only in CI,
-  Metal where the runner exposes a device). Address spaces become extension
-  types in M6.6.
-- **Done when:** the GPU plugin suite passes in CI as D15 allows.
-
-#### M4.7 Modules and linking · M · deps: M4.4, M4.5
+#### M4.6 Modules and linking · M · deps: M4.4, M4.5
 - **Builds:** [13 §4.4](13-nir-spec.md): named modules, exports and import
   declarations; linking by exact signature and guarantee bits, acyclic;
   import slots updated with a release store on promotion; lifecycle built →
@@ -615,7 +614,7 @@ and its execution-test criteria are checked at the cut-over (M4.2).
   an exporter's promotion is seen by importers; release order holds; every
   backend runs cross-module calls.
 
-#### M4.8 Promotion service · L · deps: M4.5
+#### M4.7 Promotion service · L · deps: M4.5
 - **Builds:** [11 §4](11-tiered-compilation.md): engine-wide worker pool,
   admission cap, lower OS priority; job states and cancellation at stage
   boundaries; shutdown without held mutexes; status API (`tier()`,
@@ -629,13 +628,13 @@ and its execution-test criteria are checked at the cut-over (M4.2).
 - **Done when:** the tests of [11 §6](11-tiered-compilation.md) pass,
   including fault injection.
 
-#### M4.9 Debug info and profiling (D14) · M · deps: M4.4, M4.5
+#### M4.8 Debug info and profiling (D14) · M · deps: M4.4, M4.5
 - **Builds:** `asmjit` symbols per function (and per region with source
   locations) in `JitSymbolRegistry` and the jitdump; `tbc` handler ranges.
 - **Done when:** `DebugInfoExecutionTest` and `PerfJitDumpExecutionTest`
   pass; a `perf.sample` test passes on `asmjit`.
 
-#### M4.10 Agent items for M4 · M · deps: M4.8
+#### M4.9 Agent items for M4 · M · deps: M4.7
 - **Builds:** `CompiledModule::explain()` (also as JSON; fields for
   persistability and inlining decisions are filled as M3.8 and M5.3 land);
   `tools/agent/affected-tests`; `memory-check` skill
@@ -643,9 +642,9 @@ and its execution-test criteria are checked at the cut-over (M4.2).
 - **Done when:** `explain()` is covered by a test; `affected-tests` maps a
   sample of changed files to the expected targets.
 
-#### M4.11 M4 exit · S · deps: M4.3–M4.10
-- **Builds:** every backend switched on; the M4 gates measured against the
-  baselines; decision D3 taken and recorded in the README; the
+#### M4.10 M4 exit · S · deps: M4.3–M4.9
+- **Builds:** every backend switched on except GPU (M7,
+  [17](17-gpu.md)); the M4 gates measured against the baselines; decision D3 taken and recorded in the README; the
   `nebulastream-0.4` and `tpch-duck` legs start gating.
 - **Done when:** [05 §9](05-backends.md) and [11 §7](11-tiered-compilation.md)
   hold; NebulaStream and TPC-H green.
@@ -656,7 +655,7 @@ Goal: modules are saved, loaded and cached; the C API is available. Exit
 criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
 [09 §4](09-c-api.md).
 
-#### M5.1 Pointers: process-local and portable · M · deps: M4.11
+#### M5.1 Pointers: process-local and portable · M · deps: M4.10
 - **Builds:** pointer kinds; `ProcessLocal` with a per-process token;
   `Portable` through `SymbolNamer`/`SymbolResolver` (`SymbolTable`,
   `dladdr`/`dlsym`) and ELF build ID plus offset ([07 §3](07-serialization.md)).
@@ -682,7 +681,7 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
 - **Done when:** every negative test of #527 and #528 is ported and fails
   closed; a `constData` table is eligible, a traced host pointer is not.
 
-#### M5.4 Self-contained export · S · deps: M4.7, M5.1
+#### M5.4 Self-contained export · S · deps: M4.6, M5.1
 - **Builds:** saving bundles the transitive closure of imports as internal
   functions ([13 §8.5](13-nir-spec.md)); `imports` is empty in every image.
 - **Done when:** an image of an importer loads and runs in an engine that
@@ -704,7 +703,7 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   tracing, conversion or codegen; every corrupt or incompatible payload
   falls back.
 
-#### M5.7 Caches L0, L1, L2 and tiers · L · deps: M5.6, M4.8
+#### M5.7 Caches L0, L1, L2 and tiers · L · deps: M5.6, M4.7
 - **Builds:** `plugins/cache/` from #528 (storage model unchanged); L0 in
   memory with LRU; L1 semantic key with compatibility identity; L2
   structural key with full comparison on hit; a tier-1 hit skips tier 0;
@@ -725,7 +724,7 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   loaded by every later build (D12).
 - **Done when:** the fixtures load and run on every backend in CI.
 
-#### M5.10 Playground MCP server · M · deps: M4.10
+#### M5.10 Playground MCP server · M · deps: M4.9
 - **Builds:** MCP tools `compile`, `stages`, `run`, `benchmark`, `explain`
   over the playground runner, local by default
   ([15 §4.4](15-agent-experience.md)).
@@ -738,7 +737,7 @@ extension ops and types. Exit criteria: [06 §6](06-semantics.md),
 [04 §5](04-extensions.md). NIR and the tracer are signless from M1 and M2;
 M6.4 moves the plugin-facing API to widths.
 
-#### M6.1 Defined integer and float semantics · M · deps: M4.11
+#### M6.1 Defined integer and float semantics · M · deps: M4.10
 - **Builds:** checked `div`/`rem` with unwind entries throwing
   `nautilus::ArithmeticException`, checks dropped where folding proves them
   unnecessary; constant shift amounts masked at conversion, dynamic ones
@@ -748,7 +747,7 @@ M6.4 moves the plugin-facing API to widths.
   `ExecutionBenchmark` and TPC-H is recorded (the `unchecked` fallback of
   [06 §7](06-semantics.md) only if it is large).
 
-#### M6.2 Declared effects and `nothrow` · M · deps: M3.6, M4.11
+#### M6.2 Declared effects and `nothrow` · M · deps: M3.6, M4.10
 - **Builds:** `invoke<no_throw>`, the `nothrow` attribute and effect
   declarations mapped to guarantee bits; declarations take precedence over
   inference; debug-mode checks (terminate handler, shadow effect checks).
@@ -762,12 +761,12 @@ M6.4 moves the plugin-facing API to widths.
 - **Done when:** [06 §6](06-semantics.md): no thunk on MLIR call sites
   without cleanup; the share is lower than the 0.3 baseline.
 
-#### M6.4 Plugin API on widths and op flags · S · deps: M4.11
+#### M6.4 Plugin API on widths and op flags · S · deps: M4.10
 - **Builds:** `isUnsignedOp(inst)`; signed types removed from plugin-facing
   headers; in-tree plugins switched.
 - **Done when:** no plugin source switches on a signed type.
 
-#### M6.5 Extension types · L · deps: M3.7, M4.11
+#### M6.5 Extension types · L · deps: M3.7, M4.10
 - **Builds:** `TypeInfo`, interned parameterized types, multi-part values,
   stack-slot fallback, type mappings in every backend; `simd.vec<T,N>` and
   `builtin.i128`.
@@ -776,8 +775,8 @@ M6.4 moves the plugin-facing API to widths.
 #### M6.6 In-tree plugin migration · L · deps: M6.5
 - **Builds:** the table of [04 §4](04-extensions.md): `builtin` prefetch,
   overflow and int128; `simd` ops and **removal of the ring buffer**;
-  `specialization` assume; `gpu` ops and address spaces as extension types;
-  `std` effect declarations.
+  `specialization` assume; `std` effect declarations. The `gpu` plugin
+  moves in M7 ([17](17-gpu.md)).
 - **Done when:** [04 §5](04-extensions.md) M6 criteria: every plugin suite on
   every backend; SIMD without the 32-value rule; fuzzer with handlers on
   and off; the trait-ignoring debug mode passes.
@@ -789,23 +788,51 @@ M6.4 moves the plugin-facing API to widths.
 - **Done when:** every diagnostic code has a catalog entry and a test; every
   `docs/` example compiles in CI.
 
-## 13. M7 Release
+## 13. M7 GPU and release
 
-#### M7.1 Documentation and migration guide · M · deps: M6
+GPU is ported last, in its own PR (PR 17), from the design in
+[17-gpu.md](17-gpu.md); the release work follows.
+
+#### M7.1 GPU device operations, launch and partition · M · deps: M3.9, M4.10, M6.1
+- **Builds:** the `gpu.thread_idx`/`block_idx`/`block_dim`/`grid_dim` and
+  `gpu.sync_threads` extension ops with the 0.3 CPU fallbacks; `gpu.launch`
+  with its expansion fallback and `verify` hook; `gpu::launch` tracing
+  `gpu.launch` (the `gpu.hpp` API unchanged); the required `gpu.partition`
+  pass with the device code rules and the D19 division rewrite
+  ([17 §4](17-gpu.md)).
+- **Done when:** every 0.3 GPU test function runs single-threaded through the
+  fallbacks on `tbc`, `asmjit` and MLIR with the 0.3 results; each device
+  code rule has a negative test.
+
+#### M7.2 Shared emitter and CUDA backend · M · deps: M7.1
+- **Builds:** the NIR emitter replacing `GPULoweringProviderBase`; the CUDA
+  backend (`__device__`, `__global__`, `<<<grid, block>>>`, `nvcc`);
+  `lowerToCUDA` on NIR; `GPUCodegenTest` CUDA references regenerated in their
+  own commit.
+- **Done when:** `GPUTracingTest` and the CUDA part of `GPUCodegenTest` pass
+  on the Linux GPU legs, which are restored.
+
+#### M7.3 Metal backend · M · deps: M7.2
+- **Builds:** MSL device code and C++ host dispatch from NIR; `lowerToMetal`
+  on NIR; Metal references regenerated in their own commit; the GPU tests
+  added to `test/api-compat/`.
+- **Done when:** [17 §6](17-gpu.md); D19 decided.
+
+#### M7.4 Documentation and migration guide · M · deps: M6, M7.3
 - **Builds:** README §6.2 updates; new documents (extension API,
   serialization and caching, C API, migration guide from 0.3 for plugin
   authors); `llms.txt` and `docs/api.md`; the user plugin with its skills,
   including `migrate-0.3-to-0.4` ([15 §4.5](15-agent-experience.md)).
 - **Done when:** `doc-check` passes; every page in README §6.2 is updated.
 
-#### M7.2 Release validation · M · deps: M6
+#### M7.5 Release validation · M · deps: M6, M7.3
 - **Builds:** the release criteria of README §6 on x86-64 and AArch64 with
   ASan/UBSan and TSan; `test/api-compat/` on every backend; the GPU manual
   run (D15); reference-machine numbers in the release notes; NebulaStream
   and nautilus-duck on the release candidate.
 - **Done when:** every release criterion is met and recorded.
 
-#### M7.3 Merge and tag · S · deps: M7.1, M7.2
+#### M7.6 Merge and tag · S · deps: M7.4, M7.5
 - `nautilus-0.4` merged into `main`; version 0.4.0; tag and release notes.
   From then on, the session hook and `AGENTS.md` apply to every cloud
   session.
@@ -817,11 +844,11 @@ M6.4 moves the plugin-facing API to widths.
 | M1 | 12 | 15–36 |
 | M2 | 8 | 13–27 (plus 1–3 for the optional M2.7) |
 | M3 | 10 | 12.5–30 |
-| M4 | 12 | 22–48 |
+| M4 | 11 | 21–45 |
 | M5 | 10 | 14.5–33 |
 | M6 | 7 | 10.5–25 |
-| M7 | 3 | 2.5–7 |
-| **Total** | **62** | **≈ 90–205** |
+| M7 | 6 | 5.5–16 |
+| **Total** | **65** | **≈ 90–210** |
 
 These are sums of the WP sizes and agree with the per-PR numbers of §4.
 With the tracks of §6, the critical path is about 40–55 weeks elapsed. The
@@ -839,4 +866,5 @@ numbers are for order and staffing and are revised at each milestone exit.
 | Large PRs are hard to review and drift | one commit (or a few) per WP; drafts opened early and kept up to date; each WP's "done when" is a checklist in the PR description |
 | Spec changes after M1 ripple through the code | spec-first rule; `Opcodes.def` generates the dependent tables |
 | `asmjit` port regresses code quality | the `asm-diff` leg against the recorded 0.3 assembly |
+| GPU support is off from the cut-over to M7 | declared in [17](17-gpu.md); the user API headers stay in the tree; the 0.3 GPU tests and reference sources are ported, not rewritten |
 | External prerequisites without an owner | the reference machine (M1.10) and the `tpch-duck` job (M2.3) each get a named owner before M1 starts; until then gates use callgrind counts only |

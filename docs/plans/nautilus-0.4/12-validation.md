@@ -63,10 +63,12 @@ criteria in each component document refer to these tests.
 ## 4. Platforms without full CI coverage
 
 - **GPU (D15):** CI has no GPU hardware. CUDA is tested compile-only
-  (kernel outlining, NIR → PTX generation, verifier). Metal runs on the
+  (the partition pass, device code rules, generated CUDA sources compared
+  with references). Metal runs on the
   macOS runner where the runner exposes a device, and compile-only
   otherwise. A manual run on GPU hardware is part of the M7 release
-  checklist.
+  checklist. From the cut-over until M7 the GPU plugin is off and the GPU
+  legs build without it ([17 §3](17-gpu.md)).
 - **AArch64:** the ARM runner covers `asmjit`, `tbc` and MLIR.
 - **Native payloads** are Linux x86-64 ELF in 0.4 ([07](07-serialization.md));
   other platforms test the NIR-image path.

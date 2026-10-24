@@ -41,7 +41,7 @@ Backends take 11–30% of a compile on `bc`/`tbc`/`asmjit`
 | ~~`bc`~~ | **Removed in 0.4** (D6, §6) | Not ported to NIR |
 | MLIR → LLVM | Peak performance; produces the persisted native payloads ([07](07-serialization.md)) | #561's per-thread state reuse; reads NIR; maps extension types (from M6) |
 | `cpp` | Debugging and reference | |
-| GPU (CUDA, Metal) | Plugin backends on NIR | GPU intrinsics as extension ops |
+| GPU (CUDA, Metal) | Plugin backends on NIR, ported last (M7, [17](17-gpu.md)) | GPU intrinsics as extension ops; off from the cut-over until M7 |
 
 **Tiered compilation keeps its structure** (`TieredJITCompiler`: tier 0
 compiled synchronously, tier 1 in the background). Two things change:
@@ -150,9 +150,8 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
 - `tbc` lowers NIR almost one to one. Its register allocator works on value
   ids, and its handler table is indexed by extension opcode.
 - `cpp` prints from NIR. Extension ops use expression templates or calls.
-- GPU backends read NIR (M4). GPU-only ops are target-restricted extension
-  ops ([04 §3.3](04-extensions.md)); address spaces become extension types
-  with the plugin migration in M6.
+- GPU backends read NIR from M7 on; until then the GPU plugin is off. The
+  design is in [17-gpu.md](17-gpu.md).
 - **Every port is built next to the 0.3 lowering** it replaces and tested
   with `nautilus-nir-run` (a `.nir` file on one backend) until the cut-over,
   which deletes the 0.3 lowerings. `tbc` is ported first: the cut-over needs
@@ -216,8 +215,8 @@ names, which 0.4 carries in NIR:
 
 ## 9. Exit criteria (M4)
 
-- Every backend passes the execution tests and the differential fuzzer on
-  NIR.
+- Every backend except GPU (M7) passes the execution tests and the
+  differential fuzzer on NIR.
 - `asmjit` meets the targets of §4.3.
 - End to end ≤ 0.75 µs/op on linear corpus code with the default backend
   (README §1).

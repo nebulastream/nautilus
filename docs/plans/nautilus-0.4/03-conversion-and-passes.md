@@ -104,8 +104,8 @@ internal form below this point ([05](05-backends.md)).
   callees, across modules ([13 §4.4.3](13-nir-spec.md)); inlining of
   imported callees lands with linking in M4.
 - **Plugin passes** register at named points (`afterConversion`,
-  `beforeLowering`), each marked *required* (correctness, for example GPU
-  kernel outlining) or *optional*. Only required passes run on
+  `beforeLowering`), each marked *required* (correctness, for example the GPU
+  partition pass of [17 §4.4](17-gpu.md)) or *optional*. Only required passes run on
   latency-critical compiles, so a plugin cannot silently put a fixed-point
   pass back on the critical path.
 - **Analyses** come from `BlockInfo` and `useCount`; plugins do not
