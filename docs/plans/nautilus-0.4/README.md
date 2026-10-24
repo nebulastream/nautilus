@@ -153,7 +153,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 12 | [Validation](12-validation.md) | How each component is tested; performance-gate method; new test infrastructure | #544 (fuzzer), the corpus |
 | 13 | [NIR specification](13-nir-spec.md) | Normative definition of NIR: types, encoding, operations and semantics, level invariants, canonical form, binary image, versioning | #532 (format rules) |
 | 14 | [IR comparison](14-ir-comparison.md) | NIR compared with LLVM IR, MLIR, WebAssembly, Cranelift, QBE, SPIR-V, LuaJIT IR and Zig AIR; gaps and lessons | — |
-| 15 | [Agent experience](15-agent-experience.md) | Contributors: `AGENTS.md`, skills, doc check, NIR text parser, error codes; users: diagnostics with codes and hints, readable compile errors, `explain()`, playground MCP server, user plugin, docs that compile | agent-tooling PR on `main`, `tools/playground` |
+| 15 | [Agent experience](15-agent-experience.md) | Contributors: `AGENTS.md`, skills, doc check, NIR text parser, error codes; users: diagnostics with codes and hints, readable compile errors, `explain()`, playground MCP server, user plugin, docs that compile | agent tooling on `nautilus-0.4`, `tools/playground` |
 | — | [P0 baseline](p0-baseline.md) | Measurements behind this design | design study (closed #562) |
 
 ## 5. Compatibility and versioning
@@ -303,7 +303,7 @@ the migration guide from 0.3.
 | D15 | GPU testing without GPU CI | **Decided:** CUDA compile-only in CI; Metal on the macOS runner where it exposes a device; a manual GPU run on the M7 checklist ([12 §4](12-validation.md)) |
 | D16 | NebulaStream migration | **Decided:** the NebulaStream CI job runs against `nautilus-0.4` from M1 on, so breakage shows per milestone; NebulaStream is ported milestone by milestone, not in M7 |
 | D17 | Deprecated surfaces | **Decided:** every shim (old intrinsic API, renamed options, `waitForPendingPromotions`) keeps a test that checks it still works and warns once ([12 §2](12-validation.md)) |
-| D18 | Agent experience | **Decided:** `AGENTS.md` as the contributor guide (imported by `CLAUDE.md`); skills, presets and a session hook on `main` first; in 0.4 a NIR text parser, diagnostic codes with hints, `explain()`, a playground MCP server and a user plugin ([15](15-agent-experience.md)) |
+| D18 | Agent experience | **Decided:** `AGENTS.md` as the contributor guide (imported by `CLAUDE.md`); skills, presets and a session hook on `nautilus-0.4` first; in 0.4 a NIR text parser, diagnostic codes with hints, `explain()`, a playground MCP server and a user plugin ([15](15-agent-experience.md)) |
 
 ## References
 

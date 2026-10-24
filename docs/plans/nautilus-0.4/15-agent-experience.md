@@ -1,8 +1,8 @@
 # Component: Agent Experience
 
 Part of the [Nautilus 0.4 design](README.md) · Milestones M1–M7 · Builds on
-the agent-tooling PR against `main` (`AGENTS.md`, presets, session hook,
-skills) and the playground (`tools/playground`)
+the agent tooling already on `nautilus-0.4` (`AGENTS.md`, presets, session
+hook, skills) and the playground (`tools/playground`)
 
 ## 1. Purpose
 
@@ -17,9 +17,9 @@ ground truth, fast and reproducible builds, machine-readable feedback, and
 error messages that say how to fix the problem. Anything vague or stale costs
 an agent far more than a person, because it acts on it.
 
-## 2. What lands on `main` first
+## 2. What is on `nautilus-0.4` already
 
-One PR against `main`, carried into `nautilus-0.4` by the regular merges:
+Committed on the 0.4 branch, so it reaches `main` with the release:
 
 | Item | Content |
 |---|---|
