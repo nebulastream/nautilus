@@ -1,6 +1,6 @@
 # Component: Agent Experience
 
-Part of the [Nautilus 0.4 design](README.md) · Milestones M1–M7 · Builds on
+Part of the [Nautilus 0.4 design](README.md) · Milestones M1–M8 · Builds on
 the agent tooling already on `nautilus-0.4` (`AGENTS.md`, presets, session
 hook, skills) and the playground (`tools/playground`)
 
@@ -150,7 +150,8 @@ separate marketplace entry) with skills for users:
 | M4 | `explain()`; `affected-tests`; `asm-diff` and `memory-check` skills |
 | M5 | playground MCP server |
 | M6 | diagnostics catalog complete; `docs/` examples compiled in CI; `extension-plugin` skill on the final extension API |
-| M7 | user plugin and its skills; `llms.txt` and `docs/api.md`; `migrate-0.3-to-0.4` |
+| M7 | `docs/gpu.md` |
+| M8 | user plugin and its skills; `llms.txt` and `docs/api.md`; `migrate-0.3-to-0.4` |
 
 ## 6. Exit criteria
 

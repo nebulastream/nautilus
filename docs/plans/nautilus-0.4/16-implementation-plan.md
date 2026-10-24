@@ -14,7 +14,7 @@ is proven done*. Every work package (WP) has:
 - its tests;
 - a "done when" check that a reviewer can verify.
 
-Work packages are units of planning and review. They are grouped into **18
+Work packages are units of planning and review. They are grouped into **19
 larger PRs** (§4), each landing one coherent capability. Inside a PR, each
 WP is one or a few commits, so the PR can be reviewed commit by commit.
 
@@ -105,6 +105,7 @@ on, on every enabled backend.
    | `asm-diff` | PR 7 | `asmjit` assembly of the corpus against the 0.3 baseline | from PR 7 |
    | `doc-check` | PR 2 | paths, targets, options and skills named in `AGENTS.md` and skills exist | always |
    | GPU legs (existing) | — | the three `-DENABLE_GPU_PLUGIN=ON` legs | build without the plugin from PR 6 to PR 17 ([17 §3](17-gpu.md)) |
+   | GPU hardware (D21) | PR 18 | the GPU suite on a self-hosted NVIDIA runner and a Metal device; nightly `compute-sanitizer` | from PR 18 |
 
 6. **How components are tested before they are wired together:**
    - NIR and passes: `.nir` text tests run through `nautilus-nir-opt`
@@ -154,8 +155,9 @@ opened as drafts early and kept up to date with the branch.
 | 14 | External interfaces: C API, playground MCP server | M5.8, M5.10 | 12 | 4–9 |
 | 15 | Semantics: D10/D11, declared effects, cheaper exceptions, plugin API on widths | M6.1–M6.4 | 11 | 3.5–10 |
 | 16 | Extension types and plugin migration; diagnostics catalog and compiled docs | M6.5–M6.7 | 11 | 7–15 |
-| 17 | GPU backends on NIR ([17](17-gpu.md)) | M7.1–M7.3 | 10, 11, 15 | 3–9 |
-| 18 | Documentation, migration guide, release validation, merge and tag | M7.4–M7.6 | 13–17 | 2.5–7 |
+| 17 | GPU core ([17](17-gpu.md)): device ops, launch, partition, runtime, memory, errors, CUDA and Metal device compilers | M7.1–M7.4 | 10, 11, 15 | 10–21 |
+| 18 | GPU production features and validation: shared memory, atomics, warp ops, math; caching and artifacts; GPU CI runners, sanitizers, benchmarks, `docs/gpu.md` | M7.5–M7.7 | 13, 17 | 5–12 |
+| 19 | Documentation, migration guide, release validation, merge and tag | M8.1–M8.3 | 13–18 | 2.5–7 |
 
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 9.
@@ -180,7 +182,7 @@ PRs 2 and 5 can be worked on in parallel with PR 3, and PR 7 with PR 4.
 | `nautilus/src/nautilus/serialization/` | pointers, bindings, provenance, artifacts, self-contained export | 12, 13 |
 | `plugins/cache/` | L0/L1/L2 cache provider (`ENABLE_CACHE_PLUGIN`) | 13 |
 | `nautilus/include/nautilus/c/` | `common.h`, `ir.h`, `engine.h` | 14 |
-| `plugins/gpu/src/` | `gpu` extension ops, `gpu.partition` pass, shared NIR emitter, CUDA and Metal backends | 17 |
+| `plugins/gpu/src/` | `gpu` extension ops, `gpu.partition` pass, shared NIR emitter, CUDA (NVRTC) and Metal device compilers, `runtime/` | 17, 18 |
 | `nautilus/include/nautilus/control_flow.hpp`, `data.hpp` | explicit control flow; `constData` | 9 |
 | `nautilus/test/nir-tests/` | unit tests, `text/` (`.nir` tests), `images/` (golden images), `compat/` (D12 fixtures) | 1, 12 |
 | `nautilus/test/api-compat/` | 0.3's user-API tests and examples, frozen | 2 |
@@ -217,13 +219,14 @@ PR 1 NIR format ─┬─► PR 2 foundations, infra ─┬─► PR 3 NIR trace
                  │                     ▼               ▼               ▼              ▼
                  │                PR 12 portable  PR 15 semantics  PR 16 ext.   (PR 14 after 12)
                  │                     ▼
-                 │                PR 13 native, caches ──────────┐
-                 │                          PR 17 GPU (after 15) ─┴──────────► PR 18 release
+                 │                PR 13 native, caches ──────────────────────┐
+                 │                PR 17 GPU core (after 15) ─► PR 18 GPU prod ┴─► PR 19 release
 ```
 
 **Critical path:** PR 1 → PR 2 → PR 3 → PR 4 → PR 6 → PR 8 → PR 11 → PR 12
-→ PR 13 → PR 18. PR 5 and PR 7 run beside PR 3 and PR 4; PRs 9, 10, 15, 16
-and 17 (GPU) beside the reuse chain.
+→ PR 13 → PR 19, and the GPU chain PR 15 → PR 17 → PR 18 → PR 19 beside
+it. PR 5 and PR 7 run beside PR 3 and PR 4; PRs 9, 10, 14 and 16 beside the
+reuse chain.
 
 **Tracks** (who can work in parallel):
 
@@ -232,10 +235,11 @@ and 17 (GPU) beside the reuse chain.
 | A: format and reuse | 1, 12, 13, 14 |
 | B: frontend | 3, 9 |
 | C: conversion and passes | 4, 6 (legalization), 10 |
-| D: backends | 5, 7, 8, 17 |
+| D: backends | 5, 7, 8 |
+| H: GPU | 17, 18 |
 | E: runtime | 2 (pool, `bc`), 11 |
 | F: semantics and extensions | 15, 16 |
-| G: infra and agents | 2 (corpus, baselines, CI), agent items in 11, 14, 16, 18 |
+| G: infra and agents | 2 (corpus, baselines, CI), agent items in 11, 14, 16, 19 |
 
 ## 7. M1 Foundations
 
@@ -354,7 +358,7 @@ README §6 and [02 §8](02-nir.md).
     use only public headers) and `example/`, copied at the branch point;
   - the dedicated reference machine set up and recorded
     ([10 §2](10-observability.md)); it has to be procured and needs an owner
-    (§15).
+    (§16).
 - **Done when:** the P0 numbers are reproduced and stored as the baseline;
   `test/api-compat/` builds and passes on the 0.3 pipeline.
 
@@ -413,7 +417,7 @@ flow mixable with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
 
 #### M2.3 TPC-H job and fewer copies (C2) · M · deps: M4.2
 - **Builds:** the `tpch-duck` CI leg (external nautilus-duck repository;
-  needs an owner, §15); `const val<T>&` in the `std` plugin and hot helpers;
+  needs an owner, §16); `const val<T>&` in the `std` plugin and hot helpers;
   `nautilus-review` flags by-value `val` parameters.
 - **Done when:** recorded copies on TPC-H at least a quarter below the 0.3
   baseline; re-run share reported per run.
@@ -788,56 +792,97 @@ M6.4 moves the plugin-facing API to widths.
 - **Done when:** every diagnostic code has a catalog entry and a test; every
   `docs/` example compiles in CI.
 
-## 13. M7 GPU and release
+## 13. M7 GPU
 
-GPU is ported last, in its own PR (PR 17), from the design in
-[17-gpu.md](17-gpu.md); the release work follows.
+The GPU plugin is rebuilt last and made production ready, from the design
+in [17-gpu.md](17-gpu.md). It is off from the cut-over until this
+milestone. Two PRs: the core (PR 17) and the production features and
+validation (PR 18).
 
-#### M7.1 GPU device operations, launch and partition · M · deps: M3.9, M4.10, M6.1
-- **Builds:** the `gpu.thread_idx`/`block_idx`/`block_dim`/`grid_dim` and
-  `gpu.sync_threads` extension ops with the 0.3 CPU fallbacks; `gpu.launch`
-  with its expansion fallback and `verify` hook; `gpu::launch` tracing
-  `gpu.launch` (the `gpu.hpp` API unchanged); the required `gpu.partition`
-  pass with the device code rules and the D19 division rewrite
-  ([17 §4](17-gpu.md)).
-- **Done when:** every 0.3 GPU test function runs single-threaded through the
-  fallbacks on `tbc`, `asmjit` and MLIR with the 0.3 results; each device
-  code rule has a negative test.
+#### M7.1 Device operations, launch and partition · L · deps: M3.9, M4.10, M6.1
+- **Builds:** `gpu.thread_idx`/`block_idx`/`block_dim`/`grid_dim` and
+  `gpu.sync_threads` with the 0.3 CPU fallbacks; `gpu.launch` with its
+  expansion fallback and `verify` hook; `gpu::launch` tracing it (the
+  `gpu.hpp` API unchanged); the required `gpu.partition` pass with the
+  device code rules, address-space inference and the D19 division rewrite
+  ([17 §4.2–§4.5, §4.7](17-gpu.md)).
+- **Done when:** every 0.3 GPU test function runs through the fallbacks on
+  `tbc`, `asmjit` and MLIR with the 0.3 results; each device code rule has
+  a negative test.
 
-#### M7.2 Shared emitter and CUDA backend · M · deps: M7.1
-- **Builds:** the NIR emitter replacing `GPULoweringProviderBase`; the CUDA
-  backend (`__device__`, `__global__`, `<<<grid, block>>>`, `nvcc`);
-  `lowerToCUDA` on NIR; `GPUCodegenTest` CUDA references regenerated in their
-  own commit.
-- **Done when:** `GPUTracingTest` and the CUDA part of `GPUCodegenTest` pass
-  on the Linux GPU legs, which are restored.
+#### M7.2 GPU runtime, memory and errors · L · deps: M7.1
+- **Builds:** `plugins/gpu/src/runtime/` with its C ABI
+  (`nautilus_gpu_launch`, buffers, streams); devices, contexts, streams and
+  queues; `gpu.device` and the deprecated `engine.backend=cuda|metal`
+  aliases; `DeviceBuffer`, `ManagedBuffer`, pointer-argument checks and the
+  0.3 Metal compatibility path; `launchAsync` and `synchronize`; launch
+  validation; `GPUCompileError` and `GPUException`
+  ([17 §4.1, §4.3, §4.4, §4.6](17-gpu.md)).
+- **Done when:** the memory, error and concurrency tests of [17 §5](17-gpu.md)
+  pass against the runtime with a test device stub, and on hardware once
+  M7.3 and M7.4 land.
 
-#### M7.3 Metal backend · M · deps: M7.2
-- **Builds:** MSL device code and C++ host dispatch from NIR; `lowerToMetal`
-  on NIR; Metal references regenerated in their own commit; the GPU tests
-  added to `test/api-compat/`.
-- **Done when:** [17 §6](17-gpu.md); D19 decided.
+#### M7.3 Shared emitter and CUDA device compiler · L · deps: M7.2
+- **Builds:** the NIR emitter replacing `GPULoweringProviderBase` (array
+  side tables, signedness from op flags); CUDA device code through NVRTC to
+  PTX, loaded with the driver API for the current device; kernel handles;
+  `lowerToCUDA` on NIR (device code only); CUDA references of
+  `GPUCodegenTest` regenerated in their own commit.
+- **Done when:** the 0.3 GPU tests pass on CUDA hardware; the Linux GPU legs
+  are restored.
 
-#### M7.4 Documentation and migration guide · M · deps: M6, M7.3
+#### M7.4 Metal device compiler · M · deps: M7.3
+- **Builds:** MSL from the shared emitter, compiled with
+  `newLibraryWithSource`; pipeline states created once per kernel; dispatch
+  through the runtime; `lowerToMetal` on NIR (device code only); Metal
+  references regenerated in their own commit.
+- **Done when:** the 0.3 GPU tests pass on a Metal device; the macOS GPU leg
+  is restored; no per-launch library, pipeline or queue creation (G2).
+
+#### M7.5 Device features · L · deps: M7.4
+- **Builds:** `gpu.shared_alloca`, the `gpu.atomic.*` and `gpu.warp.*` ops
+  with fallbacks and `gpu.hpp` wrappers; the device mapping of the `std`
+  math intrinsics ([17 §4.2](17-gpu.md)).
+- **Done when:** every op runs on CUDA and Metal hardware and through its
+  fallback with the same results; a shared-memory reduction kernel passes.
+
+#### M7.6 Caching, artifacts and observability · M · deps: M7.4, M5.7
+- **Builds:** L0 cache of loaded kernels and pipeline states; PTX and Metal
+  libraries as GPU payloads in artifacts and L1/L2, keyed by toolkit and
+  driver version; `gpu.*` statistics, `explain()` entries and dumps
+  ([17 §4.8, §4.9](17-gpu.md)).
+- **Done when:** a warm L0 or artifact hit compiles no device code; a
+  toolkit mismatch recompiles from the NIR image.
+
+#### M7.7 GPU validation and documentation · M · deps: M7.5, M7.6
+- **Builds:** the GPU runners of D21 (an owner is needed, §16); nightly
+  `compute-sanitizer` and Metal validation; the GPU fuzzer mode; the §4.8
+  benchmarks against hand-written kernels; the 0.3 GPU tests and
+  `DemoGPU.cpp` in `test/api-compat/`; `docs/gpu.md`.
+- **Done when:** [17 §6](17-gpu.md); D19, D20 and D21 decided.
+
+## 14. M8 Release
+
+#### M8.1 Documentation and migration guide · M · deps: M6, M7
 - **Builds:** README §6.2 updates; new documents (extension API,
   serialization and caching, C API, migration guide from 0.3 for plugin
   authors); `llms.txt` and `docs/api.md`; the user plugin with its skills,
   including `migrate-0.3-to-0.4` ([15 §4.5](15-agent-experience.md)).
 - **Done when:** `doc-check` passes; every page in README §6.2 is updated.
 
-#### M7.5 Release validation · M · deps: M6, M7.3
+#### M8.2 Release validation · M · deps: M6, M7
 - **Builds:** the release criteria of README §6 on x86-64 and AArch64 with
   ASan/UBSan and TSan; `test/api-compat/` on every backend; the GPU manual
   run (D15); reference-machine numbers in the release notes; NebulaStream
   and nautilus-duck on the release candidate.
 - **Done when:** every release criterion is met and recorded.
 
-#### M7.6 Merge and tag · S · deps: M7.4, M7.5
+#### M8.3 Merge and tag · S · deps: M8.1, M8.2
 - `nautilus-0.4` merged into `main`; version 0.4.0; tag and release notes.
   From then on, the session hook and `AGENTS.md` apply to every cloud
   session.
 
-## 14. Effort summary
+## 15. Effort summary
 
 | Milestone | WPs | Rough effort (engineer-weeks) |
 |---|---|---|
@@ -847,14 +892,16 @@ GPU is ported last, in its own PR (PR 17), from the design in
 | M4 | 11 | 21–45 |
 | M5 | 10 | 14.5–33 |
 | M6 | 7 | 10.5–25 |
-| M7 | 6 | 5.5–16 |
-| **Total** | **65** | **≈ 90–210** |
+| M7 | 7 | 15–33 |
+| M8 | 3 | 2.5–7 |
+| **Total** | **69** | **≈ 105–235** |
 
 These are sums of the WP sizes and agree with the per-PR numbers of §4.
-With the tracks of §6, the critical path is about 40–55 weeks elapsed. The
+With the tracks of §6, the critical path is about 45–60 weeks elapsed; the
+GPU chain (M7) starts after the M4 exit and M6.1 and runs beside M5 and M6. The
 numbers are for order and staffing and are revised at each milestone exit.
 
-## 15. Risks specific to the plan
+## 16. Risks specific to the plan
 
 | Risk | Mitigation |
 |---|---|
@@ -867,4 +914,5 @@ numbers are for order and staffing and are revised at each milestone exit.
 | Spec changes after M1 ripple through the code | spec-first rule; `Opcodes.def` generates the dependent tables |
 | `asmjit` port regresses code quality | the `asm-diff` leg against the recorded 0.3 assembly |
 | GPU support is off from the cut-over to M7 | declared in [17](17-gpu.md); the user API headers stay in the tree; the 0.3 GPU tests and reference sources are ported, not rewritten |
+| GPU production readiness depends on hardware | D21's runners get an owner before M7 starts; M7 cannot exit without them |
 | External prerequisites without an owner | the reference machine (M1.10) and the `tpch-duck` job (M2.3) each get a named owner before M1 starts; until then gates use callgrind counts only |

@@ -62,11 +62,12 @@ criteria in each component document refer to these tests.
 
 ## 4. Platforms without full CI coverage
 
-- **GPU (D15):** CI has no GPU hardware. CUDA is tested compile-only
-  (the partition pass, device code rules, generated CUDA sources compared
-  with references). Metal runs on the
-  macOS runner where the runner exposes a device, and compile-only
-  otherwise. A manual run on GPU hardware is part of the M7 release
+- **GPU (D15, D21):** the shared runners have no GPU. On them, CUDA is
+  tested compile-only (the partition pass, device code rules, generated
+  device sources compared with references), and Metal runs where the runner
+  exposes a device. From M7 on, D21's self-hosted NVIDIA runner and a Metal
+  device run the GPU suite on hardware, with `compute-sanitizer` nightly
+  ([17 §5](17-gpu.md)). A manual run on GPU hardware stays on the M8 release
   checklist. From the cut-over until M7 the GPU plugin is off and the GPU
   legs build without it ([17 §3](17-gpu.md)).
 - **AArch64:** the ARM runner covers `asmjit`, `tbc` and MLIR.
@@ -82,5 +83,6 @@ criteria in each component document refer to these tests.
   chain (`NirChain`) before it, and every test plus `test/api-compat/`
   passes on `tbc` after it.
 - **Each later milestone:** the rows of §3 for its components are green.
-- **M7:** every row is green on x86-64 and AArch64, and the GPU manual run
+- **M7:** [17 §6](17-gpu.md).
+- **M8:** every row is green on x86-64 and AArch64, and the GPU manual run
   is recorded.
