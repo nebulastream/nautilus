@@ -118,8 +118,10 @@ ctest --test-dir build/dev/plugins/std/test --output-on-failure                #
 
 ## 7. Changes, commits, pull requests
 
-- Branch from `main`; one logical change per commit; imperative commit
-  subjects ("Fix …", "Add …"), with the why in the body.
+- 0.4 work branches from `nautilus-0.4` and targets it; `main` takes only
+  fixes and is merged into `nautilus-0.4` regularly.
+- One logical change per commit; imperative commit subjects ("Fix …",
+  "Add …"), with the why in the body.
 - Format before committing; run the affected tests.
 - CI (`pr.yml`) builds GCC 14, Clang 19/21, Debug, macOS, ARM, ASan, TSan,
   `ENABLE_COMPILER=OFF`, FFI closures, GPU and short-circuit-bool variants,
@@ -127,8 +129,7 @@ ctest --test-dir build/dev/plugins/std/test --output-on-failure                #
   comments with ratios against `main`: shared runners vary by ±30%, and only
   the 200% alert is a signal. Compare suspicious ratios with code your
   change cannot affect before acting on them.
-- Larger designs for the next release are in `docs/plans/nautilus-0.4/` on
-  the `nautilus-0.4` branch.
+- The 0.4 design is in `docs/plans/nautilus-0.4/`.
 
 ## 8. Skills and subsystem notes
 
