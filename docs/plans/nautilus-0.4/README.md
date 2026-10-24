@@ -152,6 +152,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 11 | [Tiered compilation](11-tiered-compilation.md) | Review of `TieredJITCompiler`; a promotion service with a worker pool, cancellation, status API, opt-in promotion policy, early tier-1 start, cache-aware tiering | 0.3 tiered compiler, #561 |
 | 12 | [Validation](12-validation.md) | How each component is tested; performance-gate method; new test infrastructure | #544 (fuzzer), the corpus |
 | 13 | [NIR specification](13-nir-spec.md) | Normative definition of NIR: types, encoding, operations and semantics, level invariants, canonical form, binary image, versioning | #532 (format rules) |
+| 14 | [IR comparison](14-ir-comparison.md) | NIR compared with LLVM IR, MLIR, WebAssembly, Cranelift, QBE, SPIR-V, LuaJIT IR and Zig AIR; gaps and lessons | — |
 | — | [P0 baseline](p0-baseline.md) | Measurements behind this design | design study (closed #562) |
 
 ## 5. Compatibility and versioning
