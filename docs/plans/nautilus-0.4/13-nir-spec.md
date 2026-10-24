@@ -1,62 +1,68 @@
 # NIR Specification
 
-Part of the [Nautilus 0.4 design](README.md) · Status: **draft**, normative
-from the M1 exit · Format version 1.0
+Part of the [Nautilus 0.4 design](README.md) · Format version **1.0** ·
+Status: **final**; normative from M1 on
 
-This document is the normative definition of NIR: its data model, binary
-encoding, operations, semantics, invariants and versioning rules. Every
-producer (the tracer, the conversion, passes, the C API, the deserializer)
-and every consumer (backends, the serializer, caches, tools) must follow it.
-[02-nir.md](02-nir.md) explains the design and why it is this way; where the
-two differ, this document wins.
+This document is the normative definition of NIR: its data model, types,
+binary encoding, operations and their semantics, the invariants of each
+level, canonical form, and versioning. Every producer (the tracer, the
+conversion, passes, the C API, the deserializer) and every consumer
+(backends, the serializer, caches, tools) must follow it.
+[02-nir.md](02-nir.md) explains the design and why it is this way; where
+the two differ, this document wins.
 
-**Conventions.** "Must" and "must not" are requirements; a module that
-violates one is *invalid* and the verifier rejects it. "Undefined" means the
-program's behavior is not constrained, as in C++. All integers in the binary
-encoding are little-endian. Offsets and sizes are in bytes unless stated.
+**Conventions.** "Must" and "must not" are requirements: a module that
+violates one is *invalid*, and the verifier rejects it. "Undefined" means
+the program's behavior is not constrained, as in C++. All integers in the
+binary encoding are little-endian. Sizes and offsets are in bytes unless
+stated otherwise. Ranges are written `[first, first + count)`.
 
 ## 1. Data model
 
-- A **module** holds functions and the tables they share (constants,
-  names, callees, signatures, pointers, bindings, extensions).
-- A **function** is a list of **blocks**. A block is a contiguous run of
-  **instructions**; its last instruction, and only that one, is a
-  terminator.
+- A **module** holds functions and the tables they share: constants,
+  names, signatures, callees, allocas, pointers, bindings and extensions.
+- A **function** has a signature, attributes, a level and a list of
+  **blocks**. Each block holds **instructions**; the last instruction of a
+  block, and only that one, is a terminator.
 - An instruction produces **at most one value**. A value's **id** is the
-  index of its instruction within the function, starting at 0. Ids are
-  function-local.
-- A **block id** is the index of the block within its function. Block 0 is
-  the entry block.
+  function-local index of its instruction, starting at 0.
+- A **block id** is the function-local index of the block. Block 0 is the
+  entry block.
 - **Constants** are not instructions. They live in the module's constant
   pool and are referenced from operands (§3.2).
-- Every function carries a **level**, `Trace` or `SSA` (§6). Both levels
-  use this encoding.
+- Every function has a **level**, `Trace` or `SSA` (§6). Both levels use
+  the same records; they differ in invariants and in how blocks list their
+  instructions (§4.3).
 
 ## 2. Types
 
 A type is a `u8` `TypeId`.
 
-| Id | Name | Meaning |
-|---|---|---|
-| 0 | `void` | no value; type of instructions without a result |
-| 1 | `bool` | 1 bit, stored as one byte (0 or 1) |
-| 2 | `i8` | 8-bit integer, signless |
-| 3 | `i16` | 16-bit integer, signless |
-| 4 | `i32` | 32-bit integer, signless |
-| 5 | `i64` | 64-bit integer, signless |
-| 6 | `f32` | IEEE 754 binary32 |
-| 7 | `f64` | IEEE 754 binary64 |
-| 8 | `ptr` | address, 64 bits on every 0.4 target |
-| 9–15 | — | reserved for core |
-| 16–255 | extension | registered types ([04 §3.2](04-extensions.md)) |
+| Id | Name | Size, alignment | Meaning |
+|---|---|---|---|
+| 0 | `void` | — | no value; the type of instructions without a result |
+| 1 | `bool` | 1, 1 | false or true; stored in memory as one byte, 0 or 1 |
+| 2 | `i8` | 1, 1 | 8-bit integer, signless |
+| 3 | `i16` | 2, 2 | 16-bit integer, signless |
+| 4 | `i32` | 4, 4 | 32-bit integer, signless |
+| 5 | `i64` | 8, 8 | 64-bit integer, signless |
+| 6 | `f32` | 4, 4 | IEEE 754 binary32 |
+| 7 | `f64` | 8, 8 | IEEE 754 binary64 |
+| 8 | `ptr` | 8, 8 | address; 64 bits on every 0.4 target |
+| 9–15 | — | — | reserved for core |
+| 16–255 | extension | from `TypeInfo` | registered types ([04 §3.2](04-extensions.md)) |
 
-- **Integers are signless** ([06 §4](06-semantics.md)). Operations that
-  depend on signedness say so in their flags (§5).
+- **Integers are signless** ([06 §4](06-semantics.md)). Operations whose
+  result depends on signedness select it with a flag (§5). 0.3's
+  `ui8`…`ui64` map to `i8`…`i64`.
+- "Integer" below means `i8`…`i64`; "float" means `f32` or `f64`;
+  "scalar" means any core type except `void`.
 - **Extension type ids are per process in memory.** In a serialized image
-  they are image-local (16, 17, … in first-use order) and named in the
-  `extensions` section; the loader maps them to process ids (§8.4).
-- 0.3's `ui8`…`ui64` map to `i8`…`i64`; the signedness moves to the
-  operations that use the values.
+  they are image-local and named in the `extensions` section (§8.4).
+- **Core operations accept extension types only where stated** (`select`,
+  `load`, `store`, `blockarg`, branch arguments, call arguments and results,
+  `ret`). Everything else on an extension type goes through extension
+  operations.
 
 ## 3. Instructions and operands
 
@@ -65,16 +71,16 @@ A type is a `u8` `TypeId`.
 ```c
 struct Inst {          // 16 bytes, 4-byte aligned
 	uint16_t op;       // opcode (§5); 0 is invalid
-	uint8_t  type;     // result TypeId (§2); 0 (void) if there is no result
+	uint8_t  type;     // result TypeId; 0 (void) if there is no result
 	uint8_t  flags;    // opcode-specific (§5)
 	uint32_t a, b, c;  // operands; meaning per opcode (§5)
 };
 ```
 
-- **Opcodes** below 256 are core (§5). Opcodes from 256 up are extension
-  operations; like extension types they are per process in memory and
-  image-local in a serialized image.
-- **Unused operands must be 0.** Unused flag bits must be 0.
+- Opcodes below 256 are core (§5). Opcodes from 256 up are extension
+  operations, per process in memory and image-local in an image (§8.4).
+- Unused operand fields must be 0, and unused or reserved flag bits must
+  be 0.
 
 ### 3.2 Value references
 
@@ -83,39 +89,45 @@ An operand that holds a value is a 32-bit **value reference**:
 | Bit pattern | Meaning |
 |---|---|
 | `0x00000000`–`0x7FFFFFFE` | value id within the same function |
-| `0x80000000`–`0xFFFFFFFE` | constant: index `ref & 0x7FFFFFFF` in the constant pool |
-| `0x7FFFFFFF` | reserved |
-| `0xFFFFFFFF` | `NONE`: no value (only where an opcode allows it) |
+| `0x80000000`–`0xFFFFFFFD` | constant: index `ref & 0x7FFFFFFF` in the constant pool |
+| `0x7FFFFFFF`, `0xFFFFFFFE` | reserved; must not occur |
+| `0xFFFFFFFF` | `NONE`: no value, only where an opcode allows it |
 
-A function therefore holds at most 2³¹ − 1 instructions. Operands that are
-not value references (block ids, table indices, `extra` offsets) are plain
-`u32` indices, named in §5.
+A function holds at most 2³¹ − 1 instructions, and a module at most
+2³¹ − 3 constants. Operands that are not value references (block ids,
+table indices, `extra` offsets) are plain `u32` indices; §5 names them.
 
 ### 3.3 The `extra` array
 
 Variable-length operand lists live in the module's `extra` section, an
-array of `u32` words. An instruction refers to a list by its word offset in
-`c`. The layouts are given per opcode (§5). Lists of one instruction must not
-overlap those of another.
+array of `u32` words. An instruction refers to its list by the word offset
+in `c`. Each list belongs to exactly one instruction; lists do not
+overlap.
 
 ### 3.4 Unwind entries
 
-A **unwind entry** is one `u32` attached to an instruction that may throw
-(calls, checked division; §5):
+Instructions that may throw (calls, checked division; §5) carry an **unwind
+entry**, one `u32`:
 
-| Value | Meaning |
-|---|---|
-| `0xFFFFFFFF` (`NO_UNWIND`) | the instruction cannot throw |
-| `0xFFFFFFFE` (`NO_CLEANUP`) | may throw; nothing to clean up; the exception propagates to the caller |
-| block id | may throw; on an exception, control enters this landing-pad block (§4.4) |
+| Level | Value | Meaning |
+|---|---|---|
+| both | `0xFFFFFFFF` (`NO_UNWIND`) | the instruction cannot throw |
+| SSA | `0xFFFFFFFE` (`NO_CLEANUP`) | may throw; nothing to clean up; the exception propagates to the caller |
+| SSA | block id | may throw; on an exception, control enters this landing-pad block |
+| Trace | `extra` offset | may throw; the offset points to a **cleanup list** `[n, (destructor₀, object₀), …]`: `n` pairs of a `pointers` index (kind destructor) and a value reference to the object's address, in destruction order. `n` = 0 means no cleanup |
+
+The conversion turns cleanup lists into shared landing pads
+([03 §3](03-conversion-and-passes.md)).
 
 ## 4. Module structure
 
 ### 4.1 Sections
 
-A module is a set of sections. **Canonical** sections are serialized, hashed
-and versioned. **Optional** sections are serialized when present and do not
-affect the structural hash. **Derived** data is never serialized ([02 §3.6](02-nir.md)).
+A module is a set of sections. **Canonical** sections are serialized,
+hashed and versioned. **Optional** sections are serialized when present
+and do not affect the structural hash. **Derived** data (use counts,
+replacement tables, loop information, CSE tables, snapshots) is never part
+of an image ([02 §3.6](02-nir.md)).
 
 | Kind | Section | Record | Class |
 |---|---|---|---|
@@ -125,155 +137,218 @@ affect the structural hash. **Derived** data is never serialized ([02 §3.6](02-
 | 4 | `constBytes` | bytes, for constants wider than 8 bytes | canonical |
 | 5 | `blocks` | `BlockRecord`, 16 B (§4.3) | canonical |
 | 6 | `functions` | `FunctionRecord`, 40 B (§4.4) | canonical |
-| 7 | `signatures` | `SignatureRecord`, 12 B, types in `extra` | canonical |
+| 7 | `signatures` | `SignatureRecord`, 12 B (§4.4) | canonical |
 | 8 | `callees` | `CalleeRecord`, 16 B (§4.5) | canonical |
-| 9 | `allocas` | `{u32 size, u32 align}`, 8 B | canonical |
+| 9 | `allocas` | `AllocaRecord`, 8 B (§4.4) | canonical |
 | 10 | `pointers` | `PointerRecord`, 24 B (§4.6) | canonical |
 | 11 | `bindings` | `BindingRecord`, 16 B (§4.7) | canonical |
-| 12 | `names` | `{u32 offset, u32 length}` into `nameBytes` | canonical |
+| 12 | `names` | `{u32 offset, u32 length}` into `nameBytes`, 8 B | canonical |
 | 13 | `nameBytes` | UTF-8 bytes, not NUL-terminated | canonical |
-| 14 | `extensions` | `{u32 nameId, u8 kind, u8 pad[3]}`, 8 B (§8.4) | canonical |
-| 15 | `debug` | source tags and region tables (§4.8) | optional |
-| ≥ 1024 | — | reserved for vendor and experimental sections | optional |
+| 14 | `extensions` | `ExtensionRecord`, 8 B (§8.4) | canonical |
+| 15 | `debugLocations` | `{u32 file (name id), u32 line, u32 column}`, 12 B | optional |
+| 16 | `debugInstLocations` | `u32` per instruction, parallel to `insts`: index in `debugLocations`, or `0xFFFFFFFF` | optional |
+| 17 | `debugRegions` | `RegionRecord`, 16 B (§4.8) | optional |
+| 18 | `debugInstRegions` | `u32` per instruction, parallel to `insts`: index in `debugRegions`, or `0xFFFFFFFF` | optional |
+| 19–1023 | — | reserved for later versions | — |
+| ≥ 1024 | — | vendor and experimental sections; ignored by readers that do not know them | optional |
 
-Instructions of one function, and blocks of one function, are contiguous;
-functions are laid out in `functions` order.
+The instructions of one function are contiguous in `insts`; so are its
+blocks in `blocks` and its allocas in `allocas`. Functions are laid out in
+`functions` order.
 
 ### 4.2 Constants
 
 ```c
 struct ConstRecord {     // 16 bytes
-	uint8_t  type;       // TypeId
+	uint8_t  type;       // TypeId; not void
 	uint8_t  provenance; // 0 Literal, 1 AuditedInvariant, 2 RawProcessValue (07 §5)
 	uint16_t pad;        // 0
 	uint32_t byteOffset; // into constBytes for types wider than 8 bytes, else 0
-	uint64_t bits;       // the value's bit pattern, zero-extended
+	uint64_t bits;       // the bit pattern, zero-extended; 0 if byteOffset is used
 };
 ```
 
 - Floats are stored by bit pattern, so NaN payloads and `-0.0` are exact.
-- `bool` constants are 0 or 1. `ptr` constants are `RawProcessValue` unless
-  audited ([07 §5](07-serialization.md)); addresses of functions and other
-  symbols are `pointers` entries, not constants.
-- Constants are interned per module by `(type, provenance, bits, bytes)`.
-  A canonical image contains no duplicates and no unused entries.
+- `bool` constants are 0 or 1.
+- A `ptr` constant is the null pointer (`Literal`, bits 0) or a traced
+  address (`RawProcessValue` unless audited). Addresses of functions,
+  thunks and destructors are `pointers` entries, not constants.
+- An extension-type constant has `size` bytes (from its `TypeInfo`) at
+  `byteOffset` if wider than 8, else in `bits`.
+- Constants are interned per module by `(type, provenance, value bytes)`.
 
 ### 4.3 Blocks
 
 ```c
 struct BlockRecord {     // 16 bytes
-	uint32_t firstInst;  // function-local id of the first instruction
-	uint32_t instCount;  // including block arguments and the terminator
-	uint16_t argCount;   // the first argCount instructions are blockarg
-	uint16_t flags;      // bit 0: landing pad; other bits 0
+	uint32_t first;      // SSA: function-local id of the first instruction
+	                     // Trace: extra offset of the block's op-id list
+	uint32_t count;      // number of instructions, including blockargs and the terminator
+	uint16_t argCount;   // SSA: the first argCount instructions are blockarg; Trace: 0
+	uint16_t flags;      // bit 0: landing pad (SSA only); other bits 0
 	uint32_t pad;        // 0
 };
 ```
 
-Loop depth, loop end and loop-header marks are derived data.
+- **SSA level:** a block is the contiguous range `[first, first + count)`
+  of the function's instructions, and blocks are contiguous and in layout
+  order, so the function's instructions are exactly its blocks in order.
+- **Trace level:** instructions are in recording order, and a block lists
+  its instructions' ids in `extra[first … first + count)`. This lets
+  tracing split a block without moving instructions or changing ids
+  ([01 §6](01-tracing-frontend.md)). Every instruction belongs to exactly
+  one block.
 
-### 4.4 Functions
+### 4.4 Functions, signatures, allocas
 
 ```c
 struct FunctionRecord {  // 40 bytes
-	uint32_t nameId;     // in names
+	uint32_t nameId;     // in names; unique within the module
 	uint32_t signature;  // in signatures
-	uint32_t firstInst, instCount;    // range in insts
-	uint32_t firstBlock, blockCount;  // range in blocks
-	uint32_t firstAlloca, allocaCount;// range in allocas
-	uint32_t attrs;      // §4.5 attribute bits
+	uint32_t firstInst, instCount;     // range in insts
+	uint32_t firstBlock, blockCount;   // range in blocks
+	uint32_t firstAlloca, allocaCount; // range in allocas
+	uint32_t attrs;      // attribute bits (§4.5)
 	uint8_t  level;      // 0 Trace, 1 SSA
-	uint8_t  exported;   // 1 if callable from outside the module
+	uint8_t  exported;   // 1: callable from outside the module by name
 	uint16_t pad;        // 0
 };
 
 struct SignatureRecord { // 12 bytes
-	uint32_t result;     // TypeId of the result (0 = void)
+	uint32_t result;     // TypeId of the result; 0 = void
 	uint32_t paramCount;
-	uint32_t paramTypes; // offset in extra: paramCount TypeIds, one per word
+	uint32_t paramTypes; // extra offset: paramCount TypeIds, one per word
+};
+
+struct AllocaRecord {    // 8 bytes
+	uint32_t size;       // > 0
+	uint32_t align;      // a power of two
 };
 ```
 
-The entry block's block arguments are the function's parameters, in order,
-with the signature's parameter types.
+- The entry block's parameters are the function's parameters: at the SSA
+  level they are its leading `blockarg`s, at the trace level they are the
+  first `paramCount` instructions, which are `blockarg`s.
+- Signatures have no variadic form and pass only scalars, pointers and
+  extension types; aggregates are passed by pointer, as in 0.3.
 
-### 4.5 Callees
+### 4.5 Callees and attributes
 
-Every direct call goes through the callee table.
+Every direct call and every `funcaddr` goes through the callee table.
 
 ```c
 struct CalleeRecord {    // 16 bytes
 	uint8_t  kind;       // 0 internal function, 1 external native function
 	uint8_t  pad[3];     // 0
-	uint32_t target;     // function index (kind 0) or pointers index (kind 1)
-	uint32_t signature;
+	uint32_t target;     // function index (kind 0) or pointers index, kind callee (kind 1)
+	uint32_t signature;  // must equal the function's signature for kind 0
 	uint32_t attrs;      // attribute bits below
 };
 ```
 
-Attribute bits, shared by `FunctionRecord.attrs` and `CalleeRecord.attrs`:
+Attribute bits, used by `FunctionRecord.attrs` and `CalleeRecord.attrs`:
 
 | Bits | Meaning |
 |---|---|
 | 0–1 | memory effects: 0 `ModRef`, 1 `argmemonly`, 2 `readonly`, 3 `pure` ([06 §3.3](06-semantics.md)) |
-| 2 | `noUnwind`: never throws (`noexcept`, `nothrow` or inferred) |
-| 3 | `willReturn` |
-| 4 | `declared`: bits 0–3 come from a user declaration, not inference |
+| 2 | `noUnwind`: never throws (`noexcept`, a `nothrow` declaration, or inferred) |
+| 3 | `willReturn`: always returns or throws, never loops forever |
+| 4 | `declared`: bits 0–3 come from a user declaration, not from inference |
 | 5–31 | reserved, 0 |
+
+`pure`: reads and writes no memory reachable by the caller. `readonly`:
+reads but does not write it. `argmemonly`: accesses only memory reachable
+through its pointer arguments. A wrong declaration is undefined
+([06 §7](06-semantics.md)).
 
 ### 4.6 Pointers
 
 ```c
 struct PointerRecord {   // 24 bytes
 	uint8_t  kind;       // 0 callee, 1 capture thunk, 2 destructor, 3 constant address, 4 extension payload
-	uint8_t  mode;       // 0 ProcessLocal, 1 Portable
+	uint8_t  mode;       // 0 ProcessLocal, 1 Portable (by name), 2 Portable (ELF build id + offset)
 	uint16_t pad;        // 0
-	uint32_t nameId;     // symbol name (Portable), else 0
-	uint64_t address;    // ProcessLocal: the address, guarded by processToken
-	uint64_t processToken; // ProcessLocal: token of the producing process; Portable: 0
+	uint32_t nameId;     // mode 1: symbol name; mode 2: build id as hex string; mode 0: 0
+	uint64_t address;    // mode 0: the address; mode 2: offset from the load bias; mode 1: 0
+	uint64_t processToken; // mode 0: token of the producing process; else 0
 };
 ```
 
-A `ProcessLocal` pointer is valid only in the process whose token it
-carries; the loader rejects it elsewhere. A `Portable` pointer is resolved
-by name at load ([07 §3](07-serialization.md)).
+- `ProcessLocal` (mode 0) entries are valid only in the process whose
+  token they carry. The token is a 64-bit value drawn at random once per
+  process. The loader rejects a mismatching token.
+- `Portable` entries are resolved at load: mode 1 by a `SymbolResolver`,
+  mode 2 against the loaded module with that build id
+  ([07 §3](07-serialization.md)).
 
 ### 4.7 Runtime bindings
 
 ```c
 struct BindingRecord {   // 16 bytes
 	uint32_t nameId;     // stable binding symbol
-	uint32_t type;       // TypeId of the bound object (16+: extension type)
-	uint32_t size, align;
+	uint32_t type;       // TypeId of the bound object in the low 8 bits; upper bits 0
+	uint32_t size;
+	uint32_t align;
 };
 ```
 
 `bind.addr` (§5.8) yields the address supplied for the binding at load
-([07 §4](07-serialization.md)).
+([07 §4](07-serialization.md)). Bindings with equal schemas stay distinct
+identities.
 
 ### 4.8 Debug data (optional)
 
-The `debug` section maps instructions to source locations and holds the
-region table ([02 §3.4](02-nir.md)). It is present only when a debug or
-profiling option was set ([05 §7](05-backends.md)). Its encoding is defined
-in M1 and versioned with feature bit `DEBUG_V1`. Consumers must work without it.
+```c
+struct RegionRecord {    // 16 bytes; one region() call site (docs/region.md)
+	uint32_t function;   // function index
+	uint32_t nameId;     // user-supplied region name, or 0xFFFFFFFF
+	uint32_t location;   // index in debugLocations of the call site, or 0xFFFFFFFF
+	uint32_t parent;     // enclosing region index, or 0xFFFFFFFF
+};
+```
+
+- The four debug sections (15–18) are present only when a debug or
+  profiling option was set ([05 §7](05-backends.md)), always together, and
+  signalled by feature bit `DEBUG_V1`.
+- They do not change semantics. Consumers must work without them, and
+  canonicalization drops them before hashing.
 
 ## 5. Operations
 
-Notation: `a`, `b`, `c` are the record fields; *v* marks a value reference,
-*blk* a block id, *x* an `extra` offset. "Integer" means `i8`…`i64`;
-"float" means `f32`/`f64`. Unless stated, operands have the result type.
+### 5.0 Execution model
+
+- A function executes from block 0. Within a block, instructions execute in
+  order; a terminator transfers control.
+- **Observable behavior** is the sequence of memory writes and reads
+  through pointers, calls to external functions, thrown exceptions and the
+  returned value. A transformation may reorder, merge or remove other
+  instructions as long as observable behavior is preserved.
+- Instructions with effects (`load`, `store`, calls without `pure`, and
+  checked division) keep their relative order, except as their attributes
+  allow.
+- **Memory model:** plain loads and stores only. Concurrent accesses by
+  several threads to the same location, at least one of them a write,
+  without synchronization through external calls, are undefined (C++'s
+  data-race rule). NIR 1.0 has no atomic operations.
+
+Notation: `a`, `b`, `c` are the record fields; *v* is a value reference,
+*blk* a block id, *x* an `extra` offset. Unless stated otherwise, operands
+have the result type.
 
 ### 5.1 Arithmetic
 
 | Op | Code | Operands | Types | Flags | Semantics |
 |---|---|---|---|---|---|
-| `add` | 1 | a, b: *v* | integer, float | — | integers wrap modulo 2ⁿ; floats IEEE |
-| `sub` | 2 | a, b: *v* | integer, float | — | as `add` |
+| `add` | 1 | a, b: *v* | integer, float, `ptr` | — | integers wrap modulo 2ⁿ; floats IEEE; `ptr`: a is `ptr`, b is an `i64` byte offset, the result wraps modulo 2⁶⁴ |
+| `sub` | 2 | a, b: *v* | integer, float, `ptr` | — | as `add` |
 | `mul` | 3 | a, b: *v* | integer, float | — | as `add` |
-| `div` | 4 | a, b: *v*; c: unwind entry (checked only) | integer, float | bit 0 unsigned; bit 1 checked | §5.10 |
-| `rem` | 5 | a, b: *v*; c: unwind entry (checked only) | integer, float | bit 0 unsigned; bit 1 checked | §5.10; float `rem` is C++ `fmod` |
-| `fneg` | 6 | a: *v* | float | — | flips the sign bit, including of NaN and zero |
+| `div` | 4 | a, b: *v*; c: unwind entry if checked, else 0 | integer, float | bit 0 unsigned; bit 1 checked | §5.10 |
+| `rem` | 5 | a, b: *v*; c: as `div` | integer, float | bit 0 unsigned; bit 1 checked | §5.10 |
+| `fneg` | 6 | a: *v* | float | — | flips the sign bit, also of NaN and zero |
+
+Float arithmetic is IEEE 754 with round-to-nearest-even, without fast-math
+(D11). Flag bits 2–7 of float operations are reserved for fast-math flags
+in a later version and must be 0.
 
 ### 5.2 Logical (on `bool`)
 
@@ -291,57 +366,71 @@ Notation: `a`, `b`, `c` are the record fields; *v* marks a value reference,
 | `bor` | 13 | a, b: *v* | — | |
 | `bxor` | 14 | a, b: *v* | — | |
 | `bnot` | 15 | a: *v* | — | bitwise complement (0.3's integer `NegateOp`) |
-| `shl` | 16 | a: value, b: amount (*v*, same type) | — | amount masked to `width − 1` (D10) |
-| `shr` | 17 | a: value, b: amount | bit 0 unsigned (logical), else arithmetic | amount masked as `shl` |
+| `shl` | 16 | a: value; b: amount, same type | — | the amount is taken modulo the bit width (D10) |
+| `shr` | 17 | a: value; b: amount, same type | bit 0: unsigned (logical); else arithmetic | as `shl` |
 
 ### 5.4 Compare and select
 
 | Op | Code | Operands | Result | Flags |
 |---|---|---|---|---|
-| `cmp` | 20 | a, b: *v*, same type | `bool` | bits 0–2 predicate: 0 `eq`, 1 `ne`, 2 `lt`, 3 `le`, 4 `gt`, 5 `ge`; bit 3 unsigned (integers) |
-| `select` | 21 | a: `bool` condition; b, c: *v* | type of b and c | — |
+| `cmp` | 20 | a, b: *v*, same scalar type | `bool` | bits 0–2 predicate: 0 `eq`, 1 `ne`, 2 `lt`, 3 `le`, 4 `gt`, 5 `ge`; bit 3: unsigned (integers only) |
+| `select` | 21 | a: `bool`; b, c: *v*, same type (any non-`void`, extension types included) | type of b and c | — |
 
-Float comparisons follow C++: with a NaN operand, `ne` is true and every
-other predicate is false. `ptr` compares as unsigned 64-bit.
+- Float comparisons follow C++: with a NaN operand, `ne` is true and all
+  other predicates are false. `-0.0` equals `0.0`.
+- `bool` allows only `eq` and `ne`. `ptr` compares as unsigned 64-bit.
 
 ### 5.5 Casts
 
-| Op | Code | Operands | Flags: kind (bits 0–3) |
+| Op | Code | Operands | Flags bits 0–3: kind |
 |---|---|---|---|
 | `cast` | 24 | a: *v*; result type in `type` | 0 `sext`, 1 `zext`, 2 `trunc`, 3 `sitofp`, 4 `uitofp`, 5 `fptosi`, 6 `fptoui`, 7 `fpext`, 8 `fptrunc`, 9 `bitcast`, 10 `ptrtoint`, 11 `inttoptr` |
 
-- `zext` from `bool` gives 0 or 1; `trunc` to `bool` is not allowed (use
-  `cmp ne 0`).
-- `fptosi`/`fptoui` **saturate**: NaN gives 0, values beyond the range give
-  the minimum or maximum (D11).
-- `bitcast` requires equal sizes. `ptrtoint`/`inttoptr` use `i64`.
+- `sext`/`zext` widen an integer (or `bool`: `zext` gives 0 or 1, `sext`
+  gives 0 or −1); `trunc` narrows an integer. Truncation to `bool` is not
+  a cast; use `cmp ne 0`.
+- `fptosi`/`fptoui` **saturate**: NaN gives 0, and values outside the
+  target range give its minimum or maximum (D11).
+- `fptrunc` rounds to nearest even; `fpext` is exact.
+- `bitcast` requires equal sizes and scalar types other than `bool`.
+  `ptrtoint` gives `i64`; `inttoptr` takes `i64`.
 
 ### 5.6 Memory
 
 | Op | Code | Operands | Result | Flags |
 |---|---|---|---|---|
-| `load` | 28 | a: `ptr` | loaded type | bits 0–3: log₂ of the alignment, 0 = natural |
-| `store` | 29 | a: `ptr`; b: value | `void` | as `load` |
+| `load` | 28 | a: `ptr` | the loaded type (scalar or extension) | bits 0–3: log₂ of the guaranteed alignment; 0 = the type's natural alignment |
+| `store` | 29 | a: `ptr`; b: the value | `void` | as `load` |
 | `alloca` | 30 | a: index into the function's alloca range | `ptr` | — |
 
-Memory safety is the program's responsibility, as in C++: an access through
-an invalid or insufficiently aligned address is undefined. An `alloca`
-lives until the function returns or unwinds.
+- An access through an address that is not valid for the type's size, or
+  that is less aligned than the flags state, is undefined. Loading a
+  `bool` from a byte that is not 0 or 1 is undefined.
+- `alloca` yields the address of the function's static stack slot `a`,
+  sized and aligned by its `AllocaRecord`. Every execution in the same
+  invocation yields the same address. The slot lives until the invocation
+  returns or unwinds; its initial contents are indeterminate.
 
 ### 5.7 Calls
 
 | Op | Code | Operands | Result |
 |---|---|---|---|
-| `call` | 32 | a: callee index (§4.5); c: *x* → `[argc, arg₀ … argₙ₋₁, unwind]` | the callee signature's result |
-| `call.indirect` | 33 | a: `ptr` callee (*v*); b: signature index; c: *x* as `call` | the signature's result |
+| `call` | 32 | a: callee index (§4.5); c: *x* → `[argc, arg₀ … argₙ₋₁, unwind, thunk]` | the signature's result type |
+| `call.indirect` | 33 | a: `ptr` callee (*v*); b: signature index; c: *x* as `call` | the signature's result type |
 | `funcaddr` | 34 | a: callee index | `ptr` |
 
-- Arguments are value references and must match the signature's parameter
-  types.
-- The unwind entry (§3.4) must be `NO_UNWIND` if the callee is `noUnwind`.
-- A callee's effects come from its `attrs`. A `pure` or `readonly` call
-  with `NO_UNWIND` has no side effects the IR can observe and may be merged
-  or hoisted ([03](03-conversion-and-passes.md)).
+- Arguments are value references matching the signature's parameter types.
+- `unwind` is an unwind entry (§3.4). It must be `NO_UNWIND` if the callee
+  has `noUnwind`.
+- `thunk` is a `pointers` index of kind capture thunk, or `0xFFFFFFFF`.
+  Backends without unwind tables call the callee through its thunk when the
+  call may throw ([06 §3.2](06-semantics.md)).
+- A `pure` or `readonly` call with `NO_UNWIND` and `willReturn` has no
+  effect beyond its result and may be merged or hoisted
+  ([03](03-conversion-and-passes.md)).
+- **Calls inside landing pads** must have `NO_UNWIND` or `NO_CLEANUP`. An
+  exception that escapes a destructor while a landing pad runs terminates
+  the process, as in C++.
 
 ### 5.8 Runtime state
 
@@ -353,105 +442,133 @@ lives until the function returns or unwinds.
 
 | Op | Code | Operands | Result | Notes |
 |---|---|---|---|---|
-| `blockarg` | 40 | a: argument position | any non-`void` type | only at the start of a block (§4.3) |
+| `blockarg` | 40 | a: argument position | any non-`void` type | SSA: only the first `argCount` instructions of a block; Trace: only function parameters |
 | `br` | 48 | a: target *blk*; c: *x* → `[argc, args…]` | `void` | terminator |
-| `condbr` | 49 | a: `bool` condition; b: true *blk*; c: *x* → `[prob, trueArgc, trueArgs…, false blk, falseArgc, falseArgs…]` | `void` | terminator; `prob` is P(true) × 2³² − 1, `0xFFFFFFFF` unknown |
-| `ret` | 50 | a: value or `NONE` for `void` | `void` | terminator |
-| `resume` | 51 | — | `void` | terminator of a landing pad: continues unwinding |
-| `assign` | 56 | a: variable (value id); b: new value | `void` | **Trace level only** (§6) |
+| `condbr` | 49 | a: `bool` condition; b: true *blk*; c: *x* → `[prob, trueArgc, trueArgs…, falseBlk, falseArgc, falseArgs…]` | `void` | terminator |
+| `ret` | 50 | a: value, or `NONE` for a `void` function | `void` | terminator |
+| `resume` | 51 | — | `void` | terminator; only in landing pads; continues unwinding the current exception |
+| `assign` | 56 | a: variable (value id); b: new value | `void` | **Trace level only** (§6.2) |
 
-Codes 1–255 not listed are reserved for core opcodes added in later minor
-versions (§8.2).
+- `prob` is the probability that the condition is true, as
+  `round(P × 0xFFFFFFFE)`; `0xFFFFFFFF` means unknown.
+- At the trace level, argument counts are always 0.
+- Codes 1–255 not listed here are reserved for core opcodes of later minor
+  versions (§8.2). NIR 1.0 has no `unreachable` terminator: tracing always
+  ends a block with one of the terminators above.
 
 ### 5.10 Division and remainder
 
-- **Floats:** IEEE; division by zero gives ±∞ or NaN; never throws; the
-  checked bit must be 0.
-- **Integers**, with bit 0 selecting unsigned or signed:
-  - if the divisor is 0, or (signed) the dividend is the minimum value and
-    the divisor is −1, the instruction **throws
+- **Floats:** IEEE. Division by zero gives ±∞ or NaN and never throws;
+  float `rem` is C++ `fmod`. The checked bit must be 0.
+- **Integers**, bit 0 selecting unsigned or signed:
+  - if the divisor is 0, or (signed) the dividend is the type's minimum and
+    the divisor −1, the instruction **throws
     `nautilus::ArithmeticException`** (D10);
-  - otherwise the quotient rounds toward zero, and `rem` has the dividend's
-    sign, as in C++.
-- **Checked bit.** An integer `div`/`rem` whose divisor is not proven safe
-  must set bit 1 and carry an unwind entry in `c` (`NO_CLEANUP` or a landing
-  pad). If the producer proves the divisor safe (a non-zero constant, and
-  not −1 for signed), it clears bit 1, `c` is 0, and the instruction cannot
-  throw.
+  - otherwise the quotient rounds toward zero, and `rem` takes the sign of
+    the dividend, as in C++.
+- **The checked bit.** An integer `div`/`rem` whose divisor is not proven
+  safe must set bit 1 and carry an unwind entry in `c`. A divisor is safe
+  if it is a constant other than 0, and for signed operations also other
+  than −1. With bit 1 clear, `c` is 0 and the instruction cannot throw. An
+  instruction with bit 1 clear and an unsafe divisor at run time is
+  undefined.
 
 ### 5.11 Extension operations
 
-An extension instruction (`op` ≥ 256) uses the same record. Its operands,
-types, flags and `extra` payload are defined by its `OpInfo`
-([04 §3.3](04-extensions.md)) and checked by its `verify` hook. It produces
-at most one value; an operation with several results returns an extension
-aggregate type or is split into several operations. Extension operations
-are never terminators.
+- An extension instruction (`op` ≥ 256) uses the same record. Its operands,
+  types, flags and `extra` payload are defined by its `OpInfo`
+  ([04 §3.3](04-extensions.md)) and checked by its `verify` hook.
+- It produces at most one value. An operation with several results returns
+  an extension aggregate type, or is split into several operations.
+- Extension operations are never terminators and never throw; an operation
+  that may fail calls a native function, which may throw like any call.
+- Its effects come from `OpInfo.effects` and take part in §5.0's ordering.
 
 ## 6. Levels and invariants
 
 ### 6.1 Both levels
 
-1. Every block ends in exactly one terminator, and terminators appear
-   nowhere else.
-2. `blockarg` instructions occur only as the first `argCount` instructions
-   of their block, positions 0 … `argCount − 1` in order.
-3. Every value reference points to an instruction with a non-`void` result
+1. Every block ends in exactly one terminator; terminators appear nowhere
+   else. Every block has at least its terminator.
+2. Every value reference points to an instruction with a non-`void` result
    in the same function, or to an existing constant.
-4. Branch targets and argument counts match the target block's `argCount`
-   and argument types.
-5. Operand and result types follow §5.
-6. A landing-pad block (flag bit 0) is entered only through unwind entries,
-   never through `br`/`condbr`; it ends in `resume` or in a `br` to another
-   landing pad.
-7. Every table index (callee, signature, alloca, binding, pointer, name,
-   extension) is in range.
+3. Operand and result types follow §2 and §5; reserved flag bits and unused
+   operand fields are 0.
+4. Branch argument counts and types match the target block's `blockarg`s.
+5. Every table index (callee, signature, alloca, binding, pointer, name,
+   extension, `extra` offset) is in range, and every `extra` list is in
+   bounds.
+6. A function's `ret` operands match its signature's result type.
+7. Calls match their signatures; a `noUnwind` callee has `NO_UNWIND`.
 
 ### 6.2 Trace level
 
-- `assign` may redefine a variable: a later use of the variable's id sees
-  the most recent `assign` along the executed path.
-- Blocks are in recording order; ids are stable while tracing splits
-  blocks.
+- **Variables.** A value id may be redefined by `assign`. A use of a
+  variable sees the value of the most recent `assign` (or its defining
+  instruction) on the path executed so far. Every use must be reached by a
+  definition on every path.
+- **No block arguments** except the function parameters, and branch
+  argument lists are empty. Merges are expressed through variables.
+- **No landing pads.** Instructions that may throw carry cleanup lists
+  (§3.4).
+- Blocks are in recording order and list their instructions in `extra`
+  (§4.3).
 - Snapshots, the tag map and the replay cursor are derived data
   ([01 §6](01-tracing-frontend.md)).
-- Trace-level functions are never executed and never compiled by a backend.
+- A trace-level function is never executed and never passed to a backend;
+  the conversion ([03](03-conversion-and-passes.md)) is the only way to the
+  SSA level.
 
 ### 6.3 SSA level
 
 - No `assign`. Every value is defined exactly once.
-- **Dominance:** every use of a value is dominated by its definition; a use
+- **Dominance:** every use of a value is dominated by its definition. A use
   as a branch argument counts at the end of the predecessor block.
-- **Layout:** the entry block is block 0; the other non-pad blocks follow
-  in reverse post-order with each loop body contiguous; landing pads come
-  after all other blocks.
-- Unreachable blocks are not present.
+- **Layout:** block 0 is the entry block. The other blocks that are not
+  landing pads follow in reverse post-order, with each loop's blocks
+  contiguous. Landing pads come after all other blocks.
+- Every block is reachable from the entry block, landing pads through
+  unwind entries. A landing pad is entered only through unwind entries,
+  never by `br`/`condbr`, and ends in `resume` or in `br` to another landing
+  pad.
+- Unwind entries are `NO_UNWIND`, `NO_CLEANUP` or landing-pad block ids,
+  never cleanup lists.
 
 ### 6.4 The verifier
 
-The verifier checks §3, §4, §5 and the invariants of the function's level,
-and extension instructions against their `Signature` and `verify` hook. It
-runs on every module from a deserializer or the C API, and in debug builds
-after every producer. A module that fails verification is never passed to
-a backend.
+The verifier checks §3, §4, §5 and the invariants of each function's level,
+and every extension instruction against its `Signature` and `verify` hook.
+It runs on every module that comes from a deserializer or the C API, and in
+debug builds after every producer. A module that fails verification is
+never passed to a backend. Each rule has a positive and a negative test
+([12](12-validation.md)).
 
 ## 7. Canonical form
 
-A **canonical** module is the form that is serialized and hashed
+A canonical module is the form that is serialized and hashed
 ([02 §3.6](02-nir.md), [08](08-caching.md)). Canonicalization:
 
 1. applies pending replacements and compacts each function, so ids are
-   dense and in layout order;
-2. drops unused constants, names, callees, signatures, pointers and
-   bindings, and orders each table by first use in instruction order;
-3. interns names, constants and signatures (no duplicates);
-4. numbers extension opcodes and types image-locally in first-use order;
-5. writes `extra` lists in instruction order, without gaps;
-6. zeroes all padding and unused fields.
+   dense and, at the SSA level, in layout order;
+2. orders functions: exported functions by name, then the other functions
+   in order of first reference from the functions before them;
+3. drops unused constants, names, signatures, callees, allocas, pointers and
+   bindings, and orders each table by first use, scanning functions and
+   their instructions in order;
+4. interns names, constants and signatures, so no table holds duplicates;
+5. numbers extension opcodes and types image-locally in first-use order
+   (§8.4);
+6. writes `extra` lists in instruction order, without gaps;
+7. zeroes all padding, unused fields and reserved bits, and drops the debug
+   sections for hashing.
 
-Two structurally equal modules have byte-identical canonical images. The
-structural hash (L2 key) covers the canonical sections plus the effective
-options and extension versions; it excludes `debug`.
+Two structurally equal modules have byte-identical canonical images.
+
+**The structural hash** (the L2 key, [08](08-caching.md)) is XXH3-128 over
+the canonical sections of the canonical image, followed by the effective
+compile options and the `name@version` of every extension in use. It is a
+cache key, not a security property; a hit is confirmed by comparing the
+images.
 
 ## 8. Binary image and versioning
 
@@ -460,63 +577,75 @@ options and extension versions; it excludes `debug`.
 ```c
 struct ImageHeader {          // 48 bytes, at offset 0
 	char     magic[4];        // "NIR\0"
-	uint16_t major, minor;    // format version (this spec: 1.0)
+	uint16_t major, minor;    // format version; this spec: 1.0
 	uint32_t compatFeatures;  // bits a reader may ignore
 	uint32_t incompatFeatures;// bits a reader must understand
 	uint64_t totalSize;       // bytes, including the header
 	uint32_t sectionCount;
-	uint32_t crc32c;          // CRC-32C of bytes [48, totalSize)
+	uint32_t crc32c;          // CRC-32C (Castagnoli) of bytes [48, totalSize)
 	uint8_t  reserved[16];    // 0
 };
 
-struct SectionEntry {         // 24 bytes, directly after the header
+struct SectionEntry {         // 24 bytes; sectionCount entries directly after the header
 	uint32_t kind;            // §4.1
-	uint32_t stride;          // record size in bytes
-	uint64_t offset;          // from the image start, 8-byte aligned
-	uint64_t count;           // number of records
+	uint32_t stride;          // record size in bytes; ≥ this spec's record size
+	uint64_t offset;          // from the image start; 8-byte aligned
+	uint64_t count;           // number of records, < 2³²
 };
 ```
 
-- Sections appear in increasing `kind` order, without overlap, each padded
-  with zeros to 8 bytes.
-- A section's `stride` may be larger than this spec's record size. Readers
-  use the fields they know and skip the rest (§8.2).
-- The loader validates the magic, the version, `totalSize`, the checksum,
-  section bounds, strides and every reference, then runs the verifier. A
-  failed check rejects the image; it never causes undefined behavior.
+- Section entries appear in increasing `kind` order, each kind at most
+  once. Section data does not overlap and is padded with zeros to 8 bytes.
+- A reader uses the fields it knows and skips the rest of each record, so a
+  later minor version can append fields by widening `stride`.
+- **Loading** validates the magic, the version, `totalSize`, the checksum,
+  section bounds and strides, then every reference, then runs the
+  verifier. Any failure rejects the image; a malformed image must never
+  cause undefined behavior.
 
 ### 8.2 Versioning
 
 | Change | Version |
 |---|---|
-| New core opcode, new optional section, new attribute or flag bit, wider stride (fields appended) | minor; old readers reject images that use new opcodes, ignore the rest |
-| New canonical section a reader must understand | minor plus an `incompatFeatures` bit |
+| New core opcode, new optional section, new attribute or flag bit, wider stride with appended fields | minor. An old reader rejects an image that uses a new opcode and ignores the rest |
+| New canonical section a reader must understand | minor, plus an `incompatFeatures` bit |
 | Changed meaning or encoding of an existing field, opcode or rule | major |
 
 - Within 0.4.x, images stay loadable (D12): patch releases do not change
   the format, and minor versions only add.
-- Opcodes and section kinds are never renumbered within a major version;
-  the C API's enums map one to one ([09](09-c-api.md)).
+- Opcodes, section kinds and feature bits are never renumbered within a
+  major version. The C API's enums map one to one ([09](09-c-api.md)).
+- A reader rejects an image with a higher major version, or with an
+  `incompatFeatures` bit it does not know.
 
 ### 8.3 Feature bits (1.0)
 
 | Bit | Name | Class | Meaning |
 |---|---|---|---|
-| 0 | `DEBUG_V1` | compat | the `debug` section is present |
-| 1 | `EXTENSIONS` | incompat | the module uses extension ops or types |
-| 2 | `PROCESS_LOCAL` | incompat | the module contains `ProcessLocal` pointers |
+| 0 | `DEBUG_V1` | compat | the debug sections 15–18 are present |
+| 1 | `EXTENSIONS` | incompat | the module uses extension operations or types |
+| 2 | `PROCESS_LOCAL` | incompat | the module contains `ProcessLocal` pointers (mode 0) |
 
 ### 8.4 Extensions in images
 
-- The `extensions` section lists each extension op (`kind` 0) and type
-  (`kind` 1) used by the module as `name@version`, in image-local order:
-  image opcode 256 + *i* is the *i*-th op entry, image type 16 + *j* the
-  *j*-th type entry.
-- **Loading maps them to process ids** with one pass over `insts` and the
-  type fields. An image without extensions is used in place; an image with
-  extensions is rewritten once while loading.
-- A missing extension, or a version the registered extension does not
-  accept, rejects the image.
+```c
+struct ExtensionRecord { // 8 bytes
+	uint32_t nameId;     // "name@version", e.g. "simd.add@1"
+	uint8_t  kind;       // 0 operation, 1 type
+	uint8_t  pad[3];     // 0
+};
+```
+
+- Image opcode 256 + *i* is the *i*-th entry of kind 0; image type 16 + *j*
+  is the *j*-th entry of kind 1. Names are `<plugin>.<name>`, and the
+  version is a decimal `u32` after `@`.
+- **Loading maps them to process ids** in one pass over `insts` and the
+  type fields of all records. An image without extensions is used in
+  place; an image with extensions is rewritten once while loading.
+- Each extension declares a `version` and a `minCompatibleVersion`
+  ([04 §3.2](04-extensions.md)). An image entry is accepted if its version
+  lies in that range. A missing extension or a version outside the range
+  rejects the image.
 
 ## 9. Text form
 
@@ -538,16 +667,28 @@ func @divideFirst(%0: ptr, %1: i64) -> i64 {
 }
 ```
 
-Values print as `%id`, constants as `value:type`, blocks as `^bN`,
-extension ops by name (`simd.add`), unwind entries as `unwind(none)`,
-`unwind(^bN)` or nothing for `NO_UNWIND`.
+- Values print as `%id`, constants as `value:type`, blocks as `^bN`.
+- Flags print as suffixes: `.s`/`.u` for signedness, the predicate for
+  `cmp`, `.checked` for checked division, the kind for `cast`.
+- Extension operations print by name (`simd.add`).
+- Unwind entries print as `unwind(none)` for `NO_CLEANUP`, `unwind(^bN)`
+  for a landing pad, `cleanup(...)` for a trace-level cleanup list, and
+  nothing for `NO_UNWIND`.
+- Trace-level functions print `assign %v, %w` and list blocks in recording
+  order.
 
-## 10. Open items before M1 exit
+## 10. Decisions taken for 1.0
 
-- The encoding of the `debug` section (§4.8).
-- Whether an `unreachable` terminator is needed (for code after a call that
-  never returns), or `ret` of an undefined value suffices.
-- Atomic memory operations are not core in 1.0. NebulaStream uses atomics
-  through `invoke` today; if that becomes a measured cost, atomics come as
-  core opcodes in 1.1.
-- Fast-math flags: bits are reserved, unused in 1.0 (D11).
+These questions were open in the draft and are settled here:
+
+| Question | 1.0 |
+|---|---|
+| Encoding of debug data | optional sections 15–18 (§4.1, §4.8), feature bit `DEBUG_V1` |
+| `unreachable` terminator | not in 1.0; tracing ends every block with a real terminator (§5.9) |
+| Atomic operations | not in 1.0; data races are undefined (§5.0). Candidates for 1.1 if atomics through `invoke` show a measured cost |
+| Fast-math | not in 1.0; flag bits reserved (§5.1) |
+| Pointer arithmetic | `add`/`sub` on `ptr` with an `i64` byte offset, as 0.3's `ADD` on pointers (§5.1) |
+| Destructors at the trace level | cleanup lists in the unwind entry (§3.4), turned into shared landing pads by the conversion |
+| 0.3's unused trace op `FREE` | dropped |
+| Extension versioning | `version` plus `minCompatibleVersion` (§8.4) |
+| Structural hash | XXH3-128 over the canonical image plus options and extension versions (§7) |

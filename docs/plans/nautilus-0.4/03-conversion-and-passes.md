@@ -71,7 +71,8 @@ dense tables and Braun-style SSA construction on the complete trace CFG.
    The tracer already marks control-flow merge blocks (loop-header
    candidates) and knows the back edges.
 7. **Exceptions.** The work of today's `ExceptionRegionPreparationPass`
-   happens during emission: landing pads are keyed by their ordered
+   happens during emission: the trace level's cleanup lists
+   ([13 §3.4](13-nir-spec.md)) become landing pads, keyed by their ordered
    destructor set and shared, and unwinding calls point at them
    ([02 §3.4](02-nir.md)).
 8. **Attributes.** The analyses of `NoThrowInferencePass` and

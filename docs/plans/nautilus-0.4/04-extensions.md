@@ -40,6 +40,7 @@ are no virtual calls or string lookups per instruction.
 struct TypeInfo {
 	std::string_view name;     // "simd.vec<f32,8>", "builtin.i128"
 	uint32_t version;
+	uint32_t minCompatibleVersion; // oldest image version this type still loads (13 §8.4)
 	uint16_t size, align;      // in-memory layout
 	RegClass regClass;         // GP, FP, Vector, MultiPart
 	uint8_t  parts;            // > 1 for multi-part values (i128 = 2 × GP)
@@ -63,6 +64,7 @@ struct TypeInfo {
 struct OpInfo {
 	std::string_view name;      // "simd.add"
 	uint32_t version;
+	uint32_t minCompatibleVersion; // oldest image version this op still loads (13 §8.4)
 	Signature sig;              // operand/result counts and type constraints
 	OpTraits traits;            // Pure, Commutative, Idempotent, NoUnwind
 	EffectClass effects;        // None / Read / Write / ReadWrite (joins the effect chain)
