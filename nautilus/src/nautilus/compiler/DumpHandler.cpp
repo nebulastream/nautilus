@@ -1,5 +1,5 @@
 #include "nautilus/compiler/DumpHandler.hpp"
-#include "fmt/core.h"
+#include "fmt/format.h"
 #include "nautilus/common/File.hpp"
 #include <filesystem>
 

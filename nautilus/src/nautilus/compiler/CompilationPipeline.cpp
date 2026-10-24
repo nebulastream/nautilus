@@ -11,7 +11,7 @@
 #include <atomic>
 #include <chrono>
 #include <fmt/chrono.h>
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <iomanip>
 #include <random>
 #include <sstream>

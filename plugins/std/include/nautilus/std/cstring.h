@@ -45,16 +45,7 @@ val<char*> strcat(val<char*> s1, val<const char*> s2) noexcept;
  */
 val<char*> strncat(val<char*> s1, val<const char*> s2, val<size_t> n) noexcept;
 
-/**
- * Compares the first `n` bytes of memory areas `s1` and `s2`.
- *
- * @param s1 First memory area.
- * @param s2 Second memory area.
- * @param n Number of bytes to compare.
- * @return An integer less than, equal to, or greater than zero if `s1` is
- * found, respectively, to be less than, to match, or be greater than `s2`.
- */
-val<int> memcmp(val<void*> s1, val<void*> s2, val<size_t> n) noexcept;
+// memcmp is declared in nautilus/val_memcpy.hpp (included above), with the other memory functions.
 
 /**
  * Compares the C-strings `s1` and `s2`.

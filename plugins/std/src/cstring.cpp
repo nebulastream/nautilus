@@ -16,9 +16,6 @@ val<char*> strcat(val<char*> s1, const val<char*> s2) noexcept {
 val<char*> strncat(val<char*> s1, const val<char*> s2, val<size_t> n) noexcept {
 	return invoke<char*, char*, const char*, size_t>(std::strncat, s1, s2, n);
 }
-val<int> memcmp(val<void*> s1, val<void*> s2, val<size_t> n) noexcept {
-	return invoke<int, const void*, const void*, size_t>(std::memcmp, s1, s2, n);
-}
 val<int> strcmp(val<const char*> s1, val<const char*> s2) noexcept {
 	return invoke<int, const char*, const char*>(std::strcmp, s1, s2);
 }
