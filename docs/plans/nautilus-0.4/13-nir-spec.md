@@ -158,7 +158,7 @@ of an image ([02 §3.6](02-nir.md)).
 | 17 | `debugRegions` | `RegionRecord`, 16 B (§4.9) | optional |
 | 18 | `debugInstRegions` | `u32` per instruction, parallel to `insts`: index in `debugRegions`, or `0xFFFFFFFF` | optional |
 | 19 | `module` | `ModuleRecord`, 16 B, exactly one (§4.4) | canonical; the name is excluded from the structural hash (§7) |
-| 20 | `imports` | `ImportRecord`, 16 B (§4.4) | canonical |
+| 20 | `imports` | `ImportRecord`, 16 B (§4.4) | canonical in memory; always empty in a serialized image (§8.5) |
 | 21–1023 | — | reserved for later versions | — |
 | ≥ 1024 | — | vendor and experimental sections; ignored by readers that do not know them | optional |
 
@@ -237,7 +237,15 @@ struct ImportRecord {    // 16 bytes (section 20)
 - **Imports** are the functions the module calls in other modules, listed
   in the `imports` section and called through callees of kind `imported`
   (§4.6). An import names the exporter by module and function name, never by
-  address, so images with imports stay portable.
+  address.
+- **Imports are always references.** Building or linking a module never
+  copies an exporter's body into the importer. Bodies are copied only by
+  inlining (§4.4.3), an optional optimization, and when an image is
+  exported, which bundles every import (§8.5).
+- **A registered name refers to one module.** While a module is registered
+  under a name, registering another module under the same name is an error.
+  Promotion to another tier does not change a module, so an exporter's
+  semantics never change while an importer is linked to it.
 
 #### 4.4.1 Lifecycle
 
@@ -282,10 +290,10 @@ linking.
   its importers with a release store. Calls already running finish in the
   old code, which stays alive as long as it may be executing (as for
   `ModuleFunction`, #506).
-- **Importers see only the interface.** An importer's code depends on the
-  export's signature and attributes, never on its body, so recompiling or
-  promoting the exporter never invalidates an importer. Cross-module
-  inlining is not in 1.0.
+- **Importers see only the interface,** unless they inline (§4.4.3). Without
+  inlining, an importer's code depends on the export's signature and
+  attributes, never on its body, so promoting the exporter never
+  invalidates an importer.
 - **Assumed attributes.** When an importer is built while its exporter is
   already compiled (always the case for the C++ frontend, since the graph is
   acyclic), the builder copies the export's attributes into the import
@@ -297,7 +305,28 @@ linking.
   engine bridges the exporter's and the importer's exception-propagation
   modes in the import slot's entry point when they differ.
 
-#### 4.4.3 Host API (informative)
+#### 4.4.3 Inlining
+
+Inlining is a separate, optional NIR→NIR pass at the SSA level
+([03 §5](03-conversion-and-passes.md)). It is always possible, because every
+compiled module keeps its canonical NIR ([07 §2](07-serialization.md)):
+
+- **What can be inlined:** callees of kind `internal`, and of kind
+  `imported`, whose body is taken from the exporter's SSA-level NIR. External
+  callees are native code and cannot be inlined; intrinsics are lowered by
+  backends, not inlined.
+- **Semantics do not change.** An inlined call behaves exactly as the call.
+  Since a registered name refers to one module (§4.4), an inlined export
+  never goes stale while the importer is linked.
+- **Compiled code records what it inlined.** An executable that inlined an
+  imported function records `(exporter name, exporter structural hash)`. A
+  cache key for compiled code includes these hashes
+  ([08](08-caching.md)), so a different exporter never reuses the entry.
+- **Control:** the option `ir.inline` (off by default on tier 0, decided per
+  tier in M3) and a size limit `ir.inline.maxInsts`. Plugins and the C API
+  can request inlining per module.
+
+#### 4.4.4 Host API (informative)
 
 ```cpp
 auto math = engine.createModule("lib.math");
@@ -698,7 +727,7 @@ in a later version and must be 0.
    function has a name. Callee and import signatures match §4.6; a callee's
    attributes for an internal function equal the function's.
 9. Imports are unique by `(module, function)` and never name the module
-   itself.
+   itself. A deserialized image has no imports (§8.5).
 
 ### 6.2 Trace level
 
@@ -767,11 +796,17 @@ Two structurally equal modules have byte-identical canonical images.
 **The structural hash** (the L2 key, [08](08-caching.md)) is XXH3-128 over
 the canonical sections of the canonical image, without the module name,
 followed by the effective compile options and the `name@version` of every
-extension in use. Imports are hashed by name, signature and assumed
-attributes, so an importer's hash does not change when an exporter's body
-does. It is a
-cache key, not a security property; a hit is confirmed by comparing the
-images.
+extension in use. It is a cache key, not a security property; a hit is
+confirmed by comparing the images.
+
+- **In memory** (the L0 cache), imports are hashed by name, signature and
+  assumed attributes, so an importer's key does not change when the
+  exporter's body does.
+- **A serialized image** is self-contained (§8.5): its hash covers the
+  bundled bodies, so persistent entries (L1, L2) of an importer change when
+  an exporter it imports changes.
+- **Compiled code** that inlined imports adds the inlined exporters' hashes
+  (§4.4.3).
 
 ## 8. Binary image and versioning
 
@@ -851,6 +886,35 @@ struct ExtensionRecord { // 8 bytes
   lies in that range. A missing extension or a version outside the range
   rejects the image.
 
+### 8.5 Self-contained images
+
+**Every serialized image is self-contained.** Exporting a module to an
+image (`saveModule`, `nautilus_ir_save`, an L1/L2 cache store) bundles its
+imports, so loading an image never needs another module.
+
+1. **Collect** the transitive closure of the module's imports: every
+   imported function, and everything it calls in its own module and through
+   its own imports.
+2. **Copy** each collected function into the image as an `internal`
+   function named `<module>::<function>` (unique within the image), together
+   with the internal functions it calls.
+3. **Rewrite** every callee of kind `imported` into kind `internal`,
+   pointing at the copy, and leave the `imports` section empty.
+4. **Merge the tables:** constants and signatures are interned; pointers
+   are copied (a `ProcessLocal` pointer keeps the image process-local, as
+   for any module); runtime bindings are merged by name, and two bindings
+   with the same name but different schemas fail the export; extensions
+   are united.
+5. **Canonicalize** (§7) and write. Only the module's own exported functions
+   stay exported.
+
+- **Native payloads** in an artifact ([07 §2](07-serialization.md)) are
+  compiled from the bundled module, so they contain the copies instead of
+  import slots. Saving an importer may therefore compile it once more for
+  the payload.
+- **Loading** a self-contained image needs no link step. The loaded module
+  can itself be registered under its name and export functions to others.
+
 ## 9. Text form
 
 The printer writes a text form for dumps, tests and bug reports. It is
@@ -898,3 +962,4 @@ These questions were open in the draft and are settled here:
 | Structural hash | XXH3-128 over the canonical image plus options and extension versions (§7) |
 | Modules and imports | named modules with exports and imports; linking against the engine's module registry, by name and signature, acyclic; import slots updated on promotion (§4.4) |
 | Call targets | four callee kinds: internal, external, imported, intrinsic (§4.6) |
+| Interning imports | never at import or link time; inlining is a separate optional pass that works across modules (§4.4.3); exported images always bundle their imports and are self-contained (§8.5) |

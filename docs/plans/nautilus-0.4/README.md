@@ -160,7 +160,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 |---|---|
 | `val<T>`, `static_val`, `region()`, `nautilus::function`, `invoke`, engine, module, options | **Source-compatible.** Renamed options keep deprecated aliases through 0.4.x |
 | Explicit control flow | **New**, opt-in, mixable with implicit control flow |
-| Named modules and imports | **New:** modules can import exported functions of other modules by name ([13 §4.4](13-nir-spec.md)) |
+| Named modules and imports | **New:** modules can import exported functions of other modules by name, linked by reference; inlining across modules is an optional pass; saved images bundle their imports and are self-contained ([13 §4.4, §8.5](13-nir-spec.md)) |
 | Exception default of `invoke` | **Unchanged** (D4 = b). New, optional: `invoke<no_throw>`/`nothrow` and effect declarations ([06](06-semantics.md)) |
 | Plugin intrinsic API (`IntrinsicRegistry`, `MLIRIntrinsicPlugin`, `AsmJitBackendIntrinsic`) | **Replaced** by the extension API. A deprecated shim registers old intrinsics as extension ops through 0.4.x |
 | `IRGraph`, `ir::Operation`, IR passes | **Removed** (internal) |

@@ -96,9 +96,10 @@ internal form below this point ([05](05-backends.md)).
 
 ## 5. Optional and plugin passes
 
-- **Optional passes:** LICM and strength reduction, rewritten as copy
-  passes ([02 §4](02-nir.md)). They are off on latency-critical compiles and
-  enabled per module.
+- **Optional passes:** LICM, strength reduction and **inlining**, rewritten
+  as copy passes ([02 §4](02-nir.md)). They are off on latency-critical
+  compiles and enabled per module. Inlining works on internal and imported
+  callees, across modules ([13 §4.4.3](13-nir-spec.md)).
 - **Plugin passes** register at named points (`afterConversion`,
   `beforeLowering`), each marked *required* (correctness, for example GPU
   kernel outlining) or *optional*. Only required passes run on

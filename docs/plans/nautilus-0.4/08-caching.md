@@ -62,6 +62,17 @@ produce and consume the artifacts of [07-serialization.md](07-serialization.md).
   filesystem involved.
 - **Bounded** by entry count and bytes, with LRU eviction.
 
+### Modules with imports ([13 §4.4](13-nir-spec.md))
+
+- **L0** keys an importer by its in-memory canonical form, where imports
+  count only by name, signature and assumed attributes. Promoting or
+  recompiling an exporter does not invalidate it.
+- **L1 and L2** store self-contained artifacts, which bundle every import
+  ([13 §8.5](13-nir-spec.md)). Their keys cover the bundled bodies, so a
+  changed exporter makes its importers miss once and store new entries.
+- **Inlined imports:** compiled code that inlined an imported function adds
+  the exporter's structural hash to its key ([13 §4.4.3](13-nir-spec.md)).
+
 ## 3. Storage
 
 Storage keeps #528's model:

@@ -53,11 +53,11 @@ Artifact
   without materializing anything (#532's `inspectModule`).
 - **Loading checks** root signatures against the requested C++ signature,
   including width and signedness (#532).
-- **Imports are resolved at load** by module and function name, against the
-  loading engine's module registry ([13 §4.4.2](13-nir-spec.md)). An image
-  whose imports cannot be linked fails to load; it is never loaded
-  partially. Native payloads call imports through import slots, so they
-  stay valid when the exporter is recompiled or promoted.
+- **Images are self-contained.** Saving a module bundles the transitive
+  closure of its imports as internal functions
+  ([13 §8.5](13-nir-spec.md)), so loading an image never needs another
+  module or a link step. Native payloads are compiled from the bundled
+  module.
 
 API, carried over from #532 and #527:
 
