@@ -10,6 +10,8 @@ architecture, the decisions, compatibility, the release plan and the risks.
 **How to read this plan:**
 
 - Start with §1–§3 for goals and architecture, and §6 for the release plan.
+- [16-implementation-plan.md](16-implementation-plan.md) turns the release
+  plan into ordered work packages.
 - Then read the component documents in order. Each one has the same
   structure: purpose, today and what it costs, design, migration from the
   open PRs, milestone exit criteria, risks.
@@ -154,6 +156,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 13 | [NIR specification](13-nir-spec.md) | Normative definition of NIR: types, encoding, operations and semantics, level invariants, canonical form, binary image, versioning | #532 (format rules) |
 | 14 | [IR comparison](14-ir-comparison.md) | NIR compared with LLVM IR, MLIR, WebAssembly, Cranelift, QBE, SPIR-V, LuaJIT IR and Zig AIR; gaps and lessons | — |
 | 15 | [Agent experience](15-agent-experience.md) | Contributors: `AGENTS.md`, skills, doc check, NIR text parser, error codes; users: diagnostics with codes and hints, readable compile errors, `explain()`, playground MCP server, user plugin, docs that compile | agent tooling on `nautilus-0.4`, `tools/playground` |
+| 16 | [Implementation plan](16-implementation-plan.md) | Work packages per milestone with files, tests and done-when checks; switch-overs; the two temporary pipelines and bridges; CI legs; dependency graph, tracks and effort | 01–15 |
 | — | [P0 baseline](p0-baseline.md) | Measurements behind this design | design study (closed #562) |
 
 ## 5. Compatibility and versioning
@@ -206,7 +209,7 @@ releases and no temporary formats.
 | **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
 | **M4 Backends** | `tbc`, `cpp`, MLIR and GPU on NIR; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; the promotion service of [11](11-tiered-compilation.md); decision D3 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
 | **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold; every #527/#528 negative test ported and failing closed |
-| **M6 Semantics and extensions** | Declared call effects and cheaper exception handling; signless integers; extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
+| **M6 Semantics and extensions** | Declared call effects and cheaper exception handling; defined integer and float semantics (D10, D11); plugin API on signless widths (NIR itself is signless from M1); extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
 | **M7 Release** | Remove `IRGraph`, the old passes and the bridge; migration guide; user documentation (§6.2); NebulaStream integration; x86-64 and AArch64; sanitizers | Release criteria below |
 
 **Order and parallelism:**
