@@ -62,11 +62,11 @@ criteria in each component document refer to these tests.
 
 ## 4. Platforms without full CI coverage
 
-- **GPU (D15, D21):** the shared runners have no GPU. On them, CUDA is
-  tested compile-only (the partition pass, device code rules, generated
-  device sources compared with references), and Metal runs where the runner
-  exposes a device. From M7 on, D21's self-hosted NVIDIA runner and a Metal
-  device run the GPU suite on hardware, with `compute-sanitizer` nightly
+- **GPU (D15, D21):** there is no GPU runner. Metal kernels execute on the
+  hosted macOS runner (Apple silicon), with Metal API and shader validation
+  from M7 on. CUDA is checked in CI by the CPU grid emulator and by compiling
+  every kernel with NVRTC and `ptxas`; CUDA execution, `compute-sanitizer`
+  and the GPU benchmarks run in recorded manual runs on an NVIDIA machine
   ([17 §5](17-gpu.md)). A manual run on GPU hardware stays on the M8 release
   checklist. From the cut-over until M7 the GPU plugin is off and the GPU
   legs build without it ([17 §3](17-gpu.md)).

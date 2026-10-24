@@ -28,7 +28,7 @@ CUDA and Metal source from the 0.3 IR:
 | CUDA | one generated `.cu` file with kernels and host code, compiled by an `nvcc` subprocess into a shared library in a temporary directory |
 | Metal | generated MSL plus generated host C++ that dispatches through the Metal API, compiled with `xcrun` tools and the system compiler |
 | Tests | `GPUTracingTest`, `GPUCodegenTest` (generated sources compared byte for byte), `GPUExecutionTest` (needs a device) |
-| CI | three `-DENABLE_GPU_PLUGIN=ON` legs; CUDA compile-only, Metal executes where the runner exposes a device (D15) |
+| CI | three `-DENABLE_GPU_PLUGIN=ON` legs; CUDA source generation only, Metal executes on the hosted macOS runner (D15) |
 
 Gaps against production use, from the code:
 
@@ -41,7 +41,7 @@ Gaps against production use, from the code:
 | G5 | **Every launch synchronizes** (`cudaDeviceSynchronize`, `waitUntilCompleted`); there are no streams or queues | both |
 | G6 | **Host code is generated and compiled by the GPU toolchain** (`nvcc`, `xcrun`): seconds per module, temporary files, no tiering, caching or debug info for host code, and the CPU backends' exception handling does not apply | compilers |
 | G7 | **No device-side features beyond indices and a barrier:** no shared memory, atomics, warp operations or math functions | `gpu.hpp` |
-| G8 | **No GPU execution in CI** for CUDA; Metal only where a device is exposed | D15 |
+| G8 | **No CUDA execution anywhere in CI**; Metal executes on the hosted macOS runner, but only for the 0.3 cases and without validation layers | D15, `plugins/gpu/test` |
 | G9 | **No user documentation** (`docs/` has no GPU page) | — |
 
 ## 3. From the cut-over to M7
@@ -79,7 +79,7 @@ traced module (NIR) ── gpu.partition ──┬─► host functions ─► t
 - **The GPU runtime** (`plugins/gpu/src/runtime/`) owns devices, contexts,
   streams or command queues, loaded kernels and pipeline states. Host code
   calls it through a small C ABI.
-- **Selection:** `gpu.device=cuda|metal|cpu|auto` (default `auto`: CUDA if
+- **Selection:** `gpu.device=cuda|metal|cpu|emulator|auto` (default `auto`: CUDA if
   a CUDA device is present, Metal on macOS, otherwise `cpu`, which runs
   kernels through their fallbacks). `engine.backend` keeps naming the host
   backend. 0.3's `engine.backend=cuda` and `engine.backend=metal` stay as
@@ -150,7 +150,7 @@ gpu.launch %k, grid(%gx, 1:i32, 1:i32), block(256:i32, 1:i32, 1:i32), %a, %b, %c
 - **Compatibility with 0.3's Metal copy:** a host pointer passed to a Metal
   kernel is still accepted for 0.3 programs, but copied with the size the
   application declares (`gpu::hostBuffer(ptr, bytes)`) or, for unchanged 0.3
-  code, with the deprecated `gpu.bufferSize` option, with a warning once.
+  code, with the deprecated `gpu.metal.bufferSize` option, with a warning once.
   The copy is never larger than the declared size, which removes G1's
   overruns.
 - **Lifetimes:** buffers belong to the application; kernels, pipeline states
@@ -221,7 +221,7 @@ gpu.launch %k, grid(%gx, 1:i32, 1:i32), block(256:i32, 1:i32, 1:i32), %a, %b, %c
   - artifacts and L1/L2 ([07](07-serialization.md), [08](08-caching.md)):
     PTX and the Metal library as GPU payloads, keyed by toolkit and driver
     version; a mismatch recompiles from the NIR image.
-- **Targets**, on the reference GPUs (§5):
+- **Targets**, measured in the recorded manual runs (§5):
   - generated kernels for `vecAdd`, `saxpy`, `prefixSum`, a reduction with
     shared memory and warp shuffles, and a TPC-H-style filter and aggregate
     reach at least 90% of the throughput of hand-written CUDA and MSL
@@ -240,44 +240,76 @@ gpu.launch %k, grid(%gx, 1:i32, 1:i32), block(256:i32, 1:i32, 1:i32), %a, %b, %c
 - Dumps: `dump.after_gpu_partition`, `dump.after_gpu_generation` (device
   source).
 
-## 5. Validation
+## 5. Validation without GPU runners
 
-Production readiness needs GPU hardware in CI. **Proposed (D21):** D15 is
-extended:
+There is no dedicated GPU CI runner. **Decided (D21):** validation uses what
+the shared runners provide, plus a CPU grid emulator and recorded manual
+runs on hardware:
 
-- a self-hosted NVIDIA runner (one current data-center or workstation GPU)
-  runs the GPU suite on every PR that touches `plugins/gpu`, NIR or the
-  conversion, and nightly on `nautilus-0.4`; it needs an owner;
-- Metal executes on Apple-silicon macOS runners where a device is exposed,
-  otherwise on a self-hosted Mac;
-- `compute-sanitizer` (memcheck, racecheck, synccheck) runs nightly on the
-  NVIDIA runner; Metal API and shader validation are on in every Metal test;
-- the reference GPUs for §4.8 are recorded in the corpus output.
+| Layer | Where | What it covers |
+|---|---|---|
+| **Metal on hardware** | the GitHub-hosted macOS (Apple silicon) runner, every PR | Metal kernels really execute there: 0.3's `GPU Metal Execution Test` computes and checks results on that runner today. The whole Metal suite runs with Metal API validation and shader validation enabled. Timings there are virtualized and only reported |
+| **Grid emulator** | Linux runners, every PR | `gpu.device=emulator` runs kernels on the CPU with full grid semantics (§5.1); covers partition, launch, indexing, barriers, shared memory, atomics, warp ops and D19 for both CUDA- and Metal-style code |
+| **CUDA compile** | Linux runner with the CUDA toolkit (no driver, no GPU) | NVRTC compiles every test kernel to PTX for each supported architecture; `ptxas` assembles it and reports registers, spills and shared memory; failures and resource regressions fail the leg |
+| **Shared emitter** | every leg | CUDA and MSL come from one NIR emitter (§4.5); the Metal execution covers the emitter's logic for both, the CUDA leg covers what differs in syntax |
+| **Manual NVIDIA run** | a maintainer's NVIDIA machine, recorded | `tools/gpu-validate/` runs the suite, `compute-sanitizer` (memcheck, racecheck, synccheck), the fuzzer mode and the §4.8 benchmarks, and writes a report with GPU, driver and toolkit versions. Required before PR 17, PR 18 and the release candidate merge, and for every later PR that changes the CUDA backend or the runtime |
+| **Manual Metal performance** | a maintainer's Apple-silicon Mac, recorded | the §4.8 benchmarks on bare metal, with the same report |
+
+The manual NVIDIA run needs a maintainer with access to an NVIDIA GPU. If
+there is none, CUDA ships validated by the emulator and the PTX/`ptxas` leg
+only and is marked **experimental** in `docs/gpu.md`; Metal is production
+ready either way.
+
+What this leaves open: CUDA execution and CUDA performance are checked
+only at the recorded manual runs, so a CUDA-only regression between two
+runs is found at the next one. The emulator, the PTX/`ptxas` leg and Metal
+execution of the shared emitter are what keep that window small. The
+reports are kept in `plugins/gpu/validation/` and listed in the release
+notes.
+
+### 5.1 The grid emulator
+
+- A device kind of the GPU runtime (§4.1) that runs the device module on a
+  CPU backend (`tbc` or `asmjit`): every GPU thread is a fiber, a block is a
+  group of fibers scheduled cooperatively, warps are groups of 32 lanes.
+- `gpu.sync_threads` suspends a fiber until every fiber of its block has
+  arrived; a barrier that not all threads reach is reported as an error
+  (divergent barrier), which CUDA and Metal leave undefined.
+- `gpu.shared_alloca` gets one buffer per block; atomics use
+  `std::atomic_ref`; warp ops exchange values between the lanes of a warp.
+- Memory: `DeviceBuffer` and `ManagedBuffer` are host allocations with the
+  same API, so the memory, error and concurrency tests run unchanged; out of
+  bounds accesses within buffers are checked in debug builds.
+- It is a test device, not a performance path; `gpu.device=auto` never
+  selects it.
+
+### 5.2 Tests
 
 | Test | Content |
 |---|---|
 | `GPUTracingTest` | traces as pre-SSA NIR; golden dumps regenerated in their own commit |
 | `GPUCodegenTest` | generated device sources compared byte for byte (`plugins/gpu/test/data/` stays excluded from `format.sh`) |
-| `GPUExecutionTest` | the 0.3 cases plus every op of §4.2, on hardware |
+| `GPUExecutionTest` | the 0.3 cases plus every op of §4.2: on Metal and the emulator in CI, on CUDA in the manual run |
 | CPU fallback | every GPU test function on `tbc`, `asmjit` and MLIR through the fallbacks, with the 0.3 results |
 | Memory | `DeviceBuffer`/`ManagedBuffer` round trips; host pointers rejected; the 0.3 Metal compatibility path never copies past the declared size |
-| Errors | invalid launch configuration, illegal address, out of memory, compile error: each raises its exception with the kernel name |
+| Errors | invalid launch configuration, illegal address, out of memory, compile error: each raises its exception with the kernel name (illegal address and out of memory on hardware only) |
 | Concurrency | launches from several threads; `launchAsync` ordering per thread; module release while launches are queued |
-| Device rules and D19 | one negative test per rule; the division cases on the device and in the fallback |
-| Fuzzer | generated kernels compared between device, CPU fallback and the C++ oracle on the NVIDIA runner |
-| Benchmarks | §4.8 kernels against hand-written versions on the reference GPUs |
+| Device rules and D19 | one negative test per rule; the division cases on Metal, on the emulator and in the fallback |
+| Fuzzer | generated kernels compared between the emulator, the CPU fallback and the C++ oracle in CI; Metal in CI; CUDA in the manual run |
+| Benchmarks | §4.8 kernels against hand-written versions in the manual runs |
 | API compatibility | the 0.3 GPU tests and `example/src/DemoGPU.cpp` join `test/api-compat/` |
 
 ## 6. Exit criteria (M7)
 
 - G1–G9 closed.
-- `ENABLE_GPU_PLUGIN` builds again; the three GPU CI legs are restored; the
-  GPU runners of D21 run the suite.
-- Every test of §5 passes on hardware; `compute-sanitizer` is clean.
-- The performance targets of §4.8 are met and recorded.
+- `ENABLE_GPU_PLUGIN` builds again; the three GPU CI legs are restored, plus
+  the emulator and CUDA-compile legs.
+- Every test of §5.2 passes on Metal and the emulator in CI, and on CUDA in
+  a recorded manual run with `compute-sanitizer` clean.
+- The performance targets of §4.8 are met in the recorded manual runs.
 - The 0.3 GPU user API compiles and runs unchanged; `docs/gpu.md` documents
-  the API, the memory model, errors and limits.
-- D19, D20 and D21 decided.
+  the API, the memory model, errors, limits and how CUDA is validated.
+- D19 and D20 decided.
 
 ## 7. Risks
 
@@ -287,5 +319,6 @@ extended:
 | NVRTC or the driver API is unavailable in a deployment | the plugin falls back to `gpu.device=cpu` with a warning, and fails with a clear error if a CUDA device was requested explicitly |
 | The memory model breaks 0.3 Metal programs | the compatibility path of §4.4 accepts host pointers with a declared size; the migration guide shows the move to `DeviceBuffer` |
 | Address-space inference rejects valid kernels | the rule is narrow (one space per value); diagnostics name the value; `.nir` and fuzzer coverage |
-| No GPU hardware in CI | D21; until the runners exist, the GPU part of M7 cannot exit |
+| No GPU runner in CI | D21: Metal executes on the hosted macOS runner; the grid emulator and the PTX/`ptxas` leg run on every PR; CUDA execution, sanitizers and performance in recorded manual runs, required before each GPU PR and the release |
+| The emulator hides scheduling bugs that real GPUs expose | it reports divergent barriers; racecheck and synccheck run in the manual CUDA run; Metal shader validation in CI |
 | Driver and toolkit drift | toolkit and driver versions in the cache key and the artifact descriptor; a mismatch recompiles |

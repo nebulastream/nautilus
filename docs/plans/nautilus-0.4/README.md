@@ -158,7 +158,7 @@ Details and rationale: [02-nir.md](02-nir.md).
 | 14 | [IR comparison](14-ir-comparison.md) | NIR compared with LLVM IR, MLIR, WebAssembly, Cranelift, QBE, SPIR-V, LuaJIT IR and Zig AIR; gaps and lessons | — |
 | 15 | [Agent experience](15-agent-experience.md) | Contributors: `AGENTS.md`, skills, doc check, NIR text parser, error codes; users: diagnostics with codes and hints, readable compile errors, `explain()`, playground MCP server, user plugin, docs that compile | agent tooling on `nautilus-0.4`, `tools/playground` |
 | 16 | [Implementation plan](16-implementation-plan.md) | Work packages per milestone with files, tests and done-when checks, grouped into 19 PRs; build alongside, one cut-over, no bridge; recorded 0.3 baselines and the API-compat suite; CI legs; dependency graph, tracks and effort | 01–15 |
-| 17 | [GPU backends](17-gpu.md) | The GPU plugin rebuilt last (M7) and made production ready: device compilers (NVRTC, Metal) plus a host runtime instead of generated host code; `gpu` extension ops with CPU fallbacks; `gpu.launch`; a memory model with device buffers (D20); errors as exceptions; shared memory, atomics, warp ops; caching; GPU hardware in CI (D21); division on the device (D19) | 0.3 GPU plugin |
+| 17 | [GPU backends](17-gpu.md) | The GPU plugin rebuilt last (M7) and made production ready: device compilers (NVRTC, Metal) plus a host runtime instead of generated host code; `gpu` extension ops with CPU fallbacks; `gpu.launch`; a memory model with device buffers (D20); errors as exceptions; shared memory, atomics, warp ops; caching; validation without a GPU runner (D21); division on the device (D19) | 0.3 GPU plugin |
 | — | [P0 baseline](p0-baseline.md) | Measurements behind this design | design study (closed #562) |
 
 ## 5. Compatibility and versioning
@@ -244,8 +244,10 @@ releases and no temporary formats.
 4. Warm NebulaStream suite ≥ 60% faster than cold.
 5. `test/api-compat/` (0.3's user-API tests and examples, frozen at the
    branch point) passes unchanged on every backend.
-6. The GPU suite passes on CUDA and Metal hardware with sanitizers clean,
-   and the GPU performance targets of [17 §4.8](17-gpu.md) are met.
+6. The GPU suite passes on Metal and the grid emulator in CI and on CUDA in
+   a recorded manual run with `compute-sanitizer` clean, and the GPU
+   performance targets of [17 §4.8](17-gpu.md) are met in the manual runs
+   (D21).
 7. Migration guide: plugin intrinsics → extensions, signless integers in
    plugins, renamed options, the GPU memory model.
 
@@ -319,13 +321,13 @@ the migration guide from 0.3.
 | D12 | Compatibility across 0.4.x | **Decided:** NIR images loadable across 0.4.x; native payloads tied to the exact build and recompiled from the image (§5) |
 | D13 | Extensions registered after the first compile | **Decided:** an error naming the extension; register everything before the first compile ([04 §3.7](04-extensions.md)) |
 | D14 | Debug info and profiling on NIR | **Decided:** source locations in the optional `debug` section, recorded only on request; `asmjit` and `tbc` register their code so `perf.sample` works with the default backend ([05 §7](05-backends.md)) |
-| D15 | GPU testing without GPU CI | **Decided:** CUDA compile-only in CI; Metal on the macOS runner where it exposes a device; a manual GPU run on the M8 checklist ([12 §4](12-validation.md)). Extended by D21 for M7 |
+| D15 | GPU testing without GPU CI | **Decided:** CUDA compile-only in CI; Metal executes on the hosted macOS runner; a manual GPU run on the M8 checklist ([12 §4](12-validation.md)). Extended by D21 for M7 |
 | D16 | NebulaStream migration | **Decided:** the NebulaStream CI job runs against `nautilus-0.4` from M1 on; it reports until the M4 exit and gates from then on. The user-facing API does not change, so only behavior changes and NebulaStream's own plugins need patches, shipped by the PR that needs them |
 | D17 | Deprecated surfaces | **Decided:** deprecated aliases exist only for the user-facing API (renamed options); each keeps a test that checks it still works and warns once ([12 §2](12-validation.md)). Internal surfaces (the plugin intrinsic API, `TieredJITCompiler::waitForPendingPromotions`) are replaced without shims |
 | D18 | Agent experience | **Decided:** `AGENTS.md` as the contributor guide (imported by `CLAUDE.md`); skills, presets and a session hook on `nautilus-0.4` first; in 0.4 a NIR text parser, diagnostic codes with hints, `explain()`, a playground MCP server and a user plugin ([15](15-agent-experience.md)) |
 | D19 | Integer division on the GPU | Proposed: inside device functions, division and remainder by zero and `MIN / -1` give defined, non-throwing results (`x / 0 = 0`, `x % 0 = x`, `MIN / -1 = MIN`, `MIN % -1 = 0`), emitted in NIR so the CPU fallback matches; decided at the M7 exit ([17 §4.7](17-gpu.md)) |
 | D20 | GPU memory model | Proposed: `gpu::DeviceBuffer<T>` and `gpu::ManagedBuffer<T>`; kernel pointer arguments must point into device-accessible memory and are checked; 0.3's Metal host-pointer copy kept as a compatibility path with a declared size, never past it ([17 §4.4](17-gpu.md)) |
-| D21 | GPU hardware in CI | Proposed: a self-hosted NVIDIA runner for PRs touching the GPU plugin, NIR or the conversion, and nightly; Metal on Apple-silicon runners where a device is exposed, otherwise a self-hosted Mac; nightly `compute-sanitizer`. Needs an owner before M7 ([17 §5](17-gpu.md)) |
+| D21 | GPU validation without a GPU runner | **Decided:** no dedicated GPU runner. Metal executes in CI on the hosted macOS runner with validation layers; a CPU grid emulator and an NVRTC/`ptxas` compile leg run on every PR; CUDA execution, `compute-sanitizer` and the GPU benchmarks run in recorded manual runs on a maintainer's NVIDIA machine before the GPU PRs and the release. Without NVIDIA hardware, CUDA ships as experimental ([17 §5](17-gpu.md)) |
 
 ## References
 
