@@ -597,7 +597,10 @@ flow mixable with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
   recorded as `var` ([13 §5.9](13-nir-spec.md)), so the value a `val<T>`
   holds is always an instruction id at the pre-SSA level; the tag map as
   open addressing from snapshot to op id; the index-based replay cursor and
-  the value-ref free list (R2); hashed trie children in the shared
+  cheaper alive-variable bookkeeping (value refs are op ids,
+  [01 §3](01-tracing-frontend.md)); a `var` at a known tag records a
+  reconciling `assign` onto the original id instead of merging (#95, #384;
+  [01 §6](01-tracing-frontend.md)); hashed trie children in the shared
   `tag/Trie.hpp`; `traceExtOp`, `traceData`, `traceBinding` and the
   explicit-construct hooks added to `TracingInterface` (no-op defaults in
   the 0.3 `TraceContext`); destructor cleanup lists in unwind entries of
@@ -619,7 +622,8 @@ flow mixable with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
 - **Tests:** every execution-test function traced; pre-SSA output verified
   and compared with golden dumps (`test/nir-tests/trace/`); allocation
   counter in steady state; a `val` initialized from a constant and later
-  assigned, and a copy later assigned, in a loop.
+  assigned, and a copy later assigned, in a loop; a copy constructed from
+  different sources on the two arms of a native `c ? a : b` (#95).
 - **Done when:** every execution-test function traces and verifies; no
   `malloc` per recorded op in steady state; `distinctSites1024` tag
   creation linear and tracing on it ≥ 30% cheaper than the 0.3 baseline
@@ -655,11 +659,16 @@ flow mixable with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
   and bodies; memoized like a region; optimistic recording with bounded
   restart, where a restart truncates every table the scope appended to
   (ops, `extra`, blocks, allocas, data objects, callee queue, destructor
-  stack, next value ref) back to the scope's entry checkpoint and drops
-  memo entries created after it; non-local exits (`Break`, `Continue`,
-  `Return`) emit the destructor calls of the owned values they leave and
-  pause the rest of each lambda ([01 §5.1, §5.2](01-tracing-frontend.md)); direct
-  mode runs lambdas natively.
+  stack, next value ref) back to the scope's entry checkpoint, with an
+  undo log for predecessor appends to older blocks and tag-map
+  insertions, and drops memo entries created after it; the restarting
+  pass is paused and not counted as explored; non-local exits (`Break`,
+  `Continue`, `Return`) emit the destructor calls of the owned values
+  above the target's depth (all of them for `Return`) without changing
+  the destructor list, and only the scope that executes the exit is
+  paused; exits may not cross a `region()`
+  ([01 §5.1, §5.2](01-tracing-frontend.md)); direct mode runs lambdas
+  natively.
 - **Files:** `include/nautilus/control_flow.hpp`; `tracing/nir/`;
   `ExplicitControlFlowTest.cpp` from #300, with its mixing guard turned
   into mixing tests; fuzzer generator for explicit constructs and a mode
@@ -667,11 +676,15 @@ flow mixable with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
 - **Tests:** owned values with `Break`; an arm that always `Break`s;
   `Return` in a nested arm; ops after `Break` in the same lambda; a
   restart after allocas, `constData` and a `nautilus::function` callee were
-  recorded.
+  recorded; `Break` inside an implicit `if` in a `While` body;
+  `If(c,[&]{ Break(); })` followed by recorded ops in the same body; an arm
+  whose last explored pass ends in `Return` while a function-scope owned
+  value is live; `Continue` in `For` reaching the increment block; a
+  restart after a nested `Break` and after a nested `region()`.
 - **Done when:** explicit `chainedIf` traces in one pass with zero replayed
   ops at every corpus size, and `tracing.snapshots` on an all-explicit
-  corpus function equals the count of [01 §5.2](01-tracing-frontend.md); mixed functions clean
-  under the fuzzer.
+  corpus function equals the count of [01 §5.2](01-tracing-frontend.md);
+  mixed functions clean under the fuzzer.
 
 #### M2.6 Constant data · S · deps: M4.2
 - **Builds:** `nautilus::constData` (span and string overloads) creating
@@ -716,8 +729,10 @@ criteria: [03 §6](03-conversion-and-passes.md).
   ([03 §3.2](03-conversion-and-passes.md));
   live-edge tracking, layout order, the derived loop table (depth and
   end), `useCount` while emitting; a bounded refold sweep over the users
-  of phis that became trivial at sealing; the transitive dead-value sweep
-  (pure values and dead block-argument cycles) during final compaction;
+  of phis that became trivial at sealing, limited to the sealed loop's
+  block range; reads in a live-treated block with no live edge resolve to
+  a zero placeholder; the mark-from-roots dead-value sweep
+  ([03 §3.3](03-conversion-and-passes.md)) during final compaction;
   the test-only `NirChain` fixture (new tracer → conversion → `tbc`) and
   the `nir-chain` CI leg.
 - **Files:** `conversion/Conversion.*`, `conversion/SSABuilder.*`,
@@ -733,13 +748,17 @@ criteria: [03 §6](03-conversion-and-passes.md).
 - **Builds:** the rules of `ConstantFoldingAndCopyPropagationPass` and
   `AlgebraicSimplificationPass` as builder rules, IEEE-strict (D11: no
   `x + 0.0 → x`) with wrapping arithmetic; extension `fold`/`simplify`
-  hooks; loads from data objects fold. Until M6.1 adds their folding
-  rules, division or remainder by a constant zero, `MIN / -1` and shifts
-  by at least the bit width are never folded: they stay checked or masked
-  instructions, which every backend lowers from its M4 port
-  ([06 §4.2](06-semantics.md)).
+  hooks; loads from data objects fold; the checked bit of `div`/`rem`
+  cleared for safe constant divisors (non-zero, and not −1 when signed)
+  and constant shift amounts masked at conversion
+  ([06 §1](06-semantics.md)). Until M6.1 adds their folding rules,
+  division or remainder by a constant zero or −1 with a non-constant
+  dividend, `MIN / -1` and shifts by at least the bit width are never
+  folded: they stay checked or masked instructions, which every backend
+  lowers from its M4 port ([06 §4.2](06-semantics.md)).
 - **Files:** `conversion/FoldRules.*`, `conversion/SimplifyRules.*`.
-- **Done when:** a `.nir` test per rule passes; a corpus case with a
+- **Done when:** a `.nir` test per rule passes, including a safe constant
+  divisor (unchecked) and an unsafe one (still checked); a corpus case with a
   loop-invariant variable reassigned in the loop body folds as in 0.3; op
   counts on the corpus at most the 0.3 baseline for linear code.
 
@@ -755,7 +774,7 @@ criteria: [03 §6](03-conversion-and-passes.md).
 #### M3.4 CSE · M · deps: M3.2, M3.6
 - **Builds:** block-local CSE with an undo log; loads and calls keyed on the
   effect id, which is bumped by every may-write instruction and at the
-  entry of every merge block and loop header
+  entry of every merge block, loop header and irreducible-region entry
   ([03 §3.4](03-conversion-and-passes.md)); dominator-scoped CSE
   (Cooper–Harvey–Kennedy) for pure values, behind a flag until its fuzzing
   is clean; CSE of calls only for readonly-or-pure + `willReturn` +
@@ -780,7 +799,10 @@ criteria: [03 §6](03-conversion-and-passes.md).
   per-function facts, then a fixed point over the SCCs of the call graph
   (optimistic for `noUnwind`, pessimistic for memory effects on cycles),
   producing the guarantee bits of [13 §4.6.2](13-nir-spec.md) in the
-  callee records; declarations (M6.2) override inference later.
+  callee records; a `div`/`rem` by a safe constant (or an unassigned
+  `var` of one) does not make a function may-throw
+  ([03 §3.5](03-conversion-and-passes.md)); declarations (M6.2) override
+  inference later.
 - **Done when:** inferred bits on the test functions match the 0.3
   attributes recorded in the baselines (M1.10), mapped to the guarantee
   bits.
@@ -838,8 +860,10 @@ integer and float semantics of D10/D11** per the per-backend table of
 [06 §4.2](06-semantics.md): checked `div`/`rem` throws through a cold-path
 call to the runtime helper `nautilus_rt_throw_arith`, made through the
 capture thunk with the instruction's cleanup list; dynamic shift amounts
-masked where the hardware does not mask; saturating float→int casts. M6.1
-adds only the folding rules and the plugin side. Imported calls are added
+masked where the hardware does not mask; saturating float→int casts. The
+conversion clears checks for safe constant divisors and masks constant
+shift amounts from M3.2 on; M6.1 adds the edge-case folding and the
+plugin side. Imported calls are added
 by M4.6, `bind.addr` by M5.2, extension *type* lowering by M6.5. A port
 that lands before the cut-over lives in new files next to its 0.3 lowering,
 which the cut-over deletes; until then it is tested with `nautilus-nir-run`,
@@ -1125,10 +1149,10 @@ M6.4 moves the plugin-facing API to widths.
 
 #### M6.1 Folding and plugin side of D10/D11 · S · deps: M4.10
 - **Builds:** the backends lower D10/D11 from their M4 ports (§10); this
-  WP adds the folding rules: checks of `div`/`rem` dropped where folding
-  proves them unnecessary, constant shift amounts masked at conversion,
-  constant edge cases folded to their defined results or to an
-  unconditional throw; the plugin side (in-tree plugin handlers and
+  WP adds the rest of the folding (safe constant divisors and constant
+  shift masks are M3.2's): unsafe constant operands folded to their
+  defined results or to an unconditional throw, range-based proofs that
+  drop further checks ([06 §1](06-semantics.md)); the plugin side (in-tree plugin handlers and
   fallbacks follow D10/D11, [06 §4.2](06-semantics.md)); `tbc` stencils
   regenerated in their own commit if handlers change.
 - **Done when:** a `.nir` test per folding rule; D10/D11 cases still pass on
