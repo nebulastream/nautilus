@@ -178,7 +178,7 @@ effect for data objects, whose loads fold or hoist.
 
 | IR | Model |
 |---|---|
-| **NIR** | unwind entries on calls (direct and indirect) and checked division: `NO_UNWIND`, `NO_CLEANUP` or a landing-pad block, entered only by unwinding or from another pad, ending in `resume`; pre-SSA cleanup lists of destructor callees; capture thunks on every may-throw native or indirect call for backends without unwind tables |
+| **NIR** | unwind entries on calls (direct and indirect) and checked division: `NO_UNWIND`, `NO_CLEANUP` or a landing-pad block, entered only by unwinding or from another pad, ending in `resume` or in a branch to another pad; pre-SSA cleanup lists of destructor callees; capture thunks on every may-throw native or indirect call for backends without unwind tables |
 | LLVM IR | `invoke` with `landingpad`/`resume` (Itanium), funclets (`catchswitch`, `cleanuppad`) for Windows |
 | MLIR | none in core; the `llvm` dialect mirrors LLVM |
 | WebAssembly | exception handling (Wasm 3.0): `throw`, `try_table` with catch clauses, `exnref` |
@@ -278,7 +278,7 @@ caches around them hash whatever bytes they get.
 
 | IR | Status |
 |---|---|
-| **NIR** | verifier rules per level with stable diagnostic codes (13 §6.6), one positive and one negative test per code; no formal semantics yet |
+| **NIR** | verifier rules per level with stable diagnostic codes ([13 §6.6](13-nir-spec.md)), one positive and one negative test per code; no formal semantics yet |
 | LLVM IR | verifier; informal semantics; Alive2 checks optimizations against an SMT model; Vellvm formalizes a subset in Coq |
 | MLIR | per-operation verifiers; no global semantics |
 | WebAssembly | **mechanized formal semantics** (Isabelle, Coq); validation is a type system |
@@ -339,7 +339,7 @@ the cheapest way to close the gap.
 | Overflow-checked arithmetic | LLVM `*.with.overflow`, LuaJIT checked ops | Already covered by `builtin.add_overflow` and friends as extension operations |
 
 **Nothing found in the comparison breaks a NIR design choice.** The gaps are
-additions that the versioning rules (§8.2) allow in minor versions, except
+additions that the versioning rules ([13 §8.2](13-nir-spec.md)) allow in minor versions, except
 structured control flow, which stays a derived view.
 
 ## 6. References

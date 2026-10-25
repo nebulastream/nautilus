@@ -86,8 +86,8 @@ A type is a `u8` `TypeId`.
   (§8.4, [04 §3.7](04-extensions.md)).
 - **Core operations accept extension types only where stated** (`select`,
   `load`, `store`, `blockarg`, branch arguments, call arguments and results,
-  `ret`). Everything else on an extension type goes through extension
-  operations.
+  `ret`, and at the pre-SSA level `var` and `assign`). Everything else on an
+  extension type goes through extension operations.
 
 ## 3. Instructions and operands
 
@@ -218,7 +218,7 @@ struct ConstRecord {     // 16 bytes
   Addresses of functions, thunks and destructors are `pointers` entries
   too.
 - **Provenance.** The tracer gives integer, float and `bool` constants
-  `Literal` unless the user marks them (`cacheInvariant` →
+  `Literal` unless the user marks them (`cacheLiteral`/`cacheInvariant` →
   `AuditedInvariant`; [07 §5](07-serialization.md)). A constant produced by
   folding gets the **least trusted** class among its inputs
   (`RawProcessValue` is less trusted than `AuditedInvariant`, which is less
@@ -643,7 +643,7 @@ declare ([06 §3.3](06-semantics.md)) map to bit sets:
 struct PointerRecord {   // 24 bytes
 	uint8_t  kind;       // 0 callee, 1 capture thunk, 2 destructor, 3 traced address, 4 extension payload address
 	uint8_t  mode;       // 0 ProcessLocal, 1 Portable (by name), 2 Portable (ELF build id + offset)
-	uint8_t  provenance; // kind 3: 1 AuditedInvariant or 2 RawProcessValue; other kinds: 0
+	uint8_t  provenance; // kind 3: 2 RawProcessValue in mode 0; 0 Literal or 1 AuditedInvariant in modes 1, 2; other kinds: 0
 	uint8_t  pad;        // 0
 	uint32_t nameId;     // mode 1: symbol name; mode 2: build id as lowercase hex string; mode 0: 0
 	uint64_t address;    // mode 0: the address; mode 2: offset from the load bias; mode 1: 0
@@ -658,8 +658,11 @@ struct PointerRecord {   // 24 bytes
   field refers to `pointers`.
 - **One encoding for traced addresses** ([07 §3](07-serialization.md)): a
   host address that the traced code uses as a value is a kind-3 entry, never
-  a constant. Its provenance is `RawProcessValue` unless the user audited it
-  (`AuditedInvariant`). A `RawProcessValue` entry is mode 0.
+  a constant. An entry that resolves neither by a `SymbolNamer` name nor by
+  build id + offset stays mode 0 and is
+  `RawProcessValue`; an audit does not make a mode-0 entry portable. An
+  entry resolved by name or build id (modes 1, 2) is `Literal`, or
+  `AuditedInvariant` if the user audited it ([07 §5](07-serialization.md)).
 - `ProcessLocal` (mode 0) entries are valid only in the process that
   produced the module: they make the module process-local, and
   `ModuleRecord.processToken` (§4.4) identifies that process. The loader
@@ -1059,8 +1062,8 @@ extension instruction:
 11. Constants follow §4.2 (no `ptr` type, `bool` 0 or 1, unused bits 0,
     provenance 0–2, `byteOffset` exactly for types wider than 8 bytes).
     Pointer entries follow §4.7 (kind and mode in range, provenance as the
-    kind requires, `RawProcessValue` only in mode 0, fields unused by the
-    mode 0). `processToken` is non-zero exactly when the module is
+    kind and mode require: for kind 3, `RawProcessValue` exactly in mode 0;
+    fields unused by the mode 0). `processToken` is non-zero exactly when the module is
     process-local (§4.4).
 12. Binding names are unique. Data objects and allocas have size > 0 and a
     power-of-two alignment of at most 4096; `byteOffset` is aligned.
@@ -1117,7 +1120,7 @@ extension instruction:
   after all other blocks, in the order of their first reference by an
   unwind entry or a pad's `br`, scanning instructions in id order.
 - Every block is reachable from the entry block, landing pads through
-  unwind entries.
+  unwind entries or through the `br` of another reachable pad.
 - **Landing pads.** A pad has `argCount` = 0. It is entered through unwind
   entries, or by `br` from another pad; no other block branches to a pad.
   A pad ends in `resume` or in `br` (with no arguments) to another pad;
@@ -1167,7 +1170,7 @@ and the instruction or block id (as printed in the text form, §9).
 | `NIR-V004` | §3.1, §6.1.3 | reserved flag bits, unused operand fields and padding are 0 |
 | `NIR-V005` | §3.2, §6.1.2 | a value reference is in range, not reserved, and names a non-`void` instruction of the same function or a constant |
 | `NIR-V006` | §5, §6.1.3 | operand and result types match the opcode's table |
-| `NIR-V007` | §6.1.5 | a table index is in range |
+| `NIR-V007` | §6.1.5, §4.7 | a table index is in range, and a `pointers` index names an entry of the kind its field requires (§4.7 "Kinds and their users") |
 | `NIR-V008` | §3.3, §6.1.5 | an `extra` list is in bounds and does not overlap another |
 | `NIR-V009` | §6.1.4 | branch argument count and types match the target's `blockarg`s |
 | `NIR-V010` | §6.1.6 | `ret` matches the signature's result |
@@ -1182,7 +1185,7 @@ and the instruction or block id (as printed in the text form, §9).
 | `NIR-V019` | §5.6 | the alignment code is valid and not an explicit natural alignment |
 | `NIR-V020` | §5.9 | `blockarg` position and placement |
 | `NIR-V030` | §6.1.8 | exactly one `module` record |
-| `NIR-V031` | §6.1.8 | function names are unique and non-empty |
+| `NIR-V031` | §6.1.8, §4.5 | function records are valid (level and visibility in range); function names are unique and non-empty |
 | `NIR-V032` | §4.6 | a callee's signature equals its target's |
 | `NIR-V033` | §4.6 | an internal callee's attributes equal the function's under `GUARANTEE_MASK` |
 | `NIR-V034` | §4.6.2 | reserved attribute bits are 0 |
@@ -1211,8 +1214,8 @@ and the instruction or block id (as printed in the text form, §9).
 | `NIR-V063` | §6.3 | every block is reachable |
 | `NIR-V064` | §6.3 | landing-pad entry, arguments and exits |
 | `NIR-V065` | §5.7, §5.9 | calls in pads have `NO_UNWIND` or `NO_CLEANUP`; `resume` only in pads |
-| `NIR-V066` | §6.3 | the entry block's arguments equal the signature's parameters |
-| `NIR-V067` | §4.3 | blocks are contiguous and cover the function's instructions |
+| `NIR-V066` | §6.3 | the entry block is not a landing pad, and its arguments equal the signature's parameters |
+| `NIR-V067` | §4.1, §4.3 | blocks are contiguous and cover the function's instructions; the instruction, block and alloca ranges of the functions are contiguous and in `functions` order |
 | `NIR-V070` | §5.11.1 | an extension instruction matches its operand shape |
 | `NIR-V071` | §5.11 | an extension instruction passes its `Signature` and `verify` hook |
 | `NIR-V072` | [04 §3.3](04-extensions.md) | a target-restricted extension operation is valid for the compile target |
@@ -1228,7 +1231,7 @@ and the instruction or block id (as printed in the text form, §9).
 | `NIR-L010` | §8.4 | an extension is missing in the registry |
 | `NIR-L011` | §8.4 | an extension version is outside the accepted range |
 | `NIR-L012` | §8.4 | an intrinsic callee's signature differs from the registered one |
-| `NIR-L013` | §8.4 | an extension type instance is unavailable on this host |
+| `NIR-L013` | — | not used in 1.0 (unavailable type instances load, §8.4); reserved |
 | `NIR-L014` | §4.7 | the process token differs from this process's |
 | `NIR-L015` | §4.7 | a portable pointer does not resolve |
 | `NIR-L016` | §8.1 | a pre-SSA function in an image loaded for execution |
@@ -1240,8 +1243,9 @@ and the instruction or block id (as printed in the text form, §9).
 | `NIR-P005` | §9.4 | unknown extension name, or a version the registry does not accept |
 | `NIR-P006` | §9.1 | a literal out of range for its type |
 
-Rule numbers such as §6.1.8 denote item 8 of §6.1. Codes 21–29, 47–49,
-57–59, 68–69 and 73–99 of each class are reserved for later rules.
+Rule numbers such as §6.1.8 denote item 8 of §6.1. Codes not listed in a
+class (for `NIR-V`: 21–29, 47–49, 57–59, 68–69, 73 and up; for `NIR-L`: 18
+and up; for `NIR-P`: 7 and up) are reserved for later rules.
 
 ## 7. Canonical form
 
@@ -1280,7 +1284,8 @@ Structurally equal modules have byte-identical canonical images.
    already placed in that table, if any. Equality: names by bytes;
    constants by `(type, provenance, value bytes)`; signatures by their type
    words; callees, pointers and imports by all their fields (after
-   renumbering); data objects by `(size, align, contents)`. Bindings,
+   renumbering); data objects by `(size, align, contents)`; extension
+   entries by `(name@version, kind)`. Bindings,
    allocas and functions are never interned.
 5. **Write the byte sections.** `nameBytes`: each name's bytes in `names`
    order, each new name at the next offset, no padding, no sharing of
@@ -1338,7 +1343,9 @@ and `debugNames` is ordered by first use in section order 15, 17, 26, 27.
 
 ### 7.2 Structural hash
 
-The **structural hash** (the L2 key, [08](08-caching.md)) is
+The **structural hash** (the basis of the L2 key, to which
+[08 §2](08-caching.md) adds the backend and the target triple, data layout,
+CPU and feature string) is
 `XXH3_128bits_withSeed(input, length, 0)`, where `input` is the
 concatenation of:
 
@@ -1373,7 +1380,8 @@ key, not a security property; a hit is confirmed by comparing the images.
 
 ### 7.3 Derived keys
 
-- **In memory (the L0 key)** the module is not bundled: item 1 is the
+- **In memory (the hash of the L0 key,** which [08 §2](08-caching.md)
+  combines with the backend) the module is not bundled: item 1 is the
   image the module would have after §7 without bundling (§8.5), with its
   `imports` section holding the import records in first-use order (callees
   of kind imported stay imported) and its pointers in whatever mode they
@@ -1382,7 +1390,7 @@ key, not a security property; a hit is confirmed by comparing the images.
   form is a hash input only; it is never loaded (rule §6.1.9). L0 and L2
   keys of the same module differ when it imports or has mode-0 pointers.
 - **Compiled code that inlined imports** (§4.4.3) is keyed by
-  `XXH3_128bits_withSeed` over the module's key (16 bytes), a `u32` count,
+  `XXH3_128bits_withSeed(…, 0)` over the module's key (16 bytes), a `u32` count,
   and per inlined exporter, sorted by name bytes, `u32 nameLength`, the
   name bytes and the exporter's 16-byte structural hash.
 
@@ -1421,7 +1429,8 @@ struct SectionEntry {         // 24 bytes; sectionCount entries directly after t
   spec's record size. Section data starts right after the table (offset
   48 + 24 × `sectionCount`, which is 8-byte aligned), in table order, each
   section padded with zeros to a multiple of 8; an empty section has
-  `count` 0 and the `offset` where the next section's data starts.
+  `count` 0 and the `offset` where the next section's data starts
+  (`totalSize` if no data follows).
   `totalSize` is the end of the last section's padding. `reserved` is 0.
   `compatFeatures` and `incompatFeatures` have exactly the bits §8.3
   requires for the module.
@@ -1487,14 +1496,17 @@ struct ExtensionRecord { // 8 bytes
 ```
 
 - Image opcode 256 + *i* is the *i*-th entry of kind 0; image type 16 + *j*
-  is the *j*-th entry of kind 1 (so at most 240 type entries). Intrinsic
-  callees (kind 2) refer to their entry by its index in the section.
+  is the *j*-th entry of kind 1 (so at most 240 type entries). An intrinsic
+  callee (callee kind 3, §4.6) has as `target` the index in this section of
+  its entry, which has extension kind 2.
 - **Names** are `<plugin>.<name>`, optionally followed by a parameter list
   in angle brackets for a type instance (`simd.vec<f32,8>`); the version is
   a decimal `u32` after the **last** `@`. Each `name@version` occurs at
   most once.
-- **Loading maps them to process ids** in one pass over `insts`, the type
-  fields of all records and the `type` words of extension payloads. An
+- **Loading maps them to process ids** in one pass over every place that
+  holds an extension id: `Inst.op` and `Inst.type`, `ConstRecord.type`,
+  `BindingRecord.type`, the type words of signatures, the `type` words of
+  extension payloads, and the `target` of intrinsic callees. An
   image without extensions is used in place; an image with extensions is
   rewritten once while loading.
 - Each extension declares a `version` and a `minCompatibleVersion`
@@ -1502,10 +1514,12 @@ struct ExtensionRecord { // 8 bytes
   lies in that range. A missing extension or a version outside the range
   rejects the image.
 - **Type instances** are registered by their plugin before the registry
-  freezes, including instances that depend on the CPU; an instance the host
-  cannot execute is registered as unavailable. An image that uses an
-  unavailable instance is rejected (`NIR-L013`); the caller recompiles from
-  its source.
+  freezes, including instances that depend on the CPU; an instance the
+  host CPU cannot hold in registers is registered as unavailable
+  (`TypeInfo.available`, [04 §3.2](04-extensions.md)). An image that uses
+  an unavailable instance still loads, because its name resolves, and
+  backends lower its operations through their fallbacks (stack slots).
+  Tracing on that host never creates such an instance.
 
 ### 8.5 Self-contained images
 
@@ -1613,18 +1627,27 @@ func export @run : (ptr) -> i64 {
   `chars_format::general` accepts it), or a hex floating literal
   (`0x1.8p+1`, as `std::from_chars` with `chars_format::hex` accepts it
   after the `0x`). Its meaning depends on the type it is used with (§9.4).
-- `fraction` is a decimal floating literal in [0, 1].
+- `fraction` is a decimal floating literal that contains a `.`, with a
+  value in [0, 1] (`0.1`, `1.0`); a token without a `.` is a `uint`.
+- Punctuation tokens: `( ) [ ] { } , = : :: -> +` (`::` and `->` are one
+  token each).
 - `string` is `"…"` with the escapes `\\`, `\"` and `\xHH`; other bytes
   stand for themselves.
-- `bytes` is `x"…"` with an even number of hex digits, in memory order.
+- `bytes` is `x"…"` with an even number of hex digits, in memory order;
+  the printer writes them in lowercase.
 - References: `%N` value, `^bN` block, `#cN` callee, `#pN` pointer, `#iN`
   import, `#bN` binding, `#dN` data object, `#lN` location, `#rN` region
   (N decimal).
 - `fname` is `@` followed by a bare name `[A-Za-z_$][A-Za-z0-9_$.]*` or a
   string (`@"lib.math::hash"`).
 - `extname` is a bare name with at least one `.`, whose first component is
-  a plugin name; plugin names must not be one of the core mnemonics of §5
-  or `nir`, `core` (the registry rejects them).
+  a plugin name (`simd.add`, `core.memcpy`). So that an `extname` is never
+  a core mnemonic, the registry rejects a plugin name that is a core
+  mnemonic of §5 or the first dot-separated component of one (`div`, `rem`,
+  `shr`, `cmp`, `cast`, `call`, `bind`, `data`, `ptr`), a type name of §2,
+  a bare keyword of §9.2, or `nir`. The prefix `core` is reserved for the
+  core's own intrinsics (`core.memcpy@1`, [04 §3.7](04-extensions.md)); no
+  plugin may register under it.
 - `exttype` is `!` followed by an `extname`, optionally followed by a
   balanced `<…>` group; the token without the `!` is the `TypeInfo` name.
 - Mnemonics are bare names that may contain dots (`div.s.checked`); the
@@ -1716,8 +1739,8 @@ How the constructs map to records:
 | `nir 1.0`, `module "…"` | the format version; `ModuleRecord.nameId` (absent: anonymous) |
 | `extension "n@v"` | an `ExtensionRecord`; checked against the registry (§9.4) |
 | `import`, `pointer`, `binding`, `data`, `callee` | one record of that table each, index N = order of declaration |
-| `pointer … local 0x… ` | mode 0; the module's `processToken` is the parsing process's token |
-| `pointer … audited`/`raw` | provenance of a traced-address entry; required exactly for kind `address` |
+| `pointer … local 0x…` | mode 0. If the text has a mode-0 pointer or a `[raw]` constant, the module is process-local and its `processToken` is the parsing process's token; otherwise it is 0 |
+| `pointer … audited`/`raw`, none | provenance of a traced-address entry (`raw` exactly for kind `address` in mode `local`; none: `Literal`); never on other kinds |
 | `location`, `region`, `debug`, `loc`, `region` suffix | the debug sections (§4.9) |
 | `func`, `export`, `pressa`, `attrs` | `FunctionRecord` (`pressa`: level 0; otherwise 1) |
 | `alloca S align A` | the function's next `AllocaRecord` |
@@ -1744,10 +1767,16 @@ parsing and printing again gives identical text:
 - **Layout:** one declaration, function header, `fitem`, block label or
   instruction per line; `fitem`s and instructions are indented by two
   spaces; block labels, `func` and `}` start at column 0. Tokens are
-  separated by one space, a comma is followed by one space, nothing precedes
-  a comma or `:` in a block argument, and there is a space on both sides of
-  the `:` before a result type or signature. Lines end in LF without
-  trailing spaces; the file ends with LF. No comments.
+  separated by one space, with these exceptions: no space after `(` or `[`,
+  and none before `)`, `]` or `,`; the `(` that opens an argument list, a
+  block's argument list, `attrs(`, `flags(` or `params(` directly follows
+  the preceding token (`#c0(%1)`, `^b2(%1)`, `%3(%1)`, `attrs(noUnwind)`),
+  while the `(` of a signature follows a space; the `:` of a block argument
+  directly follows its `%N`, and the `:` that ends a block label directly
+  follows the label, its argument list or `pad`. Every other `:` and `::`
+  has one space on each side (`load %0 : i64`, `"lib.math" :: "hash"`,
+  `"a.cpp" : 12 : 3`). Lines end in LF without trailing spaces; the file
+  ends with LF. No comments.
 - **Functions:** `export` for exported functions, `pressa` for pre-SSA
   ones; `fitem`s in the order allocas (slot order), string attributes (key
   order), `debug`. Blocks in block-id order.
@@ -1774,8 +1803,9 @@ parsing and printing again gives identical text:
 - **Strings:** `"`, `\` and the bytes 0x00–0x1F and 0x7F are escaped
   (`\"`, `\\`, `\xHH` with lowercase hex); other bytes are written as they
   are. A function name is printed bare if it matches the bare pattern,
-  otherwise as a string. Addresses, tokens and offsets in `pointer` lines
-  are lowercase `0x` hex; other numbers are decimal.
+  otherwise as a string. Addresses and offsets in `pointer` lines are
+  lowercase `0x` hex, and `bytes` use lowercase hex digits; other numbers
+  are decimal. The process token is never printed (§9.2).
 - **Extension instructions** are printed generically from the operand
   shape (§5.11.1): `value` and `const` fields as operands, `imm` as decimal,
   a `list` as `[…]` with `pointer` words as `#pN` and `type` words as
@@ -1788,7 +1818,8 @@ parsing and printing again gives identical text:
 - **Declarations** of each table are numbered from 0 in order: the N-th
   `callee` must be `#cN`, and so on (`NIR-P003`). References may point
   forward to later declarations and functions.
-- **Ids.** At the SSA level, blocks must appear as `^b0`, `^b1`, … and every
+- **Ids.** At both levels, blocks must appear as `^b0`, `^b1`, … in order.
+  At the SSA level every
   `%N` must equal the position of its instruction, so void instructions are
   numbered implicitly (`NIR-P004`); `[N]` is accepted if it equals the
   position. At the pre-SSA level every instruction carries its id, and the
@@ -1801,8 +1832,11 @@ parsing and printing again gives identical text:
   instructions).
 - **Literals** are interpreted by their type: integers accept decimal or
   hex values in [−2^(n−1), 2^n − 1] and store the low n bits; floats accept
-  integer, decimal or hex floating literals, rounded to nearest even, and
-  `inf`, `nan(0x…)` (a NaN with that non-zero trailing significand);
+  integer, decimal or hex floating literals, converted directly by
+  `std::from_chars` with round-to-nearest-even (so `-0` is −0.0), and
+  `inf`, `-inf`, `nan(0x…)`, `-nan(0x…)` (a NaN with that sign and that
+  non-zero trailing significand, which must fit the type's significand
+  field);
   extension types accept `bytes` of exactly `TypeInfo.size`; `ptr` has no
   constants (`NIR-P006`).
 - **Inline items** (constants, signatures, names) are interned in the
@@ -1817,8 +1851,10 @@ parsing and printing again gives identical text:
 
 - `print(parse(t)) = t` for every text `t` that the printer produced.
 - `parse(print(m))` is structurally equal to `m` (§7) for an SSA-level
-  module; for a canonical module, canonicalizing it reproduces `m`'s
-  canonical image byte for byte.
+  module parsed in the process that holds `m`; for a canonical module,
+  canonicalizing it reproduces `m`'s canonical image byte for byte. (The
+  process token is not printed, so a process-local module parsed in another
+  process gets that process's token, §9.2.)
 - For a pre-SSA module, `parse(print(m))` has the same instructions, ids,
   blocks and block lists as `m`; table indices may differ.
 
@@ -1882,3 +1918,4 @@ These questions were open in the draft and are settled here:
 | 1.0 RC | The text form is parsed as well as printed (§9) |
 | 1.0 RC | Review round 1: normative text grammar and printing rules (§9.1–§9.5); deterministic canonicalization and scan order (§7, §7.1); exact structural-hash input and derived keys (§7.2, §7.3); canonical image layout and loader rules (§8.1); diagnostic codes (§6.6) |
 | 1.0 RC | Review round 1: `var` (§5.9); `ptr.const` and traced-address pointers, no `ptr` constants, `ModuleRecord.processToken` (§4.2, §4.4, §4.7, §5.8); destructor callees (§4.6); `call.indirect` attributes and thunk (§5.7); checked division throws through `nautilus_rt_throw_arith`, pre-SSA cleanup lists on integer `div`/`rem` (§5.10); extension kinds (§4.5.1); function string attributes, section 25 (§4.5.2); debug function records, sections 26–27 (§4.9); extension operand shapes (§5.11.1); landing-pad and unwind-dominance rules, reducible-loop layout (§6.3); `pure`/`readonly` imply `willReturn` (§4.6.2); cast table and alignment codes (§5.5, §5.6); registry frozen at the first engine construction (§6.5) |
+| 1.0 RC | Review round 2: traced-address pointers in modes 1 and 2 may be `Literal` (§4.7); unavailable extension type instances load and use fallbacks, `NIR-L013` unused (§8.4, §6.6); plugin-name rule and reserved `core` prefix (§9.1); exact token spacing, `::` token, `fraction` vs `uint`, float literal conversion (§9.1, §9.3, §9.4); L0/L2 keys add backend and target (§7.2, §7.3); extension-id remapping covers every field (§8.4) |
