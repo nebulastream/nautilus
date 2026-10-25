@@ -163,8 +163,10 @@ Signedness moves from types onto the operations that need it
   - pads are ordinary blocks after the main layout order, flagged in
     `BlockRecord`, so the verifier and every backend see them uniformly;
   - capture thunks (`captureFunc`) and destructors are `pointers` entries
-    ([07 §3](07-serialization.md)); every may-throw external, intrinsic or
-    indirect call names a thunk;
+    ([07 §3](07-serialization.md)); every may-throw external or indirect
+    call names a thunk, while a may-throw intrinsic call uses the thunk
+    registered with the intrinsic and names none
+    ([13 §4.6.1, §5.7](13-nir-spec.md));
   - a failing checked division calls the runtime helper
     `nautilus_rt_throw_arith` on a cold path, like a may-throw call
     ([13 §5.10](13-nir-spec.md)).
@@ -172,8 +174,9 @@ Signedness moves from types onto the operations that need it
   - a finished SSA-level NIR module is immutable, so any number of
     threads may compile or serialize it concurrently;
   - building and rewriting are single-threaded per module;
-  - the extension registry is frozen when the first engine is
-    constructed.
+  - the extension registry is frozen by its first reader: the first
+    engine construction, or an earlier image load or parse or C API module
+    creation ([13 §6.5](13-nir-spec.md)).
 
 ### 3.5 Levels
 

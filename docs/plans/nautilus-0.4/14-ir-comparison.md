@@ -178,7 +178,7 @@ effect for data objects, whose loads fold or hoist.
 
 | IR | Model |
 |---|---|
-| **NIR** | unwind entries on calls (direct and indirect) and checked division: `NO_UNWIND`, `NO_CLEANUP` or a landing-pad block, entered only by unwinding or from another pad, ending in `resume` or in a branch to another pad; pre-SSA cleanup lists of destructor callees; capture thunks on every may-throw native or indirect call for backends without unwind tables |
+| **NIR** | unwind entries on calls (direct and indirect) and checked division: `NO_UNWIND`, `NO_CLEANUP` or a landing-pad block, entered only by unwinding or from another pad, ending in `resume` or in a branch to another pad; pre-SSA cleanup lists of destructor callees; capture thunks on every may-throw native or indirect call for backends without unwind tables (an intrinsic's thunk is registered with the intrinsic) |
 | LLVM IR | `invoke` with `landingpad`/`resume` (Itanium), funclets (`catchswitch`, `cleanuppad`) for Windows |
 | MLIR | none in core; the `llvm` dialect mirrors LLVM |
 | WebAssembly | exception handling (Wasm 3.0): `throw`, `try_table` with catch clauses, `exnref` |

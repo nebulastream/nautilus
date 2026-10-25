@@ -186,7 +186,8 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
   (`ptrToHex`), so its payload is non-persistable (the artifact carries
   only the NIR image) unless every renamed symbol goes through the import
   table as a `Portable` pointer name; the hash of the inlined bitcode then
-  joins the descriptor and the cache keys ([07 §2](07-serialization.md),
+  joins the payload descriptor and the L2 key, and L1 checks it at a hit
+  ([08 §2](08-caching.md), [07 §2](07-serialization.md),
   [04 §4](04-extensions.md)).
 
 ### 5.1 Target CPU
@@ -213,7 +214,8 @@ host would fault with SIGILL on an AVX2 host.
 
 [07 §2.1](07-serialization.md) defines the linkage of a native payload:
 the undefined-symbol classes `__nautilus_{ptr,bind,data,stub}_<i>`,
-`__nautilus_intr_<i>` (intrinsic fallbacks, below), the `nautilus_rt_*`
+`__nautilus_intr_<i>` (intrinsic fallbacks, below) and
+`__nautilus_intr_thunk_<i>` (their registered capture thunks), the `nautilus_rt_*`
 runtime helpers and **system symbols** (the libcalls LLVM emits by name,
 such as `memcpy`, `_Unwind_Resume`, `__stack_chk_fail`, `__divti3`,
 accepted only from a fixed allowlist in `libnautilus`);
@@ -234,8 +236,9 @@ section lists only what the MLIR backend changes to produce it.
   `dso_local`, so that PIC code reaches them through the GOT and PLT
   (their addresses lie anywhere in the address space, beyond the ±2 GiB
   of a `PC32`). In-process compiles whose result is never stored keep the
-  immediates; `saveModule` of such a module writes the NIR image without
-  that payload.
+  immediates (the L0 key covers the binding addresses, and the L0 entry
+  owns the data objects and stubs, [08 §2](08-caching.md)); `saveModule`
+  of such a module writes the NIR image without that payload.
 - **ORC/JITLink as used today fits this.** `MLIRJit` already links through
   `ObjectLinkingLayer` (JITLink, chosen for its EH-frame handling), which
   builds GOT and PLT entries for ELF x86-64 and AArch64 and Mach-O arm64.
@@ -251,8 +254,11 @@ section lists only what the MLIR backend changes to produce it.
   ([13 §4.6.1](13-nir-spec.md)) are referenced as
   `__nautilus_intr_<i>` (*i* = the intrinsic's `extensions` entry),
   resolved at load to the native fallback registered under that
-  `name@version` (07 §2.1). Inline lowerings
-  need no symbol.
+  `name@version` (07 §2.1). A may-throw intrinsic call that the lowering
+  makes through a capture thunk references the thunk registered with the
+  intrinsic as `__nautilus_intr_thunk_<i>`, resolved the same way; the
+  call itself has `thunk = NONE` ([13 §5.7](13-nir-spec.md)). Inline
+  lowerings need no symbol.
 
 ## 6. `tbc`, `cpp`, GPU, and removing `bc`
 

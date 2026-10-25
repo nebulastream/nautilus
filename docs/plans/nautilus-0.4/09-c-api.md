@@ -62,15 +62,24 @@ bound mechanically from other languages (Rust via bindgen, Python, Zig).
   queried at run time.
 - **Serialization:** `nautilus_ir_save`, `nautilus_ir_load` and
   `nautilus_ir_inspect` expose [07-serialization.md](07-serialization.md).
-- **Load environment.** `nautilus_ir_load` and the compile calls take a
-  `NautilusBindings` (binding name → address, [07 §4](07-serialization.md))
-  and an optional resolver callback `(name, length, user) → address`
-  playing the role of the C++ `SymbolResolver`; `nautilus_ir_save` takes an
-  optional namer callback `(address, user) → (name, length)`, the
-  `SymbolNamer`. Without a namer, external callees stay `ProcessLocal`
-  pointers and the image is process-local ([07 §3](07-serialization.md));
-  without the bindings an image that declares bindings is rejected with a
-  status naming the first missing one.
+- **Naming and load environment** follow [07 §3](07-serialization.md)
+  ("Where naming happens"):
+  - `nautilus_engine_set_namer` installs a namer callback
+    `(address, user) → (name, length)`, the C++ `SymbolNamer`, and
+    `nautilus_engine_set_resolver` a resolver callback
+    `(name, length, user) → address`, the `SymbolResolver`; both before the
+    engine's first compile. A builder created for an engine applies its
+    namer when it adds a `pointers` entry by address; an entry added by
+    name is `Portable` (mode 1) directly.
+  - `nautilus_ir_load` and the compile calls take a `NautilusBindings`
+    (binding name → address, [07 §4](07-serialization.md)) and an optional
+    resolver that replaces the engine's for that call; without the bindings
+    an image that declares bindings is rejected with a status naming the
+    first missing one.
+  - `nautilus_ir_save` takes an optional namer that names only the entries
+    still in mode 0; the image is re-checked for eligibility and written
+    without native payloads if the namer changed it. Entries no namer names
+    stay `ProcessLocal`, and the image is process-local.
 - **Calls.** Compiled functions can throw: `invoke` keeps 0.3's exception
   semantics (D4) and checked division throws `ArithmeticException` (D10).
   A C++ exception unwinding through C frames is undefined behavior, so:
@@ -87,7 +96,12 @@ bound mechanically from other languages (Rust via bindgen, Python, Zig).
     compiled code like any `invoke` target and must not unwind: a Rust
     panic or a `longjmp` across Nautilus frames is undefined. Bindings
     declare such callees `nothrow` ([13 §4.6.2](13-nir-spec.md)), which also
-    lets their callers stay `noUnwind`.
+    lets their callers stay `noUnwind`. A may-throw external callee or
+    `call.indirect` built through the C API names a capture thunk, a
+    `pointers` entry of kind thunk that the builder adds by name and the
+    resolver resolves (13 §5.7); may-throw intrinsic calls need none,
+    because their thunk is registered with the intrinsic
+    ([13 §4.6.1](13-nir-spec.md)).
 - **Levels:** C builders produce SSA-level NIR directly. The verifier
   rejects pre-SSA constructs.
 - **Diagnostics:** `nautilus_ir_verify`, `nautilus_ir_load` and the text
@@ -107,8 +121,10 @@ bound mechanically from other languages (Rust via bindgen, Python, Zig).
 - #531's test programs (strict C11) ported, on every backend.
 - The shared-library export test is in the CI matrix.
 - A save/load round trip through the C API, byte-identical to the C++ path,
-  with a namer and a resolver: a C-built module with external callees saves
-  a `Portable` image and reloads in a fresh process.
+  with a namer and a resolver set on the engine: a C-built module with
+  external callees saves a `Portable` image and reloads in a fresh process;
+  the same module saved with only a `nautilus_ir_save` namer gives a
+  `Portable` image without payloads.
 - A C program catches a division by zero and a throwing `invoke` callee as
   a status from `nautilus_executable_call`.
 - A value handle kept across `nautilus_ir_optimize`, or used with another

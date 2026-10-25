@@ -84,7 +84,8 @@ New in 0.4, removing what is not needed:
   tables, so a may-unwind call with no cleanup can let the exception
   propagate through the generated frame directly. Backends without unwind
   tables (`tbc`, `asmjit`, and `cpp`, which uses the same captured-exception
-  transport today) keep the thunk.
+  transport today) keep the thunk; for an intrinsic it is the thunk
+  registered with the intrinsic ([13 §4.6.1](13-nir-spec.md)).
 - **Annotations where they pay.** The `std` plugin and the hot NebulaStream
   runtime functions are annotated `nothrow` where they cannot throw. Each
   annotation removes the thunk and the exception region from every call

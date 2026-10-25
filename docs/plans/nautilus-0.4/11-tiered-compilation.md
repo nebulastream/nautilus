@@ -163,7 +163,8 @@ and the tier-0 executable is then discarded unused:
 - **Lookup points.** L1 is looked up **before tracing**, with the semantic
   key of [08 §2](08-caching.md): XXH3-128 over the caller's
   `engine.cache.key`, the code-affecting options block, the application
-  options and the declared exports. Extension versions, the core and
+  options, the declared exports and the declared imports with each
+  exporter's structural hash. Extension versions, the core and
   provider builds, and per payload the target CPU and features
   ([05 §5.1](05-backends.md)) are not in the key; they are checked on the
   stored entry at a hit. L0 and L2 are looked up after conversion.
@@ -183,7 +184,8 @@ and the tier-0 executable is then discarded unused:
   skips tracing even if only tier 0 ever ran (`manual` policy,
   `engine.backend=asmjit`, a promotion that failed or was cancelled).
 - **Promotion results feed the caches:** a finished tier 1 is stored in L0
-  and, with a persisted native payload, its payload is added to the L1
+  (an L0 entry's tier state is shared by every module that hit it, so it
+  is promoted once, [08 §2](08-caching.md)) and, with a persisted native payload, its payload is added to the L1
   entry and stored in L2.
 - **Tier-0 executables are cached only in L0.** They embed process
   addresses and are cheap to rebuild from the NIR image, so L1 holds no

@@ -98,10 +98,14 @@ traced module (NIR) ── gpu.partition ──┬─► host functions ─► t
   - `auto` (default): CUDA if a CUDA device is present, Metal on macOS with
     a Metal device, **otherwise an error** that names `gpu.device=cpu` and
     `gpu.device=emulator`. It never falls back to the CPU silently. `auto`
-    is resolved when a module that contains a `gpu.launch` is compiled,
-    because the partition pass (§4.5) produces different code per device;
-    the error is raised by that compile. `gpu.device` is code-affecting
-    (M1.4a), with the resolved device kind as its value in cache keys.
+    is resolved **at engine construction**, by the option's `resolve` hook
+    (M1.4a, [13 §7.2](13-nir-spec.md)): a cheap device probe through the
+    `dlopen` loader below gives `cuda`, `metal` or `none`, and that value,
+    never `auto`, enters every cache key (including the pre-trace L1 key,
+    [08 §2](08-caching.md)), because the partition pass (§4.5) produces
+    different code per device. The "no device" error is still raised only
+    when a module that contains a `gpu.launch` is compiled under `none`.
+    `gpu.device` is code-affecting (M1.4a).
   - `cpu`: runs the **full grid serially** on the host backend, block by
     block and the threads of a block in order (§4.5). Kernels that use
     `gpu.sync_threads`, `gpu.shared_alloca` or warp operations, directly or
@@ -147,14 +151,13 @@ traced module (NIR) ── gpu.partition ──┬─► host functions ─► t
 ### 4.3 Launch
 
 In the text form of [13 §9](13-nir-spec.md), at the SSA level before
-`gpu.partition` (the thunk's symbol name is illustrative):
+`gpu.partition`:
 
 ```
 nir 1.0
 extension "gpu.launch@1"
 callee #c0 = internal @vecAdd : (ptr, ptr, ptr) -> void
 callee #c1 = intrinsic gpu.launch : (ptr, ptr, i32 zext, i32 zext, i32 zext, i32 zext, i32 zext, i32 zext, ptr, i32 zext) -> void
-pointer #p0 = thunk symbol "nautilus_gpu_launch.thunk"
 
 func @vecAdd : (ptr, ptr, ptr) -> void {
 	attr "gpu.kernel" = ""
@@ -170,11 +173,11 @@ func export @launchVecAdd : (ptr, ptr, ptr, i32 zext) -> void {
 	%5 = ptr.const null
 	%6 = alloca 0
 	store %6, %0
-	%7 = add %6, 8:i64
-	store %7, %1
-	%8 = add %6, 16:i64
-	store %8, %2
-	call #c1(%4, %5, %3, 1:i32, 1:i32, 256:i32, 1:i32, 1:i32, %6, 3:i32) unwind caller thunk #p0
+	%8 = add %6, 8:i64
+	store %8, %1
+	%10 = add %6, 16:i64
+	store %10, %2
+	call #c1(%4, %5, %3, 1:i32, 1:i32, 256:i32, 1:i32, 1:i32, %6, 3:i32) unwind caller
 	ret
 }
 ```
@@ -185,7 +188,8 @@ func export @launchVecAdd : (ptr, ptr, ptr, i32 zext) -> void {
   ([13 §5.11](13-nir-spec.md)). As an intrinsic it has call semantics: the
   tracer records it with the cleanup list of its trace position, so it
   carries an unwind entry, and backends without unwind tables call it
-  through the capture thunk, like any may-throw call. Destructors of live
+  through the capture thunk registered with the intrinsic
+  ([13 §4.6.1, §5.7](13-nir-spec.md)); the call itself names no thunk. Destructors of live
   `val` objects therefore run when a launch fails.
 - **Signature** (fixed): `(ptr kernel, ptr hostEntry, i32 zext gx,
   i32 zext gy, i32 zext gz, i32 zext bx, i32 zext by, i32 zext bz,
@@ -326,11 +330,12 @@ func export @launchVecAdd : (ptr, ptr, ptr, i32 zext) -> void {
   creation (G2), no copies for device buffers.
 - **Per module:** device code is compiled once per module and device and
   cached:
-  - L0: loaded kernels and pipeline states by the device module's
-    structural hash;
-  - artifacts and L1/L2 ([07](07-serialization.md), [08](08-caching.md)):
-    PTX and the Metal library as GPU payloads, keyed by toolkit and driver
-    version; a mismatch recompiles from the NIR image.
+  - in process (L0): loaded kernels and pipeline states, keyed by the
+    device module's structural hash plus the toolkit and driver version;
+  - artifacts and L1/L2 ([07](07-serialization.md), [08](08-caching.md))
+    carry only the NIR image: device code is recompiled at load, once per
+    process, and then cached in process as above. GPU payloads in
+    artifacts are a later container extension.
 - **Targets for Metal**, measured on an Apple-silicon Mac (the hosted
   runner's timings are virtualized and only reported):
   - generated kernels for `vecAdd`, `saxpy`, `prefixSum`, a reduction with
@@ -339,8 +344,9 @@ func export @launchVecAdd : (ptr, ptr, ptr, i32 zext) -> void {
     versions;
   - launch overhead within 10% of a direct Metal dispatch of the same
     pipeline;
-  - device compile time recorded per kernel; a warm L0 or artifact hit
-    compiles nothing.
+  - device compile time recorded per kernel; a warm L0 hit compiles
+    nothing (an artifact or L1 hit skips tracing but compiles device code
+    once per process).
 - **For CUDA** (experimental), the CI compile leg records registers, spills
   and shared memory per kernel from `ptxas` and fails on regressions; there
   are no throughput targets until it runs on hardware.
@@ -406,7 +412,7 @@ are unverified. That is why CUDA is experimental (§1).
 | `GPUCodegenTest` | generated device sources compared byte for byte (`plugins/gpu/test/data/` stays excluded from `format.sh`) |
 | `GPUExecutionTest` | the 0.3 cases plus every op of §4.2: on Metal and the emulator in CI (CUDA: compile only) |
 | CPU device | every GPU test kernel without barriers, shared memory or warp ops on `gpu.device=cpu` with `tbc`, `asmjit` and MLIR as host backends: the full grid runs and the results equal the emulator's (not 0.3's single-thread results, which `GPUExecutionTest` documents as "writes c[0] only"); kernels with barriers are rejected with the diagnostic; direct calls of the device functions outside a launch keep the 0.3 results |
-| Selection | compiling a module with a launch under `gpu.device=auto` without a device fails with the error naming `cpu` and `emulator`; the plugin loads without `libcuda`; changing `gpu.device` changes the cache key |
+| Selection | compiling a module with a launch under `gpu.device=auto` without a device fails with the error naming `cpu` and `emulator`; the plugin loads without `libcuda`; changing `gpu.device` changes the cache key; `auto` is hashed as its resolved value (equal to setting that device explicitly), never as `auto` |
 | Memory | `DeviceBuffer`/`ManagedBuffer` round trips; host pointers rejected; the 0.3 Metal compatibility path never copies past the declared size |
 | Errors | invalid launch configuration, illegal address, out of memory, compile error: each raises its exception with the kernel name (illegal address and out of memory on Metal) |
 | Concurrency | launches from several threads; `launchAsync` ordering per thread; module release while launches are queued |
@@ -452,4 +458,4 @@ keeping it removed needs such a run before each release.
 | No GPU runner and no NVIDIA hardware | D21: Metal executes on the hosted macOS runner and is production ready; the emulator and the PTX/`ptxas` leg cover CUDA, which ships as experimental (§5.3 lifts it) |
 | The emulator hides scheduling bugs that real GPUs expose | it reports divergent barriers; Metal shader validation runs in CI on real hardware; for CUDA this risk is part of why it is experimental |
 | CUDA users depend on it despite the label | `docs/gpu.md` and the release notes state the status; `gpu.device=auto` still selects CUDA when a device is present, and logs once that the backend is experimental |
-| Driver and toolkit drift | toolkit and driver versions in the cache key and the artifact descriptor; a mismatch recompiles |
+| Driver and toolkit drift | toolkit and driver versions in the in-process device-code cache key; device code is never persisted in 0.4, so a new driver or toolkit only recompiles it once per process |

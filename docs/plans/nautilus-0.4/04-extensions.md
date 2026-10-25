@@ -68,7 +68,9 @@ struct TypeInfo {
   one still loads, because its name resolves, and backends lower its ops
   through their fallbacks (stack slots, §3.3); `NIR-L013` stays reserved
   ([13 §8.4](13-nir-spec.md)). Such an instance has no C ABI type on that
-  host, so it never appears in a native signature there (below).
+  host, so an image that has it in a native signature (below) fails
+  `NIR-V035` there, and an L1 hit treats that as `incompatible`
+  ([08 §2](08-caching.md)).
 - **Names:** `<plugin>.<ctor>` optionally followed by `<arg,…>`
   (`simd.vec<f32,8>`); in `name@version`, the version follows the **last**
   `@` ([13 §8.4](13-nir-spec.md)).
@@ -76,7 +78,8 @@ struct TypeInfo {
   name) follow [13 §9.1](13-nir-spec.md); registration enforces it (§3.7).
 - **Extension types in native signatures.** An extension type may appear
   in an exported signature, or as a parameter or result of an external
-  callee or `call.indirect`, only if `TypeInfo.cabi` names its C ABI type;
+  callee, a `call.indirect` or the target of a `funcaddr`, only if
+  `TypeInfo.cabi` names its C ABI type;
   the verifier rejects other uses ([13 §4.5](13-nir-spec.md), calling convention). Fallbacks
   of extension operations and intrinsics never need one: they use the
   pointer convention of §3.3.
@@ -245,7 +248,11 @@ attached by intrinsic name (§3.7).
 - **Intrinsic identity is backend-independent** (from M1.7). Each
   plugin registers each intrinsic by `name@version`, NIR signature
   (including the per-parameter zext/sext kinds, [13 §4.5.1](13-nir-spec.md)) and effect
-  attributes, with its native fallback address, in a **backend-neutral
+  attributes, with its native fallback address and, unless it is
+  `noUnwind`, a capture thunk that the registration helper instantiates
+  from the fallback's C++ type (0.3's `captureThrowingCall<R, Args...>`;
+  calls of the intrinsic name no thunk of their own,
+  [13 §4.6.1, §5.7](13-nir-spec.md)), in a **backend-neutral
   init file compiled in every build** (`dev`, `full`, `nocompiler`). The
   core does the same for `core.memcpy@1`, `core.memmove@1`,
   `core.memset@1` and `core.memcmp@1`. Backend handlers are optional, are
@@ -274,7 +281,7 @@ attached by intrinsic name (§3.7).
 | `std` | wrappers over `invoke`; math, bit (ctlz, cttz, popcount, rotl, rotr, byteswap) and atomics with orderings are intrinsics with MLIR handlers (`StdPluginInit.cpp`, MLIR builds only) | math, bit and atomic functions become intrinsics registered in every build (§3.7), with native fallbacks and MLIR lowerings (AsmJit lowerings optional), plus effect declarations ([06](06-semantics.md)); the atomics are synchronizing intrinsic calls in the memory model ([13 §5.0](13-nir-spec.md)) |
 | core `mem*` | MLIR intrinsics registered by the MLIR backend | core intrinsics `core.memcpy@1`, `core.memmove@1`, `core.memset@1`, `core.memcmp@1` with libc fallbacks, registered in every build |
 | `gpu` | backend plugin | migrated in M7 ([17](17-gpu.md)): thread-index and barrier ops as extension ops that keep 0.3's CPU fallbacks; `gpu.launch` as an **intrinsic** with call semantics, because a launch may throw ([17 §4.3](17-gpu.md)); a required partition pass |
-| `inlining` | `InlineFunctionRegistry` (its own mutex-guarded registry of function bitcode, filled by `NAUTILUS_INLINE` static initializers) and LLVM hooks: `callNameOverride` renames external calls to `ptrToHex(address)`, `preOptModuleTransform` splices registered bitcode, `jitSymbolContributor` maps the hex names back (`InliningPluginInit.cpp`) | unchanged for MLIR in process; `InlineFunctionRegistry` stays outside the `ExtensionRegistry` and is not frozen, because it changes no NIR (only the payload, whose key carries the inlined bitcode's hash); needs MLIR, so its suite runs from the MLIR port (M4.5) on. A module whose MLIR compile used the hooks has process addresses as symbol names, so its native payload is **non-persistable** (the artifact carries only the NIR image) unless every renamed symbol goes through the import table as a `Portable` pointer name; the hash of the inlined bitcode then joins the payload descriptor and the L1/L2 keys ([07 §2](07-serialization.md), [08](08-caching.md)) |
+| `inlining` | `InlineFunctionRegistry` (its own mutex-guarded registry of function bitcode, filled by `NAUTILUS_INLINE` static initializers) and LLVM hooks: `callNameOverride` renames external calls to `ptrToHex(address)`, `preOptModuleTransform` splices registered bitcode, `jitSymbolContributor` maps the hex names back (`InliningPluginInit.cpp`) | unchanged for MLIR in process; `InlineFunctionRegistry` stays outside the `ExtensionRegistry` and is not frozen, because it changes no NIR (only the payload, whose key carries the inlined bitcode's hash); needs MLIR, so its suite runs from the MLIR port (M4.5) on. A module whose MLIR compile used the hooks has process addresses as symbol names, so its native payload is **non-persistable** (the artifact carries only the NIR image) unless every renamed symbol goes through the import table as a `Portable` pointer name; the hash of the inlined bitcode then joins the payload descriptor and the L2 key, and L1 checks it at a hit ([07 §2](07-serialization.md), [08](08-caching.md)) |
 | `profiling` | runtime plugin, no intrinsics; per-operation attribution through `JitSymbolRegistry::resolveLine` (`SampleAggregation.cpp`, MLIR only today) | unchanged; attribution on `asmjit` through its line table ([05 §7](05-backends.md)); its suite runs from M4.8 on |
 
 ## 5. Exit criteria

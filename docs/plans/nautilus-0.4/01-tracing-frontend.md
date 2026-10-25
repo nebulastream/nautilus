@@ -388,8 +388,12 @@ struct FlatTrace {                     // per function
   address becomes a `pointers` entry of kind 3 (*traced address*) with a
   provenance class, read by a `ptr.const #pN` instruction
   ([13 §4.7, §5.8](13-nir-spec.md), [07](07-serialization.md)); the null
-  pointer is `ptr.const null` (opcode 38). An entry that no `SymbolNamer`
-  names ([07](07-serialization.md)) stays process-local (mode 0,
+  pointer is `ptr.const null` (opcode 38). The tracer applies the
+  engine's `SymbolNamer` (`NautilusEngine::setSymbolNamer`, [07 §3](07-serialization.md),
+  "Where naming happens") as it creates each `pointers` entry, callees,
+  thunks and destructors included, so modes are final before the pre-SSA
+  eligibility scan and every cache key. An entry that neither the namer
+  names nor build ID + offset resolves ([07 §3](07-serialization.md)) stays process-local (mode 0,
   `ProcessLocal`), is `RawProcessValue` and makes the
   module process-local (`ModuleRecord.processToken`); an entry that
   resolves by name or build id (modes 1 and 2) is `Literal`, or

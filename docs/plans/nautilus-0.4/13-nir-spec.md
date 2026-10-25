@@ -306,7 +306,7 @@ A module is in one of four states:
 | **built** | produced by the tracer, the C API, the text parser or a deserializer; verified; not executable |
 | **linked** | every import is resolved against a loaded exporter (§4.4.2) |
 | **compiled** | an executable exists for at least one backend; may be promoted to another tier ([11](11-tiered-compilation.md)) |
-| **released** | no handle, importer or running call refers to it; its code and its `funcaddr` stubs are freed. Calling a stub of a released module is undefined |
+| **released** | no handle, importer or running call refers to it; its code and its `funcaddr` stubs are freed. Calling a stub of a released module is undefined. When the code is shared through the L0 cache ([08 §2](08-caching.md)), it is freed, with its data objects and stubs, when the last module that shares it is released and the entry is evicted |
 
 #### 4.4.2 Linking imports
 
@@ -453,12 +453,13 @@ struct AllocaRecord {    // 8 bytes
   - Calls between internal functions may use any convention the backend
     chooses.
   - **Extension types at C boundaries.** The signature of an exported
-    function, of an external callee and of a `call.indirect` may contain an
+    function, of an external callee, of a `call.indirect` and of the target
+    of a `funcaddr` (whose stub has the C convention, §5.7) may contain an
     extension type only if its `TypeInfo.cabi` names a C ABI type for it
     (for example `__m256` for `simd.vec<f32,8>`,
     [04 §3.2](04-extensions.md)); the value is then passed as that C type.
-    The verifier rejects other uses. Imported and internal callees need no
-    C ABI type.
+    The verifier rejects other uses. Imported and internal callees that
+    are only called need no C ABI type.
   - **Fallbacks use the pointer convention.** The native fallback of an
     intrinsic (§4.6.1) or of an extension operation (§5.11) passes every
     extension-type operand as a pointer to a slot of `TypeInfo.size` and
@@ -576,11 +577,16 @@ An intrinsic is a function that a plugin registers by name in the
   defines the intrinsic's semantics; extension-type parameters and results
   use the pointer convention of §4.5 (slots and a leading out-pointer), and
   narrow core-typed parameters are extended as their extension kinds state;
+- for an intrinsic without `noUnwind`, a **capture thunk** that calls the
+  fallback and captures an exception it throws (§5.7); the registration
+  helper instantiates it from the fallback's C++ type (0.3's
+  `captureThrowingCall<R, Args...>`), so plugins and the C API never
+  supply one;
 - optional per-backend lowerings that replace the call with inline code.
 
 Rules:
 - **The identity is backend-independent.** Name, version, signature,
-  attributes and fallback are registered by a backend-neutral init file
+  attributes, fallback and capture thunk are registered by a backend-neutral init file
   that every build compiles, whatever backends it contains. Backend
   lowerings are optional and attach to a registered intrinsic by name.
 - **Traced calls become intrinsics by address.** When the tracer records a
@@ -598,7 +604,8 @@ Rules:
   registered signature rejects the image (§8.4).
 - **Intrinsic or extension operation?** Both are plugin-defined. An
   intrinsic keeps call semantics: operands are a signature's arguments, it
-  may throw (with an unwind entry and a capture thunk, §5.7) and its effects
+  may throw (with an unwind entry and the capture thunk registered with it,
+  §5.7) and its effects
   are call attributes. An extension operation (§5.11) is a value-level
   instruction: it can take extension types, fold, simplify and join CSE
   through its traits, and never throws. 0.3's `IntrinsicRegistry` entries
@@ -672,7 +679,10 @@ struct PointerRecord {   // 24 bytes
   field refers to `pointers`.
 - **One encoding for traced addresses** ([07 §3](07-serialization.md)): a
   host address that the traced code uses as a value is a kind-3 entry, never
-  a constant. An entry that resolves neither by a `SymbolNamer` name nor by
+  a constant. The engine names each entry when it is created
+  ([07 §3](07-serialization.md), "Where naming happens"), so its mode is
+  final before any eligibility check or cache key. An entry that resolves
+  neither by a `SymbolNamer` name nor by
   build id + offset stays mode 0 and is
   `RawProcessValue`; an audit does not make a mode-0 entry portable. An
   entry resolved by name or build id (modes 1, 2) is `Literal`, or
@@ -750,7 +760,10 @@ struct DataRecord {      // 16 bytes
 - **Address and lifetime.** `data.addr` (§5.8) yields its address. The
   engine places each data object once per module, in read-only memory, and
   every tier and every promotion of the module uses the same address. The
-  address stays valid until the module is released (§4.4.1).
+  address stays valid until the module is released (§4.4.1). Modules that
+  share code through the L0 cache share its placement
+  ([08 §2](08-caching.md)), which stays valid until the last of them is
+  released and the entry is evicted.
 - **Identity.** Data objects with equal size, alignment and contents may
   share an address, as C++ string literals may. Programs must not rely on
   distinct data objects having distinct addresses.
@@ -911,19 +924,27 @@ The shift amount is taken modulo the bit width (D10).
   always reaches the module's current code; for an imported function, a
   stub that calls through the import slot; for an external function, the
   native address. A stub stays valid until the module that took the
-  address is released (§4.4.1), across every promotion. Code may store
+  address is released (§4.4.1), across every promotion; stubs shared
+  through the L0 cache stay valid until the last sharing module is
+  released ([08 §2](08-caching.md)). A stub has the platform C convention
+  of the target's signature, so that signature needs C ABI types (§4.5). Code may store
   the address and call it later. Intrinsics have no address.
 - `unwind` is an unwind entry (§3.4). It must be `NO_UNWIND` if the call's
   attributes (the callee's, or `call.indirect`'s `attrs` word) have
   `noUnwind`.
 - **Capture thunks.** `thunk` is a `pointers` index of kind capture thunk,
-  or `NONE`. A call of an external or intrinsic callee and every
-  `call.indirect` whose unwind entry is not `NO_UNWIND` must name a thunk;
-  every other call (internal, imported, or with `NO_UNWIND`) has `NONE`,
-  because the engine bridges exceptions between Nautilus frames itself.
-  Backends without unwind tables call through the thunk when the call may
-  throw ([06 §3.2](06-semantics.md)); for an intrinsic, the thunk wraps
-  the fallback, and a backend that lowers the intrinsic inline ignores it.
+  or `NONE`. A call of an external callee and every `call.indirect` whose
+  unwind entry is not `NO_UNWIND` must name a thunk; every other call
+  (internal, imported, intrinsic, or with `NO_UNWIND`) has `NONE`. Internal
+  and imported calls need none because the engine bridges exceptions
+  between Nautilus frames itself. An intrinsic's thunk is registered with
+  the intrinsic (§4.6.1), so it is identified by `name@version` like the
+  intrinsic and needs no `pointers` entry. Backends without unwind tables
+  call through the thunk when the call may throw
+  ([06 §3.2](06-semantics.md)): the call's thunk for external and indirect
+  calls, the registry's thunk of the intrinsic (which wraps the fallback)
+  for a may-throw intrinsic call; a backend that lowers the intrinsic
+  inline needs neither.
 - **Freedom to optimize** follows the guarantee bits of the callee, or of
   `call.indirect`'s `attrs` (§4.6.2).
 - **`call.indirect`'s `attrs`** are the guarantees the producer states for
@@ -1061,15 +1082,16 @@ extension instruction:
    overlap (§3.3).
 6. A function's `ret` operands match its signature's result type.
 7. Calls match their signatures; a call whose attributes have `noUnwind`
-   has `NO_UNWIND`; a may-throw call of an external or intrinsic callee and
-   every may-throw `call.indirect` names a capture thunk, and all other
-   calls have `thunk = NONE` (§5.7). `funcaddr`'s callee is not an
-   intrinsic.
+   has `NO_UNWIND`; a may-throw call of an external callee and every
+   may-throw `call.indirect` names a capture thunk, and all other calls
+   (internal, imported, intrinsic, or `NO_UNWIND`) have `thunk = NONE`
+   (§5.7). `funcaddr`'s callee is not an intrinsic.
 8. Exactly one `module` record. Function names are unique and non-empty.
    Callee and import signatures match §4.6; a callee's attributes for an
    internal function equal the function's under `GUARANTEE_MASK`. Reserved
    attribute bits are 0. The signatures of exported functions, external
-   callees and `call.indirect` use only types with a C ABI (§4.5).
+   callees, `call.indirect` and the target of every `funcaddr` use only
+   types with a C ABI (§4.5).
 9. Imports are unique by `(module, function)` and never name the module
    itself. A deserialized image has no imports (§8.5).
 10. Type words follow §4.5.1; other type fields have bits 8–31 equal to 0.
@@ -1164,9 +1186,11 @@ negative test ([12](12-validation.md)).
   registry's lock (§4.4.2).
 - An import slot is written with a release store and read with an acquire
   load (or a load the target orders equivalently).
-- The extension registry is frozen when the first `NautilusEngine` is
-  constructed, with a release store; afterwards it is read-only and
-  lock-free ([04 §3.7](04-extensions.md)).
+- The extension registry is frozen by its first reader, with a release
+  store: the first `NautilusEngine` construction, or, before any engine,
+  the first image load or parse or the first module created through the C
+  API ([09](09-c-api.md)). Afterwards it is read-only and lock-free
+  ([04 §3.7](04-extensions.md)).
 
 ### 6.6 Diagnostic codes
 
@@ -1191,7 +1215,7 @@ and the instruction or block id (as printed in the text form, §9).
 | `NIR-V011` | §5.7 | call arguments match the signature |
 | `NIR-V012` | §3.4 | the unwind entry has a form allowed at the function's level |
 | `NIR-V013` | §5.7 | a call with `noUnwind` has `NO_UNWIND` |
-| `NIR-V014` | §5.7 | a thunk is present exactly where required, and is a capture-thunk entry |
+| `NIR-V014` | §5.7 | a thunk is present exactly where required (a may-throw external call or `call.indirect`; never on an internal, imported or intrinsic call), and is a capture-thunk entry |
 | `NIR-V015` | §5.7 | `funcaddr` does not name an intrinsic |
 | `NIR-V016` | §5.10 | `div`/`rem` flags: checked only on integers, with an unwind entry other than `NO_UNWIND`; `c` = 0 otherwise |
 | `NIR-V017` | §5.4 | `cmp` predicate in range; unsigned bit only on ordered integer predicates; `bool` only `eq`/`ne` |
@@ -1203,7 +1227,7 @@ and the instruction or block id (as printed in the text form, §9).
 | `NIR-V032` | §4.6 | a callee's signature equals its target's |
 | `NIR-V033` | §4.6 | an internal callee's attributes equal the function's under `GUARANTEE_MASK` |
 | `NIR-V034` | §4.6.2 | reserved attribute bits are 0 |
-| `NIR-V035` | §4.5 | the signature of an exported function, an external callee or a `call.indirect` uses only types with a C ABI (`TypeInfo.cabi` for extension types) |
+| `NIR-V035` | §4.5 | the signature of an exported function, an external callee, a `call.indirect` or the target of a `funcaddr` uses only types with a C ABI (`TypeInfo.cabi` for extension types) |
 | `NIR-V036` | §4.5.1 | type words and extension kinds are valid |
 | `NIR-V037` | §6.1.9 | imports are unique and do not name the module itself |
 | `NIR-V038` | §8.5 | a deserialized image has no imports |
@@ -1373,7 +1397,12 @@ concatenation of:
    whose `OptionSpec` has the `affectsCode` flag (the option registry of
    M1.4a, [docs/options.md](../../options.md)), with its **effective
    value**: the registry default overlaid with the value set by the user,
-   so setting an option to its default does not change the hash. Entries
+   then mapped by the option's `resolve` hook if its `OptionSpec` has one
+   (M1.4a), so setting an option to its default does not change the hash.
+   A `resolve` hook runs once, at engine construction, and turns a
+   host-dependent value into the concrete one (`gpu.device=auto` into
+   `cuda`, `metal` or `none`, [17 §4.1](17-gpu.md)); the engine keeps the
+   resolved value, so every hash and every reader see the same one. Entries
    are sorted by name bytes; each is `u32 nameLength, name bytes, u8 kind
    (0 bool, 1 i64, 2 f64, 3 string), value` (bool: one byte 0 or 1; i64 and
    f64: eight bytes, f64 by bit pattern, integer options widened to i64;
@@ -1386,8 +1415,9 @@ the low 64 bits, then the high 64 bits, each little-endian. It is a cache
 key, not a security property; a hit is confirmed by comparing the images.
 
 - **A serialized image** is self-contained (§8.5): its hash covers the
-  bundled bodies, so persistent entries (L1, L2) of an importer change when
-  an exporter it imports changes.
+  bundled bodies, so persistent entries of an importer (L2, and L1 through
+  item 5 of its key, [08 §2](08-caching.md)) change when an exporter it
+  imports changes.
 - **The structural hash of a process-local module** covers its
   `processToken` and mode-0 addresses, so it only ever matches in the
   producing process.
@@ -1395,7 +1425,7 @@ key, not a security property; a hit is confirmed by comparing the images.
 ### 7.3 Derived keys
 
 - **In memory (the hash of the L0 key,** which [08 §2](08-caching.md)
-  combines with the backend) the module is not bundled: item 1 is the
+  combines with the backend and the binding environment) the module is not bundled: item 1 is the
   image the module would have after §7 without bundling (§8.5), with its
   `imports` section holding the import records in first-use order (callees
   of kind imported stay imported) and its pointers in whatever mode they
@@ -1532,7 +1562,11 @@ struct ExtensionRecord { // 8 bytes
   host CPU cannot hold in registers is registered as unavailable
   (`TypeInfo.available`, [04 §3.2](04-extensions.md)). An image that uses
   an unavailable instance still loads, because its name resolves, and
-  backends lower its operations through their fallbacks (stack slots).
+  backends lower its operations through their fallbacks (stack slots),
+  unless the instance appears in a signature that needs a C ABI type
+  (§4.5): it has no `cabi` on that host, so the image then fails
+  `NIR-V035` (reported as `NIR-L017`), and an L1 hit treats this as
+  `incompatible` ([08 §2](08-caching.md)).
   Tracing on that host never creates such an instance.
 
 ### 8.5 Self-contained images
@@ -1933,3 +1967,4 @@ These questions were open in the draft and are settled here:
 | 1.0 RC | Review round 1: normative text grammar and printing rules (§9.1–§9.5); deterministic canonicalization and scan order (§7, §7.1); exact structural-hash input and derived keys (§7.2, §7.3); canonical image layout and loader rules (§8.1); diagnostic codes (§6.6) |
 | 1.0 RC | Review round 1: `var` (§5.9); `ptr.const` and traced-address pointers, no `ptr` constants, `ModuleRecord.processToken` (§4.2, §4.4, §4.7, §5.8); destructor callees (§4.6); `call.indirect` attributes and thunk (§5.7); checked division throws through `nautilus_rt_throw_arith`, pre-SSA cleanup lists on integer `div`/`rem` (§5.10); extension kinds (§4.5.1); function string attributes, section 25 (§4.5.2); debug function records, sections 26–27 (§4.9); extension operand shapes (§5.11.1); landing-pad and unwind-dominance rules, reducible-loop layout (§6.3); `pure`/`readonly` imply `willReturn` (§4.6.2); cast table and alignment codes (§5.5, §5.6); registry frozen at the first engine construction (§6.5) |
 | 1.0 RC | Review round 2: traced-address pointers in modes 1 and 2 may be `Literal` (§4.7); unavailable extension type instances load and use fallbacks, `NIR-L013` unused (§8.4, §6.6); plugin-name rule and reserved `core` prefix (§9.1); exact token spacing, `::` token, `fraction` vs `uint`, float literal conversion (§9.1, §9.3, §9.4); L0/L2 keys add backend and target (§7.2, §7.3); extension-id remapping covers every field (§8.4); C ABI rule for extension types extended to external callees and `call.indirect`, pointer convention for fallbacks (§4.5, §4.6.1, `NIR-V035`) |
+| 1.0 RC | Review round 3: an intrinsic's capture thunk is registered with it and intrinsic calls have `thunk = NONE` (§4.6.1, §5.7, §6.1.7, `NIR-V014`); `funcaddr` targets need C ABI types (§4.5, §5.7, §6.1.8, `NIR-V035`); an unavailable type instance in a C-ABI signature fails `NIR-V035` (§8.4); freeze points (§6.5); `resolve` hook in the options block (§7.2); L0 sharing of code, data objects and stubs (§4.4.1, §4.10, §5.7, §7.3); pointer entries are named at creation (§4.7) |
