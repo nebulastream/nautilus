@@ -112,6 +112,7 @@ instance at load from the image's tables and the load environment:
 | `__nautilus_bind_<i>` | `bindings` entry *i* | the binding environment of this load (§4) |
 | `__nautilus_data_<i>` | data object *i* ([13 §4.10](13-nir-spec.md)) | the address where the engine placed it; the same for every tier of the module |
 | `__nautilus_stub_<i>` | the `funcaddr` forwarding stub of callee *i* ([13 §5.7](13-nir-spec.md)) | the stub the engine creates for the loaded module |
+| `__nautilus_intr_<i>` | the native fallback of intrinsic callee *i* that the backend did not lower inline ([04](04-extensions.md)) | by `name@version` through the `ExtensionRegistry` of the loading process; a name the registry lacks rejects the payload |
 | `nautilus_rt_*` | runtime helpers: the capture-thunk entry, `nautilus_rt_throw_arith` for checked division ([06 §4](06-semantics.md)), the personality and unwind-resume bridges | by name from `libnautilus`; each name is listed in the payload's import table |
 
 - **The 0.4 MLIR lowering emits these references as external symbols** for
@@ -129,7 +130,7 @@ instance at load from the image's tables and the load environment:
   undefined symbol that is not in the import table, rejects the payload,
   and the module is recompiled from the NIR image.
 - **The import table** lists every undefined symbol with its class
-  (pointer, binding, data, stub, runtime helper, native import) and index,
+  (pointer, binding, data, stub, intrinsic, runtime helper, native import) and index,
   so the loader resolves them without parsing symbol names and rejects
   payloads that reference an entry the image does not have.
 
