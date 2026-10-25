@@ -447,13 +447,25 @@ struct AllocaRecord {    // 8 bytes
     convention for its signature, with each NIR type passed as the
     corresponding C type (`i64` as `int64_t`, `ptr` as `void*`, `bool` as
     `bool`) and narrow integers extended as their extension kind states
-    (§4.5.1). An extension type may appear in an exported signature only if
-    its `TypeInfo` defines a C ABI type for it (for example `__m256` for
-    `simd.vec<f32,8>`); the verifier rejects others. The host calls it through
+    (§4.5.1). The host calls it through
     a plain function pointer (or the `Invocable` wrapper when the backend's
     exception mode needs one, as in 0.3).
   - Calls between internal functions may use any convention the backend
     chooses.
+  - **Extension types at C boundaries.** The signature of an exported
+    function, of an external callee and of a `call.indirect` may contain an
+    extension type only if its `TypeInfo.cabi` names a C ABI type for it
+    (for example `__m256` for `simd.vec<f32,8>`,
+    [04 §3.2](04-extensions.md)); the value is then passed as that C type.
+    The verifier rejects other uses. Imported and internal callees need no
+    C ABI type.
+  - **Fallbacks use the pointer convention.** The native fallback of an
+    intrinsic (§4.6.1) or of an extension operation (§5.11) passes every
+    extension-type operand as a pointer to a slot of `TypeInfo.size` and
+    `align`, and an extension-type result through a leading out-pointer
+    (`void f(R* out, const A* a, int64_t b, …)`); core-typed operands and
+    results are passed as above ([04 §3.3](04-extensions.md)). Fallbacks
+    therefore never need `TypeInfo.cabi`.
 - **Parameters.** The entry block's parameters are the function's
   parameters: at the SSA level its leading `blockarg`s, whose count and
   types equal the signature's; at the pre-SSA level the first `paramCount`
@@ -561,7 +573,9 @@ An intrinsic is a function that a plugin registers by name in the
 - a name and version (`builtin.prefetch@1`) and a `minCompatibleVersion`;
 - a NIR signature, with extension kinds (§4.5.1), and attributes (§4.6.2);
 - a **native fallback**: a C function with exactly that signature, which
-  defines the intrinsic's semantics;
+  defines the intrinsic's semantics; extension-type parameters and results
+  use the pointer convention of §4.5 (slots and a leading out-pointer), and
+  narrow core-typed parameters are extended as their extension kinds state;
 - optional per-backend lowerings that replace the call with inline code.
 
 Rules:
@@ -1054,8 +1068,8 @@ extension instruction:
 8. Exactly one `module` record. Function names are unique and non-empty.
    Callee and import signatures match §4.6; a callee's attributes for an
    internal function equal the function's under `GUARANTEE_MASK`. Reserved
-   attribute bits are 0. Exported signatures use only types with a C ABI
-   (§4.5).
+   attribute bits are 0. The signatures of exported functions, external
+   callees and `call.indirect` use only types with a C ABI (§4.5).
 9. Imports are unique by `(module, function)` and never name the module
    itself. A deserialized image has no imports (§8.5).
 10. Type words follow §4.5.1; other type fields have bits 8–31 equal to 0.
@@ -1189,7 +1203,7 @@ and the instruction or block id (as printed in the text form, §9).
 | `NIR-V032` | §4.6 | a callee's signature equals its target's |
 | `NIR-V033` | §4.6 | an internal callee's attributes equal the function's under `GUARANTEE_MASK` |
 | `NIR-V034` | §4.6.2 | reserved attribute bits are 0 |
-| `NIR-V035` | §4.5 | an exported signature uses only types with a C ABI |
+| `NIR-V035` | §4.5 | the signature of an exported function, an external callee or a `call.indirect` uses only types with a C ABI (`TypeInfo.cabi` for extension types) |
 | `NIR-V036` | §4.5.1 | type words and extension kinds are valid |
 | `NIR-V037` | §6.1.9 | imports are unique and do not name the module itself |
 | `NIR-V038` | §8.5 | a deserialized image has no imports |
@@ -1918,4 +1932,4 @@ These questions were open in the draft and are settled here:
 | 1.0 RC | The text form is parsed as well as printed (§9) |
 | 1.0 RC | Review round 1: normative text grammar and printing rules (§9.1–§9.5); deterministic canonicalization and scan order (§7, §7.1); exact structural-hash input and derived keys (§7.2, §7.3); canonical image layout and loader rules (§8.1); diagnostic codes (§6.6) |
 | 1.0 RC | Review round 1: `var` (§5.9); `ptr.const` and traced-address pointers, no `ptr` constants, `ModuleRecord.processToken` (§4.2, §4.4, §4.7, §5.8); destructor callees (§4.6); `call.indirect` attributes and thunk (§5.7); checked division throws through `nautilus_rt_throw_arith`, pre-SSA cleanup lists on integer `div`/`rem` (§5.10); extension kinds (§4.5.1); function string attributes, section 25 (§4.5.2); debug function records, sections 26–27 (§4.9); extension operand shapes (§5.11.1); landing-pad and unwind-dominance rules, reducible-loop layout (§6.3); `pure`/`readonly` imply `willReturn` (§4.6.2); cast table and alignment codes (§5.5, §5.6); registry frozen at the first engine construction (§6.5) |
-| 1.0 RC | Review round 2: traced-address pointers in modes 1 and 2 may be `Literal` (§4.7); unavailable extension type instances load and use fallbacks, `NIR-L013` unused (§8.4, §6.6); plugin-name rule and reserved `core` prefix (§9.1); exact token spacing, `::` token, `fraction` vs `uint`, float literal conversion (§9.1, §9.3, §9.4); L0/L2 keys add backend and target (§7.2, §7.3); extension-id remapping covers every field (§8.4) |
+| 1.0 RC | Review round 2: traced-address pointers in modes 1 and 2 may be `Literal` (§4.7); unavailable extension type instances load and use fallbacks, `NIR-L013` unused (§8.4, §6.6); plugin-name rule and reserved `core` prefix (§9.1); exact token spacing, `::` token, `fraction` vs `uint`, float literal conversion (§9.1, §9.3, §9.4); L0/L2 keys add backend and target (§7.2, §7.3); extension-id remapping covers every field (§8.4); C ABI rule for extension types extended to external callees and `call.indirect`, pointer convention for fallbacks (§4.5, §4.6.1, `NIR-V035`) |
