@@ -47,7 +47,7 @@ Goals, in priority order:
 
 1. **Latency.** First call to native code in at most 0.75 µs per IR
    operation end to end on large linear functions, against 1.3–2.5 µs today
-   (2–3x faster). The budget is about 0.25 µs/op each for tracing, the
+   (1.7–3.3x faster). The budget is about 0.25 µs/op each for tracing, the
    conversion and the backend. Tracing becomes linear in program size for
    code that uses explicit control flow.
 2. **Reuse.** Compiled modules can be serialized, shipped and cached. A warm
@@ -66,7 +66,7 @@ Goals, in priority order:
   image.
 - **Concurrency:** concurrent compiles stay safe, as in 0.3. Each compile
   owns its trace and NIR arenas, and a finished NIR module is immutable.
-  The extension registry is frozen after the first compile, and caches
+  The extension registry is frozen at the first engine construction, and caches
   lock per key ([02 §3.4](02-nir.md), [08](08-caching.md)).
 - **Not in 0.4:**
   - per-tier IR levels, more than two tiers, on-stack replacement
@@ -83,8 +83,8 @@ Goals, in priority order:
 ## 2. Evidence: what P0 measured
 
 From [p0-baseline.md](p0-baseline.md) (`main` and #561, six scalable corpus
-functions, three backends, callgrind profiles), plus #561's TPC-H analysis
-from nautilus-duck.
+functions, two backends measured (`bc`, `asmjit`; MLIR numbers from CI and
+#561), callgrind profiles), plus #561's TPC-H analysis from nautilus-duck.
 
 | Finding | Consequence |
 |---|---|
@@ -169,14 +169,14 @@ Details and rationale: [02-nir.md](02-nir.md).
 | Explicit control flow | **New**, opt-in, mixable with implicit control flow |
 | Named modules and imports | **New:** modules can import exported functions of other modules by name, linked by reference; inlining across modules is an optional pass; saved images bundle their imports and are self-contained ([13 §4.4, §8.5](13-nir-spec.md)) |
 | Exception default of `invoke` | **Unchanged** (D4 = b). New, optional: `invoke<no_throw>`/`nothrow` and effect declarations ([06](06-semantics.md)) |
-| Plugin intrinsic API (`IntrinsicRegistry`, `MLIRIntrinsicPlugin`, `AsmJitBackendIntrinsic`) | **Replaced** by the extension API, without a shim: the plugin API is internal surface, and the migration guide covers it. The in-tree plugins are migrated |
+| Plugin intrinsic API (`IntrinsicRegistry`, `MLIRIntrinsicPlugin`, `AsmJitIntrinsicPlugin`) | **Replaced** by the extension API, without a shim: the plugin API is internal surface, and the migration guide covers it. The in-tree plugins are migrated |
 | `IRGraph`, `ir::Operation`, IR passes | **Removed** (internal) |
 | IR text dumps, `test/data` | **New format** |
 | `bc` backend | **Removed** (D6). `tbc` covers its roles; `engine.backend=bc` fails with an error that names `tbc` ([05 §6](05-backends.md)) |
 | Serialization, artifacts, cache entries | **First persisted formats.** The PRs are ported onto NIR, not released on the 0.3 IR |
-| C API | **New**, on NIR; stable from 0.4 on |
+| C API | **New**, on NIR; source- and ABI-compatible within 0.4.x (append-only enums, no struct layout changes, `nautilus_c_api_version()` checked at load); a NIR major version is a C API major version ([09 §6](09-c-api.md)) |
 | Artifacts and cache entries across 0.4.x (D12) | **NIR images stay loadable** within 0.4.x: patch releases do not change the format, and minor format bumps only add feature bits and wider strides. **Native payloads are tied to the exact build** and are recompiled from the NIR image after an upgrade. A 0.5 image is rejected by 0.4 with a clear error |
-| Integer edge cases (D10) | **Defined:** division by zero and `MIN / -1` throw `nautilus::ArithmeticException`; shift amounts are masked. Undefined in 0.3 ([06 §4](06-semantics.md)) |
+| Integer edge cases (D10) | **Defined:** division by zero and `MIN / -1` throw `nautilus::ArithmeticException`; shift amounts are masked. Undefined in 0.3. Every backend lowers them from its M4 port ([06 §4, §4.2](06-semantics.md)) |
 | Floating point (D11) | IEEE strict, no fast-math; float→int casts saturate instead of being undefined ([06 §4.1](06-semantics.md)) |
 
 Version identities recorded in every artifact: the core version (semver),
@@ -207,18 +207,20 @@ releases and no temporary formats.
 
 | Milestone | Content | Exit criterion |
 |---|---|---|
-| **M1 Foundations** | NIR specification 1.0 ([13](13-nir-spec.md)) implemented: format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer and serializer; `ExtensionRegistry` absorbing intrinsics; latency corpus driver added and running in CI; recorded 0.3 baselines and the frozen API-compat suite ([16 §2](16-implementation-plan.md)); bounded chunk pool for arenas ([02 §4.1](02-nir.md)); `bc` backend removed (D6); validation infrastructure of [12 §5](12-validation.md): loader/verifier fuzzer, reference machine, NebulaStream CI job against `nautilus-0.4` (D16) | Every opcode round-trips through builder, printer, parser, serializer and loader; golden images load or are rejected as specified; every in-tree intrinsic visible through the registry |
-| **M2 Frontend** | The NIR tracer, a second `TracingInterface` implementation that writes the flat trace, with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Tracing ≥ 30% cheaper on `distinctSites`; TPC-H re-run share ≤ 35% of tracing; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
-| **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | IR passes off the critical path; op counts ≤ today's after the full pipeline; fuzzer clean |
-| **M4 Backends** | `tbc`, `cpp` and MLIR on NIR (GPU in M7); `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; **the cut-over:** the engine switches to the 0.4 pipeline and the 0.3 trace, `IRGraph`, passes and lowerings are deleted ([16 §2](16-implementation-plan.md)); modules and linking; the promotion service of [11](11-tiered-compilation.md); decision D3 | End to end ≤ 0.75 µs/op on linear code; execution benchmarks no worse than 0.3 per backend |
-| **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold; every #527/#528 negative test ported and failing closed |
-| **M6 Semantics and extensions** | Declared call effects and cheaper exception handling; defined integer and float semantics (D10, D11); plugin API on signless widths (NIR itself is signless from M1); extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD ring buffer removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule |
+| **M1 Foundations** | NIR specification 1.0 ([13](13-nir-spec.md)) implemented: format with levels, the core opcode set, exceptions and the canonical/derived split; verifier, printer (with a normative grammar), parser and serializer; a typed option registry with code-affecting options; `ExtensionRegistry` with backend-independent intrinsic identities; latency corpus driver added and running in CI; recorded 0.3 baselines and the frozen API-compat suite ([16 §2](16-implementation-plan.md)); bounded chunk pool for arenas ([02 §4.1](02-nir.md)); `bc` backend removed (D6); CI (`pr.yml`, benchmarks, NebulaStream) running on `nautilus-0.4`, with ASan, UBSan and TSan legs; validation infrastructure of [12 §5](12-validation.md): loader/verifier fuzzer, reference machine, NebulaStream CI job against `nautilus-0.4` (D16) | Every opcode round-trips through builder, printer, parser, serializer and loader; golden images load or are rejected as specified; every in-tree intrinsic visible through the registry in every preset, including `dev` and `nocompiler` |
+| **M2 Frontend** | The NIR tracer, a second `TracingInterface` implementation that writes the flat trace, with the tag-trie, tag-map, replay-cursor and value-ref fixes; re-run and copy reductions (R1–R5, C1–C3); explicit control flow (port of #300); tracing statistics; replay diagnostics | Checked by the M2 gate (M2.8): tracing ≥ 30% cheaper on `distinctSites1024` (callgrind ratio); TPC-H re-run share ≤ 35% of tracing with the shipped default of `tracing.unwindPausedPasses`; explicit `chainedIf` traced in one pass with zero replayed ops; mixed functions correct under the fuzzer |
+| **M3 Conversion** | Optimizing conversion; legalization; optional copy passes; plugin pass hooks | No IR pass runs on a default compile (`irPasses.pipelineIterations` = 0); op counts ≤ today's after the full pipeline; fuzzer clean |
+| **M4 Backends** | `tbc`, `cpp` and MLIR on NIR (GPU in M7), each lowering the defined semantics of D10/D11; `asmjit` on NIR with AsmJit's allocator and fewer virtual registers; **the cut-over:** the engine switches to the 0.4 pipeline and the 0.3 trace, `IRGraph`, passes and lowerings are deleted ([16 §2](16-implementation-plan.md)); modules and linking; the promotion service of [11](11-tiered-compilation.md); decision D3 | End to end ≤ 0.75 µs/op on linear code (reference machine; callgrind ratios in CI, D9); execution benchmarks no worse than 0.3 per backend |
+| **M5 Reuse** | Artifacts and loader; provenance classes; runtime bindings; L0/L1/L2 caches; C API | Warm NebulaStream suite ≥ 60% faster than cold, i.e. warm wall time ≤ 40% of cold ([08 §5.1](08-caching.md)); every #527/#528 negative test ported and failing closed |
+| **M6 Semantics and extensions** | Declared call effects and cheaper exception handling; folding rules and the plugin side of D10/D11 (the backends lower them from M4); plugin API on signless widths (NIR itself is signless from M1); extension types (`simd.vec`, `builtin.i128`); in-tree plugins migrated; SIMD and int128 ring buffers removed | Plugin suites green; SIMD tests pass on every backend without the 32-value lifetime rule, int128 tests without the 64-value rule |
 | **M7 GPU** | The GPU plugin rebuilt on NIR; Metal production ready, CUDA experimental ([17](17-gpu.md)); off from the cut-over until here | [17 §6](17-gpu.md): gaps G1–G9 closed; GPU suite clean on Metal hardware and the emulator; Metal performance targets met |
 | **M8 Release** | Migration guide; user documentation (§6.2); NebulaStream on the release candidate; x86-64 and AArch64; sanitizers; the API-compat suite on every backend | Release criteria below |
 
 **Order and parallelism:**
 
-- M1 comes first: everything else writes or reads NIR.
+- M1 comes first: everything else writes or reads NIR. Within M1, the
+  extension registry (M1.7) is on the critical path; the binary image is
+  not, because `tbc` (M4.0) needs only the parser and the registry.
 - **The new pipeline is built next to the old one and replaces it in one
   cut-over;** there is no bridge between the 0.3 IR and NIR
   ([16 §2](16-implementation-plan.md)). The only compatibility requirement
@@ -227,23 +229,36 @@ releases and no temporary formats.
   built and tested on their own before the cut-over; the cut-over needs
   only `tbc`. The other backends, frontend features and passes follow.
 - M5 needs M4; M6 needs M3 and M4.
-- M7 (GPU) needs M4 and the division semantics of M6; it runs beside M5
-  and M6.
+- M7 (GPU) needs M4, the plugin pass hooks of M3 and the division
+  semantics of M6 (M6.1); its caching WP (M7.6) needs M5's caches. It runs
+  beside M5 and M6.
 - M8 closes.
+- **Critical path and elapsed time** ([16 §6, §15](16-implementation-plan.md)):
+  NIR core → extension registry → NIR tracer → conversion → cut-over →
+  MLIR → promotion service → M4 exit → M6.1 → GPU → release. Summed from
+  the work-package sizes it is about 45–95 weeks elapsed (about 70 with
+  mid-range sizes), for 110–248 engineer-weeks of work in 71 work
+  packages.
 
 **Release criteria:**
 
 1. All core, plugin and NebulaStream suites green on x86-64 and AArch64,
-   with ASan/UBSan and TSan.
-2. Latency corpus:
+   with ASan, UBSan and TSan (separate legs).
+2. Latency corpus (µs/op on the reference machine; CI gates as callgrind
+   instruction-count ratios against the recorded 0.3 baselines, D9):
    - end to end ≤ 0.75 µs/op on linear code;
    - tracing linear in the number of `if`s when written explicitly;
    - no case slower than 0.3.
 3. No execution-time regression per backend on `ExecutionBenchmark` and on
    TPC-H (nautilus-duck), `asmjit` included ([05 §4.3](05-backends.md)).
-4. Warm NebulaStream suite ≥ 60% faster than cold.
-5. `test/api-compat/` (0.3's user-API tests and examples, frozen at the
-   branch point) passes unchanged on every backend.
+4. Warm NebulaStream suite ≥ 60% faster than cold: warm wall time ≤ 40%
+   of cold, cold being the cache plugin on an empty directory and warm a
+   second fresh-process run on it, on the reference machine
+   ([08 §5.1](08-caching.md)).
+5. `test/api-compat/` passes unchanged on every backend: 0.3's user-API
+   tests that include public headers only and neither name a backend nor
+   parse IR or dump text, and the examples, frozen after `bc` was removed
+   (its GPU tests enabled from M7; [16 §2](16-implementation-plan.md)).
 6. The GPU suite passes on Metal (with validation layers) and on the grid
    emulator in CI, every kernel compiles for CUDA, and the Metal
    performance targets of [17 §4.8](17-gpu.md) are met; CUDA ships as
@@ -267,12 +282,14 @@ measurement method (D9). These rules apply to every milestone:
   replace side-by-side comparison with 0.3; **the frozen API-compat suite**
   (0.3's user-API tests and examples) proves the API is unchanged
   ([16 §2](16-implementation-plan.md)).
-- **Reference dumps** (`test/data`) are regenerated once per format change,
-  in isolated and reviewed commits, never together with behavior changes.
+- **Reference dumps** (`test/data`) are regenerated in isolated and
+  reviewed commits, once per format change or behavior-changing work
+  package, never together with the behavior change.
 - **The latency corpus and benchmarks** run on `nautilus-0.4` with the 200%
   alert. Each milestone's exit criterion is checked on them.
-- **The CI matrix of `main`** runs on `nautilus-0.4` (GCC 14, Clang 19/21,
-  macOS, ARM, sanitizers), plus NebulaStream and nautilus-duck (TPC-H).
+- **The CI matrix of `main`** runs on `nautilus-0.4` from M1.11 on (GCC 14,
+  Clang 19/21, macOS, ARM, ASan, UBSan and TSan), plus NebulaStream and
+  nautilus-duck (TPC-H).
 
 ### 6.2 User documentation
 
@@ -309,17 +326,17 @@ the migration guide from 0.3.
 |---|---|---|
 | D1 | Order of the work | As in §6: foundations first, then frontend and conversion (the measured hot spots) |
 | D2 | Native backend | **Decided:** one `asmjit` backend on NIR that keeps AsmJit's register allocator; no custom allocator in 0.4 (a later, data-driven option), no second mode, no new backend, no TPDE |
-| D3 | Default backend | Proposed: `asmjit` on x86-64 and AArch64, `tbc` elsewhere. Decided at the M4 exit, on the measured results ([05 §9](05-backends.md)) |
+| D3 | Default backend | Proposed: `asmjit` on x86-64 and AArch64, `tbc` elsewhere. Decided at the M4 exit by this criterion: `asmjit` becomes the default where it meets [05 §4.3](05-backends.md) and the end-to-end gate; otherwise `tbc` ([05 §9](05-backends.md)) |
 | D4 | Exception default of `invoke` | **Decided: (b)** keep 0.3's default; add optional `nothrow` and effect declarations; cheaper exception handling ([06 §3](06-semantics.md)) |
 | D5 | Cache and serialization PRs | **Decided:** ported onto NIR; no separate 0.3 formats |
 | D6 | Keep `bc` beside `tbc` | **Decided:** drop `bc` in 0.4, in M1, so it is never ported to NIR; `tbc` is the interpreting backend ([05 §6](05-backends.md)) |
 | D7 | Scope of the unified IR | **Decided:** as in §3.1: one encoding with trace and SSA levels; in-memory = wire layout for canonical sections (little-endian, 8-byte-aligned); NIR down to legalization only; MLIR stays a backend |
 | D8 | Promotion policy | **Decided:** `eager` stays the default, plus opt-in `manual`; no call-count policy in 0.4 ([11 §4.4](11-tiered-compilation.md)) |
-| D9 | How performance gates are measured | **Decided:** instruction counts under callgrind for gates; wall-clock on one dedicated reference machine; shared runners report only ([10 §2](10-observability.md)) |
-| D10 | Integer edge cases | **Decided:** wrap on overflow; division by zero and `MIN / -1` throw `nautilus::ArithmeticException`; shift amounts masked, emitted only where the target does not mask ([06 §4](06-semantics.md)) |
+| D9 | How performance gates are measured | **Decided:** gates are callgrind instruction counts in a pinned CI container image, expressed as ratios against the recorded 0.3 baseline of the same function in the same container; µs/op targets are checked on one dedicated reference machine at milestone exits only; shared runners report wall clock only ([10 §2](10-observability.md)) |
+| D10 | Integer edge cases | **Decided:** wrap on overflow; division by zero and `MIN / -1` throw `nautilus::ArithmeticException` (a cold-path call to a runtime helper through the capture thunk); shift amounts masked, emitted only where the target does not mask; lowered by every backend in its M4 port ([06 §4](06-semantics.md)) |
 | D11 | Floating-point semantics | **Decided:** IEEE strict, no fast-math in 0.4; saturating float→int casts ([06 §4.1](06-semantics.md)) |
 | D12 | Compatibility across 0.4.x | **Decided:** NIR images loadable across 0.4.x; native payloads tied to the exact build and recompiled from the image (§5) |
-| D13 | Extensions registered after the first compile | **Decided:** an error naming the extension; register everything before the first compile ([04 §3.7](04-extensions.md)) |
+| D13 | Extensions registered after the registry freezes | **Decided:** the registry freezes at the first `NautilusEngine` construction; a later registration is an error naming the extension; register everything before the first engine is built ([04 §3.7](04-extensions.md)) |
 | D14 | Debug info and profiling on NIR | **Decided:** source locations in the optional `debug` section, recorded only on request; `asmjit` and `tbc` register their code so `perf.sample` works with the default backend ([05 §7](05-backends.md)) |
 | D15 | GPU testing without GPU CI | **Decided:** CUDA compile-only in CI; Metal executes on the hosted macOS runner; a manual Metal run on an Apple-silicon Mac on the M8 checklist ([12 §4](12-validation.md)). Extended by D21 for M7 |
 | D16 | NebulaStream migration | **Decided:** the NebulaStream CI job runs against `nautilus-0.4` from M1 on; it reports until the M4 exit and gates from then on. The user-facing API does not change, so only behavior changes and NebulaStream's own plugins need patches, shipped by the PR that needs them |
