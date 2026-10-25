@@ -74,7 +74,9 @@ executables stay resident for as long as the handles that resolved them
   threads. Worker contexts are therefore created with multithreading
   disabled, or share one engine-owned `llvm::ThreadPool` through
   `MLIRContext::setThreadPool`, sized by `engine.tiered.promotionThreads`
-  ([05 §5](05-backends.md)).
+  ([05 §5](05-backends.md)). The pool belongs to the `PromotionService`
+  and is destroyed after its workers have joined; contexts on caller
+  threads, which outlive engines, never use it.
 - **Admission:** `engine.tiered.maxQueuedPromotions` (default unbounded). A
   job beyond the cap is not queued; its module stays on tier 0 with the
   status `skipped` (§4.3).
@@ -124,6 +126,7 @@ executables stay resident for as long as the handles that resolved them
 |---|---|
 | `eager` (default) | As in 0.3: queued right after conversion (§4.5) |
 | `manual` | Only on `CompiledModule::promote()` |
+| `none` | Not documented as a policy: the internal target of the deprecated alias `engine.tiered.backgroundPromotion=false` (§4.7), a single-tier compile with the tier-1 backend; set directly, it is rejected with a message naming `engine.backend` |
 
 - **The default stays `eager`,** so behavior is unchanged unless a caller
   opts in.
@@ -147,7 +150,10 @@ concurrently without copying. A tier 1 that finishes first is installed,
 and the tier-0 executable is then discarded unused:
 - the caller installs tier 0 only if `ModuleState::version` is still 0,
   checked and written under the module's exclusive lock; otherwise it drops
-  its tier-0 executable;
+  its tier-0 executable. Installing tier 0 does not bump the version, as
+  in 0.3 (`TieredCompiler.cpp` assigns `state->executable` directly): no
+  handle exists before `compileModule` returns, and new handles start
+  unresolved;
 - the worker installs tier 1 under the same lock and bumps the version,
   whether or not tier 0 is installed yet. The two never overwrite each
   other in the wrong order.
@@ -155,9 +161,12 @@ and the tier-0 executable is then discarded unused:
 ### 4.6 Caches and tiers ([08](08-caching.md))
 
 - **Lookup points.** L1 is looked up **before tracing**, with the semantic
-  key: the caller's `engine.cache.key`, the code-affecting options, the
-  extension versions and the target CPU and features
-  ([05 §5.1](05-backends.md)). L0 and L2 are looked up after conversion.
+  key of [08 §2](08-caching.md): XXH3-128 over the caller's
+  `engine.cache.key`, the code-affecting options block, the application
+  options and the declared exports. Extension versions, the core and
+  provider builds, and per payload the target CPU and features
+  ([05 §5.1](05-backends.md)) are not in the key; they are checked on the
+  stored entry at a hit. L0 and L2 are looked up after conversion.
   Each lookup asks for the tier-1 backend first.
 - **A hit with a usable tier-1 native payload skips tier 0 entirely.** The
   engine installs the tier-1 executable synchronously, with no tier-0
@@ -168,7 +177,8 @@ and the tier-0 executable is then discarded unused:
   is compiled from the stored NIR image, with tier 0 and promotion as
   usual. A mismatched payload is never executed.
 - **What L1 stores:** the canonical NIR image of **every** compiled module,
-  whatever tier ran, plus optional native payloads per backend and tier. On
+  whatever tier ran, plus optional native payloads per backend, of tier 1
+  only (below). On
   an L1 miss the image is stored right after conversion, so a later hit
   skips tracing even if only tier 0 ever ran (`manual` policy,
   `engine.backend=asmjit`, a promotion that failed or was cancelled).

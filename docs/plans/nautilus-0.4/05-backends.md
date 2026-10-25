@@ -60,12 +60,17 @@ selects single-tier compilation with exactly that backend.
 
 Every backend implements the defined integer and float semantics of
 [13 §5.3, §5.5 and §5.10](13-nir-spec.md) **in its M4 port**: checked integer
-`div`/`rem`, shift masking and saturating float→int casts. M6.1 adds only
-the folding rules that drop checks proven unnecessary, and the plugin side.
+`div`/`rem`, shift masking and saturating float→int casts. The
+conversion already drops the check of a safe constant divisor and masks
+constant shift amounts (M3.1/M3.2, [06 §1](06-semantics.md)); M6.1 keeps
+only the folding rules for the remaining edge cases (unsafe constants
+folded to an unconditional throw, range-based proofs), the cost
+measurement and the plugin side.
 The per-backend lowering, including the throw path, is the table in
 [06 §4.2](06-semantics.md). For the backends without unwind tables
 (`asmjit`, `tbc`, `cpp`), the cold block calls `nautilus_rt_throw_arith`
-through the capture thunk with the instruction's unwind entry, exactly
+through the runtime's own capture thunk (no `pointers` entry) with the
+instruction's unwind entry, exactly
 like a captured may-throw call; the tracer attaches the current cleanup
 list to every integer `div`/`rem` ([13 §5.10](13-nir-spec.md)).
 
@@ -157,11 +162,15 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
     workers keep theirs for the engine's lifetime, so their contexts are
     created **without their own LLVM thread pool**: multithreading off, or
     one engine-owned `llvm::ThreadPool` shared through
-    `MLIRContext::setThreadPool` and sized by
+    `MLIRContext::setThreadPool` (which requires a context constructed
+    with threading disabled) and sized by
     `engine.tiered.promotionThreads` ([11 §4.1](11-tiered-compilation.md)).
     Today `mlir.enableMultithreading` defaults to `true`
     (`MLIRCompilationBackend.cpp`), which would give each worker a pool of
-    `hardware_concurrency` threads;
+    `hardware_concurrency` threads. Contexts reused on **caller threads**
+    (synchronous MLIR compiles, `engine.backend=mlir`) outlive any one
+    engine, so they never take an engine-owned pool: they run with
+    multithreading off or share one process-wide pool;
   - the module verified once (`mlir.verifyEachPass` for debugging);
   - `LLJIT` given the data layout.
 - **Input is NIR:** blocks and terminators map to `cf`, arithmetic to
@@ -203,39 +212,67 @@ host would fault with SIGILL on an AVX2 host.
 ### 5.2 Native payload linkage
 
 [07 §2.1](07-serialization.md) defines the linkage of a native payload:
-undefined symbols `__nautilus_{ptr,bind,data,stub}_<i>` and `nautilus_rt_*`
-runtime helpers, position-independent code with the small code model, and
-the accepted relocations. This section lists only what the MLIR backend
-changes to produce it.
+the undefined-symbol classes `__nautilus_{ptr,bind,data,stub}_<i>`,
+`__nautilus_intr_<i>` (intrinsic fallbacks, below), the `nautilus_rt_*`
+runtime helpers and **system symbols** (the libcalls LLVM emits by name,
+such as `memcpy`, `_Unwind_Resume`, `__stack_chk_fail`, `__divti3`,
+accepted only from a fixed allowlist in `libnautilus`);
+position-independent code with the small code model; the accepted
+relocations (x86-64 ELF in 0.4). A payload carries **no TLS** and **no
+`.debug_*` sections**: debug info is dropped before the payload is stored,
+so DWARF and GDB registration (§7) apply to in-process compiles only. This
+section lists only what the MLIR backend changes to produce it.
 
 - **Today's lowering embeds addresses:** `funcaddr` of an external function
   is an `i64` constant and an `inttoptr` (`MLIRLoweringProvider.cpp`), and
   external names are mapped with `absoluteSymbols` (`jit/MLIRJit.cpp`).
-- **In 0.4, for every module that may be persisted** (a cache or
-  `saveModule` is configured), the lowering emits every `pointers`,
+- **In 0.4, for every module that may be persisted** (an L1 or L2 cache
+  is configured), the lowering emits every `pointers`,
   `bindings` and data-object reference, every `funcaddr` stub and every
   runtime helper (capture thunk, `nautilus_rt_throw_arith` of §3.1, the
-  personality bridges) as the external symbols of 07 §2.1, and builds with
-  `llvm::Reloc::PIC_` and the small code model. In-process compiles whose
-  result is never stored keep the immediates.
+  personality bridge) as the external symbols of 07 §2.1, declared without
+  `dso_local`, so that PIC code reaches them through the GOT and PLT
+  (their addresses lie anywhere in the address space, beyond the ±2 GiB
+  of a `PC32`). In-process compiles whose result is never stored keep the
+  immediates; `saveModule` of such a module writes the NIR image without
+  that payload.
+- **ORC/JITLink as used today fits this.** `MLIRJit` already links through
+  `ObjectLinkingLayer` (JITLink, chosen for its EH-frame handling), which
+  builds GOT and PLT entries for ELF x86-64 and AArch64 and Mach-O arm64.
+  The changes: the `JITTargetMachineBuilder` (today `detectHost()`, then
+  `engine.mlir.targetCpu`, §5.1) gets `setRelocationModel(Reloc::PIC_)`
+  and `setCodeModel(CodeModel::Small)` for persistable modules; the object
+  is captured before linking through an `ObjectTransformLayer` transform
+  (no second compile); and at load, the `__nautilus_*` names are defined
+  by the same `absoluteSymbols` mechanism that maps external names today,
+  from the image's tables instead of from the IR. LLJIT keeps zero compile
+  threads (no ORC thread pool).
 - **Intrinsic callees** without an inline lowering
   ([13 §4.6.1](13-nir-spec.md)) are referenced as
-  `__nautilus_intr_<i>` (`extensions` index *i*), resolved at load to the
-  native fallback registered under that `name@version`. Inline lowerings
+  `__nautilus_intr_<i>` (*i* = the intrinsic's `extensions` entry),
+  resolved at load to the native fallback registered under that
+  `name@version` (07 §2.1). Inline lowerings
   need no symbol.
 
 ## 6. `tbc`, `cpp`, GPU, and removing `bc`
 
 - `tbc` lowers NIR almost one to one. Its register allocator works on value
   ids.
-- **Extension ops on `tbc`:** one core opcode `ext` calls an out-of-line
-  handler `void(*)(uint64_t* fp, const Instr*)` taken from the
-  extension-lowering table ([04 §3.5](04-extensions.md)), or the native
-  fallback when there is none. It works in all three dispatch skins (tail
-  call, computed goto, switch), which a plugin could not extend, and in
-  `tbc.mode=jit` through one generic `ext` stencil. Plugins never add
-  dispatch-table entries or stencils.
-- **Stencils:** every new or changed opcode (`ext`, `data.addr`,
+- **Extension ops on `tbc`:** one bytecode opcode `EXT` (`a` = result,
+  `b` = index of a per-site `ExtSite` record, as `CALL_EXT` uses a
+  call-site record) calls an out-of-line handler
+  `void(*)(uint64_t* fp, const ExtSite*)` taken from the
+  extension-lowering table ([04 §3.5](04-extensions.md)); without one, the
+  lowering emits `CALL_EXT` of the native fallback in the pointer
+  convention of [04 §3.3](04-extensions.md). It works in all three
+  dispatch skins (tail call, computed goto, switch), which a plugin could
+  not extend, and in `tbc.mode=jit` through one generic `EXT` stencil
+  that, like `stencil_CALL_EXT`, takes the site from a `_JIT_SITE` hole;
+  extension ops never throw, so it needs no unwind exit. Plugins never add
+  dispatch-table entries or stencils. Extension-typed values live in the
+  frame's alloca area at their size and alignment, which needs the
+  16-byte alloca alignment limit of today's lowering lifted (M6.5).
+- **Stencils:** every new or changed opcode (`EXT`, `data.addr`,
   `funcaddr`, the checked arithmetic and saturating casts of §3.1) needs
   regenerated copy-and-patch stencils for all three targets
   (`jit/generated/stencils_{x86_64_elf,aarch64_elf,arm64_macho}.inc`,
@@ -301,7 +338,7 @@ names, which 0.4 carries in NIR:
 - **Per-operation attribution on `asmjit`.** With source locations on,
   `asmjit` also publishes a line table (code offset → NIR instruction and
   its source tag), which `JitSymbolRegistry::resolveLine` serves, so the
-  `profiling` plugin's per-operation reports (`SampleReport.cpp`) work on
+  `profiling` plugin's per-operation reports (`SampleAggregation.cpp`) work on
   `asmjit` as they do on MLIR today.
 - **Tests:** the existing debug-info and jitdump tests run on NIR, plus a
   `perf.sample` test on `asmjit` and a per-operation attribution test on

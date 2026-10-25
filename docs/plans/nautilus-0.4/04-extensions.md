@@ -1,6 +1,6 @@
 # Component: Extensions
 
-Part of the [Nautilus 0.4 design](README.md) · Milestones M1 (registry), M6
+Part of the [Nautilus 0.4 design](README.md) · Milestones M1 (registry M1.7; extensions in the text form M1.3a, in canonical form and images M1.7a), M6
 (extension types, plugin migration)
 
 ## 1. Purpose
@@ -47,6 +47,7 @@ struct TypeInfo {
 	uint8_t  parts;            // > 1 for multi-part values (i128 = 2 × GP)
 	bool     portable;         // payloads contain no process addresses
 	bool     available;        // the host CPU supports this instance natively
+	CAbiType cabi;             // C ABI type for native signatures (`__m256`), or none (13 §4.5, calling convention)
 };
 ```
 
@@ -61,14 +62,24 @@ struct TypeInfo {
   `TypeId`, so the type table is complete when the registry freezes
   (§3.7). Equal parameters therefore always give the same `TypeId`.
 - **CPU-dependent instances** are registered on every host, but marked
-  unavailable where the CPU cannot hold them in registers
+  unavailable where the CPU cannot execute them
   (`TypeInfo.available`). Tracing on such a host never creates one (SIMD
   picks its lane count among the available instances). An image that uses
   one still loads, because its name resolves, and backends lower its ops
-  through their fallbacks (stack slots, §3.3).
+  through their fallbacks (stack slots, §3.3); `NIR-L013` stays reserved
+  ([13 §8.4](13-nir-spec.md)). Such an instance has no C ABI type on that
+  host, so it never appears in a native signature there (below).
 - **Names:** `<plugin>.<ctor>` optionally followed by `<arg,…>`
   (`simd.vec<f32,8>`); in `name@version`, the version follows the **last**
   `@` ([13 §8.4](13-nir-spec.md)).
+- **Plugin names** (the first component of every op, type and intrinsic
+  name) follow [13 §9.1](13-nir-spec.md); registration enforces it (§3.7).
+- **Extension types in native signatures.** An extension type may appear
+  in an exported signature, or as a parameter or result of an external
+  callee or `call.indirect`, only if `TypeInfo.cabi` names its C ABI type;
+  the verifier rejects other uses ([13 §4.5](13-nir-spec.md), calling convention). Fallbacks
+  of extension operations and intrinsics never need one: they use the
+  pointer convention of §3.3.
 - **Constants of extension types** (an `i128` literal, a vector splat) are
   `ConstPool` entries holding `size` raw bytes plus the type. Serialization
   writes them with the type's `name@version`. Payloads and constants are
@@ -83,13 +94,13 @@ struct OpInfo {
 	uint32_t version;
 	uint32_t minCompatibleVersion; // oldest image version this op still loads (13 §8.4)
 	Signature sig;              // operand/result counts and type constraints
-	OperandShape shape;         // kind of a, b, c and the word kinds of the `extra` payload (13 §5.11)
+	OperandShape shape;         // kind of a, b, c and the word kinds of the `extra` payload (13 §5.11.1)
 	OpTraits traits;            // Pure, Commutative, Idempotent (extension ops never throw, 13 §5.11)
 	EffectClass effects;        // None / Read / Write / ReadWrite (joins the effect chain)
 	FoldFn fold = nullptr;      // constant folding over ConstPool values
 	SimplifyFn simplify = nullptr;
 	VerifyFn verify = nullptr;
-	PrintFn print = nullptr;    // payload in `extra` (masks, immediates)
+	PrintFn print = nullptr;    // trailing comment only; the text form comes from `shape` (13 §5.11)
 	bool portable = true;       // payloads contain no process addresses
 	TargetSet targets = all;    // backends/targets the op is valid on
 	Fallback fallback;          // required unless `targets` is restricted
@@ -111,14 +122,28 @@ struct OpInfo {
   avoids ABI-specific aggregates (`__int128` is two GP registers on SysV
   and by reference on Win64). Legalization materializes the slots
   ([03 §4](03-conversion-and-passes.md)); M3.7's stack-slot fallback uses
-  exactly this convention.
-- **Operand shape.** `OpInfo.shape` declares what `a`, `b` and `c` hold
-  (value, constant-only value, `u32` immediate, `extra` index, unused) and,
-  for an `extra` payload, the kind of each word (value, immediate,
-  `pointers` index, constant reference) by a declared pattern. The core
-  verifier, canonicalizer and loader use only this descriptor to renumber,
-  bounds-check and compact payloads; the `verify` hook runs after the core
-  checks ([13 §5.11](13-nir-spec.md)).
+  exactly this convention. It applies equally to the native fallback of an
+  **intrinsic** whose NIR signature has extension types: "a C function
+  with exactly that signature" ([13 §4.6.1](13-nir-spec.md)) means this
+  convention for those parameters. Out-slot and operand slots never alias;
+  core-typed narrow operands are extended by their signature's extension
+  kinds ([13 §4.5.1](13-nir-spec.md)).
+- **Operand shape** ([13 §5.11.1](13-nir-spec.md)). `OpInfo.shape`
+  declares a field kind for each of `a`, `b` and `c`: `unused` (0),
+  `value`, `const` (a value reference that must be a constant), `imm` (a
+  `u32` immediate) or, for `c` only, `list` (an `extra` offset). A `list`
+  payload `[n, w₀ … wₙ₋₁]` has a fixed prefix of word kinds and an
+  optional repeated group; the word kinds are `value`, `const`, `imm`,
+  `pointer` (a `pointers` index of kind extension payload address) and
+  **`type`** (a `TypeId` in bits 0–7, upper bits 0, as for a vector
+  shuffle's element type). The core verifier, canonicalizer, loader,
+  printer and parser use only this descriptor to bounds-check, renumber
+  (`value` and `type` words) and compact payloads, never plugin code; the
+  `verify` hook runs after the core checks ([13 §5.11](13-nir-spec.md)).
+  In particular the text form of an extension instruction is printed and
+  parsed generically from the shape (M1.3a); the only plugin code the
+  printer may call is `OpInfo.print`, which adds a trailing comment that
+  the parser ignores.
 - **The one exception is target-restricted ops.** Ops that only exist on
   some targets declare `targets` and may omit the
   fallback. The verifier rejects them in a module compiled for any other
@@ -152,7 +177,7 @@ std::vector<TypeLowering> extTypes;   // register class / MLIR type / C++ type
 
 | Backend | What a plugin supplies | Without it |
 |---|---|---|
-| `tbc` | an out-of-line handler `void(*)(uint64_t* fp, const Instr*)` (optional), called through **one core opcode `ext`** that reads the handler from `extLowering`. It works in every dispatch skin (tail call, computed goto, switch) and in `tbc.mode=jit` through one generic `ext` stencil. Plugins never add dispatch-table entries or stencils | call to the native fallback; values in frame slots |
+| `tbc` | an out-of-line handler `void(*)(uint64_t* fp, const ExtSite*)` (optional), called through **one `tbc` bytecode opcode `EXT`** (`a` = result register, `b` = site index), shaped like `CALL_EXT`: the 8-byte `Instr` cannot hold an extension instruction, so a per-site record `ExtSite {handler, operand and result frame offsets, payload}` holds it. It works in every dispatch skin (tail call, computed goto, switch) and in `tbc.mode=jit` through one generic `EXT` stencil whose `_JIT_SITE` hole is patched per site, as for `CALL_EXT`. Plugins never add dispatch-table entries or stencils | `CALL_EXT` of the native fallback in the §3.3 convention. A value of an extension type lives in the frame's alloca area at its `TypeInfo.size`/`align` (an `i128` in two slots, a vector in an aligned area), not in a 64-bit register slot; `tbc` lifts its current 16-byte alloca alignment limit (`TBCLoweringProvider.cpp`) to the 4096 that `AllocaRecord` allows ([13 §4.5](13-nir-spec.md)) |
 | `asmjit` | `lower(ctx, inst)` through a narrow API: operand and result registers or parts, scratch registers, the emitter | call or expansion; values spilled to stack slots |
 | MLIR | `lower(builder, inst, operands) -> mlir::Value` plus a type mapping | call or expansion |
 | `cpp` | an expression template | call |
@@ -171,13 +196,34 @@ attached by intrinsic name (§3.7).
 ### 3.7 Registry lifecycle
 
 - **Registration before the first engine,** from static initializers or
-  plugin init functions, as the in-tree plugins already do.
+  plugin init functions, as the in-tree plugins already do. Plugin
+  libraries are static archives (`add_library` without a type), so a
+  registration TU that nothing references is dropped by the linker; each
+  plugin anchors its registration TU (an object library, or a symbol the
+  plugin's public wrappers reference), and the M1.7 visibility test links
+  only the plugin's public API to catch a dropped TU.
 - **Frozen at the first `NautilusEngine` construction**, not at the
-  first compile, so no trace or compile can overlap registration. The
-  freeze is a release store of a flag; registration checks the flag under
-  a mutex; lookups are lock-free acquire loads and need no lock after the
-  freeze. The table is complete at that point: parameterized types are
-  enumerated at registration (§3.2) and payloads are per module.
+  first compile, so no trace or compile can overlap registration. Any
+  other first reader freezes it too: loading or parsing a NIR image, or
+  creating a module through the C API ([09](09-c-api.md)) without an
+  engine. The freeze is a release store of a flag; registration checks
+  the flag under a mutex; lookups are lock-free acquire loads and need no
+  lock after the freeze. The table is complete at that point:
+  parameterized types are enumerated at registration (§3.2) and payloads
+  are per module. An engine constructed during static initialization
+  (a global `NautilusEngine`) freezes the registry before plugins in other
+  translation units may have registered, in unspecified order; the
+  late-registration error therefore also names the freeze point, and the
+  documentation says not to construct engines in static initializers.
+- **Plugin names are checked at registration** ([13 §9.1](13-nir-spec.md)),
+  so an extension name is never a core token in the text form. A plugin
+  name must not be a core mnemonic of [13 §5](13-nir-spec.md) or the first
+  dot-separated component of one (`div`, `rem`, `shr`, `cmp`, `cast`,
+  `call`, `bind`, `data`, `ptr`), a type name of [13 §2](13-nir-spec.md)
+  (`i64`, `ptr`, …), a bare keyword of the grammar
+  ([13 §9.2](13-nir-spec.md)), or `nir`. The prefix `core` is reserved for
+  the core's own intrinsics (`core.memcpy@1` and the other `mem*`, below);
+  a plugin that registers a `core.*` name is rejected.
 - **Late registration is an error** (D13). Registering an op, type,
   intrinsic or pass after the freeze, for example from a plugin loaded
   later with `dlopen`, throws an exception that names the extension and
@@ -198,7 +244,7 @@ attached by intrinsic name (§3.7).
   folding, CSE or extension types pay off.
 - **Intrinsic identity is backend-independent** (from M1.7). Each
   plugin registers each intrinsic by `name@version`, NIR signature
-  (including the per-parameter zext/sext kinds, [13 §4.5](13-nir-spec.md)) and effect
+  (including the per-parameter zext/sext kinds, [13 §4.5.1](13-nir-spec.md)) and effect
   attributes, with its native fallback address, in a **backend-neutral
   init file compiled in every build** (`dev`, `full`, `nocompiler`). The
   core does the same for `core.memcpy@1`, `core.memmove@1`,
@@ -223,17 +269,17 @@ attached by intrinsic name (§3.7).
 | `builtin` overflow | intrinsic, MLIR handlers only | `builtin.add_overflow` and friends; `Pure`; plugin `fold` |
 | `builtin` int128 | a boxed `int128_data*` through `invoke`, a 64-slot thread-local ring, MLIR handlers only | type `builtin.i128` (2 GP parts) plus pure ops; stack-slot fallback (§3.3); **int128 ring removed** |
 | `simd` | `vec<T>` as a pointer; ring-buffer fallback | types `simd.vec<T,N>`, enumerated at registration (§3.2); pure ops and mask ops; stack-slot fallback; **ring buffer removed** |
-| `specialization` assume | five intrinsics (`nautilus_assume_aligned`, `_constant`, `_range`, `_nonzero`, `_noalias`), MLIR handlers only | `spec.assume.*`, facts consumed by fold and simplify; fallback = no-op |
+| `specialization` assume | six intrinsics (`nautilus_assume`, `nautilus_assume_aligned`, `_constant`, `_range`, `_nonzero`, `_noalias`, with fallbacks `nautilus_assume_*_stub` in `assume.cpp`), MLIR handlers only | `spec.assume.*`, facts consumed by fold and simplify; fallback = no-op |
 | `specialization` `ConditionProfile` | profile with `invoke`, then `setIsTrueProbability` on the condition (`Profile.cpp`) | unchanged; the probability becomes the `condbr` `prob` field ([13 §5.9](13-nir-spec.md)) |
-| `std` | wrappers over `invoke`; math, bit (ctlz, cttz, popcount, rotl, rotr) and atomics with orderings are intrinsics with MLIR handlers (`StdPluginInit.cpp`, MLIR builds only) | math, bit and atomic functions become intrinsics registered in every build (§3.7), with native fallbacks and MLIR lowerings (AsmJit lowerings optional), plus effect declarations ([06](06-semantics.md)); the atomics are synchronizing intrinsic calls in the memory model ([13 §5.0](13-nir-spec.md)) |
+| `std` | wrappers over `invoke`; math, bit (ctlz, cttz, popcount, rotl, rotr, byteswap) and atomics with orderings are intrinsics with MLIR handlers (`StdPluginInit.cpp`, MLIR builds only) | math, bit and atomic functions become intrinsics registered in every build (§3.7), with native fallbacks and MLIR lowerings (AsmJit lowerings optional), plus effect declarations ([06](06-semantics.md)); the atomics are synchronizing intrinsic calls in the memory model ([13 §5.0](13-nir-spec.md)) |
 | core `mem*` | MLIR intrinsics registered by the MLIR backend | core intrinsics `core.memcpy@1`, `core.memmove@1`, `core.memset@1`, `core.memcmp@1` with libc fallbacks, registered in every build |
 | `gpu` | backend plugin | migrated in M7 ([17](17-gpu.md)): thread-index and barrier ops as extension ops that keep 0.3's CPU fallbacks; `gpu.launch` as an **intrinsic** with call semantics, because a launch may throw ([17 §4.3](17-gpu.md)); a required partition pass |
-| `inlining` | LLVM hooks: `callNameOverride` renames external calls to `ptrToHex(address)`, `preOptModuleTransform` splices registered bitcode, `jitSymbolContributor` maps the hex names back (`InliningPluginInit.cpp`) | unchanged for MLIR in process; needs MLIR, so its suite runs from the MLIR port (M4.5) on. A module whose MLIR compile used the hooks has process addresses as symbol names, so its native payload is **non-persistable** (the artifact carries only the NIR image) unless every renamed symbol goes through the import table as a `Portable` pointer name; the hash of the inlined bitcode then joins the payload descriptor and the L1/L2 keys ([07 §2](07-serialization.md), [08](08-caching.md)) |
-| `profiling` | runtime plugin; per-operation attribution through `JitSymbolRegistry::resolveLine` (MLIR only today) | unchanged; attribution on `asmjit` through its line table ([05 §7](05-backends.md)); its suite runs from M4.8 on |
+| `inlining` | `InlineFunctionRegistry` (its own mutex-guarded registry of function bitcode, filled by `NAUTILUS_INLINE` static initializers) and LLVM hooks: `callNameOverride` renames external calls to `ptrToHex(address)`, `preOptModuleTransform` splices registered bitcode, `jitSymbolContributor` maps the hex names back (`InliningPluginInit.cpp`) | unchanged for MLIR in process; `InlineFunctionRegistry` stays outside the `ExtensionRegistry` and is not frozen, because it changes no NIR (only the payload, whose key carries the inlined bitcode's hash); needs MLIR, so its suite runs from the MLIR port (M4.5) on. A module whose MLIR compile used the hooks has process addresses as symbol names, so its native payload is **non-persistable** (the artifact carries only the NIR image) unless every renamed symbol goes through the import table as a `Portable` pointer name; the hash of the inlined bitcode then joins the payload descriptor and the L1/L2 keys ([07 §2](07-serialization.md), [08](08-caching.md)) |
+| `profiling` | runtime plugin, no intrinsics; per-operation attribution through `JitSymbolRegistry::resolveLine` (`SampleAggregation.cpp`, MLIR only today) | unchanged; attribution on `asmjit` through its line table ([05 §7](05-backends.md)); its suite runs from M4.8 on |
 
 ## 5. Exit criteria
 
-- **M1:** every in-tree intrinsic visible by name through
+- **M1** (M1.7; text form M1.3a; canonical form and images M1.7a): every in-tree intrinsic visible by name through
   `ExtensionRegistry` in every preset, including `dev` and `nocompiler`; no
   mutex on the lookup path after the freeze. The plugins register with it
   directly from the cut-over on ([16 §2](16-implementation-plan.md)).
