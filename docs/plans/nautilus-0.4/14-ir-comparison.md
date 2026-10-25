@@ -40,15 +40,17 @@ What only NIR combines:
    share records, the verifier, the printer and the serializer.
 2. **An in-memory layout that is the wire layout** for canonical sections:
    loading is validation, and the cache key is a hash over bytes.
-3. **A canonical form with a structural hash** defined in the specification,
-   so equal modules produce equal bytes across processes.
-4. **Provenance in the IR:** every constant carries where its value came
-   from, so the IR knows which modules are safe to persist.
+3. **A canonical form with a structural hash** defined in the specification
+   down to the hashed bytes, so equal modules produce equal bytes and keys
+   across processes and implementations.
+4. **Provenance in the IR:** every constant and every traced address
+   carries where its value came from, so the IR knows which modules are safe
+   to persist.
 5. **Self-contained images by construction** while linking by reference in
    memory.
 
-What NIR deliberately does not have, compared with the others: atomics,
-aggregate and vector types in core, structured control flow, `poison`/`undef`,
+What NIR deliberately does not have, compared with the others: atomics in
+core (they are intrinsics), aggregate and vector types in core, structured control flow, `poison`/`undef`,
 and mutable globals. §5 lists which of these are worth revisiting.
 
 ## 3. Comparison by topic
@@ -78,7 +80,7 @@ which NIR replaces with derived arrays built on demand
 
 | IR | SSA form | Merges | Control flow |
 |---|---|---|---|
-| **NIR** | SSA level; pre-SSA level with variables (`assign`) | block arguments | CFG with `br`, `condbr`, `ret`, `resume`; layout invariant (RPO, loops contiguous) |
+| **NIR** | SSA level; pre-SSA level with variables (`var`, `assign`) | block arguments | CFG with `br`, `condbr`, `ret`, `resume`; layout invariant (forward edges in order, reducible loops contiguous) |
 | LLVM IR | SSA | `phi` | CFG; `switch`, `indirectbr`, `invoke`, `callbr` |
 | MLIR | SSA | block arguments | regions: unstructured (`cf`) or structured (`scf.if`, `scf.for`, `scf.while`) |
 | WebAssembly | not SSA: a typed stack machine with locals | locals | **structured only:** `block`, `loop`, `if`, branches to enclosing labels, `br_table` |
@@ -105,7 +107,7 @@ which NIR replaces with derived arrays built on demand
 
 | IR | Integers | Floats | Pointers | Vectors, aggregates |
 |---|---|---|---|---|
-| **NIR** | `i8`–`i64`, signless; `bool` separate | `f32`, `f64` | one opaque `ptr`, 64-bit | extension types only (`simd.vec`, `builtin.i128`) |
+| **NIR** | `i8`–`i64`, signless; `bool` separate; `zext`/`sext` on narrow signature types | `f32`, `f64` | one opaque `ptr`, 64-bit; traced addresses are never constants | extension types only (`simd.vec`, `builtin.i128`) |
 | LLVM IR | `iN` for any N, signless; `i1` as bool | half to `fp128`, bfloat | opaque `ptr` with address spaces | vectors (fixed and scalable), structs, arrays |
 | MLIR | `iN` signless, signed and unsigned variants | many | `memref` with layouts; `!llvm.ptr` | `vector`, `tensor`, tuples; any dialect type |
 | WebAssembly | `i32`, `i64`; signedness on operations | `f32`, `f64` | none: addresses are `i32`/`i64` offsets into linear memory | `v128`; reference types |
@@ -120,7 +122,10 @@ everything else is an extension type with a mandatory fallback. Keeping a
 real `ptr` type, unlike WebAssembly, Cranelift and QBE, is what lets NIR carry
 provenance and distinguish pointer conversions (`ptrtoint`/`inttoptr`).
 `i128` is the one type the low-latency peers (Cranelift) have in core and
-NIR has only as an extension.
+NIR has only as an extension. Signless types lose the ABI extension of
+narrow arguments, so NIR signatures carry a `zext`/`sext` kind per narrow
+parameter and result, as LLVM's `zeroext`/`signext` and Cranelift's
+`uext`/`sext` parameter attributes do.
 
 ### 3.4 Semantics of arithmetic
 
@@ -138,7 +143,9 @@ NIR has only as an extension.
 operation is fully defined, which is what a differential fuzzer and formal
 verification need. The one difference is that NIR's integer division
 **throws a C++ exception** instead of trapping, because Nautilus code runs
-inside a host process that must survive the error. LLVM's `poison` model
+inside a host process that must survive the error: a failing check calls a
+runtime helper on a cold path, with the division's unwind entry, so
+destructors run as for a throwing call. LLVM's `poison` model
 gives more optimization freedom but is the hardest part of LLVM to get right
 (the Alive2 work); NIR avoids it.
 
@@ -146,7 +153,7 @@ gives more optimization freedom but is the hardest part of LLVM to get right
 
 | IR | Memory model | Atomics | Call effects |
 |---|---|---|---|
-| **NIR** | plain loads and stores; data races undefined | **none in 1.0** | four guarantee bits (argument and other memory × read and write) plus `noUnwind`, `willReturn` |
+| **NIR** | plain loads and stores; data races undefined | **none in core in 1.0**; the `std` plugin's atomics are intrinsics, lowered inline by MLIR | four guarantee bits (argument and other memory × read and write) plus `noUnwind`, `willReturn` |
 | LLVM IR | C++11 model | full (`atomicrmw`, `cmpxchg`, fences, orderings) | `memory(argmem: …, inaccessiblemem: …, other: …)`, `nounwind`, `willreturn`, many more |
 | MLIR | dialect-defined | `memref.atomic_rmw`, `llvm` atomics | side-effect interfaces per operation |
 | WebAssembly | linear memory; threads proposal adds shared memory | yes (threads) | none: every call may do anything |
@@ -157,9 +164,13 @@ gives more optimization freedom but is the hardest part of LLVM to get right
 
 **Reading:** NIR's guarantee bits are essentially LLVM's `MemoryEffects`
 (LLVM 16 on) with two locations instead of three, encoded so that zero is
-always safe and implication is a subset test. The visible gap is atomics:
-every peer except LuaJIT and QBE has them. NebulaStream calls atomics through
-`invoke` today; the spec defers them to 1.1 pending a measured cost.
+always safe and implication is a subset test. The visible gap is core
+atomics: every peer except LuaJIT and QBE has them. 0.3's `std` plugin
+already provides atomics with orderings as intrinsics, which the MLIR
+backend lowers inline to LLVM atomics; they stay intrinsics in 0.4, and the
+memory model counts intrinsic calls as synchronization. Core atomic
+operations are deferred to 1.1, pending a measured cost of the intrinsics
+on the other backends.
 Cranelift's per-load `readonly` flag is worth noting: NIR gets the same
 effect for data objects, whose loads fold or hoist.
 
@@ -167,7 +178,7 @@ effect for data objects, whose loads fold or hoist.
 
 | IR | Model |
 |---|---|
-| **NIR** | unwind entries on calls and checked division: `NO_UNWIND`, `NO_CLEANUP` or a landing-pad block ending in `resume`; pre-SSA cleanup lists; capture thunks for backends without unwind tables |
+| **NIR** | unwind entries on calls (direct and indirect) and checked division: `NO_UNWIND`, `NO_CLEANUP` or a landing-pad block, entered only by unwinding or from another pad, ending in `resume`; pre-SSA cleanup lists of destructor callees; capture thunks on every may-throw native or indirect call for backends without unwind tables |
 | LLVM IR | `invoke` with `landingpad`/`resume` (Itanium), funclets (`catchswitch`, `cleanuppad`) for Windows |
 | MLIR | none in core; the `llvm` dialect mirrors LLVM |
 | WebAssembly | exception handling (Wasm 3.0): `throw`, `try_table` with catch clauses, `exnref` |
@@ -185,7 +196,7 @@ and the defined bridge to backends without unwind tables.
 
 | IR | Unit | Imports | Call targets |
 |---|---|---|---|
-| **NIR** | named module with exported and internal functions | **two-level** `(module, function)` with exact signature and implied guarantees; acyclic; linked by reference through import slots | internal, external (native), imported, intrinsic |
+| **NIR** | named module with exported and internal functions | **two-level** `(module, function)` with exact signature and implied guarantees; acyclic; linked by reference through import slots | internal, external (native), imported, intrinsic (by `name@version`); indirect calls with stated attributes |
 | LLVM IR | module with linkage types (`internal`, `external`, `weak`, …) | declarations resolved by symbol name (`llvm-link`, ORC) | functions, declarations, intrinsics (`llvm.*`) |
 | MLIR | `builtin.module` with symbol tables | symbol references across nested modules | `func.call`, `func.call_indirect`, dialect ops |
 | WebAssembly | module | **two-level** `(module, name)` with types checked at instantiation | defined, imported, `call_indirect` through tables |
@@ -247,7 +258,7 @@ extension without a handler always runs.
 
 | IR | Format | Versioning |
 |---|---|---|
-| **NIR** | sectioned binary; canonical sections are the in-memory layout (zero-copy load); CRC-32C; canonical form with a structural hash | major.minor, per-section strides, compat and incompat feature bits; images readable across 0.4.x |
+| **NIR** | sectioned binary; canonical sections are the in-memory layout (zero-copy load); CRC-32C; canonical form with a structural hash; text form with a normative grammar | major.minor, per-section strides, compat and incompat feature bits; images readable across 0.4.x |
 | LLVM IR | bitcode (bitstream, abbreviations) and text `.ll` | newer LLVM reads older bitcode; no forward compatibility |
 | MLIR | bytecode (with lazy loading and dialect versioning) and text | per dialect version |
 | WebAssembly | binary with typed sections and LEB128 integers; text `.wat` | version 1 forever; features added by proposals |
@@ -267,7 +278,7 @@ caches around them hash whatever bytes they get.
 
 | IR | Status |
 |---|---|
-| **NIR** | verifier rules per level (§6), one positive and one negative test per rule; no formal semantics yet |
+| **NIR** | verifier rules per level with stable diagnostic codes (13 §6.6), one positive and one negative test per code; no formal semantics yet |
 | LLVM IR | verifier; informal semantics; Alive2 checks optimizations against an SMT model; Vellvm formalizes a subset in Coq |
 | MLIR | per-operation verifiers; no global semantics |
 | WebAssembly | **mechanized formal semantics** (Isabelle, Coq); validation is a type system |
@@ -318,7 +329,7 @@ the cheapest way to close the gap.
 
 | Gap | Peers that have it | Recommendation |
 |---|---|---|
-| Atomic operations | LLVM, MLIR, Wasm, Cranelift, SPIR-V, Zig | Measure atomics through `invoke` on NebulaStream in M1; add `atomic.load`, `atomic.store`, `atomic.rmw`, `cmpxchg` and `fence` with C++ orderings in 1.1 if the cost shows |
+| Atomic operations in core | LLVM, MLIR, Wasm, Cranelift, SPIR-V, Zig | Keep 0.3's `std` atomics as intrinsics (inline on MLIR, fallback calls elsewhere); measure them on NebulaStream; add `atomic.load`, `atomic.store`, `atomic.rmw`, `cmpxchg` and `fence` with C++ orderings in 1.1 if the cost shows |
 | `i128` in core | Cranelift, LLVM, Zig | Keep as an extension type in 1.0; reconsider if the `builtin` plugin's lowering shows overhead on two-register values |
 | Structured control flow | Wasm, SPIR-V, MLIR `scf`, Zig AIR | Keep a CFG; measure reducibility and add derived structure plus a restructuring pass for GPU and Wasm consumers |
 | Formal semantics | Wasm (mechanized), LLVM (Alive2, Vellvm), Cranelift (Crocus) | SMT verification of folding and extension rules, then symbolic equivalence in the fuzzer |

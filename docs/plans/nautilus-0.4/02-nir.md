@@ -51,24 +51,29 @@ P0 ([p0-baseline.md](p0-baseline.md)):
 struct Inst {          // 16 B; a value's id is its index
 	uint16_t op;       // [0, 256): core opcodes; [256, …): extension opcodes
 	uint8_t  type;     // TypeId: core scalar types fixed; extension types registered
-	uint8_t  flags;    // branch hint, effect class, …
+	uint8_t  flags;    // opcode-specific (13 §5): signedness, predicate, cast kind, alignment, checked
 	uint32_t a, b, c;  // operands: value ids or tagged ConstPool refs;
-	                   // c may also be an immediate or an index into `extra`
+	                   // or table indices, immediates, an index into `extra`
 };
 ```
 
 - **Constants live in `ConstPool`,** referenced with the top bit set (the
   counterpart of LuaJIT's refs below `REF_BIAS`). An add of a constant needs
   no constant instruction, and backends see the immediate directly.
+- **Traced host addresses are not constants.** Each is a `pointers` entry
+  with a provenance class, read by `ptr.const`
+  ([13 §4.7, §5.8](13-nir-spec.md)), so a raw address can never hide in a
+  constant and every process-local module is marked as such.
 - **Variable-length operands** (call arguments, block-argument lists,
   payloads such as shuffle masks) live in `extra`, referenced from `c`.
 - **Calls** are `{op=call, a=calleeId, c=extra offset}`. The callee
-  descriptor lives in the function table, and names are resolved only for
+  descriptor lives in the callee table, and names are resolved only for
   dumps.
 - **Block arguments are instructions** (`op=blockarg`) at the start of their
   block, so they have value ids like everything else.
-- **Terminators** are `br target, extraIdx` and `condbr cond, t, f, extraIdx`,
-  with argument lists in `extra`. There are no block, invocation or
+- **Terminators** are `br target, extraIdx` and `condbr cond, trueBlk,
+  extraIdx`; the probability, the false target and both argument lists are
+  in `extra` ([13 §5.9](13-nir-spec.md)). There are no block, invocation or
   predecessor objects.
 
 ### 3.2 Sections
@@ -81,12 +86,18 @@ The normative list of sections, with record layouts, is in
 | `insts` | `Inst` records, blocks contiguous, in layout order | yes |
 | `extra` | `u32` payloads | yes |
 | `consts` | interned constants, each with a provenance class ([07](07-serialization.md)) | yes |
-| `pointers` | callees, thunks, destructors, `ConstPtr`, extension-payload addresses; process-local or portable ([07](07-serialization.md)) | yes |
-| `blocks` | `BlockInfo` per block: first inst, argument range, in layout order. Loop depth and loop end are derived fields (§3.6) | yes |
-| `functions` | name, signature, attributes, blocks | yes |
-| `names` | interned strings: functions, symbols, extension ops and types (`name@version`) | yes |
+| `pointers` | callees, capture thunks, destructors, traced addresses (`ptr.const`, replacing `ConstPtr`), extension-payload addresses; each process-local or portable, traced addresses with a provenance class ([07](07-serialization.md)) | yes |
+| `blocks` | `BlockRecord` per block: first instruction, instruction count, `argCount`, landing-pad flag, in layout order. Loop depth and loop end are derived (§3.6) | yes |
+| `functions` | name, signature, attributes, visibility, level, instruction, block and alloca ranges | yes |
+| `signatures` | result and parameter types, with a `zext`/`sext` extension kind per narrow integer for native boundaries | yes |
+| `callees` | internal, external, imported and intrinsic call targets with their attributes | yes |
+| `allocas`, `bindings`, `data` + `dataBytes` | static stack slots; runtime bindings ([07 §4](07-serialization.md)); read-only data objects | yes |
+| `functionAttrs` | plugin-owned string attributes of functions (`gpu.kernel`) | yes |
+| `module`, `imports` | the module name and process token; imports (in memory only; images bundle them) | yes |
+| `names` + `nameBytes` | interned strings: functions, symbols, extension ops and types (`name@version`) | yes |
 | `extensions` | extensions used by this module | yes |
-| `useCount`, `forward`, loop depth/end, CSE tables, snapshots, `debug` (source tags, regions) | derived or optional | **no** |
+| `useCount`, `forward`, loop depth/end, CSE tables, snapshots | derived | **no** |
+| debug sections: source locations, regions, parameter names | optional | **no** |
 
 **Format rules, from #532:**
 - little-endian, 8-byte-aligned sections;
@@ -94,7 +105,10 @@ The normative list of sections, with record layouts, is in
 - each section declares its record stride, so a later minor version can
   widen records;
 - major/minor version plus compatible and incompatible feature bits;
-- a CRC-32C checksum and a total size for framing.
+- a CRC-32C checksum and a total size for framing;
+- a normative text form with a grammar, which round-trips
+  ([13 §9](13-nir-spec.md)), and stable diagnostic codes
+  ([13 §6.6](13-nir-spec.md)).
 
 ### 3.3 Core operations
 
@@ -110,10 +124,10 @@ size (~30 kinds). Everything else is an extension ([04](04-extensions.md)).
 | Casts | `cast` (kind in `flags`: extend, truncate, int↔float, bitcast) | `CastOp` |
 | Memory | `load`, `store`, `alloca` (index into the function's alloca table) | `LoadOp`, `StoreOp`, `AllocaOp` |
 | Calls | `call`, `call.indirect`, `funcaddr` | `CallOp`, `IndirectCallOp`, `FunctionAddressOfOp` |
-| Runtime state | `bind.addr` ([07 §4](07-serialization.md)) | — (new; from #529) |
-| Values | `blockarg`; constants live in `ConstPool` and are not instructions | `BasicBlockArgument`, `Const*Op` |
-| Control flow | `br`, `condbr` (probability in `extra`), `ret`, `resume` (ends a landing pad) | `BranchOp`, `IfOp`, `ReturnOp`, `BlockInvocation`; landing pads of `FunctionExceptionRegion` |
-| Pre-SSA level only | `assign` (variable redefinition) | `ASSIGN` in today's trace |
+| Runtime state, data, addresses | `bind.addr` ([07 §4](07-serialization.md)), `data.addr`, `ptr.const` | — (new; from #529); `ConstPtrOp` |
+| Values | `blockarg`; constants live in `ConstPool` and are not instructions | `BasicBlockArgument`, `ConstInt`/`ConstFloat`/`ConstBoolean` ops |
+| Control flow | `br`, `condbr` (probability and false target in `extra`), `ret`, `resume` (ends a landing pad) | `BranchOp`, `IfOp`, `ReturnOp`, `BlockInvocation`; landing pads of `FunctionExceptionRegion` |
+| Pre-SSA level only | `var` (defines a variable from a constant or a copy), `assign` (variable redefinition) | `CONST` and copy `ASSIGN`; `ASSIGN` in today's trace |
 
 `FunctionOp` becomes the `functions` section, and `MLIR_YIELD` disappears.
 Signedness moves from types onto the operations that need it
@@ -122,32 +136,44 @@ Signedness moves from types onto the operations that need it
 ### 3.4 Functions, modules, exceptions
 
 - **A module is one NIR image** holding several functions. Internal calls
-  reference functions by index. External callees, intrinsics and
-  extensions resolve through the function table, as today's interned
-  `FunctionId`s do.
+  reference functions by index. External callees, imports and intrinsics
+  resolve through the callee table, as today's interned `FunctionId`s do;
+  intrinsics are known by `name@version`, independent of the backends
+  built ([13 §4.6.1](13-nir-spec.md)).
 - **A function record** holds:
   - its name and signature;
   - its attributes (today's `FunctionAttributes`: memory effects,
     `noUnwind`, `willReturn`, and so on);
   - its alloca table (`AllocaSpec`: size and alignment), materialized in
     each backend's prologue as today;
-  - its region table (`RegionSpec`), in the optional `debug` section;
+  - its string attributes (0.3's `kernel` becomes `gpu.kernel`,
+    [13 §4.5.2](13-nir-spec.md));
+  - its region table (`RegionSpec`), parameter names and location, in the
+    optional debug sections;
   - its blocks.
 - **Exceptions:**
   - a call that may unwind carries an `unwind` entry in its `extra`
-    payload: the index of a landing-pad block, or "no cleanup";
+    payload, and a checked integer division carries one in `c`: the index
+    of a landing-pad block, or "no cleanup";
   - landing-pad blocks hold the ordered destructor calls (reverse
-    construction order) and end in `resume`, as today's
-    `FunctionExceptionRegion` does;
-  - pads are ordinary blocks outside the main layout order, flagged in
-    `BlockInfo`, so the verifier and every backend see them uniformly;
+    construction order) as calls of destructor callees, are entered only
+    through unwind entries or from another pad, and end in `resume` or in
+    a branch to a pad with a shared tail, as today's
+    `FunctionExceptionRegion` does ([13 §6.3](13-nir-spec.md));
+  - pads are ordinary blocks after the main layout order, flagged in
+    `BlockRecord`, so the verifier and every backend see them uniformly;
   - capture thunks (`captureFunc`) and destructors are `pointers` entries
-    ([07 §3](07-serialization.md)).
+    ([07 §3](07-serialization.md)); every may-throw external, intrinsic or
+    indirect call names a thunk;
+  - a failing checked division calls the runtime helper
+    `nautilus_rt_throw_arith` on a cold path, like a may-throw call
+    ([13 §5.10](13-nir-spec.md)).
 - **Thread safety:**
   - a finished SSA-level NIR module is immutable, so any number of
     threads may compile or serialize it concurrently;
   - building and rewriting are single-threaded per module;
-  - the extension registry is frozen after the first compile.
+  - the extension registry is frozen when the first engine is
+    constructed.
 
 ### 3.5 Levels
 
@@ -156,8 +182,8 @@ invariants differ:
 
 | | Pre-SSA level | SSA level |
 |---|---|---|
-| Values | **Variables:** `assign` redefines a value ref | Every value defined once; block arguments at merges |
-| Order | Recording order; blocks split at merges during tracing | Layout order (RPO, loops contiguous) |
+| Values | **Variables:** `var` defines, `assign` redefines a value ref | Every value defined once; block arguments at merges |
+| Order | Recording order; blocks split at merges during tracing | Layout order (RPO, reducible loops contiguous) |
 | Ids | Stable during splits (the tag map points at them) | Dense; copy passes renumber |
 | Extra state | Snapshots, tag map, replay cursor | `useCount`, `forward`, loop info |
 | Lifetime | Append-only; discarded after conversion | Build once, rewrite by copying; persisted |
@@ -187,9 +213,11 @@ What keeps the in-memory format free to evolve:
   time: use counts, replacement tables, loop depth and end, CSE tables,
   snapshots, debug tags.
 - **Canonicalization before writing or hashing:** apply `forward`
-  replacements, compact, renumber densely, and intern names in first-use
-  order. Two structurally equal modules then produce equal bytes, which the
-  L2 cache ([08](08-caching.md)) and deterministic output rely on.
+  replacements, compact, renumber densely, and order and intern every table
+  in first-use order. Two structurally equal modules then produce equal
+  bytes, which the L2 cache ([08](08-caching.md)) and deterministic output
+  rely on. [13 §7](13-nir-spec.md) defines the algorithm, the scan order and
+  the exact bytes the structural hash covers.
 
 ## 4. Mutation model
 
@@ -321,7 +349,7 @@ IR operation.
   ([16 §2](16-implementation-plan.md)).
 - **Consumers:**
   - `tbc` becomes a near 1:1 translation (`bc` is removed in M1);
-  - `asmjit` iterates `insts` with `BlockInfo` in one pass;
+  - `asmjit` iterates `insts` with `BlockRecord` in one pass;
   - MLIR builds `cf`/`arith` from blocks and terminators.
 - **Dumps:** one printer for both levels; `test/data` regenerated once per
   format change, in isolated commits.
@@ -332,7 +360,8 @@ IR operation.
   unit tests.
 - Every opcode round-trips through builder → printer → parser →
   serializer → loader with byte-identical re-serialization; the golden
-  images load or are rejected as specified.
+  images load or are rejected with the specified `NIR-` codes; the printer
+  and parser implement the grammar of [13 §9](13-nir-spec.md).
 - No hash map on any NIR per-operand path.
 - The chunk pool of §4.1 in place: after a large compile, held memory and
   RSS return to the budget; no compile-latency regression on the corpus.
