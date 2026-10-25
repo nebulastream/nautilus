@@ -55,7 +55,7 @@ Unchanged: replay, tags, snapshots, merge detection at any operation,
 | **Hashed trie children** above about 8 children: a small open-addressing table per node | O(children) tag creation for functions with many call sites |
 | **Tag map in the trace arena,** open addressing, mapping snapshots to **global op ids** instead of `(block, index)` | One allocation per op; merge splits no longer rewrite map entries |
 | **Index-based replay cursor** over the block's op-id list; the reconciliation skip in `follow()` compares `snapshot[id]` without re-fetching the block per step | ~30% self time in cursor code on replay-heavy functions |
-| **Value-ref free list** in the trace arena | `allocateValRef`/`freeValRef` churn |
+| **Cheaper alive-variable bookkeeping:** value refs are op ids (§6), so nothing is allocated or freed; `allocateValRef`/`freeValRef` become an inlined counter update on the tracer's alive-variable table instead of a virtual call per holder | `allocateValRef`/`freeValRef` churn |
 | **Arena-backed block lists;** call names resolved lazily from the callee identity (already the default via `engine.resolveFunctionNames`) | Heap allocations per op |
 | **#561's statistics** (`tracing.iterations`, `tracing.replayedOperations`, `tracing.copies`, `tracing.firstRun.ms`/`rerun.ms`), plus a diagnostic that flags scopes whose replay exceeds a threshold and suggests `region()` or the explicit API; extended by R1 and C1 (§4) | Makes replay visible to users |
 
@@ -117,7 +117,7 @@ Two further costs:
 | # | Change | Effect | Risk |
 |---|---|---|---|
 | R1 | **Counters:** split `tracing.rerun.ms` into follow, record and paused time; add `tracing.pausedOperations` and per-scope re-run counts | Shows which lever pays on real workloads | none |
-| R2 | **Cheaper follow:** index-based cursor and value-ref free list (§3); a region in follow mode looks up its memo by the recorded region-entry op id instead of a fresh snapshot | Removes the cursor overhead (~30% of a replay-heavy compile) and one frame walk per region per re-run | low |
+| R2 | **Cheaper follow:** index-based cursor and cheaper alive-variable bookkeeping (§3); a region in follow mode looks up its memo by the recorded region-entry op id instead of a fresh snapshot | Removes the cursor overhead (~30% of a replay-heavy compile) and one frame walk per region per re-run | low |
 | R3 | **Minimal paused path:** when `paused_` is set, `val` operations skip ref allocation and holder bookkeeping entirely (one flag check, then the runtime value only) | Paused tail costs close to native C++ execution | low |
 | R4 | **End paused passes early:** when a pass becomes paused, unwind the body with a tracer-private exception caught in `runScope`, so a re-run costs one throw instead of the whole tail. User code that swallows it (`catch (...)`) is detected because the body returns normally, and that scope falls back to R3 | Removes the paused tail, about half of re-run work on chained branches | Medium: a `noexcept` frame between body and tracer would terminate. Ships behind `tracing.unwindPausedPasses`; the default is decided on the fuzzer, NebulaStream and TPC-H data before release |
 | R5 | **Fewer re-runs:** the replay diagnostic names scopes with many re-runs and suggests `region()` (replay bounded to the region) or explicit control flow (§5); `nautilus-review` checks the same | Removes re-runs where users act on it | none |
@@ -225,45 +225,76 @@ cannot return, `traceReturnOperation`; a region whose exit has no
 predecessor is an error, `traceScopeExit`). Construct scopes therefore
 differ from `region()` scopes in four rules:
 
-- **The rest of the scope runs paused.** `Break`/`Continue`/`Return` emit
-  their terminator, then pause the current scope and every enclosing
-  scope up to the target construct (the loop for `Break`/`Continue`, the
-  function for `Return`). The rest of each lambda runs on the minimal
+- **The rest of the pass runs paused.** `Break`/`Continue`/`Return` emit
+  their terminator (`br` to the loop's exit block; `br` to the loop's
+  continue target, which is the header for `While` and the increment
+  block for `For`; `ret v`) and pause the scope that executes them for the
+  rest of its current pass. The rest of that lambda runs on the minimal
   paused path (R3); nothing after the exit is recorded, and no dead block
-  is created for it.
+  is created for it. Enclosing scopes are *not* paused by the exit
+  itself: other passes of the inner scope may still reach its end (an
+  implicit `if` with `Break()` in one direction only, or an
+  `If(c, [&] { Break(); })` whose implicit else falls through), so an
+  enclosing scope is paused only by the zero-predecessor rule below, when
+  a construct ends with no live exit. The exit's target block is created
+  when the target construct is entered, as a region's exit block is.
+- **Exits do not cross `region()`.** A `Break`, `Continue` or `Return`
+  whose target lies outside an enclosing `region()` body is rejected with
+  a diagnostic: a region keeps its single exit and its "region body
+  cannot return" rule (`traceReturnOperation`).
 - **Owned values are destroyed on the exit path.** Before the terminator,
-  the tracer emits the destructor calls of all registered owned values
-  (`registerDestructor`) created inside the scopes being left, in reverse
-  creation order, and unregisters them. Their C++ destructors run later,
-  while paused, and record nothing. Native `break` in 0.3 gets this from
-  C++ scoping; explicit exits get it from the tracer.
+  the tracer emits, in reverse registration order, the destructor calls of
+  the registered owned values (`registerDestructor`) on the current
+  scope's destructor list above a depth: for `Break` and `Continue`, the
+  list length at the target loop body's entry; for `Return`, depth 0, so
+  every owned value of the function, including those of the function
+  scope, as native `return` destroys them. The list itself is not
+  changed: each scope's list is reseeded from its parent at every pass
+  (`resume()`), the C++ destructors that run later while paused record
+  nothing and remove their own entries as on any path, and the list a
+  scope hands back to its parent at its end
+  (`activeDestructors = std::move(child.activeDestructors)`) therefore
+  still holds the enclosing scopes' live values even when the last pass
+  ended in `Return`. Native `break` in 0.3 gets the destructor calls from
+  C++ scoping; explicit exits get them from the tracer.
 - **A construct scope's exit may have no predecessor.** When every path
   through an arm or body leaves non-locally (an arm that always `Break`s),
   this is not an error for explicit constructs. If the whole construct has
   no live exit, the code after it is unreachable, and the enclosing scope
   is paused up to its own end. `region()` keeps its diagnostic.
 - **Escape-check exemptions.** `Return(v)` is allowed in any construct
-  scope, and its value is exempt from the "created inside the body" check.
-  So is the `While` header's `val<bool>`, which the header scope consumes in
-  its own `condbr`. Any other value that outlives its scope is rejected as
-  in `region()`.
+  scope, and its value is exempt from the "created inside the body" check
+  (the pass is paused, so `traceScopeExit` does not run its check). The
+  `While` header's `val<bool>` is consumed by the header scope's own
+  `condbr` and destroyed by the construct before the header scope's exit
+  check. Any other value that outlives its scope is rejected as in
+  `region()`.
 
 ### 5.2 Optimistic recording: checkpoint and restart
 
 An arm or body records optimistically. When it meets an implicit branch it
 restarts with snapshots enabled, and everything it recorded must disappear.
 
-- **Checkpoint.** At entry, an optimistic scope saves the sizes of `ops`,
-  `extra`, `blocks` (and of the per-op tables `snapshot`, `region`,
-  `blockOf`), the alloca table, the data-object table, the region records,
-  the callee queue (`functionsToTrace`), the destructor stack and the
-  explicit-construct stack, plus the next value ref and the value-ref free
-  list's length.
-- **Restart** truncates all of them to the checkpoint and drops region memo
-  entries created after it. No tag-map entry exists to drop, because
-  optimistic records take no snapshot. `ConstPool`, `pointers` and callee
-  table entries may stay: canonicalization drops unused ones
-  ([13 §7](13-nir-spec.md)).
+- **Checkpoint.** At entry, an optimistic scope saves the sizes of `ops`
+  (which is also the next value ref, §6), `extra`, `blocks` (and of the
+  per-op tables `snapshot`, `region`, `blockOf`), the alloca table, the
+  data-object table, the region records, the callee queue
+  (`functionsToTrace`), the destructor stack and the explicit-construct
+  stack. Two appends do not fit a size: predecessor entries added to
+  blocks older than the checkpoint (a nested `Break` adds one to the loop's
+  exit block, a nested `Continue` to the header) and tag-map insertions
+  (a nested construct's entry snapshot, the records of a nested `region()`
+  body, which is not optimistic). Both go into a per-scope undo log while
+  a checkpoint is open.
+- **Restart.** The pass that meets the implicit branch ends there: it is
+  paused for the rest of the lambda (R3, or unwound with R4) and does not
+  count as an explored path. The scope then truncates every table to the
+  checkpoint, replays the undo log backwards, drops region memo entries
+  created after the checkpoint, resets its symbolic-execution state, and
+  starts its first pass with snapshots enabled. `ConstPool`, `pointers` and
+  callee table entries may stay: canonicalization drops unused ones
+  ([13 §7](13-nir-spec.md)). As for a `region()` replay, C++ state the
+  lambda changed is not rolled back.
 - **Scope.** Only arms, loop headers and loop bodies are optimistic. The
   function scope records normally, with a snapshot per operation, because
   restarting a whole function at its first implicit branch would replay its
@@ -295,18 +326,44 @@ struct FlatTrace {                     // per function
   indices go into `consts`/`extra`/side tables.
 - **Value refs stay what they are.** `TypedValueRef`, a `u32` plus the
   type, is what `val<T>` holds. Recording writes one record and the result's
-  ref. At the pre-SSA level that ref is always an instruction id, never a
-  `ConstPool` ref, because any `val` may later be assigned:
-  - `traceConstant` records `var c` with the constant as its operand;
+  ref, which is the record's op id (0.3's refs are already a plain
+  counter, `getNextValueRef`). At the pre-SSA level that ref is always an
+  instruction id, never a `ConstPool` ref, because any `val` may later be
+  assigned:
+  - `traceConstant` of an integer, float or `bool` records `var c` with
+    the constant as its operand; of a pointer, `ptr.const` (below);
   - `traceCopy` records `var x`;
   - `traceAssignment` records `assign`, whose target is always such an id
     (or a parameter, which is a `blockarg`).
 
   `var` ([13 §5.9](13-nir-spec.md)) is a pre-SSA-only opcode that defines a
   new variable initialized to its operand. It is a 16 B record like any
-  other and takes part in snapshots and merge detection as 0.3's `CONST`
-  and copy `ASSIGN` do. The conversion forwards it and emits nothing for
-  it (03 §3). Constant operands that no `val` object holds (for example a
+  other and takes a snapshot like 0.3's `CONST` and copy `ASSIGN`. Like
+  them it **never merges** on a tag hit: a `var` whose snapshot is already
+  in the tag map comes from a different path through the same call site
+  (the arms of `c ? a : b`, #95), so the tracer records
+  `assign <original var>, <operand>` and returns the original id. That is
+  one record where 0.3 records a pair (`CONST`/copy plus a reconciling
+  `ASSIGN`), so the reconciliation skip in `follow()` (#384) is no longer
+  needed for `var` sites; `follow()` accepts either record at such a site.
+  A `ptr.const` at a known tag keeps 0.3's pair (`ptr.const`, then
+  `assign` onto the original id). For example:
+
+  ```text
+  val<int64_t> i = 0;          %1 = var 0
+  val<int64_t> r = i;          %2 = var %1
+  while (i < n)                %3 = cmp.lt.s %1, %0   (block split here on the second iteration's merge)
+    i = i + 1;                 %4 = var 1;  %5 = add %1, %4;  assign %1, %5
+  ```
+
+  The conversion forwards each `var` to its operand's current value and
+  emits nothing for it ([03 §3](03-conversion-and-passes.md) step 1;
+  `var` and `assign` also take extension-type values, so a `val` of an
+  extension type is a variable like any other):
+  `%2` becomes the constant 0, `%4` the constant 1, and only `%1` gets a
+  header phi, because only `%1` is assigned in the loop
+  ([03 §3.2](03-conversion-and-passes.md)); `r` keeps 0 after `i` changes.
+  Constant operands that no `val` object holds (for example a
   `static_val` folded into an operation by the tracer itself) may reference
   `ConstPool` directly.
 - **Merge splits move the tail of one `u32` list and update `blockOf` for
@@ -326,16 +383,25 @@ struct FlatTrace {                     // per function
   [13 §4.6.1](13-nir-spec.md)) becomes an intrinsic callee at trace time,
   by an address → name lookup in the registry. Every other `invoke` is an
   external callee.
-- **Traced constants and pointers.** A traced pointer is never a constant:
-  every one becomes a `pointers` entry with a provenance class
-  ([13 §4.7](13-nir-spec.md), [07](07-serialization.md)). Without a binding
-  it is `RawProcessValue`, which makes the module process-local. Integer and
-  float constants are `Literal` unless the user marks them.
+- **Traced constants and pointers.** A traced pointer is never a constant
+  (13 has no `ptr` constants, [13 §4.2](13-nir-spec.md)): a traced host
+  address becomes a `pointers` entry of kind 3 (*traced address*) with a
+  provenance class, read by a `ptr.const #pN` instruction
+  ([13 §4.7, §5.8](13-nir-spec.md), [07](07-serialization.md)); the null
+  pointer is `ptr.const null` (opcode 38). An entry that no `SymbolNamer`
+  names ([07](07-serialization.md)) stays process-local (mode 0,
+  `ProcessLocal`), is `RawProcessValue` and makes the
+  module process-local (`ModuleRecord.processToken`); an entry that
+  resolves by name or build id (modes 1 and 2) is `Literal`, or
+  `AuditedInvariant` when the user audited it (`cacheLiteral`/`cacheInvariant`, [07 §5](07-serialization.md); neither marker makes a mode-0 entry portable). `ptr.const` is an instruction, so a
+  `val<T*>` holding it can be assigned like any other id. Integer, float
+  and `bool` constants are `Literal` unless the user marks them.
 - **Signature extension kinds.** For every parameter and result of an
   external, intrinsic or exported signature, the tracer records the ABI
   extension kind (none, `zext`, `sext`) from the `val<T>`'s C++ type:
-  unsigned narrow types and `bool` are `zext`, signed narrow types `sext`
-  ([13 §4.5](13-nir-spec.md), [06 §4](06-semantics.md)).
+  `bool` and the unsigned 8-, 16- and 32-bit types are `zext`, the signed
+  ones `sext`, everything else none
+  ([13 §4.5.1](13-nir-spec.md), [06 §4](06-semantics.md)).
 - **Pre-SSA images can be serialized** for debugging and reproducing
   tracing or conversion bugs (fuzzer, playground). They are never executed.
 - **Implemented as a second tracer.** `val<T>` reaches the tracer only
@@ -374,7 +440,8 @@ struct FlatTrace {                     // per function
   a body, and memo keys that differ when paths keep different values alive.
   Same diagnostics; dedicated fuzzer coverage.
 - **Optimistic recording must restart correctly.** An arm that meets an
-  implicit branch rolls back to its checkpoint (§5.2) and re-explores. The
+  implicit branch rolls back to its checkpoint and undo log (§5.2) and
+  re-explores. The
   fuzzer covers arms with and without implicit branches, and a mode that
   forces a restart in every arm.
 - **Non-local exits** (§5.1) skip C++ code that users may expect to run.

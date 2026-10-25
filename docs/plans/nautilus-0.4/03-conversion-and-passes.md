@@ -39,8 +39,13 @@ The default pipeline (`CompilationPipeline.cpp`, `addOptimizationPasses`
 and `compile`) runs `FunctionAttributeInference`, then the fixed-point group
 above (with `LocalCSE` and `StrengthReduction` opt-in), then `LICM`
 (opt-in), `NoThrowInference`, `ExceptionRegionPreparation`, and
-`IRLocationPass` when `debug` or `perf` is set. Every pass in
-`compiler/ir/passes/` gets a home in 0.4:
+`IRLocationPass` when `debug` or `perf` is set. A backend can ask for
+less through `IROptimizationLevel`: MLIR asks for `ArgumentPruning` (only
+`BlockArgumentPruningPass`, because LLVM does the rest), and `None` runs no
+cleanup. In 0.4 the conversion's cleanup is the same for every backend, so
+the level disappears; what MLIR needed from pruning is the dead-value
+sweep (§3.3). Every pass in `compiler/ir/passes/`, and the helpers next to
+it in `compiler/ir/`, gets a home in 0.4:
 
 | 0.3 pass or helper | 0.4 home |
 |---|---|
@@ -58,6 +63,10 @@ above (with `LocalCSE` and `StrengthReduction` opt-in), then `LICM`
 | `IRPassManager` | the runner of optional and plugin passes (§5) |
 | `IRVerifier` | the NIR verifier ([13 §6.4](13-nir-spec.md); M1.2) |
 | `IRStatistics` | NIR op and block counts in the statistics ([10 §3](10-observability.md)) |
+| `IRPass` (interface) | the copy-pass interface of optional and plugin passes (§5) |
+| `OperationEffects` (`isPureOp`, per-op effects) | the per-opcode effect table of 13 §5.0 and `OpInfo.effects` for extension ops, used by §3.3 and §3.4 |
+| `Usages` | the CSR use table built on demand ([02 §4](02-nir.md)) |
+| `IRLocationMap` | the instruction → line map that the printer returns (row `IRLocationPass`) |
 
 ## 3. The optimizing conversion
 
@@ -78,9 +87,13 @@ on its own until the cut-over ([16 §2](16-implementation-plan.md)):
      Braun sealing closes the header; the sealing rule is §3.1, and reads in
      an unsealed header are limited by §3.2;
    - a `var` record ([13 §5.9](13-nir-spec.md)) defines a new variable and
-     emits nothing: the variable's current value in that block becomes the
-     `var`'s operand (a constant or an emitted value, resolved through
-     `forward[]`), exactly as an `assign` updates it.
+     emits nothing: the conversion reads its operand (a constant, or the
+     current value of the operand's variable in that block, resolved
+     through `forward[]`) and writes that value as the new variable's
+     current value in the block, exactly as an `assign` writes its
+     target. A later `assign` to the source does not change it, which is
+     what makes a copy a copy ([01 §6](01-tracing-frontend.md) walks
+     through an example).
 2. **Fold and simplify on emission.** The rules of today's
    `ConstantFoldingAndCopyPropagation` and `AlgebraicSimplification` become
    builder rules, along with the rules of extension ops
@@ -163,7 +176,13 @@ during emission.
   region is treated as live, because a block can be entered through a
   retreating edge from a later entry. Blocks that turn out unreachable are
   dropped by the reachability step of the compaction (§3.3). Braun's
-  construction needs no change: an entry block is sealed by the rule above.
+  construction needs no change: an entry block is sealed by the rule above,
+  so reads in it before the retreating predecessor is visited create
+  incomplete phis (for the variables of the region's assigned set, §3.2).
+  A block that is treated as live but has no live incoming edge when it is
+  sealed (possible only through this conservative rule) resolves every
+  variable read to a zero constant of its type; such a block is
+  unreachable and the compaction drops it with those placeholders.
 - **No recursion.** 0.3's conversion recurses (`processBlock` →
   `processJump`/`processBranch` → `processBlock`), so its stack depth grows
   with the block count. The new traversal walks the precomputed order with
@@ -191,13 +210,26 @@ four pass rounds; 0.4 does it in the conversion:
   are already sealed.
 - **Refold sweep.** Phis that still become trivial at sealing are
   recorded. If there are any, a bounded refold sweep runs after the header
-  is sealed: it builds a CSR use table for the emitted part of the function
-  (only in that case), walks the users of the removed phis forward in
-  layout order, reapplies the fold and simplify rules, and pushes the users
-  of each instruction that changed. Each instruction is revisited at most
-  once per sweep; the sweep never iterates to a fixed point. A `condbr`
-  that folds to a constant becomes a `br`; blocks that become unreachable
-  are dropped by the compaction (§3.3).
+  is sealed. Only the loop's blocks can hold users that were emitted with
+  the phi as an opaque operand (blocks after the loop are not emitted yet
+  and see the forwarded value), and they are contiguous in layout (§3.1),
+  so the sweep builds a CSR use table for that range only. It marks the
+  users of the removed phis in a bitset over the range, scans the range
+  once forward, reapplies the fold and simplify rules (not CSE: the scoped
+  CSE entries of those blocks are gone) to each marked instruction, and
+  marks the users of each instruction that changed. Since definitions
+  precede their non-phi uses in layout, one scan sees every operand change
+  of an instruction before it reaches it: each instruction is visited at
+  most once per sweep, and the sweep never iterates to a fixed point (a
+  phi that becomes trivial only through the sweep is folded by Braun's
+  usual phi-user recursion, but its users are not revisited). The cost is
+  O(loop size) per sealed header with trivial phis, O(n × loop depth) per
+  function at worst.
+- **Branches the sweep folds.** A `condbr` that folds to a constant becomes
+  a `br`, and the dropped edge leaves the live-edge set. A block not yet
+  visited (a loop exit) that loses its last live incoming edge is dead and
+  never emitted; blocks inside the loop that become unreachable, and their
+  incoming branch arguments, are dropped by the compaction (§3.3).
 - **Statistics:** `conversion.refoldSweeps` and
   `conversion.refoldedInsts` per function. The corpus gets a case for a
   loop-invariant variable reassigned in the body.
@@ -212,19 +244,25 @@ conversion already makes:
    edges (left by the refold sweep or by the conservative liveness of an
    irreducible region) are dropped, along with their incoming branch
    arguments.
-2. **Dead block arguments.** A `blockarg` is live if it has a use other
-   than as a branch argument, or is passed to a live `blockarg`. One
-   worklist over the blockarg → blockarg edges marks the live ones; the
-   others are removed with their branch arguments. This removes dead
-   loop-carried variables (a counter assigned in the body and never read
-   after the loop forms a phi → add → phi cycle whose use counts never
-   reach 0), which 0.3's `BlockArgumentPruningPass` rule 1 does.
-3. **Dead values.** A backward walk drops instructions with a use count of
-   0 that have no effect, and decrements their operands' counts, cascading
-   as 0.3's DCE does. "No effect" means no store, load, call, checked
-   division or extension op with effects, as in 0.3's `isPureOp`; a call
-   with all of bits 0–5 ([13 §4.6.2](13-nir-spec.md)) may also be dropped.
-   Branch arguments to removed `blockarg`s do not count as uses.
+2. **Mark from roots.** Use counts alone cannot remove a dead
+   loop-carried variable: a counter assigned in the body and never read
+   after the loop forms a phi → `add` → branch argument → phi cycle, and
+   the phi has a real use (the `add`), so neither a use-count cascade nor
+   a "used only as a branch argument" test removes it. The sweep therefore
+   marks live values from roots, in one worklist:
+   - **roots** are the instructions with an effect (store, load, call,
+     checked division, extension op whose `OpInfo.effects` are not empty;
+     as in 0.3's `isPureOp`, loads are kept), every terminator, and the
+     condition of every `condbr` and the operand of every `ret`; a call
+     with all of bits 0–5 ([13 §4.6.2](13-nir-spec.md)) is not a root;
+   - marking an instruction marks its operands, except branch arguments;
+   - marking a `blockarg` marks, for each live incoming edge, the branch
+     argument at its position in the predecessor's terminator.
+3. **Sweep.** Unmarked instructions are dropped; unmarked `blockarg`s are
+   removed with the branch arguments at their positions. This removes dead
+   chains (0.3's cascading DCE) and dead loop-carried cycles (0.3's
+   `BlockArgumentPruningPass` rule 1) in one O(n) pass, before the
+   renumbering.
 
 The `.nir` tests check that dead loop-carried variables and chains of dead
 values are absent from the output (M3.3).
@@ -238,8 +276,14 @@ changes:
 - at every instruction that may write memory: a store, a call without both
   `noArgWrite` and `noOtherWrite`, an extension op whose
   `OpInfo.effects` include a write;
-- **at the entry of every block with more than one live predecessor, and of
-  every loop header** (sealed or not).
+- **at the entry of every block with more than one live predecessor, of
+  every loop header** (sealed or not), **and of every entry of an
+  irreducible region** (§3.1): its retreating predecessor is not visited
+  yet when the entry is, so its live-predecessor count cannot be trusted
+  at that point.
+
+A block with a single live predecessor starts with the effect id at the
+end of that predecessor.
 
 Memory-dependent entries match only within the same effect id, so they
 never cross a merge or a back edge: a load after an if/else whose one arm
@@ -265,7 +309,13 @@ function". Instead:
   converted.
 - **Per function:** may-read, may-write and may-throw from its
   instructions and its callees' records, and may-loop from cycles in the
-  trace CFG (which clears `willReturn`).
+  trace CFG (which clears `willReturn`). At the pre-SSA level every integer
+  `div`/`rem` is checked (13 §5.10), which would make every function that
+  divides by a literal may-throw, unlike 0.3. The pre-pass therefore
+  treats a `div`/`rem` as non-throwing when its divisor is a safe constant
+  (13 §5.10) or a `var` of one that is never the target of an `assign` in
+  the function (one scan for the assigned set); the conversion clears the
+  checked bit of exactly those, and possibly more after folding.
 - **Across functions:** a fixed point over the strongly connected
   components of the call graph, optimistic for `noUnwind` (as 0.3's
   `NoThrowInferencePass`) and pessimistic for memory effects and
@@ -302,7 +352,7 @@ internal form below this point ([05](05-backends.md)).
   partition pass of [17 §4.5](17-gpu.md)) or *optional*. Only required passes run on
   latency-critical compiles, so a plugin cannot silently put a fixed-point
   pass back on the critical path.
-- **Analyses** come from `BlockInfo`, the derived loop table and
+- **Analyses** come from `BlockRecord`, the derived loop table and
   `useCount`; plugins do not recompute them.
 - The options `ir.runOptimizationPasses` and `ir.disable*` keep their meaning
   for the optional passes. Options for passes that no longer exist are

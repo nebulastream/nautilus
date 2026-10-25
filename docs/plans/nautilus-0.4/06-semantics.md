@@ -21,13 +21,20 @@ from M1 ([13 §5.5, §5.10](13-nir-spec.md)), so they are built where NIR is
 consumed, not in M6:
 - the tracer records a cleanup list on every integer `div`/`rem` (M2.1,
   [01 §6](01-tracing-frontend.md));
-- the conversion sets the checked bit for every divisor not proven safe
-  (M3.1);
+- the conversion keeps the checked bit for every divisor not proven safe
+  and clears it for a safe constant divisor (non-zero, and not −1 for a
+  signed operation; [13 §5.10](13-nir-spec.md)), and masks constant shift
+  amounts (M3.1/M3.2). Without this, `x / 10` would carry a check and an
+  unwind entry on every backend from M4 on, and the M3/M4 op-count and
+  code-quality gates against 0.3, which has no check at all, could not
+  pass;
 - **every backend lowers the checked division, the shift masks and the
   saturating casts in its M4 port** (M4.1, M4.3–M4.5), as §4.2 lists.
 
-M6.1 keeps only the folding rules for the edge cases, the cost measurement
-and the plugin side.
+M6.1 keeps only the folding rules for the edge cases (constant operands
+that are unsafe: a constant zero divisor or `MIN / −1` folded to an
+unconditional throw, range-based proofs beyond a constant divisor), the
+cost measurement and the plugin side.
 
 ## 2. Root causes
 
@@ -101,7 +108,8 @@ New in 0.4, removing what is not needed:
     bits 0–5.
 
   So an external callee is merged only when declared `readonly nothrow` or
-  `pure nothrow` (or `noexcept`), and hoisted only when `pure nothrow`.
+  `pure nothrow` (a `noexcept` function type may stand in for `nothrow`,
+  never for `readonly` or `pure`), and hoisted only when `pure nothrow`.
   Every other call stays a barrier.
 - **Declarations and inference coexist.** The analyses of
   `NoThrowInferencePass` and `FunctionAttributeInferencePass` run once, as
@@ -160,8 +168,9 @@ New in 0.4, removing what is not needed:
     conversion drops the check when folding proves the divisor safe. The
     cost is measured on `ExecutionBenchmark`.
   - **Shift masks are emitted only where the target does not mask:** x86
-    and AArch64 mask 32- and 64-bit shift counts in hardware, so only 8-
-    and 16-bit shifts there, every shift in MLIR/LLVM (where an oversized
+    and AArch64 mask 32- and 64-bit shift counts in hardware (x86 masks
+    8- and 16-bit counts to 5 bits, not to the width), so only 8- and
+    16-bit shifts there, every shift in MLIR/LLVM (where an oversized
     shift is poison) and every shift in the C++ of `tbc` and `cpp` (where
     it is UB) need an explicit `and`. Constant amounts are masked at
     conversion time.
@@ -194,8 +203,8 @@ path ends in a call of `nautilus_rt_throw_arith`, which throws
 
 | Backend | Checked `div`/`rem` | Shift amount | `fptosi`/`fptoui` (saturating) | Throw path |
 |---|---|---|---|---|
-| `asmjit` x86-64 | compare the divisor with 0 (and, signed, with −1 when the dividend is `MIN`), branch to a cold block; then `div`/`idiv` | none for 32/64-bit (hardware masks); explicit `and` for 8/16-bit | `cvttss2si`/`cvttsd2si`, then a fixup when the result is the "integer indefinite" `0x80…0`: NaN → 0, positive overflow → `MAX`; unsigned and 8/16-bit results by a range-compare sequence | cold block calls the helper through the capture thunk; the exceptional exit goes to the instruction's pad |
-| `asmjit` AArch64 | the same compares (`sdiv`/`udiv` do not trap: x/0 gives 0, `MIN / −1` gives `MIN`); `rem` with `msub` | none for 32/64-bit (`lslv`/`lsrv`/`asrv` use the amount modulo the width); explicit `and` for 8/16-bit | `fcvtzs`/`fcvtzu` already saturate and give 0 for NaN for 32/64-bit results; 8/16-bit results clamp after a 32-bit conversion | as x86-64 |
+| `asmjit` x86-64 | compare the divisor with 0 (and, signed, with −1 when the dividend is `MIN`), branch to a cold block; then `div`/`idiv`, which would raise `#DE` for either case | none for 32/64-bit (hardware masks); explicit `and` for 8/16-bit, and an 8/16-bit `shr` works on the value sign- or zero-extended to 32 bits as its flag says | `cvttss2si`/`cvttsd2si`, then a fixup when the result is the "integer indefinite" `0x80…0`: NaN → 0, positive overflow → `MAX`; unsigned and 8/16-bit results by a range-compare sequence | cold block calls the helper through the capture thunk; the exceptional exit goes to the instruction's pad |
+| `asmjit` AArch64 | the same compares, needed for the semantics rather than to avoid a trap (`sdiv`/`udiv` do not trap: x/0 gives 0, `MIN / −1` gives `MIN`); `rem` as `sdiv`/`udiv` then `msub` | none for 32/64-bit (`lslv`/`lsrv`/`asrv` use the amount modulo the register width); explicit `and` for 8/16-bit, on a 32-bit register holding the value extended as for x86-64 | `fcvtzs`/`fcvtzu` already saturate and give 0 for NaN for 32/64-bit results; 8/16-bit results clamp after a 32-bit conversion | as x86-64 |
 | `tbc` (interpreter and copy-and-patch stencils) | checked C++ handler: compare, then the C++ operator; never UB | `amount & (width − 1)` in every shift handler | checked C++ helper with explicit NaN and range tests | the handler calls the helper through the capture thunk; the interpreter routes to the pad as for a captured call. Stencils are regenerated from the same handlers ([05](05-backends.md)) |
 | `cpp` | generated code calls checked inline helpers from the emitted prelude | as `tbc` | as `tbc` | as `tbc`, through today's `CapturedExceptionTransport` preamble |
 | MLIR | `arith.cmpi` + `cf.cond_br` to a cold block; then `arith.divsi`/`divui`/`remsi`/`remui` | explicit `arith.andi` on every dynamic amount | `llvm.intr.fptosi.sat` / `llvm.intr.fptoui.sat` | the cold block calls the helper directly; native unwinding (`llvm.invoke` to the pad, or a plain call with `NO_CLEANUP`) |
