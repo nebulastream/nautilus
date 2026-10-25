@@ -257,8 +257,9 @@ releases and no temporary formats.
    ([08 §5.1](08-caching.md)).
 5. `test/api-compat/` passes unchanged on every backend: 0.3's user-API
    tests that include public headers only and neither name a backend nor
-   parse IR or dump text, and the examples, frozen after `bc` was removed
-   (its GPU tests enabled from M7; [16 §2](16-implementation-plan.md)).
+   parse IR or dump text, and the examples, each on the backends it
+   supports, frozen after `bc` was removed (its GPU tests enabled from M7;
+   [16 §2](16-implementation-plan.md)).
 6. The GPU suite passes on Metal (with validation layers) and on the grid
    emulator in CI, every kernel compiles for CUDA, and the Metal
    performance targets of [17 §4.8](17-gpu.md) are met; CUDA ships as

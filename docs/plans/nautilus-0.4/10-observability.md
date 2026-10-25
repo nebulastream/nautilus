@@ -31,10 +31,10 @@ single-tier per backend, so the same driver also builds against 0.3. Per (functi
 | `distinctSites1024` | tag creation |
 
 Additions in 0.4:
-- **explicit control-flow twins** of `chainedIf` and `loopBody`;
-- **an extension-op case** (SIMD);
+- **explicit control-flow twins** of `chainedIf` and `loopBody` (M2.5);
+- **an extension-op case** (SIMD, M6.5);
 - **a cache case:** cold, warm L1, warm L2, and L0 canonicalize + hash
-  cost ([08 §5](08-caching.md));
+  cost ([08 §5](08-caching.md), M5.7);
 - **real kernels:** NebulaStream queries via the `nebulastream-0.4` job,
   and TPC-H kernels from nautilus-duck via the `tpch-duck` job
   ([16 §3](16-implementation-plan.md)).
@@ -85,8 +85,10 @@ How it is measured (D9):
   counts ≤ 0.3" compare with **recorded 0.3 baselines** (corpus instruction
   counts and stage timings, IR op counts after 0.3's passes, `asmjit`
   assembly of the corpus, the inferred `FunctionAttributes` of every
-  execution-test function, `ExecutionBenchmark`, TPC-H), taken at the
-  branch point.
+  execution-test function, `ExecutionBenchmark`), taken at the branch
+  point; the TPC-H numbers (tracing time, re-run share, copies, op counts,
+  execution time) are added when the `tpch-duck` job exists (M2.3), by
+  building nautilus-duck against `main` in the same job.
 - **The `baselines-0.3` job runs on `nautilus-0.4`:** it checks out `main`,
   builds the same corpus driver against it in the same pinned container,
   and records the results ([16 §2](16-implementation-plan.md)). No job or
@@ -115,14 +117,15 @@ an increment per counter and no walks.
   passes.
 - **Pre-SSA images** ([01 §6](01-tracing-frontend.md)) as reproducers,
   attached to fuzzer findings and bug reports, and loadable by the
-  playground.
+  playground (M5.10).
 - **The backend explorer (#524)** reads NIR and the statistics to compare
   compile time and code quality per backend.
-- **The differential fuzzer** gains:
-  - mixed explicit and implicit control flow;
-  - extension ops with handlers on and off;
-  - serialization round trips;
-  - L2 hits.
+- **The differential fuzzer** gains ([16](16-implementation-plan.md)):
+  - a `NirChain` mode that runs the new chain before the cut-over (M3.1);
+  - mixed explicit and implicit control flow (M2.5);
+  - extension ops with handlers on and off (M6.6);
+  - serialization round trips (M5.5);
+  - L2 hits (M5.7).
 
 ## 5. Exit criteria
 
