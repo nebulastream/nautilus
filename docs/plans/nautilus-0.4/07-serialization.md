@@ -92,7 +92,7 @@ Artifact
 API, carried over from #532 and #527:
 
 ```cpp
-auto image  = nautilus::saveModule(compiled);            // NIR image + native payloads
+auto image  = nautilus::saveModule(compiled);            // NIR image + native payloads; NIR image only if compiled with embedded addresses (§2.1)
 auto info   = nautilus::inspectModule(image);
 auto loaded = nautilus::loadModule(engine, image, bindings);
 auto sum    = loaded.getFunction<int64_t(int64_t*, int64_t)>("sum");
