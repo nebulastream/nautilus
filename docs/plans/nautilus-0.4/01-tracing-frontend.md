@@ -129,9 +129,10 @@ Where copies come from:
 
 - **Copy construction from an lvalue:** `val<T> r = x;`, by-value
   parameters, by-value captures, containers of `val`. Moves already record
-  nothing (`val(val&&)` moves the state).
-- **Assignment:** `x = expr` records `ASSIGN` (a variable update). These are
-  needed: they are what makes `x` a variable for SSA construction.
+  nothing (`val(val&&)` moves the state). In NIR a copy is a `var x` record
+  (§6): it defines a new variable, so a later `r = y` does not reassign `x`.
+- **Assignment:** `x = expr` records `ASSIGN` (a variable update; `assign`
+  in NIR). These are needed: they are what makes `x` a variable for SSA construction.
 - **Explicit fresh values:** `ptr + 0` (`ptrAddStatic`) copies so that
   assigning to the result does not reassign `ptr`.
 
@@ -142,17 +143,18 @@ conversion, copies are free: Braun-style SSA construction resolves them.
 
 | # | Change | Effect | Risk |
 |---|---|---|---|
-| C1 | **Counters** per copy kind (construction, assignment, explicit) | Shows which kind dominates on TPC-H and NebulaStream | none |
+| C1 | **Counters** per copy kind (construction, assignment, explicit); `var` records with a value operand count as construction copies, `var` of a constant is counted separately as constant initialization | Shows which kind dominates on TPC-H and NebulaStream | none |
 | C2 | **Avoid unnecessary copies in library code:** take `const val<T>&` in the `std` plugin and in hot helpers; the `nautilus-review` skill flags by-value `val` parameters | Fewer copies with no semantic change | none |
 | C3 | **Cheaper copy records:** the 16 B flat record (§6) plus the open-addressing tag map (§3) | Per-copy cost drops with every other operation | none |
-| C4 | **Lazy copies (investigation, not committed for 0.4):** record a copy as an alias of its source and materialize the `ASSIGN` only when either side is later assigned | Could remove most copy records | High: copy sites take part in merge detection and in the alive-variable snapshot, so aliasing must not change which paths merge. Prototype behind a flag; adopt only if the fuzzer and every `tracing/` reference trace agree |
+| C4 | **Lazy copies (investigation, not committed for 0.4):** record a copy as an alias of its source and materialize the copy (`var` in NIR) only when either side is later assigned | Could remove most copy records | High: copy sites take part in merge detection and in the alive-variable snapshot, so aliasing must not change which paths merge. Prototype behind a flag; adopt only if the fuzzer and every `tracing/` reference trace agree |
 
 ### 4.4 Targets
 
 To confirm on TPC-H and NebulaStream with the R1/C1 counters:
 
 - the re-run share of tracing time falls from 61% to at most 35% on
-  unchanged (implicit) code;
+  unchanged (implicit) code, with the shipped default of
+  `tracing.unwindPausedPasses` (whatever M2.2 decides for R4);
 - paused operations are close to zero with R4 enabled;
 - recorded copies fall by at least a quarter through C2 and the frontend
   changes.
@@ -191,24 +193,83 @@ Semantics:
   recorded without snapshots or tag-map lookups: with no implicit branch,
   nothing can merge. If an implicit branch is reached inside an arm, that
   arm's scope restarts its exploration with snapshots enabled. The restart
-  is bounded to the arm, as a region replay is. The construct itself takes
-  one snapshot at its entry, as the memo key.
+  is bounded to the arm, as a region replay is, and rolls back what the arm
+  recorded (§5.2). The construct itself takes one snapshot at its entry, as
+  the memo key.
 - **Results flow out through captured `val`s,** as with `region()`; a value
   created inside a body must not outlive it. The value form of `If` is sugar
   over a captured variable.
 - **Early exits:** `Break()` and `Continue()` inside `While`/`For`, and
-  `Return(v)` to leave the function. Each is a terminator emitted directly.
+  `Return(v)` to leave the function. Each is a terminator emitted directly
+  (§5.1).
 - **Direct mode** (tracing disabled) runs the lambdas natively, like
   `select.hpp`.
 
 A function written entirely with explicit constructs traces in one pass,
-with one snapshot per construct and none per operation. Source-location
-tags are recorded only when requested (debug, perf).
+with one snapshot per construct and per operation outside constructs (at
+function scope, between constructs), and none per operation inside arms and
+bodies (§5.2). Source-location tags are recorded only when requested
+(debug, perf).
 
 Port of #300: keep its public header (`nautilus/control_flow.hpp`), its
 tests (`ExplicitControlFlowTest.cpp`) and its single-pass guarantees.
 Replace its tag-free block emission with region-scope emission, and turn
 its mixing guard into mixing tests.
+
+### 5.1 Non-local exits
+
+`Break()`, `Continue()` and `Return(v)` are plain function calls: C++
+`break` cannot leave a lambda, so the code after them in the same lambda
+keeps running. 0.3's region scopes forbid what they need (a region body
+cannot return, `traceReturnOperation`; a region whose exit has no
+predecessor is an error, `traceScopeExit`). Construct scopes therefore
+differ from `region()` scopes in four rules:
+
+- **The rest of the scope runs paused.** `Break`/`Continue`/`Return` emit
+  their terminator, then pause the current scope and every enclosing
+  scope up to the target construct (the loop for `Break`/`Continue`, the
+  function for `Return`). The rest of each lambda runs on the minimal
+  paused path (R3); nothing after the exit is recorded, and no dead block
+  is created for it.
+- **Owned values are destroyed on the exit path.** Before the terminator,
+  the tracer emits the destructor calls of all registered owned values
+  (`registerDestructor`) created inside the scopes being left, in reverse
+  creation order, and unregisters them. Their C++ destructors run later,
+  while paused, and record nothing. Native `break` in 0.3 gets this from
+  C++ scoping; explicit exits get it from the tracer.
+- **A construct scope's exit may have no predecessor.** When every path
+  through an arm or body leaves non-locally (an arm that always `Break`s),
+  this is not an error for explicit constructs. If the whole construct has
+  no live exit, the code after it is unreachable, and the enclosing scope
+  is paused up to its own end. `region()` keeps its diagnostic.
+- **Escape-check exemptions.** `Return(v)` is allowed in any construct
+  scope, and its value is exempt from the "created inside the body" check.
+  So is the `While` header's `val<bool>`, which the header scope consumes in
+  its own `condbr`. Any other value that outlives its scope is rejected as
+  in `region()`.
+
+### 5.2 Optimistic recording: checkpoint and restart
+
+An arm or body records optimistically. When it meets an implicit branch it
+restarts with snapshots enabled, and everything it recorded must disappear.
+
+- **Checkpoint.** At entry, an optimistic scope saves the sizes of `ops`,
+  `extra`, `blocks` (and of the per-op tables `snapshot`, `region`,
+  `blockOf`), the alloca table, the data-object table, the region records,
+  the callee queue (`functionsToTrace`), the destructor stack and the
+  explicit-construct stack, plus the next value ref and the value-ref free
+  list's length.
+- **Restart** truncates all of them to the checkpoint and drops region memo
+  entries created after it. No tag-map entry exists to drop, because
+  optimistic records take no snapshot. `ConstPool`, `pointers` and callee
+  table entries may stay: canonicalization drops unused ones
+  ([13 §7](13-nir-spec.md)).
+- **Scope.** Only arms, loop headers and loop bodies are optimistic. The
+  function scope records normally, with a snapshot per operation, because
+  restarting a whole function at its first implicit branch would replay its
+  prefix. An all-explicit function therefore takes one snapshot per
+  construct plus one per operation outside constructs; `tracing.snapshots`
+  ([10 §3](10-observability.md)) checks it.
 
 ## 6. The flat trace (NIR, pre-SSA level)
 
@@ -222,7 +283,8 @@ struct FlatTrace {                     // per function
 	std::vector<uint32_t>   extra;      // call args, block-ref args
 	ConstPool               consts;
 	std::vector<Snapshot>   snapshot;   // by op id; record mode only; never serialized
-	std::vector<uint16_t>   region;     // by op id
+	std::vector<uint32_t>   region;     // by op id; RegionRecord index
+	std::vector<uint32_t>   blockOf;    // by op id; updated for the moved tail on a split
 	std::vector<TraceBlock> blocks;     // per block: arena list of op ids, predecessors
 	FlatMap<Snapshot, uint32_t> tagMap; // trace arena; snapshot -> op id
 };
@@ -233,11 +295,47 @@ struct FlatTrace {                     // per function
   indices go into `consts`/`extra`/side tables.
 - **Value refs stay what they are.** `TypedValueRef`, a `u32` plus the
   type, is what `val<T>` holds. Recording writes one record and the result's
-  ref.
-- **Merge splits move only the tail of one `u32` list.** Op ids are global
-  and stable, so `tagMap` entries never change.
+  ref. At the pre-SSA level that ref is always an instruction id, never a
+  `ConstPool` ref, because any `val` may later be assigned:
+  - `traceConstant` records `var c` with the constant as its operand;
+  - `traceCopy` records `var x`;
+  - `traceAssignment` records `assign`, whose target is always such an id
+    (or a parameter, which is a `blockarg`).
+
+  `var` ([13 §5.9](13-nir-spec.md)) is a pre-SSA-only opcode that defines a
+  new variable initialized to its operand. It is a 16 B record like any
+  other and takes part in snapshots and merge detection as 0.3's `CONST`
+  and copy `ASSIGN` do. The conversion forwards it and emits nothing for
+  it (03 §3). Constant operands that no `val` object holds (for example a
+  `static_val` folded into an operation by the tracer itself) may reference
+  `ConstPool` directly.
+- **Merge splits move the tail of one `u32` list and update `blockOf` for
+  it;** `tagMap` is never rewritten. Op ids are global and stable. The
+  split still walks the moved tail (O(tail), as today); the saving is the
+  hash-map write per moved op.
 - **Plugins record their ops through one entry point:**
   `traceExtOp(op, type, inputs)` ([04-extensions.md](04-extensions.md)).
+- **Integer `div`/`rem` always record a cleanup list** (the current
+  destructor stack, [13 §3.4](13-nir-spec.md)), like a may-throw call:
+  whether the divisor is safe is known only after folding, and a checked
+  division that fails throws `nautilus::ArithmeticException` (D10,
+  [06 §4](06-semantics.md)). The conversion drops the list when it proves
+  the divisor safe.
+- **Calls of registered intrinsics.** A traced `invoke` whose function
+  address is registered as an intrinsic (`name@version`,
+  [13 §4.6.1](13-nir-spec.md)) becomes an intrinsic callee at trace time,
+  by an address → name lookup in the registry. Every other `invoke` is an
+  external callee.
+- **Traced constants and pointers.** A traced pointer is never a constant:
+  every one becomes a `pointers` entry with a provenance class
+  ([13 §4.7](13-nir-spec.md), [07](07-serialization.md)). Without a binding
+  it is `RawProcessValue`, which makes the module process-local. Integer and
+  float constants are `Literal` unless the user marks them.
+- **Signature extension kinds.** For every parameter and result of an
+  external, intrinsic or exported signature, the tracer records the ABI
+  extension kind (none, `zext`, `sext`) from the `val<T>`'s C++ type:
+  unsigned narrow types and `bool` are `zext`, signed narrow types `sext`
+  ([13 §4.5](13-nir-spec.md), [06 §4](06-semantics.md)).
 - **Pre-SSA images can be serialized** for debugging and reproducing
   tracing or conversion bugs (fuzzer, playground). They are never executed.
 - **Implemented as a second tracer.** `val<T>` reaches the tracer only
@@ -245,9 +343,14 @@ struct FlatTrace {                     // per function
   tracer is a new implementation of that interface (`tracing/nir/`), built
   next to 0.3's `TraceContext` and tested on its own until the cut-over
   replaces the old one ([16 §2](16-implementation-plan.md)). It maps
-  today's `Type` and `Op` values to NIR widths and flags at the interface,
-  so the public headers do not change. The tag trie and symbolic execution
-  are shared and kept.
+  today's `Type` and `Op` values to NIR widths, flags and signature
+  extension kinds at the interface, so the user-facing headers of
+  [README §5](README.md) do not change. `TracingInterface`
+  (`include/nautilus/tracing/TracingInterface.hpp`), which is a public
+  header but not user-facing, gains `traceExtOp`, `traceData`,
+  `traceBinding` and the explicit-construct hooks; they are added in PR 3
+  with no-op defaults in 0.3's `TraceContext`. The tag trie and symbolic
+  execution are shared and kept.
 
 ## 7. Exit criteria (M2)
 
@@ -258,7 +361,12 @@ struct FlatTrace {                     // per function
 - Mixed implicit and explicit functions are correct under the differential
   fuzzer.
 - No `malloc` per recorded operation in steady state.
-- `tracing/` reference dumps regenerated once, in an isolated commit.
+- `tracing/` reference dumps regenerated in isolated commits, once per
+  work package that changes traces (the cut-over, then C2, R2–R4 and
+  explicit control flow), never together with the behavior change.
+- Snapshots counted (`tracing.snapshots`): an all-explicit corpus function
+  takes exactly one per construct plus one per operation outside
+  constructs (§5.2).
 
 ## 8. Risks
 
@@ -266,8 +374,13 @@ struct FlatTrace {                     // per function
   a body, and memo keys that differ when paths keep different values alive.
   Same diagnostics; dedicated fuzzer coverage.
 - **Optimistic recording must restart correctly.** An arm that meets an
-  implicit branch discards its optimistic records and re-explores. The
-  fuzzer covers arms with and without implicit branches.
+  implicit branch rolls back to its checkpoint (§5.2) and re-explores. The
+  fuzzer covers arms with and without implicit branches, and a mode that
+  forces a restart in every arm.
+- **Non-local exits** (§5.1) skip C++ code that users may expect to run.
+  The tracer pauses it rather than recording it, and the destructor calls
+  of owned values are emitted explicitly; both are covered by dedicated
+  tests.
 - **Unwinding paused passes (R4)** interacts with user code that catches
   everything or is `noexcept`. It stays opt-in until the data supports a
   default, with R3 as the safe fallback.
