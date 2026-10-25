@@ -13,9 +13,20 @@ produce and consume the artifacts of [07-serialization.md](07-serialization.md).
 
 | Level | Key | Lookup point | Hit skips | Scope |
 |---|---|---|---|---|
-| **L0 in-process** | hash of the canonical NIR image + backend + options; `ProcessLocal` pointers allowed | after conversion | everything after conversion: the executable already in memory is reused | one process, in memory |
-| **L1 semantic** | caller-supplied `engine.cache.key` + compatibility identity | **before tracing** | tracing and conversion; code generation too when a native payload matches (otherwise recompiled from the NIR image) | persistent directory |
-| **L2 structural** | hash of the canonical NIR image (names, not ids; portable pointers; options; extension versions) + backend | after conversion | code generation, via a matching native payload | persistent directory |
+| **L0 in-process** | structural hash of the in-memory canonical module ([13 §7](13-nir-spec.md)), pointers in whatever mode they resolved to (`ProcessLocal` allowed) + backend | after conversion | everything after conversion: the executable already in memory is reused | one process, in memory |
+| **L1 semantic** | caller-supplied `engine.cache.key` + compatibility identity (below) | **before tracing** | tracing and conversion; code generation too when a native payload matches (otherwise recompiled from the NIR image) | persistent directory |
+| **L2 structural** | structural hash of the canonical NIR image (names, not ids; portable pointers; code-affecting options; extension versions) + backend + LLVM target triple, data layout, target CPU and feature string | after conversion | code generation, via a matching native payload; a hit's payload is used only if its compatibility descriptor matches ([07 §2.2](07-serialization.md)), otherwise the entry's NIR image is recompiled | persistent directory |
+
+- **Lookup order.** L1 is looked up before tracing; L0 and then L2 after
+  conversion; each for the tier-1 backend first
+  ([11 §4.6](11-tiered-compilation.md)).
+- **What L1 stores.** An L1 entry holds the canonical NIR image of every
+  compiled module, whatever tier and backend compiled it, plus optional
+  native payloads per backend and tier. On an L1 miss the image (without a
+  payload) is stored right after conversion, so a warm L1 hit skips tracing
+  even when only tier 0 ever ran (`manual` promotion,
+  `engine.backend=asmjit`). A tier-1 payload is added to the entry when
+  promotion finishes; the entry is replaced atomically (§3).
 
 ### L1: semantic key (#528)
 
@@ -23,12 +34,24 @@ produce and consume the artifacts of [07-serialization.md](07-serialization.md).
   specialization choices. Neither function names nor an IR hash replace it.
 - **The compatibility identity separately covers:**
   - the actual core and cache-provider builds;
-  - the LLVM target and layout;
+  - the LLVM target triple, data layout, target CPU and feature string
+    (`engine.mlir.targetCpu`, [07 §2](07-serialization.md));
   - declared exports;
-  - typed effective options, including arbitrary application options;
-  - extensions (`name@version`).
+  - the code-affecting options: every option whose registry entry has
+    `affectsCode` (M1.4a), hashed as (name, canonical value encoding)
+    sorted by name, with defaults filled in, so setting an option to its
+    default changes nothing ([13 §7](13-nir-spec.md));
+  - application options (keys not in the registry), as strings, because
+    Nautilus cannot tell whether traced code reads them;
+  - extensions (`name@version`);
+  - for code spliced by the `inlining` plugin's hooks, the hash of the
+    spliced bitcode ([07 §2](07-serialization.md)).
 
-  Missing or changed identities fail closed.
+  Missing or changed identities fail closed. A changed option, export,
+  extension or application option is a miss. A changed core or provider
+  build, target, CPU or feature string makes only the entry's native
+  payloads unusable: they are never executed, and the entry's NIR image is
+  recompiled, still without tracing (D12, [07 §2.2](07-serialization.md)).
 - **The caller provides the binding environment before lookup.** A native
   hit skips the callable, so captured handles and scalar certifications
   cannot be revalidated at hit time (#529).
@@ -50,16 +73,26 @@ produce and consume the artifacts of [07-serialization.md](07-serialization.md).
   different call sites or sessions.
 - **Only for backends with native payloads** (MLIR/LLVM in 0.4,
   [07 §2](07-serialization.md)). For the other backends, recompiling from
-  NIR is about as cheap as loading, so they use L0 in-process and L1 to
-  skip tracing.
+  NIR is about as cheap as loading, so they use L0 in-process and L1 (which
+  stores their NIR image) to skip tracing.
+- **Payloads that used the `inlining` hooks** join L2 only with the spliced
+  bitcode's hash in the key; payloads that are not persistable
+  ([07 §2](07-serialization.md)) are never stored, and their modules use L0
+  only.
 - **Collisions:** a 128-bit hash, plus a full image comparison on hit
   (images are small and flat).
 
 ### L0: in-process (new)
 
-- **Same key as L2,** with process-local pointers allowed. Serves repeated
-  compiles inside one process (operators recompiled per query) with no
-  filesystem involved.
+- **Same construction as L2** ([13 §7](13-nir-spec.md)), over the module
+  with its pointers in whatever mode they were resolved. L0 and L2 keys
+  therefore differ for modules with `ProcessLocal` pointers. Serves
+  repeated compiles inside one process (operators recompiled per query)
+  with no filesystem involved.
+- **Cost:** enabling L0 adds canonicalization (compaction, reordering,
+  interning, itself a full rewrite) and the hash to the compile path. It is
+  recorded as `cache.hashMs` ([10 §3](10-observability.md)) and budgeted at
+  0.05 µs/op on the corpus (§5).
 - **Bounded** by entry count and bytes, with LRU eviction.
 
 ### Modules with imports ([13 §4.4](13-nir-spec.md))
@@ -85,7 +118,23 @@ Storage keeps #528's model:
 
 Caches are trusted executable input. There is no authentication and no
 protection against hostile same-UID writers. There are no network-filesystem
-guarantees. Persistent eviction is not in 0.4.
+guarantees.
+
+### 3.1 Bounds, corruption and failures
+
+- **Size bound.** `engine.cache.maxBytes` (default 1 GiB) bounds the
+  directory. On store, entries are evicted oldest access first, under the
+  directory lock, until the new entry fits. Access times are kept in the
+  manifest, not taken from the file system (`noatime` mounts).
+- **Corrupt or incompatible entries** (checksum, descriptor, stale build
+  identity, CPU mismatch) are a miss with their reason. The new result
+  replaces the entry atomically (manifest last), so entries left behind by
+  an upgrade are replaced on first use and otherwise age out by the size
+  bound. For a stale payload with a valid image (D12) the image is still
+  used, and only the payload is rebuilt.
+- **Store failures** (`ENOSPC`, `EACCES`, a lock timeout) are a miss with
+  reason `storeFailed`, never an error. The compiled module is returned
+  normally.
 
 ## 4. Integration
 
@@ -97,17 +146,47 @@ guarantees. Persistent eviction is not in 0.4.
   directory.
 - **Ineligible modules** (provenance, [07 §5](07-serialization.md)) compile
   normally from the already-traced NIR. There is never a second trace.
+- **Single flight.** Concurrent misses on the same L0 or L2 key are single
+  flight: the second caller waits for the first's code generation, bounded
+  by `engine.cache.waitMs`, and then compiles itself. L1 stores take the
+  per-key file lock; the last writer wins.
 - **Statistics:** for every lookup, the hit or miss level and a reason
-  (keyless, ineligible, incompatible, corrupt, fallback). Failed requests
-  stay in the denominator.
+  (keyless, ineligible, incompatible, cpuMismatch, corrupt, storeFailed,
+  evicted, fallback). Failed requests stay in the denominator.
 
 ## 5. Exit criteria (M5)
 
-- Warm NebulaStream suite at least 60% faster than cold, measured like #529
-  (fresh processes, ASLR, empty cold caches).
+- **Warm wall time ≤ 40% of cold wall time** on the NebulaStream suite
+  (§5.1). This is what "60% faster" means: time −60%, not a 1.6x speedup.
+  #529 measured −67% against `cold-disabled`.
 - An L2 hit for a structurally equal module compiled under a different key.
+- An L1 hit with `manual` promotion and no tier 1 skips tracing.
 - All of #528's storage, compatibility and concurrency tests ported and
-  green.
+  green, plus tests for §3.1 and single flight: a truncated and a
+  bit-flipped entry are a miss and are replaced; the size bound evicts the
+  oldest entry; a read-only and a full directory (a small `tmpfs`) give
+  `storeFailed` and a working module; an entry from another build or CPU is
+  not executed; two threads missing on one key compile once.
+- With L0 enabled, canonicalization plus hashing costs at most 0.05 µs/op
+  on the `straight` and `loopBody` corpus cases (reference machine; CI
+  tracks the instruction count, [10 §2](10-observability.md)).
+
+### 5.1 Warm NebulaStream measurement
+
+- **Cold:** the suite with the cache plugin enabled
+  (`ENABLE_CACHE_PLUGIN=ON`) and an empty cache directory, so cold pays
+  the store cost.
+- **Warm:** a second run of the suite in fresh processes on the same
+  directory.
+- **Reported alongside:** `cold-disabled` (no cache plugin), #529's
+  baseline.
+- Both runs on the reference machine, ASLR on, fresh processes per query
+  as in #529.
+- **Harness:** a `nebulastream-cache` workflow (manual or nightly) that
+  runs the suite cold and then warm, and the NebulaStream patch that sets
+  `engine.cache.key` per query (the port of #529's NebulaStream branch).
+  Both are part of M5.7; the existing `nebulastream.yml` runs the suite
+  once, with no cache options.
 
 ## 6. Risks
 
