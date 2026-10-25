@@ -1,7 +1,7 @@
 # Implementation Plan
 
 Part of the [Nautilus 0.4 design](README.md) · All milestones · Turns the
-component documents (01–15) into ordered work packages and pull requests
+component documents (01–15, 17) into ordered work packages and pull requests
 
 ## 1. Purpose and how to use it
 
@@ -94,8 +94,8 @@ unchanged from the cut-over on, on every enabled backend.
 ## 3. Ground rules
 
 1. **The branch always builds**, and its component tests pass. Before the
-   cut-over, every existing test also passes (the old pipeline is
-   untouched). From the cut-over on, every test passes on every enabled
+   cut-over, every existing test also passes (the old pipeline keeps its
+   behavior, §2). From the cut-over on, every test passes on every enabled
    backend, and `test/api-compat/` passes.
 2. **The spec comes first.** A WP that finds a gap or error in
    [13-nir-spec.md](13-nir-spec.md) changes the spec in the same PR, before
@@ -117,7 +117,7 @@ unchanged from the cut-over on, on every enabled backend.
    | `nir-components` | PR 1 | `nautilus-nir-tests`: unit tests, `.nir` text tests, golden images | always |
    | `nir-chain` | PR 4 | execution-test functions through `NirChain` | until the cut-over, then replaced by the normal matrix |
    | `api-compat` | PR 6 | `test/api-compat/` on every enabled backend (GPU tests from PR 17) | from the cut-over |
-   | `latency-corpus` | PR 2 | corpus under callgrind in the pinned container, as instruction-count ratios against the recorded 0.3 baselines (gated); wall clock (reported) | from the cut-over (before: reports the 0.3 pipeline) |
+   | `latency-corpus` | PR 2 | corpus under callgrind in the pinned container (single-tier, ASLR off, CPU dispatch pinned, [10 §2](10-observability.md)), as instruction-count ratios against the recorded 0.3 baselines (gated); wall clock (reported) | from the cut-over (before: reports the 0.3 pipeline) |
    | `baselines-0.3` | PR 2 | on `nautilus-0.4`: checks out `main`, builds it in the same container with the corpus driver and refreshes `test/baselines/0.3/` | — |
    | `nebulastream-0.4` | PR 2 | NebulaStream against `nautilus-0.4` (D16) | from the M4 exit (before: reports) |
    | `tpch-duck` | PR 9 | nautilus-duck TPC-H tracing and execution | from the M4 exit (before: reports) |
@@ -165,7 +165,7 @@ opened as drafts early and kept up to date with the branch.
 | PR | Capability | Work packages | Needs | Effort (eng-weeks) |
 |---|---|---|---|---|
 | 1 | NIR format: data structures, verifier, text form, option registry, canonical form and hash, binary image, loader fuzzer | M1.1–M1.6 (with M1.4a) | — | 10–23 |
-| 2 | Foundations and infrastructure: extension registry with backend-independent intrinsic identities, extension names in images, chunk pool, `bc` removed, corpus and 0.3 baselines, API-compat suite, CI on `nautilus-0.4`, agent items | M1.7, M1.7a, M1.8–M1.12 | 1 | 6–17 |
+| 2 | Foundations and infrastructure: extension registry with backend-independent intrinsic identities, extensions in the text form, canonical form and images, chunk pool, `bc` removed, corpus and 0.3 baselines, API-compat suite, CI on `nautilus-0.4`, agent items | M1.3a, M1.7, M1.7a, M1.8–M1.12 | 1 | 7–20 |
 | 3 | The NIR tracer | M2.0, M2.1 | 2 | 6.5–11 |
 | 4 | Optimizing conversion; `NirChain` | M3.1–M3.6 | 3, 5 | 8–21 |
 | 5 | Backend interface, `nautilus-nir-run`, `tbc` on NIR | M4.0, M4.1 | 2 | 4–9 |
@@ -211,7 +211,8 @@ PRs 3 and 5 run in parallel; PR 4 needs both; PR 7 runs beside PR 4.
 | `nautilus/include/nautilus/c/` | `common.h`, `ir.h`, `engine.h` | 14 |
 | `plugins/gpu/src/` | `gpu` extension ops, `gpu.partition` pass, shared NIR emitter, CUDA (NVRTC) and Metal device compilers, `runtime/` | 17, 18 |
 | `nautilus/include/nautilus/control_flow.hpp`, `data.hpp` | explicit control flow; `constData` | 9 |
-| `nautilus/test/nir-tests/` | unit tests, `text/` (`.nir` tests), `images/` (golden images), `compat/` (D12 fixtures) | 1, 12 |
+| `nautilus/test/nir-tests/` | unit tests, `text/` (`.nir` tests), `trace/` (golden pre-SSA dumps), `compat/` (D12 fixtures) | 1, 3, 12 |
+| `nautilus/test/data/nir-conformance/` (new) | the conformance material of [13 §11](13-nir-spec.md): golden images (`images/`), the annotated hex dump, the round-trip `.nir` corpus, canonical forms and hashes, per-code tests | 1 |
 | `nautilus/test/api-compat/` | 0.3's user-API tests and examples, frozen | 2 |
 | `nautilus/test/baselines/0.3/` | recorded 0.3 baselines | 2 |
 | `nautilus/test/benchmark/latency-corpus/` (new) | the latency-corpus driver (public engine API only) | 2 |
@@ -240,7 +241,8 @@ PRs 3 and 5 run in parallel; PR 4 needs both; PR 7 runs beside PR 4.
 **Ported at the cut-over, not deleted (M4.2):** `TracingTest.cpp`
 (`nautilus-tracing-tests`), `RegionTest.cpp`,
 `NoThrowInferenceIntegrationTest.cpp`, `InvokeExceptionExecutionTest.cpp`,
-`tracing-tests/AliveVariableHashTest.cpp`, `benchmark/TracingBenchmark.cpp`,
+`tracing-tests/AliveVariableHashTest.cpp`, `tracing/CopyAttribution.*`,
+`benchmark/TracingBenchmark.cpp`,
 the playground runner (`tools/playground/runner/`, `web/src/lib/traceSections.ts`)
 and `tools/vscode-nautilus-ir`.
 
@@ -299,12 +301,15 @@ README §6 and [02 §8](02-nir.md).
 - **Builds:** `Inst` (16 B), value references with the constant bit and
   `NONE`, `extra`, `ConstPool` with interning and a provenance-class field,
   every section of [13 §4.1](13-nir-spec.md) as flat arrays, `Module`,
-  `Function`, `BlockInfo`; `Builder` (appends, mints dense ids, maintains
+  `Function`, `BlockRecord`; `Builder` (appends, mints dense ids, maintains
   `useCount`); `Rewriter` (copy with old→new map, `forward[]`); CSR use
   table on request. Signless types and op flags ([13 §2](13-nir-spec.md));
-  signature records with the per-parameter and result extension kind
-  (none / zext / sext, [13 §4.5](13-nir-spec.md)); the pre-SSA-only `var`
-  opcode ([13 §5.9](13-nir-spec.md)).
+  signature records whose type words carry the per-parameter and result
+  extension kind (none / zext / sext, [13 §4.5.1](13-nir-spec.md));
+  function string attributes (section 25, [13 §4.5.2](13-nir-spec.md));
+  the optional debug sections, including the debug function records and
+  parameter names (sections 26–27, [13 §4.9](13-nir-spec.md)); the
+  pre-SSA-only `var` opcode ([13 §5.9](13-nir-spec.md)).
 - **Files:** `nir/Opcodes.def`, `Types.hpp`, `Inst.hpp`, `Module.*`,
   `ConstPool.*`, `Builder.*`, `Rewriter.*`; CMake target `nautilus-nir`.
 - **Tests:** `nautilus-nir-tests`: record sizes (`static_assert`), builder
@@ -314,34 +319,62 @@ README §6 and [02 §8](02-nir.md).
 
 #### M1.2 Verifier, both levels · M · deps: M1.1
 - **Builds:** every rule of [13 §6](13-nir-spec.md) and the per-opcode rules
-  from `Opcodes.def`; level-specific checks; stable codes (`NIR-V001`…) with
-  messages naming function, block and value. Checks of extension
-  instructions are added by M1.7.
+  from `Opcodes.def`; level-specific checks; the stable codes of the
+  [13 §6.6](13-nir-spec.md) table (`NIR-V001`…), with messages naming the
+  code, function, and instruction or block id as printed in the text form.
+  Checks of extension instructions are added by M1.7.
 - **Files:** `nir/Verifier.*`, `nir/Diagnostics.def`.
 - **Tests:** one positive and one negative test per atomic check and per
   opcode.
 - **Done when:** every rule of [13 §6](13-nir-spec.md), split into atomic
   checks, has a stable `NIR-V` code in `Diagnostics.def` that matches the
-  spec's code table, and each code is triggered by a positive and a
-  negative test.
+  code table of [13 §6.6](13-nir-spec.md), and each code is triggered by a
+  positive and a negative test, kept with the conformance material
+  (`nautilus/test/data/nir-conformance/`, [13 §11](13-nir-spec.md)).
 
 #### M1.3 Printer, parser, `nautilus-nir-opt` · M · deps: M1.2
-- **Builds:** the text form of [13 §9](13-nir-spec.md) for both levels,
-  following its normative grammar (EBNF); a parser producing the same
-  module as the binary image, with line and column in errors;
-  `tools/nautilus-nir-opt` (parse → optional pass → print).
+- **Builds:** the text form of [13 §9](13-nir-spec.md) for both levels:
+  the lexical structure and normative grammar (EBNF) of §9.1–§9.2, the
+  deterministic printing rules of §9.3, the parsing rules of §9.4 with the
+  `NIR-P` codes of [13 §6.6](13-nir-spec.md), and the round-trip laws of
+  §9.5, for the core language (the extension productions are added by
+  M1.3a); a parser producing the same module as the binary image, with
+  line and column in errors; `tools/nautilus-nir-opt` (parse → optional
+  pass → print).
 - **Tests:** print → parse → print byte-identical on every test module;
   `.nir` tests under `test/nir-tests/text/`; one test per grammar
   production (provenance marks, float spelling, `prob`, callee records).
 - **Done when:** a test is a `.nir` file plus expected output, run by ctest;
-  every production of the 13 §9 grammar is exercised by a test.
+  every core production of the 13 §9.2 grammar is exercised by a test,
+  and every `NIR-P` code by a positive and a negative test; the
+  round-trip corpus of `.nir` texts (§9.5) is committed under `nautilus/test/data/nir-conformance/`
+  ([13 §11](13-nir-spec.md)).
+
+#### M1.3a Extensions in the text form · S · deps: M1.3, M1.7
+- **Builds:** the extension productions of [13 §9.2](13-nir-spec.md):
+  `extension "name@version"` declarations checked against the registry
+  (§9.4, `NIR-P005`), intrinsic callee targets, extension types, and
+  extension instructions printed and parsed through their `OpInfo` operand
+  shapes ([13 §5.11.1](13-nir-spec.md)). It is split from M1.3 so that
+  the printer and parser do not wait for the registry, which would put
+  the `tbc` path (M4.0, M4.1) on the critical path.
+- **Files:** `nir/Printer.*`, `nir/Parser.*`.
+- **Done when:** every extension production and `NIR-P005` are exercised
+  by `.nir` tests with a test extension; `.nir` texts with intrinsic
+  callees and extension instructions are in the round-trip corpus.
 
 #### M1.4 Canonical form and structural hash · M · deps: M1.3, M1.4a
-- **Builds:** canonicalization of [13 §7](13-nir-spec.md) (deterministic
-  canonical form, exact structural-hash input); XXH3-128 over the input
-  13 §7 defines: the anonymous canonical image, the code-affecting
-  options of M1.4a hashed as (name, canonical value encoding) sorted by
-  name, and extension versions; interface hashing of imports.
+- **Builds:** canonicalization of [13 §7](13-nir-spec.md) (structural
+  equality, deterministic canonical form, the scan order of §7.1, for core
+  NIR; extension entries and instructions are added by M1.7a); the
+  structural hash of §7.2: XXH3-128 over the anonymous canonical image without header and debug
+  sections (extension names and versions enter through its `names`
+  section) and the code-affecting
+  options of M1.4a, hashed as (name, canonical value encoding) sorted by
+  name (options without `affectsCode` and unknown keys are not hashed);
+  the derived keys of §7.3 (the unbundled L0 form, in which imports
+  are hashed by name, signature and assumed attributes, and the key of
+  code that inlined imports).
 - **Files:** `nir/Canonicalize.*`, `nir/Hash.*`, `third_party/xxhash/`
   (vendored, pinned).
 - **Tests:** equal modules built in different orders hash equally; renaming
@@ -349,8 +382,10 @@ README §6 and [02 §8](02-nir.md).
   does; setting an option to its default does not; changing an option
   without `affectsCode` does not.
 - **Done when:** two processes produce the same hash for the same module
-  ([12 §3](12-validation.md), row 07); the canonical images and hashes of
-  the golden modules are committed as conformance data of
+  ([12 §3](12-validation.md), row 07); an importer's L0 key does not
+  change when the exporter's body does; the canonical forms and hashes of
+  the golden modules are committed under
+  `nautilus/test/data/nir-conformance/` as conformance material of
   [13 §11](13-nir-spec.md).
 
 #### M1.4a Typed option registry · S · deps: —
@@ -358,7 +393,9 @@ README §6 and [02 §8](02-nir.md).
   `OptionSpec` (name, type, default, `affectsCode` flag, deprecated
   aliases); effective options = registry defaults overlaid with the set
   values, normalized to the value kinds of [13 §7](13-nir-spec.md)
-  (`int` → `i64`); unknown keys are application options, hashed as strings.
+  (`int` → `i64`); unknown keys are application options, which the
+  structural hash does not cover (13 §7.2) and the L1 key hashes as
+  strings ([08 §2](08-caching.md)).
   Code-affecting options are exactly those with `affectsCode`. Deprecated
   aliases warn once ([12 §2](12-validation.md));
   `engine.tiered.backgroundPromotion` is registered as a deprecated alias
@@ -373,18 +410,25 @@ README §6 and [02 §8](02-nir.md).
   setting an option to its default does not change the effective options.
 
 #### M1.5 Binary image: writer, loader, inspect · L · deps: M1.4
-- **Builds:** [13 §8](13-nir-spec.md): layout, strides, feature bits,
-  CRC-32C, framing, load limits; zero-copy load; `inspect` without
-  materializing; loader rejections with stable `NIR-L` codes. The format
-  rules of #532 are carried over, its 0.3 format is not. Mapping extension
-  names to process ids on load is added by M1.7a.
+- **Builds:** [13 §8.1–§8.3](13-nir-spec.md): layout, strides,
+  feature bits, CRC-32C, framing, load limits; zero-copy load; `inspect`
+  without materializing; loader rejections with the stable `NIR-L` codes of
+  [13 §6.6](13-nir-spec.md). The header and section-table code is a
+  component of its own, because the artifact container reuses the framing
+  ([13 §8.6](13-nir-spec.md), M5.6). The format rules of #532 are carried
+  over, its 0.3 format is not. Mapping extension names to process ids on
+  load (§8.4) is added by M1.7a, bundling of imports on save (§8.5) by
+  M5.4.
 - **Files:** `nir/Image.*`, `nir/ImageLoader.*`, `nir/Inspect.*`.
-- **Tests:** golden images (valid and invalid) under `test/nir-tests/images/`;
-  the annotated hex dump checked byte for byte; re-serialization
-  byte-identical.
+- **Tests:** golden images (valid and invalid) under
+  `nautilus/test/data/nir-conformance/images/`, read by
+  `nautilus-nir-tests`; the annotated hex dump checked byte for byte;
+  re-serialization byte-identical.
 - **Done when:** every golden image loads or is rejected exactly as listed,
-  with the listed `NIR-L` code; the annotated hex dump and the golden-image
-  list are produced by this WP and committed into
+  with the listed `NIR-L` code; the annotated hex dump (the second example
+  of 13 §9, canonicalized, with its structural hash) and the golden-image
+  list are produced by this WP and committed under
+  `nautilus/test/data/nir-conformance/` as the conformance material of
   [13 §11](13-nir-spec.md) (they do not exist before it).
 
 #### M1.6 Loader and verifier fuzzer · S · deps: M1.5
@@ -403,7 +447,14 @@ README §6 and [02 §8](02-nir.md).
   construction (release store; registration checks the flag under a
   mutex); lock-free lookups after the freeze; late registration throws
   (D13); extension type ids limited to 240; names split at the last `@`;
-  extension checks in the verifier. **Intrinsic identity is
+  the plugin-name rule of [13 §9.1](13-nir-spec.md) enforced at
+  registration: no core mnemonic of §5 or first dot-separated component of
+  one (`div`, `cmp`, `ptr`, …), no type name of §2, no keyword of §9.2,
+  not `nir`; the prefix `core` reserved for the core's own intrinsics
+  (`core.memcpy@1` is valid, a plugin under `core` is rejected); `OpInfo` with its operand shape
+  ([04 §3.3](04-extensions.md), [13 §5.11.1](13-nir-spec.md));
+  extension checks in the verifier (signature, operand shape and `verify`
+  hook, naming the plugin). **Intrinsic identity is
   backend-independent:** each in-tree plugin (`std`, `builtin`, `simd`,
   `specialization`) and the core (`mem*`) gets a backend-neutral
   registration TU compiled in every configuration, which registers each
@@ -421,18 +472,28 @@ README §6 and [02 §8](02-nir.md).
 - **Tests:** registration, freezing, late registration, in a test binary of
   their own with a test-only `ExtensionRegistry::resetForTesting()`; TSan
   plus a lock-count check on lookups; registration racing the first engine
-  construction; every in-tree intrinsic visible by name.
+  construction; each class of reserved plugin name rejected, the core's
+  `core.*` intrinsics accepted; an extension instruction
+  violating each operand-shape rule rejected by the verifier; every
+  in-tree intrinsic visible by name.
 - **Done when:** [04 §5](04-extensions.md) M1 criterion: every in-tree
   intrinsic is visible through the registry in every preset, including
   `dev` and `nocompiler`; no mutex on lookups after the freeze.
 
-#### M1.7a Extension names in images · S · deps: M1.5, M1.7
-- **Builds:** mapping extension `name@version` to process ids on load and
-  back on save ([13 §8.4](13-nir-spec.md)); a missing or incompatible
-  extension rejects the image with a `NIR-L` code.
-- **Files:** `nir/ImageLoader.*`, `nir/Image.*`.
-- **Done when:** golden images with extension ops and types round-trip;
-  an image naming an unregistered extension is rejected as listed.
+#### M1.7a Extensions in canonical form and images · M · deps: M1.5, M1.7
+- **Builds:** canonicalization of extension entries, types and
+  instructions through their operand shapes (`value` and `type` words
+  renumbered, constants and pointers ordered through `const`, `value` and
+  `pointer` words, `imm` words copied; [13 §5.11.1, §7.1](13-nir-spec.md)),
+  so extension names and versions enter the structural hash; mapping
+  extension `name@version` to process ids on load and back on save
+  ([13 §8.4](13-nir-spec.md)); a missing or incompatible extension rejects
+  the image with a `NIR-L` code.
+- **Files:** `nir/Canonicalize.*`, `nir/ImageLoader.*`, `nir/Image.*`.
+- **Done when:** golden images with extension ops and types round-trip
+  and are added to the conformance material with their hashes; the same
+  extension module built in two operand orders hashes equally; an image
+  naming an unregistered extension is rejected as listed.
 
 #### M1.8 Bounded chunk pool · M · deps: —
 - **Builds:** [02 §4.1](02-nir.md): fixed chunk sizes, dedicated large
@@ -487,7 +548,9 @@ README §6 and [02 §8](02-nir.md).
     ([10 §2](10-observability.md)); it has to be procured and needs an owner
     (§16).
 - **Done when:** the P0 numbers are reproduced and stored as the baseline;
-  `test/api-compat/` builds and passes on the 0.3 pipeline without `bc`.
+  two runs of the same container image give identical instruction counts
+  ([10 §5](10-observability.md)); `test/api-compat/` builds and passes on
+  the 0.3 pipeline without `bc`.
 
 #### M1.11 CI on `nautilus-0.4` · M · deps: —
 - **Builds:**
@@ -498,7 +561,10 @@ README §6 and [02 §8](02-nir.md).
     also run for `nautilus-0.4`; reporting only until the M4 exit (§3
     rule 9);
   - a `ubsan` preset in `CMakePresets.json` and a UBSan leg in `pr.yml`,
-    separate from the ASan and TSan legs.
+    separate from the ASan and TSan legs;
+  - the pinned CI container image (valgrind, compilers) in which the
+    `latency-corpus` and `baselines-0.3` jobs run (D9,
+    [10 §2](10-observability.md)).
 - **Done when:** a PR against `nautilus-0.4` runs the full `pr.yml` matrix
   (with the ASan, UBSan and TSan legs) and the benchmark bot; the
   NebulaStream job runs on every `nautilus-0.4` push.
@@ -509,8 +575,8 @@ README §6 and [02 §8](02-nir.md).
   conventions for this branch).
 - **Done when:** `doc-check` passes and fails on a planted stale path.
 
-**M1 exit:** M1.1–M1.12 (with M1.4a and M1.7a) done; the spec is marked
-final ([13 §11](13-nir-spec.md)).
+**M1 exit:** M1.1–M1.12 (with M1.3a, M1.4a and M1.7a) done; the spec is
+marked final ([13 §11](13-nir-spec.md)).
 
 ## 8. M2 Frontend
 
@@ -524,7 +590,7 @@ flow mixable with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
 - **Done when:** the tracing keys of [10 §3](10-observability.md) are
   reported and unit-tested.
 
-#### M2.1 The NIR tracer · XL · deps: M1.2, M1.7, M2.0
+#### M2.1 The NIR tracer · XL · deps: M1.2, M1.7, M2.0 (and the printer of M1.3, M1.3a for its golden dumps, needed only at its end)
 - **Builds:** a `TracingInterface` implementation writing `FlatTrace`
   ([01 §6](01-tracing-frontend.md)): 16 B records, value-ref operands,
   global op ids, blocks as arena lists of op ids; constants and copies
@@ -540,7 +606,9 @@ flow mixable with implicit. Exit criteria: [01 §7](01-tracing-frontend.md).
   provenance class, integer constants as `Literal`
   ([07 §5](07-serialization.md)); signature extension kinds filled from
   `val<T>`'s C++ type; calls of registered intrinsic fallbacks recorded as
-  intrinsic callees (M1.7); source tags only on request (D14); `Type`/`Op`
+  intrinsic callees (M1.7); source tags, regions and the debug function
+  records with parameter names only on request (D14,
+  [13 §4.9](13-nir-spec.md)); `Type`/`Op`
   mapped to widths and flags at the interface; `symbolic_execution/`
   ported (its tag map replaced by `TagMap`, its dependency on
   `ExecutionTrace` removed).
@@ -717,7 +785,7 @@ criteria: [03 §6](03-conversion-and-passes.md).
   attributes recorded in the baselines (M1.10), mapped to the guarantee
   bits.
 
-#### M3.7 Legalization · M · deps: M3.1, M1.7
+#### M3.7 Legalization · M · deps: M3.1, M1.3a
 - **Builds:** one copy pass per backend: extension ops without a handler →
   fallback call or expansion; extension types without support → stack
   slots (used from M6.5), with the fallback calling convention of
@@ -777,7 +845,7 @@ that lands before the cut-over lives in new files next to its 0.3 lowering,
 which the cut-over deletes; until then it is tested with `nautilus-nir-run`,
 and its execution-test criteria are checked at the cut-over (M4.2).
 
-#### M4.0 Backend interface and `nautilus-nir-run` · M · deps: M1.3, M1.7
+#### M4.0 Backend interface and `nautilus-nir-run` · M · deps: M1.3, M1.7 (and M1.3a for `.nir` tests with extension items, needed only at its end)
 - **Builds:** `CompilationBackend` on a legalized `nir::Module`, with
   `compile` taking a `const CancellationToken*` (null for synchronous
   compiles; checked at stage boundaries, [11 §4.2](11-tiered-compilation.md));
@@ -812,6 +880,7 @@ and its execution-test criteria are checked at the cut-over (M4.2).
     `NoThrowInferenceIntegrationTest` and `InvokeExceptionExecutionTest`
     to the NIR equivalents (M3.10 op-count statistics, M3.6 inference,
     M3.5 landing pads); `AliveVariableHashTest` to the new tracer;
+    `tracing/CopyAttribution.*` (`dump.copySites`) to the flat trace;
     `TracingBenchmark.cpp`; the playground runner
     (`tools/playground/runner/manifest.hpp`,
     `web/src/lib/traceSections.ts`) and `tools/vscode-nautilus-ir` switched
@@ -819,7 +888,9 @@ and its execution-test criteria are checked at the cut-over (M4.2).
   - the deletions of §5, including the `ir::IRGraph` forward declaration
     in `JITCompiler.hpp`;
   - fuzzer generation of the D10/D11 edge cases;
-  - `test/data` regenerated in its own commit; the `api-compat` leg starts.
+  - `test/data` regenerated in its own commit (`test/data/nir-conformance/`
+    excepted: it changes only with the spec, [13 §11](13-nir-spec.md));
+    the `api-compat` leg starts.
 - **Done when:** every core test, and every plugin test whose backends are
   enabled, passes on `tbc` (and on the backends of PR 7 if merged);
   `test/api-compat/` passes; the fuzzer is clean on `tbc`; nothing in the
@@ -971,32 +1042,42 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   results, identical bytes on re-save.
 
 #### M5.6 Artifacts and native payloads · L · deps: M5.5, M4.5
-- **Builds:** the artifact container (`NART`, [07 §2.2](07-serialization.md))
-  and compatibility descriptor ([07 §2](07-serialization.md)), with the
+- **Builds:** the artifact container (`NART`, [07 §2.2](07-serialization.md)),
+  on the image framing of M1.5 ([13 §8.6](13-nir-spec.md)), and the
+  compatibility descriptor ([07 §2](07-serialization.md)), with the
   target CPU name and feature string; the option `engine.mlir.targetCpu`
   (default `host`, `generic` for shippable payloads; code-affecting in the
   M1.4a registry); one relocatable object per payload from MLIR/LLVM with
   #527's import table, personality and unwind-resume bridges; the MLIR
-  lowering emits every pointer, binding, data-object and `funcaddr` stub
-  reference as an external symbol that the payload loader binds
-  ([07 §2.1](07-serialization.md)); payloads that used the `inlining`
-  plugin's LLVM hooks marked non-persistable, or their symbols routed
-  through the import table; `loadModule` uses a matching payload and
+  lowering of a module that may be persisted emits every pointer, binding,
+  data-object and `funcaddr` stub reference, every runtime helper
+  (`nautilus_rt_*`) and every intrinsic callee without an inline lowering
+  (`__nautilus_intr_<i>`) as an external symbol that the payload loader
+  binds, built position-independent with the small code model
+  ([07 §2.1](07-serialization.md), [05 §5.2](05-backends.md)); payloads
+  that used the `inlining` plugin's LLVM hooks marked non-persistable, or
+  their symbols routed through the import table; `loadModule` uses a matching payload and
   otherwise recompiles from the NIR image, never executing a mismatched
   payload.
 - **Done when:** a native hit in a fresh process with ASLR records no
   tracing, conversion or codegen; every corrupt or incompatible payload
-  falls back, including one built for a CPU whose features the host lacks;
+  falls back, including one built for a CPU whose features the host lacks,
+  one with an unaccepted relocation and one with an unlisted symbol;
   a module compiled with `NAUTILUS_INLINE` functions is either rejected
   for export or reloads correctly in a fresh process.
 
 #### M5.7 Caches L0, L1, L2 and tiers · L · deps: M5.6, M4.7
 - **Builds:** `plugins/cache/` from #528 (storage model unchanged); L0 in
-  memory with LRU; L1 semantic key with compatibility identity (user key,
-  code-affecting options, extension versions, target CPU and features),
-  looked up **before tracing**; L1 stores the canonical NIR image of every
-  compiled module, of any tier, plus optional native payloads per backend
-  and tier, so a warm L1 hit skips tracing even when only tier 0 ran; L2
+  memory with LRU; the L1 key of [08 §2](08-caching.md), XXH3-128 over
+  `engine.cache.key`, the code-affecting options block, the application
+  options and the declared exports, looked up **before tracing**, with
+  the rest of the compatibility identity (extensions, core and provider
+  builds, per payload the target, CPU and feature string) checked on the
+  stored entry at a hit, not keyed; L1 stores the canonical NIR image of
+  every compiled module, of any tier, plus native payloads of tier 1
+  (MLIR) only, so a warm L1 hit skips tracing even when only tier 0 ran,
+  and a changed build, CPU or feature string recompiles the image without
+  tracing; L2
   structural key with full comparison on hit, whose native payload is used
   only if its descriptor matches; a tier-1 hit skips tier 0; promotion
   results feed the caches ([11 §4.6](11-tiered-compilation.md)); the
@@ -1120,7 +1201,11 @@ validation (PR 18).
   `gpu.sync_threads` with the 0.3 CPU fallbacks; `gpu.launch` as an
   **intrinsic with call semantics** (may throw, carries the cleanup list
   and thunk), with `nautilus_gpu_launch` as its native fallback and a
-  `verify` hook; `gpu::launch` tracing it (the `gpu.hpp` API unchanged); the required `gpu.partition` pass with the
+  `verify` hook; `gpu::launch` tracing it (the `gpu.hpp` API unchanged);
+  kernels marked with the `gpu.kernel` function string attribute
+  ([13 §4.5.2](13-nir-spec.md)); `GPUTracingTest` ported to pre-SSA NIR,
+  its golden dumps regenerated in their own commit
+  ([17 §5.2](17-gpu.md)); the required `gpu.partition` pass with the
   device code rules, address-space inference and the D19 division rewrite
   ([17 §4.2–§4.5, §4.7](17-gpu.md)).
 - **Done when:** every 0.3 GPU test function runs through the fallbacks on
@@ -1200,7 +1285,9 @@ validation (PR 18).
   authors); `llms.txt` and `docs/api.md`; the user plugin with its skills,
   including `migrate-0.3-to-0.4`, in `tools/claude-plugin/`
   ([15 §4.5](15-agent-experience.md)).
-- **Done when:** `doc-check` passes; every page in README §6.2 is updated.
+- **Done when:** `doc-check` passes; every page in README §6.2 is updated;
+  a fresh cloud session reaches a green `dev` test run with only the
+  commands in `AGENTS.md` ([15 §6](15-agent-experience.md)).
 
 #### M8.2 Release validation · M · deps: M6, M7
 - **Builds:** the release criteria of README §6 on x86-64 and AArch64 with
@@ -1218,7 +1305,7 @@ validation (PR 18).
 
 | Milestone | WPs | Rough effort (engineer-weeks) |
 |---|---|---|
-| M1 | 14 | 16–40 |
+| M1 | 15 | 17–43 |
 | M2 | 9 | 13.5–28 (plus 1–3 for the optional M2.7) |
 | M3 | 10 | 13–32 |
 | M4 | 11 | 23–48 |
@@ -1226,7 +1313,7 @@ validation (PR 18).
 | M6 | 7 | 10–23 |
 | M7 | 7 | 18–37 |
 | M8 | 3 | 2.5–7 |
-| **Total** | **71** | **≈ 110–248** |
+| **Total** | **72** | **≈ 111.5–251** |
 
 These are sums of the WP sizes (M2.7 counted as a WP, its effort not
 included) and agree with the per-PR numbers of §4.
@@ -1244,7 +1331,7 @@ sizes of §1:
 With mid-range sizes (S 0.75, M 2, L 4.5, XL 8 weeks) the chain is about
 70 weeks; that is the planning value. The bound holds only if every WP on
 the chain is staffed when its dependencies are done; the tracks of §6 need
-about 2.5 engineers on average (110–248 engineer-weeks over 45–95 weeks).
+about 2.5 engineers on average (111.5–251 engineer-weeks over 45–95 weeks).
 The upper bound shrinks only by splitting the XL WPs on the chain (M2.1,
 M7.2) across engineers or by starting the GPU chain earlier. The `tbc`
 path to the cut-over (M1.3 → M4.0 → M4.1) is 1–2 weeks shorter than the
