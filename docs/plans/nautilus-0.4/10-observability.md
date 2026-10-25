@@ -35,8 +35,14 @@ Additions in 0.4:
 - **an extension-op case** (SIMD);
 - **a cache case:** cold, warm L1, warm L2, and L0 canonicalize + hash
   cost ([08 §5](08-caching.md));
-- **real kernels:** NebulaStream queries via the existing CI job, and TPC-H
-  kernels from nautilus-duck.
+- **real kernels:** NebulaStream queries via the `nebulastream-0.4` job,
+  and TPC-H kernels from nautilus-duck via the `tpch-duck` job
+  ([16 §3](16-implementation-plan.md)).
+
+The CI jobs that run it ([16 §3](16-implementation-plan.md), rule 5):
+`latency-corpus` (callgrind, gated), `baselines-0.3` (records the 0.3
+side), `asm-diff` (`asmjit` assembly) and `nebulastream-cache` (warm vs.
+cold, [08 §5.1](08-caching.md)).
 
 How it is measured (D9):
 - **Gates use instruction counts under callgrind in a pinned CI container
@@ -44,13 +50,23 @@ How it is measured (D9):
   same function, measured in the same container. Each per-op target becomes
   a ratio: a case whose budget is a fraction *f* of its 0.3 time is gated
   at *f* times 0.3's instruction count; "no slower than 0.3" is a ratio of
-  at most 1.
+  at most 1. This assumes 0.3 and 0.4 run at a similar IPC; the reference
+  machine checks the µs/op budget itself at the milestone exit.
+- **Costs with no 0.3 counterpart** (L0 canonicalize + hash, the cache
+  cases, extension ops) have no ratio. Their instruction counts are
+  recorded by `latency-corpus` from the WP that adds them and gated
+  against that first recording (ratio ≤ 1 plus the noise margin); their
+  absolute budgets (such as 0.05 µs/op for L0 hashing, [08 §5](08-caching.md))
+  are checked on the reference machine.
 - **Counts are reproducible only with dispatch pinned.** Under valgrind,
   glibc's ifunc selection (`memcpy`, `memset`) and the runtime dispatch of
   XXH3 and CRC-32C still follow the host's CPUID, so the container fixes
   them: `GLIBC_TUNABLES` disables the hwcaps above the x86-64 baseline, and
   the callgrind build selects the baseline XXH3 and CRC-32C code paths.
-  Counts are compared only between runs of the same image.
+  The corpus runs single-tier (no background promotion thread) with ASLR
+  off (`setarch -R`), because hash tables keyed by addresses change their
+  probe counts with the layout. Counts are compared only between runs of
+  the same image.
 - **Wall-clock targets** (the µs/op budgets, warm vs. cold, time to tier 1,
   `ExecutionBenchmark`) are measured on **one dedicated reference
   machine**, at milestone exits only. It is procured and recorded in M1.10

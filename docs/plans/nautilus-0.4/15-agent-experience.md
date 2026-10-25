@@ -61,11 +61,13 @@ Committed on the 0.4 branch, so it reaches `main` with the release:
   expected output after a pass or a backend (FileCheck style), instead of C++
   that must trace something first. This is the largest single gain for agents
   writing tests. Round trip: print → parse → print is byte-identical.
-- **Verifier and loader errors carry stable codes**
+- **Verifier, loader and parser errors carry stable codes**
   (`NIR-V<nnn>: block ^b3 has no terminator` for verifier rules,
-  `NIR-L<nnn>` for loader rejections). The codes are the ones in the
-  diagnostic-code table of [13](13-nir-spec.md), one per atomic verifier
-  rule of §6 and per loader rejection of §8; `Diagnostics.def` is
+  `NIR-L<nnn>` for loader rejections, `NIR-P<nnn>` for text-parser errors).
+  The codes are the ones in the diagnostic-code table of
+  [13 §6.6](13-nir-spec.md), one per atomic verifier rule of §6, per loader
+  rejection of §8 and per parser error of §9, never renumbered within a
+  NIR major version; `Diagnostics.def` is
   generated from or checked against that table, and skills cite the codes
   rather than restating the rules.
 - **The latency corpus and the probes write JSON** ([10](10-observability.md)),
@@ -151,7 +153,7 @@ marketplace entry) with skills for users:
 
 | Milestone | Agent-experience work |
 |---|---|
-| M1 | doc check in CI; NIR text parser and FileCheck-style tests; verifier and loader error codes; `ir-change` rewritten for NIR; `fuzz-triage` and `steward` skills |
+| M1 | doc check in CI; NIR text parser and FileCheck-style tests; verifier, loader and parser error codes; `ir-change` rewritten for NIR; `fuzz-triage` and `steward` skills |
 | M2 | tracing diagnostics with codes, locations and hints; `engine.diagnostics=json`; `debug-trace` skill |
 | M3 | compile-fail suite for the public headers |
 | M4 | `explain()`; `affected-tests`; `asm-diff` and `memory-check` skills |

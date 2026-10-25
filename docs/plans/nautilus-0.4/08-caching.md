@@ -13,16 +13,17 @@ produce and consume the artifacts of [07-serialization.md](07-serialization.md).
 
 | Level | Key | Lookup point | Hit skips | Scope |
 |---|---|---|---|---|
-| **L0 in-process** | structural hash of the in-memory canonical module ([13 §7](13-nir-spec.md)), pointers in whatever mode they resolved to (`ProcessLocal` allowed) + backend | after conversion | everything after conversion: the executable already in memory is reused | one process, in memory |
-| **L1 semantic** | caller-supplied `engine.cache.key` + compatibility identity (below) | **before tracing** | tracing and conversion; code generation too when a native payload matches (otherwise recompiled from the NIR image) | persistent directory |
-| **L2 structural** | structural hash of the canonical NIR image (names, not ids; portable pointers; code-affecting options; extension versions) + backend + LLVM target triple, data layout, target CPU and feature string | after conversion | code generation, via a matching native payload; a hit's payload is used only if its compatibility descriptor matches ([07 §2.2](07-serialization.md)), otherwise the entry's NIR image is recompiled | persistent directory |
+| **L0 in-process** | structural hash of the in-memory canonical module ([13 §7.3](13-nir-spec.md)), pointers in whatever mode they resolved to (`ProcessLocal` allowed) + backend | after conversion | everything after conversion: the executable already in memory is reused | one process, in memory |
+| **L1 semantic** | the L1 key (below): caller-supplied `engine.cache.key`, options and declared exports; the rest of the compatibility identity is checked on the stored entry | **before tracing** | tracing and conversion; code generation too when a native payload matches (otherwise recompiled from the NIR image) | persistent directory |
+| **L2 structural** | structural hash of the canonical NIR image ([13 §7.2](13-nir-spec.md); names, not ids; portable pointers; code-affecting options; extension versions) + backend + LLVM target triple, data layout, target CPU and feature string (+ the spliced-bitcode hash for `inlining` payloads) | after conversion | code generation, via a matching native payload; a hit's payload is used only if its compatibility descriptor matches ([07 §2.2](07-serialization.md)), otherwise the entry's NIR image is recompiled | persistent directory |
 
 - **Lookup order.** L1 is looked up before tracing; L0 and then L2 after
   conversion; each for the tier-1 backend first
   ([11 §4.6](11-tiered-compilation.md)).
 - **What L1 stores.** An L1 entry holds the canonical NIR image of every
   compiled module, whatever tier and backend compiled it, plus optional
-  native payloads per backend and tier. On an L1 miss the image (without a
+  native payloads per backend; in 0.4 only tier 1 (MLIR) produces payloads,
+  so L1 holds no tier-0 payload ([11 §4.6](11-tiered-compilation.md)). On an L1 miss the image (without a
   payload) is stored right after conversion, so a warm L1 hit skips tracing
   even when only tier 0 ever ran (`manual` promotion,
   `engine.backend=asmjit`). A tier-1 payload is added to the entry when
@@ -32,25 +33,43 @@ produce and consume the artifacts of [07-serialization.md](07-serialization.md).
 
 - **The caller's key must cover** interchangeable bodies, captures and
   specialization choices. Neither function names nor an IR hash replace it.
-- **The compatibility identity separately covers:**
-  - the actual core and cache-provider builds;
-  - the LLVM target triple, data layout, target CPU and feature string
-    (`engine.mlir.targetCpu`, [07 §2](07-serialization.md));
-  - declared exports;
-  - the code-affecting options: every option whose registry entry has
-    `affectsCode` (M1.4a), hashed as (name, canonical value encoding)
-    sorted by name, with defaults filled in, so setting an option to its
-    default changes nothing ([13 §7](13-nir-spec.md));
-  - application options (keys not in the registry), as strings, because
-    Nautilus cannot tell whether traced code reads them;
-  - extensions (`name@version`);
-  - for code spliced by the `inlining` plugin's hooks, the hash of the
-    spliced bitcode ([07 §2](07-serialization.md)).
+- **The L1 key** is computed before tracing, so it hashes only what is
+  known before a trace exists. It is `XXH3_128bits_withSeed(input, length,
+  0)` over:
+  1. `engine.cache.key`: `u32 length`, bytes;
+  2. the code-affecting options block: every option whose registry entry
+     has `affectsCode` (M1.4a), with defaults filled in, encoded exactly as
+     item 2 of the structural hash ([13 §7.2](13-nir-spec.md)), so setting
+     an option to its default changes nothing;
+  3. application options (keys not in the registry), because Nautilus
+     cannot tell whether traced code reads them: `u32` count, then per key,
+     sorted by name bytes, `u32 nameLength`, name, `u32 valueLength` and the
+     value's string form;
+  4. the declared exports, the functions registered on the module, sorted by
+     name bytes: `u32 nameLength`, name, and the signature's type words
+     ([13 §4.5.1](13-nir-spec.md)) as the tracer derives them from the C++
+     signature (`u32` result, `u32` count, parameters).
+
+  The entry stores the key and `engine.cache.key` (descriptor keys 8 and
+  7, [07 §2.2](07-serialization.md)); a hit compares both in full.
+- **Checked on the stored entry at hit**, because they are either unknown
+  before tracing or affect only payloads:
+  - extensions (`name@version`): the image's `extensions` section must load
+    against this process's registry ([13 §8.4](13-nir-spec.md), `NIR-L010`
+    to `NIR-L012`; an unavailable type instance still loads and uses its
+    fallbacks); otherwise the hit is a miss with reason `incompatible`,
+    and the module is traced and the entry replaced;
+  - the actual core and cache-provider builds (descriptor keys 2 and 3);
+  - per payload, the LLVM version, target triple, data layout, target CPU
+    and feature string (`engine.mlir.targetCpu`,
+    [07 §2](07-serialization.md)), and for code spliced by the `inlining`
+    plugin's hooks the hash of the spliced bitcode
+    ([07 §2.2](07-serialization.md)).
 
   Missing or changed identities fail closed. A changed option, export,
   extension or application option is a miss. A changed core or provider
-  build, target, CPU or feature string makes only the entry's native
-  payloads unusable: they are never executed, and the entry's NIR image is
+  build, target, CPU, feature string or spliced bitcode makes only the
+  entry's native payloads unusable: they are never executed, and the entry's NIR image is
   recompiled, still without tracing (D12, [07 §2.2](07-serialization.md)).
 - **The caller provides the binding environment before lookup.** A native
   hit skips the callable, so captured handles and scalar certifications
@@ -114,7 +133,8 @@ Storage keeps #528's model:
 - pinned directory descriptors; no symlink traversal;
 - bounded reads;
 - atomic, fsynced, manifest-last publication;
-- per-key mutexes and cooperative Linux file locks.
+- per-key mutexes and cooperative file locks (`flock` on Linux and macOS,
+  so the same code runs on both 0.4 platforms).
 
 Caches are trusted executable input. There is no authentication and no
 protection against hostile same-UID writers. There are no network-filesystem
@@ -124,8 +144,24 @@ guarantees.
 
 - **Size bound.** `engine.cache.maxBytes` (default 1 GiB) bounds the
   directory. On store, entries are evicted oldest access first, under the
-  directory lock, until the new entry fits. Access times are kept in the
-  manifest, not taken from the file system (`noatime` mounts).
+  exclusive directory lock, until the new entry fits. Access times are kept
+  in the manifest, not taken from the file system (`noatime` mounts); a hit
+  updates its entry's access time at most once per minute, under the
+  entry's lock only, so hot hits do not serialize on the directory lock.
+  The directory's byte total is kept in the manifest and recomputed by a
+  scan if the manifest is missing or corrupt.
+- **Eviction under concurrency.** Evicting an entry unlinks its manifest
+  record first, then its file, while holding the entry's lock. A reader
+  that already opened the file keeps reading it (POSIX unlink semantics, on
+  Linux and macOS); a reader that loses the race finds no file and records
+  a miss with reason `evicted`. An entry being written (its lock held) is
+  never evicted.
+- **Atomic replace.** A new entry is written to a uniquely named temporary
+  file in the same directory, `fsync`ed, and published by `renameat` over
+  the entry's name (atomic on Linux and macOS), then the directory is
+  `fsync`ed, then the manifest. On macOS, `fsync` does not flush the drive
+  cache; durability after power loss is not promised there, and a torn
+  entry is caught by its checksum as corrupt.
 - **Corrupt or incompatible entries** (checksum, descriptor, stale build
   identity, CPU mismatch) are a miss with their reason. The new result
   replaces the entry atomically (manifest last), so entries left behind by
@@ -181,7 +217,13 @@ guarantees.
 - **Reported alongside:** `cold-disabled` (no cache plugin), #529's
   baseline.
 - Both runs on the reference machine, ASLR on, fresh processes per query
-  as in #529.
+  as in #529, with the same builds of Nautilus and NebulaStream (otherwise
+  every payload is stale), default options (tiered, `engine.mlir.targetCpu
+  = host`), and the OS page cache not dropped between the runs (as in #529).
+- **Metric:** the suite's wall time, median of three cold/warm pairs, each
+  pair on a fresh empty directory. The warm run's L1 hit rate and payload
+  rejections (`cache.level`, `cache.payloadRejected`) are reported with
+  it; a warm run with misses other than `keyless` does not count.
 - **Harness:** a `nebulastream-cache` workflow (manual or nightly) that
   runs the suite cold and then warm, and the NebulaStream patch that sets
   `engine.cache.key` per query (the port of #529's NebulaStream branch).
