@@ -99,7 +99,7 @@ How it is measured (D9):
 | Area | Keys |
 |---|---|
 | Tracing | from #561: `tracing.ms`, `tracing.firstRun.ms`, `tracing.rerun.ms`, `tracing.iterations`, `tracing.replayedOperations`, `tracing.snapshots`, `tracing.copies`, `tracing.operations`; new ([01 §4](01-tracing-frontend.md)): `tracing.rerun.{follow,record,paused}.ms`, `tracing.pausedOperations`, per-scope re-run counts, `tracing.copies.{construct,assign,explicit}` |
-| Conversion | `conversion.ms`, `conversion.folded`, `conversion.cse`, `conversion.deadBlocks` |
+| Conversion | `conversion.ms`, `conversion.folded`, `conversion.cse`, `conversion.deadBlocks`, `conversion.refoldSweeps`, `conversion.refoldedInsts` ([03 §3.2](03-conversion-and-passes.md)) |
 | Passes | `irPasses.<pass>.ms`, `.runs`, `.changes` (#561); `irPasses.pipelineIterations` (0 when no optional pass runs, [03](03-conversion-and-passes.md)) |
 | Backend | `backend.totalMs`, per-backend sub-stages, code size |
 | Reuse | `cache.level` (L0/L1/L2/miss), `cache.reason` ([08 §4](08-caching.md)), `cache.hashMs` (canonicalize + hash), `cache.payloadRejected` (which descriptor check failed, [07 §2.2](07-serialization.md)), `artifact.eligible`, `artifact.ineligibleReason` |

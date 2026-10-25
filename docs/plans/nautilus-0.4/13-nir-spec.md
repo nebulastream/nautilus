@@ -1896,8 +1896,8 @@ These questions were open in the draft and are settled here:
   printer, the parser and the round-trip tests implement it without changes
   to the text. Changes found during M1 are made here first.
 - **Conformance material,** maintained with the specification under
-  `nautilus/test/data/nir-conformance/` and produced as part of M1.4 and
-  M1.5 ([16](16-implementation-plan.md)):
+  `nautilus/test/data/nir-conformance/` and produced as part of M1.2–M1.5, M1.3a and
+  M1.7a ([16](16-implementation-plan.md)):
   - a hex dump of a small canonical image with every byte explained (the
     second example of §9, canonicalized), with its structural hash;
   - a corpus of golden images (valid and invalid), each with the expected
