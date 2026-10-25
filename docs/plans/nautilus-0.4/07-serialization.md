@@ -332,6 +332,13 @@ pass**:
   entry carries one too: `RawProcessValue` exactly in mode 0, `Literal` or
   `AuditedInvariant` in modes 1 and 2; other pointer kinds carry none
   ([13 §4.7](13-nir-spec.md)).
+  - **Audit markers** (from #527/#528), the only way a user raises
+    evidence: `cacheLiteral(v)` asserts that the value is the same in every
+    process (a run-time value that is really a literal);
+    `cacheInvariant(v)` asserts that it is fixed for everything the
+    caller's cache key covers ([08 §2](08-caching.md)). Both give
+    `AuditedInvariant`. Neither makes a mode-0 pointer portable, and a
+    wrong audit is the caller's error, like an incomplete cache key.
   - The tracer gives integer, float and bool constants `Literal` unless the
     user marks them. This is what keeps ordinary traced modules eligible
     (#529's 1500/1500 native hits).
