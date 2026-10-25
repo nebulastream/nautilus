@@ -59,7 +59,11 @@ Gaps against production use, from the code:
   configure-time message naming this document.
 - The three GPU CI legs build without the plugin until M7.
 - The user API headers stay in the tree unchanged, so code that includes
-  them still compiles while the plugin is off.
+  them still compiles while the plugin is off. It does **not link**: the
+  device functions (`threadIdx_x()`…, the `nautilus_gpu_*` fallbacks) are
+  defined in `plugins/gpu/src/gpu.cpp`, and the `nautilus::nautilus-gpu`
+  target does not exist while the plugin is off. The migration notes say
+  so.
 - No other WP depends on the GPU plugin. The pieces it uses (extension ops,
   required plugin passes, legalization, data objects, D10's division
   semantics) are built in M1–M6.
@@ -87,11 +91,25 @@ traced module (NIR) ── gpu.partition ──┬─► host functions ─► t
 - **The GPU runtime** (`plugins/gpu/src/runtime/`) owns devices, contexts,
   streams or command queues, loaded kernels and pipeline states. Host code
   calls it through a small C ABI.
-- **Selection:** `gpu.device=cuda|metal|cpu|emulator|auto` (default `auto`: CUDA if
-  a CUDA device is present, Metal on macOS, otherwise `cpu`, which runs
-  kernels through their fallbacks). `engine.backend` keeps naming the host
-  backend. 0.3's `engine.backend=cuda` and `engine.backend=metal` stay as
-  deprecated aliases that set `gpu.device` (D17).
+- **Selection:** `gpu.device=cuda|metal|cpu|emulator|auto`. `engine.backend`
+  keeps naming the host backend. 0.3's `engine.backend=cuda` and
+  `engine.backend=metal` stay as deprecated aliases that set `gpu.device`
+  (D17).
+  - `auto` (default): CUDA if a CUDA device is present, Metal on macOS with
+    a Metal device, **otherwise an error** at the first launch that names
+    `gpu.device=cpu` and `gpu.device=emulator`. It never falls back to the
+    CPU silently.
+  - `cpu`: runs the **full grid serially** on the host backend, block by
+    block and the threads of a block in order (§4.5). Kernels that use
+    `gpu.sync_threads`, `gpu.shared_alloca` or warp operations are rejected
+    on `cpu` with a diagnostic, because serial execution cannot honor them;
+    they need `emulator` (§5.1).
+  - 0.3's single call with index 0 and dimension 1 remains only for direct
+    calls of the device functions outside any launch.
+- **Runtime loading:** the plugin links neither `libcuda` nor `libnvrtc`.
+  The runtime loads them with `dlopen` at the first CUDA device query, so
+  the plugin loads on machines without a driver (the Linux CI legs, CPU-only
+  deployments); a missing library is reported as "no CUDA device".
 
 ### 4.2 Device operations
 
@@ -104,10 +122,15 @@ traced module (NIR) ── gpu.partition ──┬─► host functions ─► t
 | `gpu.warp.{shuffle,shuffle_xor,ballot,any,all}` | `i32`, `i64`, `f32`, `bool` | lane-collective | single lane |
 
 - These are ordinary extension operations with native fallbacks, so a
-  kernel still runs on any backend, single-threaded, as in 0.3.
+  kernel body compiles on any backend. Inside a launch on `gpu.device=cpu`,
+  the index fallbacks read the current thread and block indices from the
+  runtime's per-thread launch state; outside a launch they return 0 and 1
+  as in 0.3.
 - **Math in device code:** the `std` plugin's math functions (`sqrt`, `exp`,
   `log`, `sin`, `cos`, `pow`, `fabs`, `floor`, `ceil`, `fmin`, `fmax`, …)
-  are intrinsics; the GPU emitter maps them to device built-ins.
+  are intrinsics registered by name in every build, whatever backends are
+  enabled ([04 §3.7](04-extensions.md)); the GPU emitter maps them to device
+  built-ins by name, so it does not depend on the MLIR backend.
 - **Not in 0.4:** textures, dynamic parallelism, cooperative groups, CUDA
   graphs, half precision, multi-GPU partitioning, HIP/ROCm. A HIP device
   compiler (hiprtc) would fit the same architecture later.
@@ -115,25 +138,39 @@ traced module (NIR) ── gpu.partition ──┬─► host functions ─► t
 ### 4.3 Launch
 
 ```
-%k = funcaddr @vecAdd
-gpu.launch %k, grid(%gx, 1:i32, 1:i32), block(256:i32, 1:i32, 1:i32), %a, %b, %c
+%k    = funcaddr @vecAdd
+%argv = alloca 24, 8                     ; argument block, filled by the tracer
+store %argv, %a ; store %argv+8, %b ; store %argv+16, %c
+call gpu.launch@1(%k, %gx, 1:i32, 1:i32, 256:i32, 1:i32, 1:i32, %argv, 3:i32)  ; may throw, unwind entry
 ```
 
-- **Operands:** the kernel as a `funcaddr` of an internal function, six
-  launch dimensions, the kernel's arguments (in `extra`). The `verify` hook
-  checks that the kernel operand names an internal `void` function whose
-  signature matches.
-- **Host lowering** (by legalization when a device is selected): a call of
-  `nautilus_gpu_launch(handle, dims, argv, argc)` that **may unwind**, so GPU
-  errors become exceptions (§4.6). Extension operations never throw
-  ([13 §5.11](13-nir-spec.md)); the runtime call does.
-- **CPU fallback:** an expansion into a direct call of the kernel.
+- **`gpu.launch` is an intrinsic** ([13 §4.6.1](13-nir-spec.md)), not an
+  extension operation. A launch may throw (GPU errors become exceptions,
+  §4.6), and extension operations never throw
+  ([13 §5.11](13-nir-spec.md)). As an intrinsic it has call semantics: the
+  tracer records it with the cleanup list of its trace position, so it
+  carries an unwind entry, and backends without unwind tables call it
+  through the capture thunk, like any may-throw call. Destructors of live
+  `val` objects therefore run when a launch fails.
+- **Signature** (fixed): `void(ptr kernel, i32 gx, i32 gy, i32 gz, i32 bx,
+  i32 by, i32 bz, ptr argv, i32 argc)`; attributes: may throw, effect
+  `ReadWrite`. The kernel is a `funcaddr` of an internal function; the
+  tracer stores the kernel's arguments into a stack argument block.
+- **Native fallback = the runtime entry `nautilus_gpu_launch`** itself, so
+  no backend needs a lowering. It dispatches on `gpu.device`: CUDA and
+  Metal launch the device kernel, `cpu` runs the grid serially, `emulator`
+  as in §5.1.
+- **Checks:** the `gpu.partition` pass (§4.5) checks that the kernel
+  operand is a `funcaddr` of an internal `void` function with the
+  `gpu.kernel` attribute, that `argc` equals its parameter count and that
+  the stored argument types match its signature.
 - **Synchronous by default,** as in 0.3: a launch returns when the kernel
   has finished. `gpu::launchAsync(...)` enqueues on the calling thread's
   stream or queue, and `gpu::synchronize()` waits for it; kernels from one
   thread run in order.
-- `gpu::launch` traces `gpu.launch` through `traceExtOp`; its signature does
-  not change. `setGrid` and `setBlock` stay as no-op wrappers; the
+- `gpu::launch` traces a call of the `gpu.launch@1` intrinsic (as a
+  traced `invoke` of `nautilus_gpu_launch`); its C++ signature does not
+  change. `setGrid` and `setBlock` stay as no-op wrappers; the
   `gpu.gridDimX`… options are deprecated aliases for a launch without
   configuration.
 - **Launch validation** before every launch: block size and shared memory
@@ -168,8 +205,9 @@ gpu.launch %k, grid(%gx, 1:i32, 1:i32), block(256:i32, 1:i32, 1:i32), %a, %b, %c
 ### 4.5 Kernels, device functions and the partition pass
 
 - **Kernels are the targets of `gpu.launch`.** `NautilusKernelFunction`
-  keeps its `kernel` attribute; a launch of a function without it is a
-  diagnostic.
+  keeps its 0.3 `kernel` attribute as the NIR function attribute
+  `gpu.kernel` ([13 §4.5](13-nir-spec.md)); a launch of a function without
+  it is a diagnostic.
 - **Device functions** are the kernels plus every internal function they
   reach. Kernel names are kept, so Nsight and Xcode show them.
 - **Device code rules** (diagnostics `NAUT-G001`…, with source locations):
@@ -188,7 +226,14 @@ gpu.launch %k, grid(%gx, 1:i32, 1:i32), block(256:i32, 1:i32, 1:i32), %a, %b, %c
   2. rewrites checked integer division (D10) into the device form of D19
      (§4.7) and keeps saturating float→int casts (D11) as explicit clamps;
   3. moves device functions into a device module and replaces each launch
-     target with a kernel handle that the runtime resolves.
+     target with a kernel handle that the runtime resolves;
+  4. for `gpu.device=cpu` and `emulator`, keeps the device functions in the
+     host module as well and emits, per kernel, an internal entry
+     `<kernel>$argv(ptr argv)` that loads the arguments from the block and
+     calls the kernel; the kernel handle names it, and the runtime calls it
+     once per thread with the thread's indices in its launch state. On
+     `cpu` it rejects kernels that use barriers, shared memory or warp
+     operations (§4.1).
 
 ### 4.6 Errors
 
@@ -264,7 +309,7 @@ Metal is production ready, CUDA ships as experimental:
 | **Grid emulator** | Linux runners, every PR | `gpu.device=emulator` runs kernels on the CPU with full grid semantics (§5.1); covers partition, launch, indexing, barriers, shared memory, atomics, warp ops and D19 for both CUDA- and Metal-style code |
 | **CUDA compile** | Linux runner with the CUDA toolkit (no driver, no GPU) | NVRTC compiles every test kernel to PTX for each supported architecture; `ptxas` assembles it and reports registers, spills and shared memory; failures and resource regressions fail the leg |
 | **Shared emitter** | every leg | CUDA and MSL come from one NIR emitter (§4.5); the Metal execution covers the emitter's logic for both, the CUDA leg covers what differs in syntax |
-| **Metal performance** | an Apple-silicon Mac, before PR 18 and the release candidate merge | `tools/gpu-validate/` runs the §4.8 benchmarks on bare metal and writes a report with the machine, OS and toolchain; reports are kept in `plugins/gpu/validation/` |
+| **Metal performance** | an Apple-silicon Mac, before PR 18 and the release candidate merge; the machine and its owner are an external prerequisite ([16 §16](16-implementation-plan.md)) | `tools/gpu-validate/` runs the §4.8 benchmarks on bare metal and writes a report with the machine, OS and toolchain; reports are kept in `plugins/gpu/validation/` |
 
 **What is not covered:** CUDA kernels never execute on NVIDIA hardware, so
 CUDA-specific runtime behavior (driver errors, real memory faults, timing
@@ -294,14 +339,15 @@ are unverified. That is why CUDA is experimental (§1).
 | `GPUTracingTest` | traces as pre-SSA NIR; golden dumps regenerated in their own commit |
 | `GPUCodegenTest` | generated device sources compared byte for byte (`plugins/gpu/test/data/` stays excluded from `format.sh`) |
 | `GPUExecutionTest` | the 0.3 cases plus every op of §4.2: on Metal and the emulator in CI (CUDA: compile only) |
-| CPU fallback | every GPU test function on `tbc`, `asmjit` and MLIR through the fallbacks, with the 0.3 results |
+| CPU device | every GPU test kernel without barriers, shared memory or warp ops on `gpu.device=cpu` with `tbc`, `asmjit` and MLIR as host backends: the full grid runs and the results equal the emulator's (not 0.3's single-thread results, which `GPUExecutionTest` documents as "writes c[0] only"); kernels with barriers are rejected with the diagnostic; direct calls of the device functions outside a launch keep the 0.3 results |
+| Selection | `gpu.device=auto` without a device fails with the error naming `cpu` and `emulator`; the plugin loads without `libcuda` |
 | Memory | `DeviceBuffer`/`ManagedBuffer` round trips; host pointers rejected; the 0.3 Metal compatibility path never copies past the declared size |
 | Errors | invalid launch configuration, illegal address, out of memory, compile error: each raises its exception with the kernel name (illegal address and out of memory on Metal) |
 | Concurrency | launches from several threads; `launchAsync` ordering per thread; module release while launches are queued |
 | Device rules and D19 | one negative test per rule; the division cases on Metal, on the emulator and in the fallback |
 | Fuzzer | generated kernels compared between Metal, the emulator, the CPU fallback and the C++ oracle in CI; every generated kernel also compiled for CUDA |
 | Benchmarks | §4.8 kernels against hand-written MSL on an Apple-silicon Mac |
-| API compatibility | the 0.3 GPU tests and `example/src/DemoGPU.cpp` join `test/api-compat/` |
+| API compatibility | the 0.3 GPU tests and `example/src/DemoGPU.cpp` join `test/api-compat/`; on hosts without a device the leg sets `gpu.device=cpu` through `NAUTILUS_OPTIONS`, not in the test sources, because `auto` fails without a device (§4.1). **Exception:** the two 0.3 "CPU fallback" sections of `GPUExecutionTest` (`gpuLaunchVecAdd`, `gpuLaunchVecAddDynamic`) launch 256 threads over 3-element arrays and rely on the single call; with the full grid they would write out of bounds. They are rewritten with arrays sized to the grid instead of joining `test/api-compat/`, and the migration guide lists the change |
 
 ### 5.3 Lifting CUDA out of experimental
 
@@ -321,7 +367,9 @@ keeping it removed needs such a run before each release.
   emulator in CI; every test kernel compiles for CUDA through NVRTC and
   `ptxas`.
 - The Metal performance targets of §4.8 are met on an Apple-silicon Mac.
-- The 0.3 GPU user API compiles and runs unchanged; `docs/gpu.md` documents
+- The 0.3 GPU user API compiles and runs unchanged, except that a launch
+  on a host without a device needs `gpu.device=cpu` and then runs the full
+  grid (§4.1); `docs/gpu.md` documents
   the API, the memory model, errors and limits, marks CUDA as experimental
   and says how it is validated.
 - D19 and D20 decided.
@@ -331,7 +379,8 @@ keeping it removed needs such a run before each release.
 | Risk | Mitigation |
 |---|---|
 | GPU support is broken for most of the release | declared; the headers stay in the tree; the 0.3 tests and reference sources are ported, not rewritten |
-| NVRTC or the driver API is unavailable in a deployment | the plugin falls back to `gpu.device=cpu` with a warning, and fails with a clear error if a CUDA device was requested explicitly |
+| NVRTC or the driver API is unavailable in a deployment | both are loaded with `dlopen` (§4.1), so the plugin still loads; a launch fails with a clear error unless `gpu.device=cpu` or `emulator` is set. There is no silent fallback |
+| 0.3 programs rely on the single-call CPU fallback of a launch | the full-grid `cpu` device is a behavior change, listed in the migration guide; `auto` fails loudly instead of running the old fallback, so no program changes results silently |
 | The memory model breaks 0.3 Metal programs | the compatibility path of §4.4 accepts host pointers with a declared size; the migration guide shows the move to `DeviceBuffer` |
 | Address-space inference rejects valid kernels | the rule is narrow (one space per value); diagnostics name the value; `.nir` and fuzzer coverage |
 | No GPU runner and no NVIDIA hardware | D21: Metal executes on the hosted macOS runner and is production ready; the emulator and the PTX/`ptxas` leg cover CUDA, which ships as experimental (§5.3 lifts it) |

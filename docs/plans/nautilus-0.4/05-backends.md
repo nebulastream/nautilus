@@ -9,10 +9,11 @@ Every backend reads SSA-level NIR after legalization
 ([03](03-conversion-and-passes.md)). 0.4 keeps one native backend, the
 existing `asmjit` backend:
 - it reads NIR, with array side tables;
-- it keeps AsmJit's register allocator, so there is **no regression in code
-  quality against 0.3**;
+- it keeps AsmJit's register allocator, so code quality stays at 0.3's
+  level (**no regression against 0.3**, checked by `asm-diff`, §4.3);
 - it fixes its call-heavy compile-time cost;
-- it is the default on x86-64 and AArch64.
+- it is proposed as the default on x86-64 and AArch64 (D3, decided at the
+  M4 exit on the criterion in §9).
 
 MLIR/LLVM stays for peak performance and persisted native code, and the
 remaining backends are ported to NIR, except `bc`, which is removed (§6). There is no new backend, no second
@@ -23,7 +24,7 @@ AsmJit mode and no custom allocator in 0.4.
 | Backend | How it works in 0.3 | P0 / CI measurements |
 |---|---|---|
 | `bc` | register bytecode interpreter | 0.2–0.3 µs/op lowering |
-| `tbc` | threaded bytecode (tail-call dispatch), optional copy-and-patch JIT (`tbc.mode=jit`) | 0.2–0.3 µs/op lowering |
+| `tbc` | threaded bytecode (tail-call dispatch), optional copy-and-patch JIT (`tbc.mode=jit`) | not measured in P0; assumed equal to `bc` until the M1.10 corpus records it |
 | `asmjit` | `X64LoweringProvider`/`A64LoweringProvider` emit through `x86::Compiler`/`a64::Compiler`: virtual registers, a builder node list, AsmJit's global RA pass, a post-RA peephole pass, `finalize()` | ~0.4 µs/op normally; **~4 µs per call at 5000 calls (superlinear, 70–76% of the compile)**; Compiler + RA ≈ 10% of all instructions on linear code |
 | MLIR → LLVM | builds a `DialectRegistry` and `MLIRContext` per compile; LLVM dialect → LLVM IR; O3 with `CodeGenOptLevel::Aggressive` | 3.3–5 ms for trivial functions on CI; fixed cost 10.2 ms → 4.9 ms per TPC-H kernel with #561 |
 | `cpp` | C++ source + external compiler | ~22 ms minimum |
@@ -36,7 +37,7 @@ Backends take 11–30% of a compile on `bc`/`tbc`/`asmjit`
 
 | Backend | Role | Notes |
 |---|---|---|
-| **`asmjit`** (§4) | **Default** on x86-64 and AArch64 (decision D3) | Reads NIR directly; AsmJit's allocator; code quality of 0.3 |
+| **`asmjit`** (§4) | **Proposed default** on x86-64 and AArch64 (D3, §9) | Reads NIR directly; AsmJit's allocator; code quality of 0.3 |
 | `tbc` (+ copy-and-patch) | Portable default; iOS and platforms without JIT; the only interpreting backend | Near 1:1 from NIR |
 | ~~`bc`~~ | **Removed in 0.4** (D6, §6) | Not ported to NIR |
 | MLIR → LLVM | Peak performance; produces the persisted native payloads ([07](07-serialization.md)) | #561's per-thread state reuse; reads NIR; maps extension types (from M6) |
@@ -55,6 +56,19 @@ How promotion runs (worker pool, cancellation, status, opt-in policy) is
 in [11-tiered-compilation.md](11-tiered-compilation.md). `engine.backend=<x>` still
 selects single-tier compilation with exactly that backend.
 
+### 3.1 Defined arithmetic (D10, D11) in every port
+
+Every backend implements the defined integer and float semantics of
+[13 §5.3, §5.5 and §5.10](13-nir-spec.md) **in its M4 port**: checked integer
+`div`/`rem`, shift masking and saturating float→int casts. M6.1 adds only
+the folding rules that drop checks proven unnecessary, and the plugin side.
+The per-backend lowering, including the throw path, is the table in
+[06 §4.2](06-semantics.md). For the backends without unwind tables
+(`asmjit`, `tbc`, `cpp`), the cold block calls `nautilus_rt_throw_arith`
+through the capture thunk with the instruction's unwind entry, exactly
+like a captured may-throw call; the tracer attaches the current cleanup
+list to every integer `div`/`rem` ([13 §5.10](13-nir-spec.md)).
+
 ## 4. The AsmJit backend
 
 ### 4.1 Decision: keep AsmJit's allocator
@@ -72,8 +86,9 @@ Why not our own single-pass allocator (P0 and the profile in
   ~40% of backend time (≈ 0.17 µs/op). The rest of the backend is our
   lowering: hash-map frames, node creation, dispatch. NIR fixes most of
   that.
-- **Keeping it guarantees no code-quality regression** and avoids writing
-  and maintaining an allocator.
+- **Keeping it avoids the code-quality risk of a new allocator** and the
+  cost of writing and maintaining one. The allocator's input still changes
+  (§4.2), so code quality is checked, not assumed (§4.3).
 - **The one real problem was ours:** the quadratic liveness cost on
   call-heavy functions came from Nautilus's patch to AsmJit's liveness pass,
   and is fixed (#565).
@@ -104,7 +119,8 @@ landed.
 | Side tables | hash maps (`Frame`, `blockLabels`, `processedBlocks`, `usageCounts_`, `inlinedConstParams_`) | arrays indexed by value and block id |
 | Use counts, layout | recomputed (`ir::countUsages`) | from NIR (`useCount`, `BlockInfo`) |
 | Constants | constant-inlining special cases | `ConstPool` operands become immediates where the instruction allows |
-| Virtual registers | one per IR value | created on first use and reused after last use where the type allows, to shrink the allocator's work |
+| Virtual registers | one per IR value, created through hash maps (`X64LoweringProvider.hpp`) | created on first use; reused only for values defined and dead within one basic block with no use in a successor, never across blocks, so no liveness analysis is needed outside the allocator |
+| Checked arithmetic | division traps in hardware; shifts and float→int casts undefined | §3.1: cold-block throw through the capture thunk, masks, saturating casts |
 | Call-heavy functions | quadratic liveness in our AsmJit patch | fixed on `main` before 0.4 (#565) |
 
 ### 4.3 Targets
@@ -112,9 +128,11 @@ landed.
 Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
 (nautilus-duck):
 
-- **Code quality: no regression against 0.3's `asmjit`.** This holds by
-  construction (same allocator and peepholes) and is checked on every
-  benchmark. It is a release criterion.
+- **Code quality: no regression against 0.3's `asmjit`.** The allocator
+  and peepholes are unchanged, but their input changes (vreg reuse within
+  a block, `ConstPool` immediates, the checks of §3.1), so this is not
+  true by construction: it is checked by the `asm-diff` leg on every PR
+  and on every benchmark. It is a release criterion.
 - **Compile time:**
   - backend ≤ 0.25 µs/op on linear code (0.3: ~0.4 µs/op);
   - `calls` linear in N (already true after #565).
@@ -125,16 +143,25 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
 
 1. Port the lowering providers to NIR with array side tables and
    `ConstPool` immediates.
-2. Reduce virtual-register churn (create on first use, reuse after last
-   use).
-3. Confirm the call-heavy fix (#565) on NIR on x86-64 and AArch64, with the
+2. Reduce virtual-register churn (create on first use; reuse only within
+   one basic block, §4.2), with `asm-diff` before and after.
+3. Lower the checked arithmetic of §3.1, and the line table of §7.
+4. Confirm the call-heavy fix (#565) on NIR on x86-64 and AArch64, with the
    `calls` corpus case in CI.
 
 ## 5. MLIR → LLVM
 
 - **Per-thread state reuse from #561:**
   - host `TargetMachine`s reused across compiles;
-  - one `MLIRContext` per thread, replaced every 256 compiles;
+  - one `MLIRContext` per thread, replaced every 256 compiles. Promotion
+    workers keep theirs for the engine's lifetime, so their contexts are
+    created **without their own LLVM thread pool**: multithreading off, or
+    one engine-owned `llvm::ThreadPool` shared through
+    `MLIRContext::setThreadPool` and sized by
+    `engine.tiered.promotionThreads` ([11 §4.1](11-tiered-compilation.md)).
+    Today `mlir.enableMultithreading` defaults to `true`
+    (`MLIRCompilationBackend.cpp`), which would give each worker a pool of
+    `hardware_concurrency` threads;
   - the module verified once (`mlir.verifyEachPass` for debugging);
   - `LLJIT` given the data layout.
 - **Input is NIR:** blocks and terminators map to `cf`, arithmetic to
@@ -143,12 +170,80 @@ Measured with the latency corpus, `ExecutionBenchmark`, and TPC-H
   (O2 below a threshold) is an optional tuning, measured with the corpus.
 - **Persisted native payloads** for artifacts are produced here
   ([07](07-serialization.md)): one relocatable object per payload, with the
-  import table of #527.
+  import table of #527. How the object refers to everything outside it is
+  §5.2; which CPU it targets is §5.1.
+- **The `inlining` plugin's LLVM hooks** stay MLIR-only and in-process. A
+  module whose compile used them carries process addresses as symbol names
+  (`ptrToHex`), so its payload is non-persistable (the artifact carries
+  only the NIR image) unless every renamed symbol goes through the import
+  table as a `Portable` pointer name; the hash of the inlined bitcode then
+  joins the descriptor and the cache keys ([07 §2](07-serialization.md),
+  [04 §4](04-extensions.md)).
+
+### 5.1 Target CPU
+
+Today the backend builds its target machine with
+`JITTargetMachineBuilder::detectHost()` and stamps `target-cpu`,
+`target-features` and `tune-cpu` of the host on every function
+(`LLVMIROptimizer.cpp`, `jit/MLIRJit.cpp`). A payload built on an AVX-512
+host would fault with SIGILL on an AVX2 host.
+
+- **Option `engine.mlir.targetCpu`** (code-affecting): `host` (default,
+  today's behavior), `generic` (the baseline of the target triple, for
+  payloads that are shipped to other machines), or an LLVM CPU name
+  (M1.4a lists it as code-affecting).
+- **The target CPU name and the final feature string** are part of the
+  native payload's compatibility descriptor
+  ([07 §2, §2.2](07-serialization.md)), of the L1 compatibility identity and of
+  the L2 key ([08](08-caching.md)).
+- **A payload is executed only if its CPU and features match the host**
+  (its feature set is a subset of the host's). On a mismatch the module is
+  recompiled from its NIR image; a mismatched payload is never executed.
+
+### 5.2 Native payload linkage
+
+[07 §2.1](07-serialization.md) defines the linkage of a native payload:
+undefined symbols `__nautilus_{ptr,bind,data,stub}_<i>` and `nautilus_rt_*`
+runtime helpers, position-independent code with the small code model, and
+the accepted relocations. This section lists only what the MLIR backend
+changes to produce it.
+
+- **Today's lowering embeds addresses:** `funcaddr` of an external function
+  is an `i64` constant and an `inttoptr` (`MLIRLoweringProvider.cpp`), and
+  external names are mapped with `absoluteSymbols` (`jit/MLIRJit.cpp`).
+- **In 0.4, for every module that may be persisted** (a cache or
+  `saveModule` is configured), the lowering emits every `pointers`,
+  `bindings` and data-object reference, every `funcaddr` stub and every
+  runtime helper (capture thunk, `nautilus_rt_throw_arith` of §3.1, the
+  personality bridges) as the external symbols of 07 §2.1, and builds with
+  `llvm::Reloc::PIC_` and the small code model. In-process compiles whose
+  result is never stored keep the immediates.
+- **Intrinsic callees** without an inline lowering
+  ([13 §4.6.1](13-nir-spec.md)) are referenced as
+  `__nautilus_intr_<i>` (`extensions` index *i*), resolved at load to the
+  native fallback registered under that `name@version`. Inline lowerings
+  need no symbol.
 
 ## 6. `tbc`, `cpp`, GPU, and removing `bc`
 
 - `tbc` lowers NIR almost one to one. Its register allocator works on value
-  ids, and its handler table is indexed by extension opcode.
+  ids.
+- **Extension ops on `tbc`:** one core opcode `ext` calls an out-of-line
+  handler `void(*)(uint64_t* fp, const Instr*)` taken from the
+  extension-lowering table ([04 §3.5](04-extensions.md)), or the native
+  fallback when there is none. It works in all three dispatch skins (tail
+  call, computed goto, switch), which a plugin could not extend, and in
+  `tbc.mode=jit` through one generic `ext` stencil. Plugins never add
+  dispatch-table entries or stencils.
+- **Stencils:** every new or changed opcode (`ext`, `data.addr`,
+  `funcaddr`, the checked arithmetic and saturating casts of §3.1) needs
+  regenerated copy-and-patch stencils for all three targets
+  (`jit/generated/stencils_{x86_64_elf,aarch64_elf,arm64_macho}.inc`,
+  `tools/stencils/build_stencils.py`, Clang ≥ 19). They are regenerated in
+  their own commit in M4.1 and again in M6.1, and a CI check verifies that
+  the checked-in tables match the generator's output.
+- `tbc` and `cpp` throw from checked arithmetic as in §3.1; `tbc` keeps
+  using `third_party/dyncall` for outgoing external calls.
 - `cpp` prints from NIR. Extension ops use expression templates or calls.
 - GPU backends read NIR from M7 on; until then the GPU plugin is off. The
   design is in [17-gpu.md](17-gpu.md).
@@ -194,15 +289,23 @@ names, which 0.4 carries in NIR:
   (`dump.*`, `perf`, `perf.sample`, debug info), so the default compile
   pays nothing ([01 §5](01-tracing-frontend.md)).
 - **MLIR** emits DWARF locations from the `debug` section, as it does from
-  today's IR.
+  today's IR. 0.3's `IRLocationPass` (operation → line of the IR dump) is
+  replaced by a side output of the NIR printer, built in M4.5 (MLIR DWARF)
+  and M4.8 (jitdump, `perf.sample`); it is not a pass.
 - **`asmjit` and `tbc` register their code too.** In 0.3, `perf.sample`
   needs `engine.backend=mlir`, because tier-0 backends register nothing.
   In 0.4, `asmjit` publishes one symbol per function (and per `region()`
   when source locations are on) to `JitSymbolRegistry` and to the jitdump,
   and `tbc` publishes its handler ranges. Profiling then works with the
   default backend.
+- **Per-operation attribution on `asmjit`.** With source locations on,
+  `asmjit` also publishes a line table (code offset → NIR instruction and
+  its source tag), which `JitSymbolRegistry::resolveLine` serves, so the
+  `profiling` plugin's per-operation reports (`SampleReport.cpp`) work on
+  `asmjit` as they do on MLIR today.
 - **Tests:** the existing debug-info and jitdump tests run on NIR, plus a
-  `perf.sample` test on `asmjit` ([12](12-validation.md)).
+  `perf.sample` test on `asmjit` and a per-operation attribution test on
+  `asmjit` (M4.8, [12](12-validation.md)).
 
 ## 8. Not in 0.4
 
@@ -216,7 +319,11 @@ names, which 0.4 carries in NIR:
 ## 9. Exit criteria (M4)
 
 - Every backend except GPU (M7) passes the execution tests and the
-  differential fuzzer on NIR.
+  differential fuzzer on NIR, including the defined arithmetic of §3.1
+  (fuzzer cases for division by zero, `MIN / -1`, oversized shifts and
+  out-of-range casts).
+- `tbc` stencils regenerated for all three targets; the freshness check
+  runs in CI.
 - `asmjit` meets the targets of §4.3.
 - End to end ≤ 0.75 µs/op on linear corpus code with the default backend
   (README §1).
@@ -224,7 +331,10 @@ names, which 0.4 carries in NIR:
   TPC-H, `asmjit` included.
 - Debug info, jitdump and `perf.sample` work on NIR, `perf.sample` also
   with `asmjit` (§7).
-- Decision D3 taken on measured results.
+- Decision D3 taken on measured results: **`asmjit` becomes the tier-0 and
+  single-tier default on x86-64 and AArch64 if it meets every target of
+  §4.3 and the end-to-end gate above; otherwise `tbc` is the default** and
+  `asmjit` stays selectable.
 
 ## 10. Risks
 
