@@ -52,14 +52,14 @@ TEST_CASE("type properties", "[nir][types]") {
 TEST_CASE("opcode table", "[nir][opcodes]") {
 	std::set<uint16_t> seen;
 	int count = 0;
-#define NIR_OP(OPNAME, CODE, TEXT, KA, KB, KC, FL)                                                                       \
+#define NIR_OP(OPNAME, CODE, TEXT, KA, KB, KC, FL)                                                                     \
 	{                                                                                                                  \
 		REQUIRE(seen.insert(CODE).second);                                                                             \
-		REQUIRE(static_cast<uint16_t>(Op::OPNAME) == CODE);                                                              \
+		REQUIRE(static_cast<uint16_t>(Op::OPNAME) == CODE);                                                            \
 		auto* info = coreOpInfo(CODE);                                                                                 \
 		REQUIRE(info != nullptr);                                                                                      \
 		REQUIRE(std::string(info->name) == TEXT);                                                                      \
-		REQUIRE(info->a == OperandKind::KA);                                                                            \
+		REQUIRE(info->a == OperandKind::KA);                                                                           \
 		++count;                                                                                                       \
 	}
 #include "nautilus/nir/Opcodes.def"
