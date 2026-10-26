@@ -31,13 +31,13 @@ const std::set<std::string_view>& reservedWords() {
 			w.insert(t);
 		}
 		// the casts and comparison spellings that appear as mnemonic components, and the keywords of §9.2
-		for (auto k : {"nir",    "module",   "extension", "import",  "pointer", "binding",  "data",  "callee",
-		               "location", "region", "func",      "export",  "pressa",  "alloca",   "attr",  "debug",
-		               "unwind", "cleanup",  "thunk",     "prob",    "align",   "flags",    "internal", "external",
-		               "imported", "intrinsic", "local",  "symbol",  "image",   "audited",  "raw",   "caller",
-		               "null",   "pad",      "true",      "false",   "inf",     "nan",      "loc",   "name",
-		               "at",     "in",       "size",      "params",  "attrs",   "zext",     "sext",  "declared",
-		               "cast",   "cmp",      "call",      "bind",    "div",     "rem",      "shr"}) {
+		for (auto k : {"nir",      "module",    "extension", "import", "pointer", "binding", "data",     "callee",
+		               "location", "region",    "func",      "export", "pressa",  "alloca",  "attr",     "debug",
+		               "unwind",   "cleanup",   "thunk",     "prob",   "align",   "flags",   "internal", "external",
+		               "imported", "intrinsic", "local",     "symbol", "image",   "audited", "raw",      "caller",
+		               "null",     "pad",       "true",      "false",  "inf",     "nan",     "loc",      "name",
+		               "at",       "in",        "size",      "params", "attrs",   "zext",    "sext",     "declared",
+		               "cast",     "cmp",       "call",      "bind",   "div",     "rem",     "shr"}) {
 			w.insert(k);
 		}
 		return w;
@@ -102,10 +102,11 @@ void ExtensionRegistry::freeze() {
 void ExtensionRegistry::checkOpen(std::string_view what, const std::string& name) const {
 	// called with the mutex held
 	if (frozen_.load(std::memory_order_acquire)) {
-		throw RegistrationError("cannot register " + std::string(what) + " '" + name +
-		                        "': the extension registry is frozen. All extensions must be registered before the first "
-		                        "NautilusEngine is constructed (or the first NIR image is loaded or parsed). Do not "
-		                        "construct engines in static initializers.");
+		throw RegistrationError(
+		    "cannot register " + std::string(what) + " '" + name +
+		    "': the extension registry is frozen. All extensions must be registered before the first "
+		    "NautilusEngine is constructed (or the first NIR image is loaded or parsed). Do not "
+		    "construct engines in static initializers.");
 	}
 }
 
@@ -149,7 +150,7 @@ uint8_t ExtensionRegistry::registerType(TypeInfo info, Owner owner) {
 	return static_cast<uint8_t>(16 + types_.size() - 1);
 }
 
-uint16_t ExtensionRegistry::registerOp(OpInfo info, Owner owner) {
+uint16_t ExtensionRegistry::registerOp(ExtOpInfo info, Owner owner) {
 	std::lock_guard<std::mutex> lock(mutex_);
 	locks_.fetch_add(1, std::memory_order_relaxed);
 	checkOpen("operation", info.name);
@@ -219,8 +220,8 @@ const TypeInfo* ExtensionRegistry::type(uint8_t id) const {
 	return read([&]() -> const TypeInfo* { return id >= 16 && id - 16u < types_.size() ? &types_[id - 16] : nullptr; });
 }
 
-const OpInfo* ExtensionRegistry::op(uint16_t opcode) const {
-	return read([&]() -> const OpInfo* {
+const ExtOpInfo* ExtensionRegistry::op(uint16_t opcode) const {
+	return read([&]() -> const ExtOpInfo* {
 		return opcode >= nir::FIRST_EXTENSION_OP && opcode - nir::FIRST_EXTENSION_OP < ops_.size()
 		           ? &ops_[opcode - nir::FIRST_EXTENSION_OP]
 		           : nullptr;

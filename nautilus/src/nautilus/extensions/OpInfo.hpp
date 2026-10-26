@@ -39,8 +39,9 @@ struct Signature {
 	uint8_t resultFromOperand = 255;
 };
 
-/// An extension operation. Extension operations never throw and are never terminators (13 §5.11).
-struct OpInfo {
+/// An extension operation (named ExtOpInfo: nir::OpInfo is the core opcode table row). Extension operations never throw
+/// and are never terminators (13 §5.11).
+struct ExtOpInfo {
 	std::string name; // "simd.add"
 	uint32_t version = 1;
 	uint32_t minCompatibleVersion = 1;
@@ -59,8 +60,8 @@ struct OpInfo {
 	uint32_t targets = 0;
 };
 
-/// An intrinsic: a function a plugin registers by name, with a native fallback (13 §4.6.1). Its identity does not depend
-/// on any backend; backend lowerings attach by name.
+/// An intrinsic: a function a plugin registers by name, with a native fallback (13 §4.6.1). Its identity does not
+/// depend on any backend; backend lowerings attach by name.
 struct IntrinsicInfo {
 	std::string name; // "builtin.prefetch"
 	uint32_t version = 1;

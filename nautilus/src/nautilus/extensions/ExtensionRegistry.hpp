@@ -28,8 +28,8 @@ enum class Owner { Plugin, Core };
 /// (docs/plans/nautilus-0.4/04-extensions.md §3).
 ///
 /// Registration happens before the first engine, from static initializers or plugin init functions. The registry is
-/// frozen by its first reader (an engine, an image load, a text parse, a C API module): the freeze is a release store of
-/// a flag, registration checks the flag under a mutex, and lookups after the freeze are lock-free acquire loads.
+/// frozen by its first reader (an engine, an image load, a text parse, a C API module): the freeze is a release store
+/// of a flag, registration checks the flag under a mutex, and lookups after the freeze are lock-free acquire loads.
 /// Late registration throws (D13).
 class ExtensionRegistry {
 public:
@@ -40,7 +40,7 @@ public:
 	/// Registers a type and returns its `TypeId` (16 to 255, at most 240 types).
 	uint8_t registerType(TypeInfo info, Owner owner = Owner::Plugin);
 	/// Registers an operation and returns its opcode (256 and up).
-	uint16_t registerOp(OpInfo info, Owner owner = Owner::Plugin);
+	uint16_t registerOp(ExtOpInfo info, Owner owner = Owner::Plugin);
 	/// Registers an intrinsic and returns its dense id.
 	uint32_t registerIntrinsic(IntrinsicInfo info, Owner owner = Owner::Plugin);
 	/// Registers a pass by name and returns its dense id (the passes themselves belong to M3.9).
@@ -55,7 +55,7 @@ public:
 	// ---- lookups (lock-free after the freeze) -------------------------------------------------------------------
 
 	const TypeInfo* type(uint8_t id) const;
-	const OpInfo* op(uint16_t opcode) const;
+	const ExtOpInfo* op(uint16_t opcode) const;
 	const IntrinsicInfo* intrinsic(uint32_t id) const;
 	std::optional<uint8_t> findType(std::string_view name) const;
 	std::optional<uint16_t> findOp(std::string_view name) const;
@@ -84,7 +84,7 @@ private:
 	mutable std::mutex mutex_;
 	mutable std::atomic<uint64_t> locks_ {0};
 	std::vector<TypeInfo> types_;
-	std::vector<OpInfo> ops_;
+	std::vector<ExtOpInfo> ops_;
 	std::vector<IntrinsicInfo> intrinsics_;
 	std::vector<std::string> passes_;
 	std::unordered_map<std::string, uint32_t> byName_; // "type:...", "op:...", "intrinsic:...", "pass:..."

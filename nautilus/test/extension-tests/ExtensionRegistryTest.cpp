@@ -7,19 +7,21 @@ namespace nautilus::ext {
 
 /// The test-only reset (04 §3.7): it exists only in this binary.
 struct ExtensionRegistryTestAccess {
-	static void reset() {
-		auto& r = ExtensionRegistry::instance();
-		std::lock_guard<std::mutex> lock(r.mutex_);
-		r.frozen_.store(false);
-		r.types_.clear();
-		r.ops_.clear();
-		r.intrinsics_.clear();
-		r.passes_.clear();
-		r.byName_.clear();
-		r.byFallback_.clear();
-		r.locks_.store(0);
-	}
+	static void reset();
 };
+
+void ExtensionRegistryTestAccess::reset() {
+	auto& r = ExtensionRegistry::instance();
+	std::lock_guard<std::mutex> lock(r.mutex_);
+	r.frozen_.store(false);
+	r.types_.clear();
+	r.ops_.clear();
+	r.intrinsics_.clear();
+	r.passes_.clear();
+	r.byName_.clear();
+	r.byFallback_.clear();
+	r.locks_.store(0);
+}
 
 } // namespace nautilus::ext
 
@@ -42,8 +44,8 @@ TypeInfo typeNamed(std::string name) {
 	return t;
 }
 
-OpInfo opNamed(std::string name) {
-	OpInfo o;
+ExtOpInfo opNamed(std::string name) {
+	ExtOpInfo o;
 	o.name = std::move(name);
 	o.hasExpansion = true;
 	return o;
@@ -122,7 +124,7 @@ TEST_CASE("an invalid registration is rejected", "[registry]") {
 	auto noParts = typeNamed("test.parts");
 	noParts.parts = 0;
 	REQUIRE_THROWS_AS(r.registerType(noParts), RegistrationError);
-	OpInfo noFallback;
+	ExtOpInfo noFallback;
 	noFallback.name = "test.nofallback";
 	REQUIRE_THROWS_AS(r.registerOp(noFallback), RegistrationError);
 	noFallback.targets = 1; // target-restricted operations may omit the fallback

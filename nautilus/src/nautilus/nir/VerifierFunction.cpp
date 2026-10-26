@@ -1,3 +1,4 @@
+#include "nautilus/extensions/ExtensionRegistry.hpp"
 #include "nautilus/nir/Operands.hpp"
 #include "nautilus/nir/Verifier.hpp"
 #include <algorithm>
@@ -746,7 +747,9 @@ private:
 		const Inst& inst = insts_[i];
 		auto* info = coreOpInfo(inst.op);
 		if (info == nullptr) {
-			if (!(inst.op >= FIRST_EXTENSION_OP && o_.isExtensionOp && o_.isExtensionOp(inst.op))) {
+			if (inst.op >= FIRST_EXTENSION_OP && ext::ExtensionRegistry::instance().op(inst.op) != nullptr) {
+				extensionInstruction(i, inst);
+			} else if (!(inst.op >= FIRST_EXTENSION_OP && o_.isExtensionOp && o_.isExtensionOp(inst.op))) {
 				report(DiagCode::V003, "unknown opcode " + std::to_string(inst.op), i);
 			}
 			return;
@@ -964,6 +967,121 @@ private:
 				resultIs(ta);
 			}
 			break;
+		}
+	}
+
+	/// NIR-V070 (operand shape) and NIR-V071 (signature and the plugin's hook) for an extension instruction (13 §5.11).
+	void extensionInstruction(uint32_t i, const Inst& inst) {
+		auto* info = ext::ExtensionRegistry::instance().op(inst.op);
+		auto where = "extension operation " + info->name;
+		auto& shape = info->shape;
+		std::vector<TypeId> operandTypes;
+		auto operand = [&](Ref r, bool mustBeConst, const std::string& what) {
+			TypeId t = TypeId::Void;
+			if (!useRef(i, r, t, what.c_str())) {
+				return;
+			}
+			if (mustBeConst && !isConstRef(r)) {
+				report(DiagCode::V070, where + ": " + what + " must be a constant", i);
+			}
+			operandTypes.push_back(t);
+		};
+		auto field = [&](ext::FieldKind k, uint32_t v, const char* name) {
+			switch (k) {
+			case ext::FieldKind::Unused:
+				if (v != 0) {
+					report(DiagCode::V070, where + ": unused field " + name + " is not 0", i);
+				}
+				break;
+			case ext::FieldKind::Value:
+				operand(v, false, std::string("operand ") + name);
+				break;
+			case ext::FieldKind::Const:
+				operand(v, true, std::string("operand ") + name);
+				break;
+			default:
+				break; // imm: any u32; list: only valid for c
+			}
+		};
+		if (shape.a == ext::FieldKind::List || shape.b == ext::FieldKind::List) {
+			report(DiagCode::V070, where + ": only field c can be a list", i);
+		}
+		field(shape.a, inst.a, "a");
+		field(shape.b, inst.b, "b");
+		if (shape.c != ext::FieldKind::List) {
+			field(shape.c, inst.c, "c");
+		} else {
+			if (inst.c >= m_.extra.size()) {
+				report(DiagCode::V008, where + ": the payload list is out of bounds of extra", i);
+			} else {
+				uint32_t n = m_.extra[inst.c];
+				uint64_t fixed = shape.prefix.size();
+				bool countOk = shape.group.empty() ? n == fixed : n >= fixed && (n - fixed) % shape.group.size() == 0;
+				if (uint64_t(inst.c) + 1 + n > m_.extra.size()) {
+					report(DiagCode::V008, where + ": the payload list is out of bounds of extra", i);
+				} else if (!countOk) {
+					report(DiagCode::V070,
+					       where + ": the payload has " + std::to_string(n) +
+					           " words, which the operand shape does not allow",
+					       i);
+				} else {
+					extraRanges.push_back({inst.c, inst.c + 1 + n});
+					for (uint32_t k = 0; k < n; ++k) {
+						auto kind = k < shape.prefix.size()
+						                ? shape.prefix[k]
+						                : shape.group[(k - shape.prefix.size()) % shape.group.size()];
+						uint32_t w = m_.extra[inst.c + 1 + k];
+						std::string what = "payload word " + std::to_string(k);
+						switch (kind) {
+						case ext::WordKind::Value:
+							operand(w, false, what);
+							break;
+						case ext::WordKind::Const:
+							operand(w, true, what);
+							break;
+						case ext::WordKind::Pointer:
+							if (w >= m_.pointers.size() ||
+							    m_.pointers[w].kind != static_cast<uint8_t>(PointerKind::ExtensionPayload)) {
+								report(DiagCode::V070,
+								       where + ": " + what + " must name a pointers entry of kind extension payload",
+								       i);
+							}
+							break;
+						case ext::WordKind::Type:
+							if ((w >> 8) != 0 ||
+							    (w != 0 && !isCore(static_cast<TypeId>(w)) &&
+							     ext::ExtensionRegistry::instance().type(static_cast<uint8_t>(w)) == nullptr)) {
+								report(DiagCode::V070, where + ": " + what + " is not a valid type", i);
+							}
+							break;
+						case ext::WordKind::Imm:
+							break;
+						}
+					}
+				}
+			}
+		}
+		// NIR-V071: the signature, then the plugin's hook
+		if (operandTypes.size() != info->sig.operands) {
+			report(DiagCode::V071,
+			       where + " takes " + std::to_string(info->sig.operands) + " operands, not " +
+			           std::to_string(operandTypes.size()),
+			       i);
+		} else {
+			TypeId expected = info->sig.result;
+			if (info->sig.resultFromOperand != 255) {
+				expected = info->sig.resultFromOperand < operandTypes.size() ? operandTypes[info->sig.resultFromOperand]
+				                                                             : TypeId::Void;
+			}
+			if (static_cast<TypeId>(inst.type) != expected) {
+				report(DiagCode::V071, where + ": the result type differs from its signature", i);
+			}
+		}
+		if (info->verify) {
+			auto message = info->verify(m_, inst);
+			if (!message.empty()) {
+				report(DiagCode::V071, where + ": " + message, i);
+			}
 		}
 	}
 
@@ -1254,10 +1372,18 @@ private:
 		}
 	}
 
+	bool hasCabi(TypeId t) const {
+		if (o_.extensionHasCabi) {
+			return o_.extensionHasCabi(t);
+		}
+		auto* info = ext::ExtensionRegistry::instance().type(static_cast<uint8_t>(t));
+		return info != nullptr && info->available && !info->cabi.empty();
+	}
+
 	bool sigCAbi(uint32_t sig) const {
 		auto cabi = [&](TypeWord w) {
 			auto t = typeOf(w);
-			return !isExtension(t) || (o_.extensionHasCabi && o_.extensionHasCabi(t));
+			return !isExtension(t) || hasCabi(t);
 		};
 		auto& s = m_.signatures[sig];
 		if (!cabi(s.result)) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/extensions/ExtensionRegistry.hpp"
 #include "nautilus/nir/Inst.hpp"
 #include "nautilus/nir/Records.hpp"
 #include <cstdint>
@@ -11,9 +12,49 @@ namespace nautilus::nir {
 /// Constants are visited too; callers filter with isValueRef. NONE slots are skipped.
 /// InstT is `Inst` or `const Inst`, ExtraT is `uint32_t` or `const uint32_t`. Core opcodes only.
 template <class InstT, class ExtraT, class F>
+void forEachExtensionRef(InstT& inst, ExtraT* extra, F&& f) {
+	auto* info = ext::ExtensionRegistry::instance().op(inst.op);
+	if (info == nullptr) {
+		return;
+	}
+	auto visit = [&](auto& slot) {
+		if (slot != NONE) {
+			f(slot);
+		}
+	};
+	auto isRef = [](ext::FieldKind k) {
+		return k == ext::FieldKind::Value || k == ext::FieldKind::Const;
+	};
+	if (isRef(info->shape.a)) {
+		visit(inst.a);
+	}
+	if (isRef(info->shape.b)) {
+		visit(inst.b);
+	}
+	if (isRef(info->shape.c)) {
+		visit(inst.c);
+	} else if (info->shape.c == ext::FieldKind::List) {
+		ExtraT* list = extra + inst.c;
+		uint32_t n = list[0];
+		auto& shape = info->shape;
+		for (uint32_t k = 0; k < n; ++k) {
+			ext::WordKind kind = k < shape.prefix.size() ? shape.prefix[k]
+			                     : shape.group.empty()   ? ext::WordKind::Imm
+			                                             : shape.group[(k - shape.prefix.size()) % shape.group.size()];
+			if (kind == ext::WordKind::Value || kind == ext::WordKind::Const) {
+				visit(list[1 + k]);
+			}
+		}
+	}
+}
+
+template <class InstT, class ExtraT, class F>
 void forEachRef(InstT& inst, ExtraT* extra, Level level, F&& f) {
 	auto* info = coreOpInfo(inst.op);
 	if (info == nullptr) {
+		if (inst.op >= FIRST_EXTENSION_OP) {
+			forEachExtensionRef(inst, extra, f);
+		}
 		return;
 	}
 	auto visit = [&](auto& slot) {
