@@ -1,4 +1,5 @@
 #include "nautilus/nir/Canonicalize.hpp"
+#include "nautilus/extensions/ExtensionRegistry.hpp"
 #include <algorithm>
 #include <array>
 #include <map>
@@ -257,10 +258,12 @@ private:
 			ni.op = oi.op;
 			ni.type = oi.type;
 			ni.flags = oi.flags;
-			auto* info = coreOpInfo(oi.op);
-			if (info == nullptr) {
-				throw std::invalid_argument("extension operations are canonicalized with the registry");
+			if (oi.op >= FIRST_EXTENSION_OP) {
+				extensionInstruction(oi, ni);
+				d_.insts.push_back(ni);
+				continue;
 			}
+			auto* info = coreOpInfo(oi.op);
 			auto field = [&](OperandKind k, uint32_t v) -> uint32_t {
 				switch (k) {
 				case OperandKind::Value:
@@ -308,6 +311,39 @@ private:
 		nr.blockCount = old.blockCount;
 		nr.allocaCount = static_cast<uint32_t>(d_.allocas.size()) - nr.firstAlloca;
 		d_.functions.push_back(nr);
+	}
+
+	/// An extension instruction, renumbered through its operand shape alone (§5.11.1, §7.1): values and constants
+	/// through `value`, pointers through `pointer`, immediates and types copied.
+	void extensionInstruction(const Inst& oi, Inst& ni) {
+		auto* info = ext::ExtensionRegistry::instance().op(oi.op);
+		if (info == nullptr) {
+			throw std::invalid_argument("an extension operation that the registry does not know");
+		}
+		auto field = [&](ext::FieldKind k, uint32_t v) -> uint32_t {
+			return k == ext::FieldKind::Value || k == ext::FieldKind::Const ? value(v) : v;
+		};
+		ni.a = field(info->shape.a, oi.a);
+		ni.b = field(info->shape.b, oi.b);
+		if (info->shape.c == ext::FieldKind::List) {
+			const uint32_t* l = s_.extra.data() + oi.c;
+			std::vector<uint32_t> out {l[0]};
+			for (uint32_t k = 0; k < l[0]; ++k) {
+				auto& shape = info->shape;
+				auto kind = k < shape.prefix.size() ? shape.prefix[k]
+				            : shape.group.empty()   ? ext::WordKind::Imm
+				                                    : shape.group[(k - shape.prefix.size()) % shape.group.size()];
+				uint32_t w = l[1 + k];
+				out.push_back(kind == ext::WordKind::Value || kind == ext::WordKind::Const ? value(w)
+				              : kind == ext::WordKind::Pointer                             ? pointer(w)
+				                                                                           : w);
+			}
+			lists_.push_back(std::move(out));
+			ni.c = 0;
+		} else {
+			lists_.emplace_back();
+			ni.c = field(info->shape.c, oi.c);
+		}
 	}
 
 	/// The extra list of an instruction with its references renumbered (§7 step 7).
@@ -359,6 +395,12 @@ private:
 		for (auto& f : d_.functions) {
 			for (uint32_t i = 0; i < f.instCount; ++i, ++k) {
 				auto& inst = d_.insts[f.firstInst + i];
+				if (inst.op >= FIRST_EXTENSION_OP) {
+					if (!lists_[k].empty()) {
+						inst.c = d_.addExtra(lists_[k]);
+					}
+					continue;
+				}
 				auto* info = coreOpInfo(inst.op);
 				if (info->c == OperandKind::Extra) {
 					inst.c = d_.addExtra(lists_[k]);

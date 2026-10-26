@@ -203,7 +203,9 @@ differs from the work packages above:
 - **Debug sections** are read and written but dropped by `canonicalize` (M1.4): remapping them needs the debug
   producers of M4.9.
 - **Not in this PR** (they depend on the registry of PR 2): extension checks `NIR-V070`–`V072`, `NIR-L010`–`L012` and
-  `NIR-L015`. The extension productions of the text form (M1.3a: `extension` lines, `!` types and bytes constants,
+  `NIR-L015`. PR 2 adds all of them but `NIR-L015` (portable pointers; no producer yet): images hold image-local
+  extension ids (`ExtensionIds.cpp`; the writer translates, the loader resolves by name and version, the canonical form
+  and the hash go through the writer, so they do not depend on process ids). The extension productions of the text form (M1.3a: `extension` lines, `!` types and bytes constants,
   extension operations printed and read from their operand shape, intrinsic callees) landed in PR 2 with the registry.
 - **Bundling** (§8.5) is M5.4: `writeImage` serializes imports as they are, which the loader then rejects
   (`NIR-V038`); the hash input of such a module (§7.3) is written the same way.

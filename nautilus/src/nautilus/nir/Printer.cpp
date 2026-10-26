@@ -1,5 +1,6 @@
 #include "nautilus/nir/Printer.hpp"
 #include "nautilus/extensions/ExtensionRegistry.hpp"
+#include "nautilus/nir/ExtensionIds.hpp"
 #include "nautilus/nir/Operands.hpp"
 #include <bit>
 #include <charconv>
@@ -112,8 +113,9 @@ public:
 		if (m_.module.nameId != NONE) {
 			os_ << "module " << quote(m_.name(m_.module.nameId)) << "\n";
 		}
-		for (auto& e : m_.extensions) {
-			os_ << "extension " << quote(m_.name(e.nameId)) << "\n";
+		// the entries of the section, then the extensions the module uses without an entry (what an image would hold)
+		for (auto& e : extensionEntries(m_)) {
+			os_ << "extension " << quote(e.name) << "\n";
 		}
 		for (uint32_t i = 0; i < m_.imports.size(); ++i) {
 			auto& r = m_.imports[i];

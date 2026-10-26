@@ -1,4 +1,5 @@
 #include "nautilus/nir/Image.hpp"
+#include "nautilus/nir/ExtensionIds.hpp"
 #include <array>
 #include <cstring>
 
@@ -125,7 +126,7 @@ void imageFeatures(const Module& m, bool debug, uint32_t& compat, uint32_t& inco
 
 std::vector<uint8_t> writeImage(const Module& source, const WriteOptions& options) {
 	// padding and reserved fields are written as 0 whatever the in-memory records hold
-	Module m = source;
+	Module m = toImageIds(source);
 	for (auto& f : m.functions) {
 		f.pad = 0;
 	}
