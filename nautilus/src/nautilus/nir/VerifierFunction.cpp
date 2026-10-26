@@ -597,7 +597,9 @@ private:
 
 	// ---- pre-SSA: definitions reach every use ----------------------------------------------------------------
 
-	/// NIR-V051: a forward must-analysis of the instructions that have executed on every path.
+	/// NIR-V051: a forward must-analysis of the variables that have been written on every path. A variable is written
+	/// by its defining instruction and by `assign`: the arms of a native `c ? a : b` that copy-construct at one call
+	/// site record the `var` in one arm and a reconciling `assign` onto it in the other (01 §6, #95).
 	void definiteDefinitions() {
 		auto n = static_cast<uint32_t>(blocks_.size());
 		auto words = (insts_.size() + 63) / 64;
@@ -610,7 +612,12 @@ private:
 				auto id = m_.extra[blk.first + k];
 				const Inst& inst = insts_[id];
 				if (check) {
+					const bool isAssign = inst.op == static_cast<uint16_t>(Op::Assign);
 					forEachRef(inst, m_.extra.data(), level_, [&](const uint32_t& r) {
+						// the target of an assign is written, not read
+						if (isAssign && &r == &inst.a) {
+							return;
+						}
 						if (isValueRef(r) && r < insts_.size() && !((set[r / 64] >> (r % 64)) & 1)) {
 							report(DiagCode::V051,
 							       "%" + std::to_string(r) + " is not defined on every path to this use", id, b);
@@ -619,6 +626,9 @@ private:
 				}
 				if (inst.type != static_cast<uint8_t>(TypeId::Void)) {
 					set[id / 64] |= 1ull << (id % 64);
+				} else if (inst.op == static_cast<uint16_t>(Op::Assign) && isValueRef(inst.a) &&
+				           inst.a < insts_.size()) {
+					set[inst.a / 64] |= 1ull << (inst.a % 64);
 				}
 			}
 		};

@@ -1114,7 +1114,10 @@ extension instruction:
   instruction (the variable's definition), and `b` must have the same type.
   A use of a variable sees the value of the most recent `assign` (or the
   defining instruction) on the path executed so far. Every use must be
-  reached by a definition on every path. `a` is never a constant.
+  reached by a write on every path: the defining instruction or an `assign`
+  to the variable. (The arms of a native `c ? a : b` that copy-construct at
+  one call site record the `var` in one arm and a reconciling `assign` onto
+  it in the other, [01 §6](01-tracing-frontend.md).) `a` is never a constant.
   Parameters are variables like any other and may be assigned.
 - **`var`** defines a new variable whose initial value is its operand (a
   value or a constant). It is how a constant or a copy that may later be
@@ -1240,7 +1243,7 @@ and the instruction or block id (as printed in the text form, §9).
 | `NIR-V045` | §4.6 | destructor callees have signature `(ptr) -> void` |
 | `NIR-V046` | §8.4 | extension records are valid and their names parse |
 | `NIR-V050` | §6.2 | `assign` targets a variable definition of the same type, never a constant |
-| `NIR-V051` | §6.2 | every use is reached by a definition on every path |
+| `NIR-V051` | §6.2 | every use is reached by a write (the definition or an `assign`) on every path |
 | `NIR-V052` | §6.2 | no block arguments except parameters; branch argument lists are empty |
 | `NIR-V053` | §6.2 | no landing-pad flags |
 | `NIR-V054` | §4.3 | every instruction belongs to exactly one block |
