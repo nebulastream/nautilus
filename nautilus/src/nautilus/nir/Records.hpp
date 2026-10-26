@@ -133,9 +133,13 @@ struct NameRecord {
 };
 static_assert(sizeof(NameRecord) == 8);
 
+/// 13-nir-spec.md §8.4: an extension operation, type or intrinsic named "name@version".
+enum class ExtensionKind : uint8_t { Operation = 0, Type = 1, Intrinsic = 2 };
+
 struct ExtensionRecord {
 	uint32_t nameId;
-	uint32_t kindAndVersion; // layout defined with the registry (M1.7)
+	uint8_t kind;
+	uint8_t pad[3];
 	bool operator==(const ExtensionRecord&) const = default;
 };
 static_assert(sizeof(ExtensionRecord) == 8);

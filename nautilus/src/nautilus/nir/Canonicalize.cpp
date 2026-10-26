@@ -159,7 +159,7 @@ private:
 		if (extMap_[old] == NONE) {
 			auto r = s_.extensions[old];
 			r.nameId = name(r.nameId);
-			std::array<uint32_t, 2> key {r.nameId, r.kindAndVersion};
+			std::array<uint32_t, 2> key {r.nameId, r.kind};
 			auto it = extIndex_.find(key);
 			if (it == extIndex_.end()) {
 				d_.extensions.push_back(r);
@@ -204,7 +204,8 @@ private:
 	uint32_t data(uint32_t old) {
 		if (dataMap_[old] == NONE) {
 			auto& r = s_.data[old];
-			dataMap_[old] = d_.internData(std::span<const std::byte>(s_.dataBytes).subspan(r.byteOffset, r.size), r.align);
+			dataMap_[old] =
+			    d_.internData(std::span<const std::byte>(s_.dataBytes).subspan(r.byteOffset, r.size), r.align);
 		}
 		return dataMap_[old];
 	}
@@ -375,7 +376,9 @@ Module canonicalize(const Module& m, const CanonOptions& options) {
 }
 
 bool sectionsEqual(const Module& a, const Module& b) {
-	auto bytes = [](const ConstPool& p) { return std::vector<std::byte>(p.bytes().begin(), p.bytes().end()); };
+	auto bytes = [](const ConstPool& p) {
+		return std::vector<std::byte>(p.bytes().begin(), p.bytes().end());
+	};
 	return a.insts == b.insts && a.extra == b.extra &&
 	       std::vector<ConstRecord>(a.consts.records().begin(), a.consts.records().end()) ==
 	           std::vector<ConstRecord>(b.consts.records().begin(), b.consts.records().end()) &&

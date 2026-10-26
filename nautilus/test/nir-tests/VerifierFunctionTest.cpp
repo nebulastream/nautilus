@@ -154,7 +154,7 @@ TEST_CASE("NIR-V014 capture thunks", "[nir][verifier]") {
 
 TEST_CASE("NIR-V015 funcaddr and intrinsics", "[nir][verifier]") {
 	negative(DiagCode::V015, [](Module& m) {
-		m.extensions.push_back(ExtensionRecord {m.internName("std.x@1"), 0});
+		m.extensions.push_back(ExtensionRecord {m.internName("std.x@1"), 0, {}});
 		CalleeRecord c {};
 		c.kind = static_cast<uint8_t>(CalleeKind::Intrinsic);
 		c.signature = m.callees[0].signature;

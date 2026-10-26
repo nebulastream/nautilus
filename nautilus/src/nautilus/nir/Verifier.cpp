@@ -352,6 +352,13 @@ private:
 
 void verifyModuleTables(const Module& m, const VerifyOptions& options, std::vector<Diagnostic>& out) {
 	Checker c(m, options, out);
+	// every name is read through its record, so the records come first
+	for (uint32_t i = 0; i < m.names.size(); ++i) {
+		if (uint64_t(m.names[i].offset) + m.names[i].length > m.nameBytes.size()) {
+			c.report(DiagCode::V007, "name #" + std::to_string(i) + " is out of bounds of nameBytes");
+			return;
+		}
+	}
 	c.moduleRecord();
 	// the other tables read signatures; stop early if they cannot be read safely
 	if (!c.signatures()) {

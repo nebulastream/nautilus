@@ -94,11 +94,18 @@ void Module::rebuildIndexes() {
 	calleeIndex_.clear();
 	pointerIndex_.clear();
 	dataIndex_.clear();
+	// records that point out of their byte or word sections are skipped: a module read from an image has not been
+	// verified yet
 	for (uint32_t i = 0; i < names.size(); ++i) {
-		nameIndex_.emplace(std::string(name(i)), i);
+		if (uint64_t(names[i].offset) + names[i].length <= nameBytes.size()) {
+			nameIndex_.emplace(std::string(name(i)), i);
+		}
 	}
 	for (uint32_t i = 0; i < signatures.size(); ++i) {
 		auto& s = signatures[i];
+		if (uint64_t(s.paramTypes) + s.paramCount > extra.size()) {
+			continue;
+		}
 		std::vector<uint32_t> key {s.result};
 		key.insert(key.end(), extra.begin() + s.paramTypes, extra.begin() + s.paramTypes + s.paramCount);
 		signatureIndex_.emplace(std::move(key), i);
@@ -117,6 +124,9 @@ void Module::rebuildIndexes() {
 	}
 	for (uint32_t i = 0; i < data.size(); ++i) {
 		auto& d = data[i];
+		if (uint64_t(d.byteOffset) + d.size > dataBytes.size()) {
+			continue;
+		}
 		auto first = dataBytes.begin() + d.byteOffset;
 		dataIndex_.emplace(std::make_pair(d.align, std::vector<std::byte>(first, first + d.size)), i);
 	}

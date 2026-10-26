@@ -39,6 +39,9 @@ public:
 		return std::span<const std::byte>(bytes_).subspan(r.byteOffset, size);
 	}
 
+	/// Replaces the contents (the image loader). Wide constants of a loaded pool are not found by `intern`.
+	void reset(std::vector<ConstRecord> records, std::vector<std::byte> bytes);
+
 private:
 	std::vector<ConstRecord> records_;
 	std::vector<std::byte> bytes_;

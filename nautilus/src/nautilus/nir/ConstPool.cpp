@@ -60,4 +60,16 @@ Ref ConstPool::internBytes(TypeId type, Provenance provenance, std::span<const s
 	return makeConstRef(index);
 }
 
+void ConstPool::reset(std::vector<ConstRecord> records, std::vector<std::byte> bytes) {
+	records_ = std::move(records);
+	bytes_ = std::move(bytes);
+	index_.clear();
+	wideSizes_.assign(records_.size(), 0);
+	for (uint32_t i = 0; i < records_.size(); ++i) {
+		auto& r = records_[i];
+		uint64_t h = mix(mix(static_cast<uint64_t>(r.type), static_cast<uint64_t>(r.provenance)), r.bits);
+		index_.emplace(h, i);
+	}
+}
+
 } // namespace nautilus::nir

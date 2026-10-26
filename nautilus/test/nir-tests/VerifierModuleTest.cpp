@@ -225,9 +225,9 @@ TEST_CASE("NIR-V045 destructor callees", "[nir][verifier]") {
 }
 
 TEST_CASE("NIR-V046 extension records", "[nir][verifier]") {
-	negative(DiagCode::V046, [](Module& m) { m.extensions.push_back(ExtensionRecord {9999, 0}); });
+	negative(DiagCode::V046, [](Module& m) { m.extensions.push_back(ExtensionRecord {9999, 0, {}}); });
 	auto m = validModule();
-	m.extensions.push_back(ExtensionRecord {m.internName("std.x@1"), 0});
+	m.extensions.push_back(ExtensionRecord {m.internName("std.x@1"), 0, {}});
 	REQUIRE(verify(m).empty());
 }
 
