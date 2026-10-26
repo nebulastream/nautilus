@@ -38,7 +38,8 @@ inline uint32_t buildAllSSA(Module& m) {
 	ext.target = m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::Callee), 0, 0, 0, 0, 0x1000, 0});
 	ext.signature = csig;
 	auto callee = m.internCallee(ext);
-	auto ptrIdx = m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::TracedAddress), 0, 2, 0, 0, 0x2000, 0});
+	auto ptrIdx =
+	    m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::TracedAddress), 0, 2, 0, 0, 0x2000, 0});
 	auto bind = m.addBinding(m.internName("state"), TypeId::Void, 16, 8);
 	std::byte bytes[4] = {};
 	auto dat = m.internData(bytes, 4);
@@ -59,7 +60,7 @@ inline uint32_t buildAllSSA(Module& m) {
 	auto dv = b.emit(Op::Div, TypeId::I64, 0b11, s, x, NO_CLEANUP);
 	auto rm = b.emit(Op::Rem, TypeId::I64, 0, dv, c1);
 	auto fn = b.emit(Op::FNeg, TypeId::F64, 0, d);
-	(void)f1;
+	(void) f1;
 	auto a1 = b.emit(Op::And, TypeId::Bool, 0, q, t);
 	auto a2 = b.emit(Op::Or, TypeId::Bool, 0, a1, q);
 	auto a3 = b.emit(Op::Not, TypeId::Bool, 0, a2);
@@ -83,12 +84,12 @@ inline uint32_t buildAllSSA(Module& m) {
 	auto ba = b.emit(Op::BindAddr, TypeId::Ptr, 0, bind);
 	auto da = b.emit(Op::DataAddr, TypeId::Ptr, 0, dat);
 	auto pc = b.emit(Op::PtrConst, TypeId::Ptr, 0, ptrIdx);
-	(void)fn;
-	(void)a3;
-	(void)ld;
-	(void)ba;
-	(void)da;
-	(void)pc;
+	(void) fn;
+	(void) a3;
+	(void) ld;
+	(void) ba;
+	(void) da;
+	(void) pc;
 	uint32_t condArgs[] = {NONE, 1, ci, 1, 1, ci};
 	b.emit(Op::CondBr, TypeId::Void, 0, cm, 1, m.addExtra(condArgs));
 	b.beginBlock(1);

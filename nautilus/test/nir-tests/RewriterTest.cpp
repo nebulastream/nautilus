@@ -142,8 +142,8 @@ TEST_CASE("pre-SSA rewrite keeps block lists and cleanup lists", "[nir][rewriter
 	Rewriter rw(m, out);
 	rw.rewriteFunction(f, [&](Rewriter& r, uint32_t id, const Inst&) {
 		// erase nothing; check that ids are stable under identity
-		(void)r;
-		(void)id;
+		(void) r;
+		(void) id;
 		return false;
 	});
 	REQUIRE(out.functions[0].blockCount == 3);

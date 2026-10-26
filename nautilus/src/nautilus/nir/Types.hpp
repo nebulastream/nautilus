@@ -84,7 +84,7 @@ constexpr bool isValidTypeWord(TypeWord w) {
 	}
 	auto t = typeOf(w);
 	auto k = extKindOf(w);
-	if (static_cast<uint8_t>(k) == 3) {
+	if (static_cast<uint8_t>(k) == 3 || (t > TypeId::Ptr && !isExtension(t))) {
 		return false;
 	}
 	switch (t) {

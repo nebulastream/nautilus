@@ -35,6 +35,7 @@ public:
 	std::vector<DataRecord> data;
 	std::vector<std::byte> dataBytes;
 	std::vector<FunctionAttrRecord> functionAttrs;
+	std::vector<ExtensionRecord> extensions;
 	ModuleRecord module {NONE, 0, 0};
 
 	// optional debug sections (§4.9)

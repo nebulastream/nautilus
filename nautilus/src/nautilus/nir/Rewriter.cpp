@@ -26,6 +26,7 @@ Rewriter::Rewriter(const Module& src, Module& dst) : src_(src), dst_(dst) {
 	dst.data = src.data;
 	dst.dataBytes = src.dataBytes;
 	dst.functionAttrs = src.functionAttrs;
+	dst.extensions = src.extensions;
 	dst.module = src.module;
 	dst.debugLocations = src.debugLocations;
 	dst.debugRegions = src.debugRegions;
