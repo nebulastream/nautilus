@@ -20,6 +20,7 @@ const std::vector<OptionSpec>& optionRegistry() {
 	    {"engine.demangleFunctionNames", OptionType::Bool, "true", false, {}},
 	    {"engine.resolveFunctionNames", OptionType::Bool, "", false, {}},
 	    {"engine.logStatistics", OptionType::Bool, "false", false, {}},
+	    {"engine.arena.retainedBytes", OptionType::Int, "8388608", false, {}},
 	    {"dump.all", OptionType::Bool, "false", false, {}},
 	    {"dump.copySites", OptionType::Bool, "false", false, {}},
 	    {"dump.after_nir_tracing", OptionType::Bool, "false", false, {}},

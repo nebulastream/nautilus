@@ -81,15 +81,40 @@ createJITCompiler(const Options& options, common::ArenaPool& traceArenaPool, com
 	return std::make_unique<compiler::TieredJITCompiler>(options, traceArenaPool, irArenaPool);
 }
 
-NautilusEngine::NautilusEngine(const Options& options)
-    : traceArenaPool_(std::make_unique<common::ArenaPool>()), irArenaPool_(std::make_unique<common::ArenaPool>()),
+static std::unique_ptr<common::ChunkPool> createChunkPool(const Options& options,
+                                                          std::shared_ptr<common::ChunkProvider> provider) {
+	common::ChunkPoolOptions poolOptions;
+	auto retained =
+	    options.getOptionOrDefault<int>("engine.arena.retainedBytes", static_cast<int>(poolOptions.retainedBytes));
+	poolOptions.retainedBytes = retained < 0 ? 0 : static_cast<std::size_t>(retained);
+	poolOptions.provider = std::move(provider);
+	return std::make_unique<common::ChunkPool>(std::move(poolOptions));
+}
+
+NautilusEngine::NautilusEngine(const Options& options) : NautilusEngine(options, nullptr) {
+}
+
+NautilusEngine::NautilusEngine(const Options& options, std::shared_ptr<common::ChunkProvider> provider)
+    : chunkPool_(createChunkPool(applyEnvironmentOptions(options), std::move(provider))),
+      traceArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)),
+      irArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)),
       jit_(createJITCompiler(applyEnvironmentOptions(options), *traceArenaPool_, *irArenaPool_)),
       options(applyEnvironmentOptions(options)) {
 }
 
 NautilusEngine::NautilusEngine(std::unique_ptr<compiler::JITCompiler> jit, const Options& options)
-    : traceArenaPool_(std::make_unique<common::ArenaPool>()), irArenaPool_(std::make_unique<common::ArenaPool>()),
-      jit_(std::move(jit)), options(applyEnvironmentOptions(options)) {
+    : chunkPool_(createChunkPool(applyEnvironmentOptions(options), nullptr)),
+      traceArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)),
+      irArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)), jit_(std::move(jit)),
+      options(applyEnvironmentOptions(options)) {
+}
+
+void NautilusEngine::trimMemory() {
+	chunkPool_->trim();
+}
+
+common::ChunkPoolStats NautilusEngine::arenaStatistics() const {
+	return chunkPool_->stats();
 }
 
 NautilusEngine::~NautilusEngine() = default;
