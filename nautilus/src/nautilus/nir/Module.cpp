@@ -53,9 +53,9 @@ uint32_t Module::internCallee(const CalleeRecord& r) {
 }
 
 uint32_t Module::internPointer(const PointerRecord& r) {
-	std::array<uint64_t, 4> key {
-	    static_cast<uint64_t>(r.kind) | (static_cast<uint64_t>(r.mode) << 8) | (static_cast<uint64_t>(r.provenance) << 16),
-	    r.nameId, r.address, r.reserved};
+	std::array<uint64_t, 4> key {static_cast<uint64_t>(r.kind) | (static_cast<uint64_t>(r.mode) << 8) |
+	                                 (static_cast<uint64_t>(r.provenance) << 16),
+	                             r.nameId, r.address, r.reserved};
 	auto it = pointerIndex_.find(key);
 	if (it != pointerIndex_.end()) {
 		return it->second;

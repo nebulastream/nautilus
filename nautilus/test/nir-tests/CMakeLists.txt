@@ -2,6 +2,7 @@ add_executable(nautilus-nir-tests
         RecordTest.cpp
         ConstPoolTest.cpp
         BuilderTest.cpp
+        RewriterTest.cpp
 )
 
 target_link_libraries(nautilus-nir-tests PRIVATE nautilus-nir Catch2::Catch2WithMain)
