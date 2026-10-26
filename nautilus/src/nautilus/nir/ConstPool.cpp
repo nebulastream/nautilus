@@ -31,7 +31,7 @@ Ref ConstPool::intern(TypeId type, Provenance provenance, uint64_t bits) {
 	return makeConstRef(index);
 }
 
-Ref ConstPool::internBytes(TypeId type, Provenance provenance, std::span<const std::byte> bytes) {
+Ref ConstPool::internBytes(TypeId type, Provenance provenance, std::span<const std::byte> bytes, uint32_t align) {
 	uint64_t h = mix(static_cast<uint64_t>(type), static_cast<uint64_t>(provenance));
 	for (auto b : bytes) {
 		h = mix(h, static_cast<uint8_t>(b));
@@ -49,6 +49,9 @@ Ref ConstPool::internBytes(TypeId type, Provenance provenance, std::span<const s
 		throw std::length_error("constant pool is full");
 	}
 	auto index = static_cast<uint32_t>(records_.size());
+	if (align > 1) {
+		bytes_.resize((bytes_.size() + align - 1) / align * align, std::byte {0});
+	}
 	auto offset = static_cast<uint32_t>(bytes_.size());
 	bytes_.insert(bytes_.end(), bytes.begin(), bytes.end());
 	records_.push_back(ConstRecord {static_cast<uint8_t>(type), static_cast<uint8_t>(provenance), 0, offset, 0});

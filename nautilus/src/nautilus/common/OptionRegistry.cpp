@@ -207,7 +207,8 @@ EffectiveOptions effectiveOptions(const OptionMap& set, const std::vector<Option
 		}
 	}
 	for (auto [alias, value] : usedAliases) {
-		result.warnings.push_back("option " + std::string(alias->name) + " is deprecated, use " + std::string(alias->target));
+		result.warnings.push_back("option " + std::string(alias->name) + " is deprecated, use " +
+		                          std::string(alias->target));
 		auto* target = find(registry, alias->target);
 		if (target == nullptr) {
 			continue;
@@ -217,7 +218,8 @@ EffectiveOptions effectiveOptions(const OptionMap& set, const std::vector<Option
 			continue;
 		}
 		if (set.count(std::string(alias->target))) {
-			result.warnings.push_back("option " + std::string(alias->name) + " overrides " + std::string(alias->target));
+			result.warnings.push_back("option " + std::string(alias->name) + " overrides " +
+			                          std::string(alias->target));
 		}
 		result.values[std::string(alias->target)] = *mapped;
 	}

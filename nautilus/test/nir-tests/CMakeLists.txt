@@ -10,6 +10,7 @@ add_executable(nautilus-nir-tests
         ParserTest.cpp
         ConformanceTest.cpp
         OptionRegistryTest.cpp
+        CanonicalizeTest.cpp
 )
 
 target_link_libraries(nautilus-nir-tests PRIVATE nautilus-nir Catch2::Catch2WithMain)

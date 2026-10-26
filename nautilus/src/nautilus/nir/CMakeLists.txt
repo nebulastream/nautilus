@@ -11,6 +11,7 @@ add_library(nautilus-nir STATIC
         VerifierFunction.cpp
         Printer.cpp
         Parser.cpp
+        Canonicalize.cpp
         ../common/OptionRegistry.cpp)
 target_include_directories(nautilus-nir PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 target_compile_features(nautilus-nir PUBLIC cxx_std_20)

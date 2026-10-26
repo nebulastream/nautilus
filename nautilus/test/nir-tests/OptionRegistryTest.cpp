@@ -114,7 +114,8 @@ TEST_CASE("effective options are the defaults overlaid with the set values", "[n
 	REQUIRE(std::get<bool>(e.values.at("engine.foldStaticConstants")) == true);
 	REQUIRE(std::get<int64_t>(e.values.at("asmjit.inliningMaxOperations")) == 24);
 	REQUIRE(e.values.count("optimizationLevel") == 0); // no default
-	auto s = effectiveOptions({{"engine.foldStaticConstants", false}, {"optimizationLevel", int64_t(2)}, {"my.app", std::string("x")}});
+	auto s = effectiveOptions(
+	    {{"engine.foldStaticConstants", false}, {"optimizationLevel", int64_t(2)}, {"my.app", std::string("x")}});
 	REQUIRE(std::get<bool>(s.values.at("engine.foldStaticConstants")) == false);
 	REQUIRE(std::get<int64_t>(s.values.at("optimizationLevel")) == 2);
 	REQUIRE(std::get<std::string>(s.values.at("my.app")) == "x"); // application options are kept
@@ -142,13 +143,16 @@ TEST_CASE("the deprecated alias maps onto engine.tiered.promotion", "[nir][optio
 	REQUIRE(std::get<std::string>(on.values.at("engine.tiered.promotion")) == "eager");
 	REQUIRE(on.warnings.size() == 1);
 	// when both are set the alias wins, with a second warning
-	auto both = effectiveOptions({{"engine.tiered.backgroundPromotion", false}, {"engine.tiered.promotion", std::string("manual")}});
+	auto both = effectiveOptions(
+	    {{"engine.tiered.backgroundPromotion", false}, {"engine.tiered.promotion", std::string("manual")}});
 	REQUIRE(std::get<std::string>(both.values.at("engine.tiered.promotion")) == "none");
 	REQUIRE(both.warnings.size() == 2);
 }
 
 TEST_CASE("the options block of the hash covers code-affecting options only", "[nir][options]") {
-	auto block = [](const OptionMap& m) { return encodeOptionsBlock(effectiveOptions(m)); };
+	auto block = [](const OptionMap& m) {
+		return encodeOptionsBlock(effectiveOptions(m));
+	};
 	auto base = block({});
 	// setting an option to its default does not change the block
 	REQUIRE(block({{"ir.enableLICM", false}, {"asmjit.inliningMaxOperations", int64_t(24)}}) == base);
@@ -175,17 +179,19 @@ TEST_CASE("encoding of values", "[nir][options]") {
 	                               {"e.skipped", OptionType::Bool, "true", false}};
 	auto e = effectiveOptions({}, reg, {});
 	auto b = encodeOptionsBlock(e, reg);
-	std::vector<uint8_t> expected = {4, 0, 0, 0,                                             // count
-	                                 6, 0, 0, 0, 'a', '.', 'b', 'o', 'o', 'l', 0, 1,           // bool
-	                                 5, 0, 0, 0, 'b', '.', 'i', 'n', 't', 1, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-	                                 8, 0, 0, 0, 'c', '.', 'd', 'o', 'u', 'b', 'l', 'e', 2, 0, 0, 0, 0, 0, 0, 0xF8, 0x3F,
-	                                 8, 0, 0, 0, 'd', '.', 's', 't', 'r', 'i', 'n', 'g', 3, 2, 0, 0, 0, 'h', 'i'};
+	std::vector<uint8_t> expected = {
+	    4, 0, 0,   0,                                          // count
+	    6, 0, 0,   0,   'a', '.', 'b', 'o', 'o', 'l', 0,    1, // bool
+	    5, 0, 0,   0,   'b', '.', 'i', 'n', 't', 1,   0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 8,    0,
+	    0, 0, 'c', '.', 'd', 'o', 'u', 'b', 'l', 'e', 2,    0,    0,    0,    0,    0,    0,    0xF8, 0x3F, 8,
+	    0, 0, 0,   'd', '.', 's', 't', 'r', 'i', 'n', 'g',  3,    2,    0,    0,    0,    'h',  'i'};
 	REQUIRE(b == expected);
 }
 
 TEST_CASE("a resolve hook maps the effective value before it is hashed", "[nir][options]") {
 	std::vector<OptionSpec> reg = {{"gpu.device", OptionType::String, "auto", true, {}, [](const OptionValue& v) {
-		                                return std::get<std::string>(v) == "auto" ? OptionValue(std::string("cuda")) : v;
+		                                return std::get<std::string>(v) == "auto" ? OptionValue(std::string("cuda"))
+		                                                                          : v;
 	                                }}};
 	auto automatic = encodeOptionsBlock(effectiveOptions({}, reg, {}), reg);
 	auto cuda = encodeOptionsBlock(effectiveOptions({{"gpu.device", std::string("cuda")}}, reg, {}), reg);

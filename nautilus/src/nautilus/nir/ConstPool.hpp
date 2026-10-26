@@ -16,7 +16,8 @@ public:
 	/// A constant of at most 8 bytes; `bits` is the zero-extended bit pattern.
 	Ref intern(TypeId type, Provenance provenance, uint64_t bits);
 	/// A constant wider than 8 bytes (extension types), whose `size` bytes live in constBytes.
-	Ref internBytes(TypeId type, Provenance provenance, std::span<const std::byte> bytes);
+	/// The bytes are placed at the next offset aligned to `align` (at most 16), zero-padded.
+	Ref internBytes(TypeId type, Provenance provenance, std::span<const std::byte> bytes, uint32_t align = 1);
 
 	uint32_t size() const {
 		return static_cast<uint32_t>(records_.size());
