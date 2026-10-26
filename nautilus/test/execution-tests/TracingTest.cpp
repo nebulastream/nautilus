@@ -25,6 +25,7 @@
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/nir/Printer.hpp"
 #include "nautilus/nir/Verifier.hpp"
 #include "nautilus/tracing/CopyAttribution.hpp"
@@ -954,6 +955,18 @@ TEST_CASE("Tracing statistics: independent branches are replayed", "[tracing][st
 	// the split covers the re-run time and no more
 	CHECK(stats.rerunFollowMs + stats.rerunRecordMs + stats.rerunPausedMs <= stats.rerunMs * 1.001 + 1e-6);
 	CHECK(stats.rerunFollowMs > 0);
+}
+
+TEST_CASE("The 0.3 tracer rejects the NIR tracer's hooks", "[tracing]") {
+	common::Arena arena;
+	auto attempt = [&](std::function<void()> hook) {
+		std::list<compiler::CompilableFunction> functions;
+		functions.emplace_back("execute", std::move(hook));
+		return tracing::TraceContext::Trace(functions, engine::Options {}, arena);
+	};
+	CHECK_THROWS_AS(attempt([] { tracing::traceExtOp(256, 0, {}); }), NotImplementedException);
+	CHECK_THROWS_AS(attempt([] { tracing::traceData({}, 1); }), NotImplementedException);
+	CHECK_THROWS_AS(attempt([] { tracing::traceBinding("state", 8, 8); }), NotImplementedException);
 }
 
 TEST_CASE("Tracing statistics: copies by kind", "[tracing][statistics]") {

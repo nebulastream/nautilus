@@ -1,12 +1,12 @@
-// Traces one function of the tracing corpus a number of times and does nothing else, so that a profiler (callgrind) sees
-// the tracer alone: `nautilus-tracing-corpus [function [reps]]`.
+// Traces one function of the tracing corpus a number of times and does nothing else, so that a profiler (callgrind)
+// sees the tracer alone: `nautilus-tracing-corpus [function [reps]]`.
 #include "DistinctSitesFunctions.hpp"
 #include "NestedIfBenchmarks.hpp"
+#include "TracingUtil.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
-#include "TracingUtil.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

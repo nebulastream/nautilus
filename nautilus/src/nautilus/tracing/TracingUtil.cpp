@@ -1,6 +1,7 @@
 
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/Operations.hpp"
 #include "nautilus/tracing/Types.hpp"
@@ -52,6 +53,27 @@ TypedValueRef traceCopy(const TypedValueRef& ref) {
 		return activeTracer->traceCopy(ref);
 	}
 	return {};
+}
+
+TypedValueRef& traceExtOp(uint16_t opcode, uint8_t resultType, const std::vector<TypedValueRef>& inputs) {
+	if (!activeTracer) {
+		throw RuntimeException("traceExtOp outside of a trace");
+	}
+	return activeTracer->traceExtOp(opcode, resultType, inputs);
+}
+
+TypedValueRef& traceData(std::span<const std::byte> bytes, size_t align) {
+	if (!activeTracer) {
+		throw RuntimeException("traceData outside of a trace");
+	}
+	return activeTracer->traceData(bytes, align);
+}
+
+TypedValueRef& traceBinding(std::string_view name, size_t size, size_t align) {
+	if (!activeTracer) {
+		throw RuntimeException("traceBinding outside of a trace");
+	}
+	return activeTracer->traceBinding(name, size, align);
 }
 
 void noteExplicitCopy() {

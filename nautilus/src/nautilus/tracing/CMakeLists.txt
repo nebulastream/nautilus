@@ -9,6 +9,7 @@ if (ENABLE_TRACING)
             Block.cpp
             CopyAttribution.cpp
             ExecutionTrace.cpp
+            TracingInterface.cpp
             TracingUtil.cpp
             TraceContext.cpp
             FunctionNameCache.cpp
