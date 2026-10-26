@@ -150,6 +150,16 @@ for (...) {
 } // each `compiled` (and its executable) is freed here; the engine lives on
 ```
 
+### Memory Use of a Long-Running Engine
+
+Tracing and IR construction take their memory from arenas, which draw fixed-size chunks (64 KiB up to 1 MiB) from one
+pool per engine. A request above half a chunk gets a dedicated allocation that is freed when its compilation ends.
+The pool keeps at most `engine.arena.retainedBytes` (8 MiB by default) idle: chunks beyond that go back to the OS at
+once, idle chunks give up their pages after 200 ms and are unmapped after 5 s. Call `NautilusEngine::trimMemory()` to
+give all idle chunks back immediately, for example under memory pressure, and read the pool's counters (bytes held and
+in use, peak, chunks trimmed) with `NautilusEngine::arenaStatistics()`. An embedder that wants to charge compiler
+memory to its own budget passes a `common::ChunkProvider` to the engine's constructor.
+
 ### Per-Module Options
 
 Options have two scopes (see [options.md](options.md)): engine-wide options configure the built-once compiler
