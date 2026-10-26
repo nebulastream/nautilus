@@ -192,6 +192,10 @@ val<int> nautilusFunctionMultipleInline(val<int> a, val<int> b) {
 
 // Test: getFuncPtr() — obtain a function pointer from a NautilusFunction
 // and pass it through invoke() to a runtime function that calls it.
+// The pointer is to JIT-compiled code, which has no type information in front of it for -fsanitize=function to read.
+#if defined(__clang__)
+__attribute__((no_sanitize("function")))
+#endif
 int32_t applyFnPtr(int32_t (*fn)(int32_t, int32_t), int32_t a, int32_t b) noexcept {
 	return fn(a, b);
 }
