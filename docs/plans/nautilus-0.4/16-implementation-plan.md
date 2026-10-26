@@ -208,8 +208,9 @@ differs from the work packages above:
 - **Bundling** (§8.5) is M5.4: `writeImage` serializes imports as they are, which the loader then rejects
   (`NIR-V038`); the hash input of such a module (§7.3) is written the same way.
 - **Fuzzing:** `nautilus-nir-fuzz` (libFuzzer) and `nautilus-nir-fuzz-replay` (any compiler, deterministic mutation).
-  Four crashes were found and fixed while writing them (see the commit messages); the one-CPU-hour exit of M1.6 is to be
-  confirmed by the first weekly sweep.
+  Five crashes were found and fixed while writing them, and a sixth by the exit run (a canonical form that dropped its
+  only process-local pointer kept the `processToken`, V040); see the commit messages. The one-CPU-hour exit of M1.6 is
+  met: 69.1M executions in 3601 s on the final code without a crash.
 
 **PR 3 status.** Part 1 is on `claude/nir-tracer-pr3`: the mapping from a finished 0.3 trace to pre-SSA NIR
 (`tracing/nir/NirTrace.cpp`, checked by `tracing.verifyNir` over the whole test suite and by golden dumps in
