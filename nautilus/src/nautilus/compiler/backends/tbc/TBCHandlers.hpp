@@ -46,19 +46,35 @@ inline void opMovImm(const Instr& i, uint64_t* fp) {
 	writeReg<T>(fp, i.a, static_cast<T>(static_cast<int16_t>(i.c)));
 }
 
+/// Integer addition, subtraction and multiplication wrap (two's complement) like the code the other backends
+/// generate. They are computed in the unsigned type, since signed overflow is undefined behavior in C++.
+template <class T, class Op>
+inline T wrappingArithmetic(T l, T r, Op op) {
+	if constexpr (std::is_integral_v<T>) {
+		// narrower types promote to int, whose multiplication can overflow too
+		using U = std::make_unsigned_t<std::common_type_t<T, unsigned>>;
+		return static_cast<T>(op(static_cast<U>(l), static_cast<U>(r)));
+	} else {
+		return static_cast<T>(op(l, r));
+	}
+}
+
 template <class T>
 inline void opAdd(const Instr& i, uint64_t* fp) {
-	writeReg<T>(fp, i.a, static_cast<T>(readReg<T>(fp, i.b) + readReg<T>(fp, i.c)));
+	writeReg<T>(fp, i.a,
+	            wrappingArithmetic(readReg<T>(fp, i.b), readReg<T>(fp, i.c), [](auto a, auto b) { return a + b; }));
 }
 
 template <class T>
 inline void opSub(const Instr& i, uint64_t* fp) {
-	writeReg<T>(fp, i.a, static_cast<T>(readReg<T>(fp, i.b) - readReg<T>(fp, i.c)));
+	writeReg<T>(fp, i.a,
+	            wrappingArithmetic(readReg<T>(fp, i.b), readReg<T>(fp, i.c), [](auto a, auto b) { return a - b; }));
 }
 
 template <class T>
 inline void opMul(const Instr& i, uint64_t* fp) {
-	writeReg<T>(fp, i.a, static_cast<T>(readReg<T>(fp, i.b) * readReg<T>(fp, i.c)));
+	writeReg<T>(fp, i.a,
+	            wrappingArithmetic(readReg<T>(fp, i.b), readReg<T>(fp, i.c), [](auto a, auto b) { return a * b; }));
 }
 
 template <class T>
@@ -73,17 +89,23 @@ inline void opMod(const Instr& i, uint64_t* fp) {
 
 template <class T>
 inline void opAddImm(const Instr& i, uint64_t* fp) {
-	writeReg<T>(fp, i.a, static_cast<T>(readReg<T>(fp, i.b) + static_cast<T>(static_cast<int16_t>(i.c))));
+	writeReg<T>(fp, i.a,
+	            wrappingArithmetic(readReg<T>(fp, i.b), static_cast<T>(static_cast<int16_t>(i.c)),
+	                               [](auto a, auto b) { return a + b; }));
 }
 
 template <class T>
 inline void opSubImm(const Instr& i, uint64_t* fp) {
-	writeReg<T>(fp, i.a, static_cast<T>(readReg<T>(fp, i.b) - static_cast<T>(static_cast<int16_t>(i.c))));
+	writeReg<T>(fp, i.a,
+	            wrappingArithmetic(readReg<T>(fp, i.b), static_cast<T>(static_cast<int16_t>(i.c)),
+	                               [](auto a, auto b) { return a - b; }));
 }
 
 template <class T>
 inline void opMulImm(const Instr& i, uint64_t* fp) {
-	writeReg<T>(fp, i.a, static_cast<T>(readReg<T>(fp, i.b) * static_cast<T>(static_cast<int16_t>(i.c))));
+	writeReg<T>(fp, i.a,
+	            wrappingArithmetic(readReg<T>(fp, i.b), static_cast<T>(static_cast<int16_t>(i.c)),
+	                               [](auto a, auto b) { return a * b; }));
 }
 
 template <class T>
