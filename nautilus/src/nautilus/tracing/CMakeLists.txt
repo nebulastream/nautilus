@@ -4,6 +4,7 @@ if (ENABLE_TRACING)
     add_subdirectory(symbolic_execution)
     add_subdirectory(phases)
     add_subdirectory(exceptions)
+    add_subdirectory(nir)
     add_source_files(nautilus
             Block.cpp
             CopyAttribution.cpp

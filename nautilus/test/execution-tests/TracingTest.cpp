@@ -25,9 +25,12 @@
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/nir/Printer.hpp"
+#include "nautilus/nir/Verifier.hpp"
 #include "nautilus/tracing/CopyAttribution.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
+#include "nautilus/tracing/nir/NirTrace.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <algorithm>
@@ -82,6 +85,20 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 			auto executionTrace = tracing::TraceContext::Trace(functionsToTrace, engine::Options(), arena);
 			DYNAMIC_SECTION("tracing") {
 				REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
+			}
+			DYNAMIC_SECTION("nir") {
+				// the trace as pre-SSA NIR must verify (docs/plans/nautilus-0.4/01-tracing-frontend.md §6)
+				auto nirModule = tracing::nirtrace::toPreSSA(*executionTrace);
+				auto diagnostics = nir::verify(nirModule);
+				std::string all;
+				for (auto& d : diagnostics) {
+					all += d.str() + "\n";
+				}
+				if (!diagnostics.empty()) {
+					all += nir::print(nirModule);
+				}
+				INFO(all);
+				REQUIRE(diagnostics.empty());
 			}
 			DYNAMIC_SECTION("ir") {
 				auto ir = tracing::TraceToIRConversionPhase().apply(
