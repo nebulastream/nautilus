@@ -39,6 +39,8 @@ set_target_properties(nautilus PROPERTIES
 )
 
 target_link_libraries(nautilus PRIVATE fmt::fmt)
+# the extension registry lives in nautilus-nir; plugins register their intrinsics into the one instance in nautilus
+target_link_libraries(nautilus PUBLIC nautilus-nir)
 
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus PRIVATE spdlog::spdlog)
@@ -61,6 +63,8 @@ endif ()
 # Handle CMake Install
 include(GNUInstallDirs)
 add_library(${PROJECT_NAME}::nautilus ALIAS nautilus)
+
+list(APPEND EXPORT_TARGETS nautilus-nir)
 
 if ((ENABLE_BC_BACKEND OR ENABLE_TBC_BACKEND) AND NOT ENABLE_FFI_CLOSURES AND TARGET dyncallback_s)
     list(APPEND EXPORT_TARGETS dyncallback_s)

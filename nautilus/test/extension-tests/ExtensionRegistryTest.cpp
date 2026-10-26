@@ -8,6 +8,7 @@ namespace nautilus::ext {
 /// The test-only reset (04 §3.7): it exists only in this binary.
 struct ExtensionRegistryTestAccess {
 	static void reset();
+	static void resetWithCore();
 };
 
 void ExtensionRegistryTestAccess::reset() {
@@ -21,6 +22,16 @@ void ExtensionRegistryTestAccess::reset() {
 	r.byName_.clear();
 	r.byFallback_.clear();
 	r.locks_.store(0);
+}
+
+void ExtensionRegistryTestAccess::resetWithCore() {
+	reset();
+	auto& r = ExtensionRegistry::instance();
+	ExtensionRegistry fresh; // registers the core intrinsics into itself
+	std::lock_guard<std::mutex> lock(r.mutex_);
+	r.intrinsics_ = fresh.intrinsics_;
+	r.byName_ = fresh.byName_;
+	r.byFallback_ = fresh.byFallback_;
 }
 
 } // namespace nautilus::ext
@@ -315,4 +326,49 @@ TEST_CASE("an image load, a text parse or any first reader freezes the registry"
 	auto loaded = nautilus::nir::loadImage(notAnImage); // rejected, but still a first reader
 	REQUIRE_FALSE(loaded.ok());
 	REQUIRE(r2.frozen());
+}
+
+#include "nautilus/extensions/IntrinsicRegistration.hpp"
+#include <cstring>
+
+namespace {
+int32_t addSmall(int8_t a, uint16_t b, bool c, double d, const void* p) {
+	return a + b + c + int32_t(d) + (p != nullptr);
+}
+} // namespace
+
+TEST_CASE("the core registers its memory intrinsics in every binary", "[registry][intrinsic]") {
+	ExtensionRegistryTestAccess::resetWithCore();
+	auto& r = ExtensionRegistry::instance();
+	for (auto name : {"core.memcpy", "core.memmove", "core.memset", "core.memcmp"}) {
+		INFO(name);
+		REQUIRE(r.findIntrinsic(name).has_value());
+	}
+	auto* memcpyInfo = r.intrinsic(*r.findIntrinsic("core.memcpy"));
+	REQUIRE(memcpyInfo->signature.size() == 4);
+	CHECK(memcpyInfo->signature[0] == nautilus::nir::makeTypeWord(TypeId::Ptr));
+	CHECK(memcpyInfo->signature[3] == nautilus::nir::makeTypeWord(TypeId::I64));
+	CHECK((memcpyInfo->attrs & AttrNoUnwind) != 0);
+	CHECK(memcpyInfo->captureThunk == nullptr);
+	// a traced invoke of the libc function resolves to the intrinsic
+	auto libc = static_cast<void* (*) (void*, const void*, size_t)>(&std::memcpy);
+	REQUIRE(r.findIntrinsicByFallback(reinterpret_cast<const void*>(libc)).has_value());
+	auto* memcmpInfo = r.intrinsic(*r.findIntrinsic("core.memcmp"));
+	CHECK(memcmpInfo->signature[0] == nautilus::nir::makeTypeWord(TypeId::I32, nautilus::nir::ExtKind::Sext));
+}
+
+TEST_CASE("an intrinsic that may throw gets a capture thunk and extension kinds", "[registry][intrinsic]") {
+	auto& r = fresh();
+	auto id = registerIntrinsicFor("demo.add", &addSmall);
+	auto* info = r.intrinsic(id);
+	using namespace nautilus::nir;
+	CHECK(info->signature ==
+	      std::vector<uint32_t> {makeTypeWord(TypeId::I32, ExtKind::Sext), makeTypeWord(TypeId::I8, ExtKind::Sext),
+	                             makeTypeWord(TypeId::I16, ExtKind::Zext), makeTypeWord(TypeId::Bool, ExtKind::Zext),
+	                             makeTypeWord(TypeId::F64), makeTypeWord(TypeId::Ptr)});
+	for (auto w : info->signature) {
+		CHECK(isValidTypeWord(w));
+	}
+	CHECK(info->captureThunk != nullptr);
+	CHECK((info->attrs & nautilus::ext::AttrNoUnwind) == 0);
 }

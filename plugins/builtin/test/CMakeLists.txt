@@ -3,6 +3,7 @@ include(Catch)
 
 add_executable(nautilus-builtin-tests
         prefetch/PrefetchExecutionTest.cpp
+        prefetch/PrefetchIntrinsicTest.cpp
         int128/Int128ExecutionTest.cpp
         overflow/OverflowExecutionTest.cpp
 )

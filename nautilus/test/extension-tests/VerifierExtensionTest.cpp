@@ -1,5 +1,6 @@
 // The verifier's checks of extension instructions, intrinsic calls and extension types in native signatures
-// (13-nir-spec.md §5.11, §5.7, §4.5; plan M1.7). The registry is process-wide state, so these tests live in this binary.
+// (13-nir-spec.md §5.11, §5.7, §4.5; plan M1.7). The registry is process-wide state, so these tests live in this
+// binary.
 #include "../nir-tests/TestModules.hpp"
 #include "nautilus/extensions/ExtensionRegistry.hpp"
 #include <catch2/catch_all.hpp>
@@ -22,7 +23,8 @@ void fallbackFn() {
 }
 
 /// Registers: test.add (a, b values; result of operand 0), test.splat (a value, b imm), test.mask (a value, c const),
-/// test.shuffle (a value, list: prefix [value, imm], group [type]), test.vec (a type without cabi), test.vec8 (with cabi).
+/// test.shuffle (a value, list: prefix [value, imm], group [type]), test.vec (a type without cabi), test.vec8 (with
+/// cabi).
 struct Fixture {
 	uint16_t add, splat, constOp, shuffle, hooked;
 	uint8_t vec, vecC;
@@ -80,7 +82,9 @@ struct Fixture {
 		o.shape.a = FieldKind::Value;
 		o.sig.operands = 1;
 		o.sig.result = TypeId::I64;
-		o.verify = [](const Module&, const Inst& inst) -> std::string { return inst.flags == 7 ? "flags 7 are reserved" : ""; };
+		o.verify = [](const Module&, const Inst& inst) -> std::string {
+			return inst.flags == 7 ? "flags 7 are reserved" : "";
+		};
 		hooked = r.registerOp(o);
 	}
 };
@@ -117,17 +121,22 @@ std::string all(const Module& m) {
 
 TEST_CASE("a valid extension instruction verifies", "[verifier][extension]") {
 	Fixture f;
-	auto m = moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.add, static_cast<uint8_t>(TypeId::I64), 0, x, x, 0}); });
+	auto m = moduleWith([&](Module&, Builder& b, Ref x) {
+		return b.emit(Inst {f.add, static_cast<uint8_t>(TypeId::I64), 0, x, x, 0});
+	});
 	INFO(all(m));
 	REQUIRE(verify(m).empty());
 	// the result type follows operand 0
-	auto bad = moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.add, static_cast<uint8_t>(TypeId::F64), 0, x, x, 0}); });
+	auto bad = moduleWith([&](Module&, Builder& b, Ref x) {
+		return b.emit(Inst {f.add, static_cast<uint8_t>(TypeId::F64), 0, x, x, 0});
+	});
 	REQUIRE(has(bad, DiagCode::V071));
 }
 
 TEST_CASE("NIR-V003 an unregistered extension opcode", "[verifier][extension]") {
 	Fixture f;
-	auto m = moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {400, static_cast<uint8_t>(TypeId::I64), 0, x, 0, 0}); });
+	auto m = moduleWith(
+	    [&](Module&, Builder& b, Ref x) { return b.emit(Inst {400, static_cast<uint8_t>(TypeId::I64), 0, x, 0, 0}); });
 	REQUIRE(has(m, DiagCode::V003));
 }
 
@@ -135,13 +144,18 @@ TEST_CASE("NIR-V070 operand shape: fields", "[verifier][extension]") {
 	Fixture f;
 	auto i64 = static_cast<uint8_t>(TypeId::I64);
 	// an unused field must be 0
-	REQUIRE(has(moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.splat, i64, 0, x, 0, 5}); }), DiagCode::V070));
+	REQUIRE(has(moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.splat, i64, 0, x, 0, 5}); }),
+	            DiagCode::V070));
 	// an imm field may hold anything
-	REQUIRE(verify(moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.splat, i64, 0, x, 0xFFFFFFF0u, 0}); })).empty());
+	REQUIRE(verify(moduleWith([&](Module&, Builder& b, Ref x) {
+		        return b.emit(Inst {f.splat, i64, 0, x, 0xFFFFFFF0u, 0});
+	        })).empty());
 	// a value field needs a valid reference
-	REQUIRE(has(moduleWith([&](Module&, Builder& b, Ref) { return b.emit(Inst {f.splat, i64, 0, 999, 0, 0}); }), DiagCode::V005));
+	REQUIRE(has(moduleWith([&](Module&, Builder& b, Ref) { return b.emit(Inst {f.splat, i64, 0, 999, 0, 0}); }),
+	            DiagCode::V005));
 	// a const field must be a constant
-	REQUIRE(has(moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.constOp, i64, 0, x, 0, x}); }), DiagCode::V070));
+	REQUIRE(has(moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.constOp, i64, 0, x, 0, x}); }),
+	            DiagCode::V070));
 	REQUIRE(verify(moduleWith([&](Module& m, Builder& b, Ref x) {
 		        return b.emit(Inst {f.constOp, i64, 0, x, 0, m.consts.intern(TypeId::I64, Provenance::Literal, 3)});
 	        })).empty());
@@ -165,7 +179,8 @@ TEST_CASE("NIR-V070 operand shape: payload lists", "[verifier][extension]") {
 			return b.emit(inst);
 		});
 	};
-	auto nothing = [](Module&, std::vector<uint32_t>&) {};
+	auto nothing = [](Module&, std::vector<uint32_t>&) {
+	};
 	auto types = static_cast<uint32_t>(TypeId::I64);
 	// valid: n = 2, and n = 4 with one group
 	auto two = build({0xAAAA, 7}, nothing);
@@ -223,14 +238,20 @@ TEST_CASE("NIR-V071 signature and the plugin's verify hook", "[verifier][extensi
 	Fixture f;
 	auto i64 = static_cast<uint8_t>(TypeId::I64);
 	// test.splat takes one operand; the result is i64
-	REQUIRE(verify(moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.splat, i64, 0, x, 0, 0}); })).empty());
-	REQUIRE(has(moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.splat, static_cast<uint8_t>(TypeId::F64), 0, x, 0, 0}); }),
+	REQUIRE(verify(moduleWith([&](Module&, Builder& b, Ref x) {
+		        return b.emit(Inst {f.splat, i64, 0, x, 0, 0});
+	        })).empty());
+	REQUIRE(has(moduleWith([&](Module&, Builder& b, Ref x) {
+		            return b.emit(Inst {f.splat, static_cast<uint8_t>(TypeId::F64), 0, x, 0, 0});
+	            }),
 	            DiagCode::V071));
 	// the hook runs after the core checks and its message names the plugin's operation
 	auto hooked = moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.hooked, i64, 7, x, 0, 0}); });
 	REQUIRE(has(hooked, DiagCode::V071));
 	REQUIRE(all(hooked).find("test.hooked: flags 7 are reserved") != std::string::npos);
-	REQUIRE(verify(moduleWith([&](Module&, Builder& b, Ref x) { return b.emit(Inst {f.hooked, i64, 1, x, 0, 0}); })).empty());
+	REQUIRE(verify(moduleWith([&](Module&, Builder& b, Ref x) {
+		        return b.emit(Inst {f.hooked, i64, 1, x, 0, 0});
+	        })).empty());
 }
 
 TEST_CASE("extension operands count as uses", "[verifier][extension]") {
@@ -266,14 +287,15 @@ TEST_CASE("NIR-V014 calls of intrinsics", "[verifier][extension]") {
 		Module m;
 		TypeWord params[] = {test::tw(TypeId::I64)};
 		auto sig = m.internSignature(test::tw(TypeId::I64), params);
-		m.extensions.push_back(ExtensionRecord {m.internName("test.mayThrow@1"), static_cast<uint8_t>(ExtensionKind::Intrinsic), {}});
+		m.extensions.push_back(
+		    ExtensionRecord {m.internName("test.mayThrow@1"), static_cast<uint8_t>(ExtensionKind::Intrinsic), {}});
 		CalleeRecord c {};
 		c.kind = static_cast<uint8_t>(CalleeKind::Intrinsic);
 		c.target = 0;
 		c.signature = sig;
 		auto callee = m.internCallee(c);
 		auto pad = m.internPointer(PointerRecord {1, 0, 0, 0, 0, 0x5000, 0});
-		(void)pad;
+		(void) pad;
 		Builder b(m);
 		b.beginFunction(m.internName("f"), sig, Visibility::Exported, Level::SSA);
 		b.beginBlock(1);

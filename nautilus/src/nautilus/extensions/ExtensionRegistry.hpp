@@ -72,7 +72,8 @@ public:
 	}
 
 private:
-	ExtensionRegistry() = default;
+	/// Registers the intrinsics the core owns (CoreIntrinsics.cpp), so they exist in every binary however it is linked.
+	ExtensionRegistry();
 	friend struct ExtensionRegistryTestAccess;
 
 	template <class F>

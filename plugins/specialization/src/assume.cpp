@@ -1,4 +1,5 @@
 #include "nautilus/specialization/assume.hpp"
+#include "nautilus/extensions/IntrinsicRegistration.hpp"
 #include "nautilus/function.hpp"
 
 namespace nautilus {
@@ -55,3 +56,24 @@ void nautilus_assume_noalias(val<void*> a, val<void*> b) {
 }
 
 } // namespace nautilus
+
+// The backend-neutral registration (04 §3.5). An assumption is not removable: it has no memory effect but its
+// condition is information for the optimizer, so the attributes promise only that it returns and does not throw.
+namespace {
+
+struct AssumeIntrinsicRegistrar {
+	AssumeIntrinsicRegistrar() {
+		using namespace nautilus::ext;
+		constexpr uint32_t attrs = AttrNoUnwind | AttrWillReturn;
+		registerIntrinsicFor("specialization.assume", &nautilus::nautlis_assume_stub, attrs);
+		registerIntrinsicFor("specialization.assume_aligned", &nautilus::nautilus_assume_aligned_stub, attrs);
+		registerIntrinsicFor("specialization.assume_constant", &nautilus::nautilus_assume_constant_stub, attrs);
+		registerIntrinsicFor("specialization.assume_range", &nautilus::nautilus_assume_range_stub, attrs);
+		registerIntrinsicFor("specialization.assume_nonzero", &nautilus::nautilus_assume_nonzero_stub, attrs);
+		registerIntrinsicFor("specialization.assume_separate_storage", &nautilus::nautilus_assume_separate_storage_stub,
+		                     attrs);
+	}
+};
+const AssumeIntrinsicRegistrar assumeRegistrar_;
+
+} // namespace
