@@ -58,6 +58,11 @@ elif [ "$MAJOR_VERSION" -lt "$MIN_VERSION" ] || [ "$MAJOR_VERSION" -gt "$MAX_VER
 fi
 
 echo "Using: $FULL_VERSION"
+if [ -n "$MAJOR_VERSION" ] && [ "$MAJOR_VERSION" -ne "$MAX_VERSION" ]; then
+    echo "Warning: CI checks formatting with clang-format ${MAX_VERSION}. Version ${MAJOR_VERSION} formats some"
+    echo "constructs differently, so violations reported here may be false. Install clang-format ${MAX_VERSION}"
+    echo "(for example: pip install clang-format==22.1.8) to match CI."
+fi
 
 # Cross-platform CPU count
 if command -v nproc > /dev/null 2>&1; then

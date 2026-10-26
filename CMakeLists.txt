@@ -259,6 +259,11 @@ endif ()
 # disabled, the function degrades to a warning-only no-op.
 include(${CMAKE_CURRENT_SOURCE_DIR}/plugins/inlining/cmake/NautilusInline.cmake)
 
+# Enabled at the top level as well, so `ctest --test-dir build/<preset>` (and
+# `ctest --preset <preset>`) runs the core and every plugin's tests in one call.
+if (ENABLE_TESTS)
+    enable_testing()
+endif ()
 add_subdirectory(nautilus)
 if (ENABLE_SIMD_PLUGIN)
     add_subdirectory(plugins/simd)
