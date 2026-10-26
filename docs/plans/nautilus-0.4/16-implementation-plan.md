@@ -488,8 +488,9 @@ README §6 and [02 §8](02-nir.md).
   registration TU compiled in every configuration, which registers each
   intrinsic by `name@version` with its NIR signature, effect attributes and
   native fallback, and, for an intrinsic without `noUnwind`, a capture
-  thunk that the registration helper instantiates from the fallback's C++
-  type ([13 §4.6.1, §5.7](13-nir-spec.md)); backend handlers are optional and attach by name. A
+  thunk (`captureThrowingCall<R, Args...>`) that the registration helper
+  instantiates from the fallback's C++ type and stores in the
+  registration ([13 §4.6.1, §5.7](13-nir-spec.md)); backend handlers are optional and attach by name. A
   traced `invoke` of a registered fallback address becomes an intrinsic
   callee at trace time (lookup by address → name). Until the cut-over the
   0.3 backends keep their own handler registration with 0.3's
@@ -506,7 +507,12 @@ README §6 and [02 §8](02-nir.md).
   freeze the registry ([04 §3.7](04-extensions.md)); each class of
   reserved plugin name rejected, the core's
   `core.*` intrinsics accepted; an extension instruction
-  violating each operand-shape rule rejected by the verifier; every
+  violating each operand-shape rule rejected by the verifier; `NIR-V014`
+  positive and negative tests for intrinsic calls (an intrinsic call that
+  names a thunk is rejected; a may-throw intrinsic registered with a
+  thunk is accepted); a `NIR-V035` negative test with `funcaddr` of an
+  internal function whose signature has a test extension type without
+  `cabi` ([13 §4.5, §5.7, §6.1.8](13-nir-spec.md)); every
   in-tree intrinsic visible by name, in a visibility test that links only
   each plugin's public API (registration TUs anchored, not dropped from
   the static archive).
@@ -527,7 +533,10 @@ README §6 and [02 §8](02-nir.md).
 - **Done when:** golden images with extension ops and types round-trip
   and are added to the conformance material with their hashes; the same
   extension module built in two operand orders hashes equally; an image
-  naming an unregistered extension is rejected as listed.
+  naming an unregistered extension is rejected as listed; an image with a
+  test type instance registered as unavailable on the host in an exported
+  signature fails `NIR-V035` (`NIR-L017`) on load
+  ([13 §8.4](13-nir-spec.md)).
 
 #### M1.8 Bounded chunk pool · M · deps: M1.10 (for its corpus check)
 - **Builds:** [02 §4.1](02-nir.md): fixed chunk sizes, dedicated large
@@ -932,7 +941,9 @@ capture thunk with the instruction's cleanup list; dynamic shift amounts
 masked where the hardware does not mask; saturating float→int casts. The
 conversion clears checks for safe constant divisors and masks constant
 shift amounts from M3.2 on; M6.1 adds the edge-case folding and the
-plugin side. Imported calls are added
+plugin side. May-throw intrinsic calls go through the capture thunk
+registered with the intrinsic (M1.7, [13 §5.7](13-nir-spec.md)) in the
+`tbc`, `cpp` and `asmjit` ports. Imported calls are added
 by M4.6, `bind.addr` by M5.2, extension *type* lowering by M6.5. A port
 that lands before the cut-over lives in new files next to its 0.3 lowering,
 which the cut-over deletes; until then it is tested with `nautilus-nir-run`,
@@ -1122,11 +1133,15 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   (`NautilusEngine::setSymbolNamer`, `setSymbolResolver`; a later call is
   an error), with the tracer applying the namer as it creates each
   `pointers` entry, so mode and provenance are final before the
-  eligibility scan and every cache key ([07 §3](07-serialization.md)).
+  eligibility scan and every cache key ([07 §3](07-serialization.md));
+  naming order: the namer first, then ELF build ID plus offset (mode 2),
+  otherwise mode 0.
 - **Done when:** a module with external callees and destructors saves
   portably and resolves in a fresh process; a process-local image is
   rejected in another process; a pointer named by the engine's namer is
-  mode 1 in the pre-SSA module, before any save.
+  mode 1 in the pre-SSA module, before any save; with an engine namer, a
+  traced module with external callees is eligible at the pre-SSA scan and
+  reloads in a fresh process ([07 §6](07-serialization.md)).
 
 #### M5.2 Runtime bindings · M · deps: M5.1
 - **Builds:** port of #529 onto the `bindings` section: `RuntimeBinding<T>`,
@@ -1161,11 +1176,16 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   path, with signature checks including width and the per-parameter
   extension kind (none / zext / sext); native
   payloads are added by M5.6; `engine.retainIR` from #532 is not needed;
-  a fuzzer mode that saves, reloads and runs each generated module on
+  the overloads `saveModule(compiled, namer)`, which names only the
+  entries still in mode 0, reruns the SSA-level eligibility check on the
+  copy and writes only the NIR image if the copy changed, and
+  `loadModule(engine, image, bindings, resolver)`, which overrides the
+  engine's resolver ([07 §3](07-serialization.md)); a fuzzer mode that saves, reloads and runs each generated module on
   every backend ([10 §4](10-observability.md)).
 - **Done when:** save on one engine, load on every backend: identical
-  results, identical bytes on re-save; the save/load fuzzer mode is
-  clean.
+  results, identical bytes on re-save; without an engine namer,
+  `saveModule(compiled, namer)` gives a `Portable` NIR-only image that
+  loads in a fresh process; the save/load fuzzer mode is clean.
 
 #### M5.6 Artifacts and native payloads · L · deps: M5.5, M4.5
 - **Builds:** the artifact container (`NART`, [07 §2.2](07-serialization.md)),
@@ -1179,8 +1199,9 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   data-object and `funcaddr` stub reference, every runtime helper
   (`nautilus_rt_*`), every intrinsic callee without an inline lowering
   (`__nautilus_intr_<i>`) and the registered capture thunk of every
-  may-throw intrinsic call made through a thunk (`__nautilus_intr_thunk_<i>`)
-  as an external symbol that the payload loader
+  may-throw intrinsic call made through a thunk (`__nautilus_intr_thunk_<i>`,
+  `PayloadImport.cls` 7; an intrinsic registered without a thunk rejects
+  the payload) as an external symbol that the payload loader
   binds, built position-independent with the small code model
   ([07 §2.1](07-serialization.md), [05 §5.2](05-backends.md)); payloads
   that used the `inlining` plugin's LLVM hooks marked non-persistable, or
@@ -1192,7 +1213,9 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   falls back, including one built for a CPU whose features the host lacks,
   one with an unaccepted relocation and one with an unlisted symbol;
   a module compiled with `NAUTILUS_INLINE` functions is either rejected
-  for export or reloads correctly in a fresh process.
+  for export or reloads correctly in a fresh process; a payload with a
+  may-throw intrinsic call loads in a fresh process and the exception
+  reaches the landing pad ([07 §6](07-serialization.md)).
 
 #### M5.7 Caches L0, L1, L2 and tiers · L · deps: M5.6, M4.7
 - **Builds:** `plugins/cache/` from #528 (storage model unchanged); L0 in
@@ -1201,10 +1224,17 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   data-object placement, `funcaddr` stubs and import slots, shared by
   reference by every module that hits it and freed when the last of them
   is released and the entry is evicted ([08 §2](08-caching.md),
-  [13 §4.4.1](13-nir-spec.md)); the L1 key of [08 §2](08-caching.md),
+  [13 §4.4.1](13-nir-spec.md)); L0 tier state (installed executable and
+  promotion) per entry, so promotion runs once for all sharing modules
+  ([11 §4.6](11-tiered-compilation.md)); L0 entries pin their exporters
+  like importers, and registering a module under a name pinned only by
+  L0 entries evicts those entries first; the L1 key of [08 §2](08-caching.md),
   XXH3-128 over `engine.cache.key`, the code-affecting options block, the
-  application options, the declared exports and the declared imports with
-  each exporter's structural hash, looked up **before tracing**, with
+  application options, the declared exports and the declared imports
+  (item 5: `u32` count, 0 without imports, then per import sorted by
+  (module, function) bytes the names, the signature type words and the
+  exporter's structural hash over its self-contained image, memoized per
+  compiled exporter), looked up **before tracing**, with
   the rest of the compatibility identity (extensions, core and provider
   builds, per payload the target, CPU and feature string) checked on the
   stored entry at a hit, not keyed; L1 stores the canonical NIR image of
@@ -1231,7 +1261,15 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   hit with the `manual` policy and no promotion, and one with
   `engine.backend=asmjit`, skip tracing; a payload for another CPU is not
   executed and the module is recompiled from its NIR image); the
-  cache-hit fuzzer mode is clean; warm NebulaStream wall time ≤ 40% of
+  cache-hit fuzzer mode is clean; two modules with equal NIR and binding
+  names but different binding addresses miss each other at L0; two
+  modules sharing an L0 entry keep running after either is released, and
+  code, data and stubs are freed only after both are released and the
+  entry is evicted (ASan clean); an importer misses L1 after its exporter
+  changed and was re-registered in a new process; an L1 hit whose image
+  has a type instance unavailable on the host (a test type with
+  `available = false`) is treated as `incompatible`
+  ([13 §8.4](13-nir-spec.md)); warm NebulaStream wall time ≤ 40% of
   cold on the reference machine ([08 §5.1](08-caching.md)).
 
 #### M5.8 C API on NIR · L · deps: M5.5
@@ -1243,9 +1281,17 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   environment on load and compile; engine-level namer and resolver
   callbacks (`nautilus_engine_set_namer`, `nautilus_engine_set_resolver`),
   with the namer argument of `nautilus_ir_save` naming only the entries
-  still in mode 0 ([07 §3](07-serialization.md), [09 §3](09-c-api.md)); stability as in [09 §6](09-c-api.md);
-  `libnautilus-c` export test in the matrix; a Rust bindgen smoke test.
-- **Done when:** [09 §4](09-c-api.md).
+  still in mode 0, and a save whose namer changed the copy writing no
+  native payloads; a builder created for an engine applies the engine
+  namer to pointer entries added by address, entries added by name are
+  mode 1; an optional per-call resolver override on compile and load;
+  may-throw external callees and `call.indirect` naming a thunk entry
+  added by name ([07 §3](07-serialization.md), [09 §3](09-c-api.md));
+  stability as in [09 §6](09-c-api.md); `libnautilus-c` export test in
+  the matrix; a Rust bindgen smoke test.
+- **Done when:** [09 §4](09-c-api.md), including the round trip with namer
+  and resolver set on the engine, and a namer given only to
+  `nautilus_ir_save` that gives a `Portable` image without payloads.
 
 #### M5.9 Compatibility fixtures · S · deps: M5.5, M5.6
 - **Builds:** images and artifacts (with a native payload) saved by this
@@ -1318,7 +1364,10 @@ M6.4 moves the plugin-facing API to widths.
   4096, [04 §3.5](04-extensions.md)); `simd.vec<T,N>` and `builtin.i128`;
   the SIMD extension-op case of the latency corpus
   ([10 §2](10-observability.md)), gated against its first recording.
-- **Done when:** both types run on every backend, with and without handlers.
+- **Done when:** both types run on every backend, with and without handlers;
+  an image with an AVX-512 `simd.vec` in an exported signature fails
+  `NIR-V035` (`NIR-L017`) on an AVX2 host (or with the instance marked
+  unavailable) ([13 §8.4](13-nir-spec.md)).
 
 #### M6.6 In-tree plugin migration · L · deps: M6.5
 - **Builds:** the table of [04 §4](04-extensions.md): `builtin` prefetch,
@@ -1389,8 +1438,9 @@ validation (PR 18).
   cooperative barriers with
   divergence detection, per-block shared memory, warps of 32 lanes) and the
   `gpu-emulator` leg ([17 §4.1, §4.3, §4.4, §4.6, §5.1](17-gpu.md)).
-- **Done when:** the memory, error and concurrency tests of [17 §5.2](17-gpu.md)
-  pass on the emulator; the 0.3 GPU test functions run on the emulator with
+- **Done when:** the memory, error, concurrency and selection tests of
+  [17 §5.2](17-gpu.md) pass on the emulator, including `gpu.device=auto`
+  hashed as its resolved value, never as `auto`; the 0.3 GPU test functions run on the emulator with
   the 0.3 results.
 
 #### M7.3 Shared emitter and CUDA device compiler · L · deps: M7.2
@@ -1430,8 +1480,8 @@ validation (PR 18).
   `gpu.*` statistics, `explain()` entries and dumps
   ([17 §4.8, §4.9](17-gpu.md)).
 - **Done when:** a warm L0 hit compiles no device code; an artifact or
-  L1/L2 hit of a GPU module skips tracing and recompiles only the device
-  code; a toolkit or driver change misses the L0 cache and recompiles.
+  L1/L2 hit of a GPU module skips tracing and compiles the device code
+  once per process ([17 §4.8](17-gpu.md)); a toolkit or driver change misses the L0 cache and recompiles.
 
 #### M7.7 GPU validation and documentation · M · deps: M7.5, M7.6
 - **Builds:** `tools/gpu-validate/` (Metal benchmarks on an Apple-silicon
