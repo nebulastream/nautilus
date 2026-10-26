@@ -203,7 +203,8 @@ func export pressa @f : (i64) -> i64 {
 
 TEST_CASE("a long chain of blocks converts without deep recursion", "[nir][conversion]") {
 	// 40000 single-predecessor blocks, the variable defined in the first: reading it in the last walks the chain
-	std::string text = "nir 1.0\n\nfunc export pressa @chain : (i64) -> i64 {\n^b0(%0: i64):\n  %1 = var %0\n  [2] br ^b1\n";
+	std::string text =
+	    "nir 1.0\n\nfunc export pressa @chain : (i64) -> i64 {\n^b0(%0: i64):\n  %1 = var %0\n  [2] br ^b1\n";
 	const int blocks = 40000;
 	int id = 3;
 	for (int b = 1; b <= blocks; ++b) {

@@ -55,14 +55,14 @@ private:
 
 	struct Temp {
 		Kind kind = Kind::Inst;
-		Inst inst {};                 // Inst: the instruction, operands as Refs
-		std::vector<uint32_t> list;   // Inst: the values of a call's argument list
-		std::vector<uint32_t> tail;   // Inst: the words of a call's list after the unwind entry
-		uint32_t unwind = NO_UNWIND;  // Inst: NO_UNWIND, NO_CLEANUP or a pad (padBase + index, resolved when emitted)
+		Inst inst {};                // Inst: the instruction, operands as Refs
+		std::vector<uint32_t> list;  // Inst: the values of a call's argument list
+		std::vector<uint32_t> tail;  // Inst: the words of a call's list after the unwind entry
+		uint32_t unwind = NO_UNWIND; // Inst: NO_UNWIND, NO_CLEANUP or a pad (padBase + index, resolved when emitted)
 		bool usesPad = false;
-		uint32_t variable = NONE;     // Phi: the variable
-		uint32_t block = NONE;        // Phi, Param: the block
-		std::vector<uint32_t> ops;    // Phi: one value per incoming edge, in registration order
+		uint32_t variable = NONE;  // Phi: the variable
+		uint32_t block = NONE;     // Phi, Param: the block
+		std::vector<uint32_t> ops; // Phi: one value per incoming edge, in registration order
 		TypeId type = TypeId::Void;
 		uint32_t edgeTrue = NONE, edgeFalse = NONE; // terminators: the edges
 	};
