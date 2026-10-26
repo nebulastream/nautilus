@@ -22,4 +22,9 @@ if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../src>)
     target_link_libraries(nautilus-tracing-corpus PRIVATE nautilus)
+
+    # The latency corpus (docs/plans/nautilus-0.4/10-observability.md). A plain executable that replaces the global
+    # operator new to count allocations; it uses only the public engine API.
+    add_executable(nautilus-latency-corpus latency-corpus/LatencyCorpus.cpp)
+    target_link_libraries(nautilus-latency-corpus PRIVATE nautilus)
 endif ()

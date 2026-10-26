@@ -361,6 +361,48 @@ jobs:
         shell: bash
         run: |
           ./build/nautilus/test/fuzz/nautilus-nir-fuzz-replay nautilus/test/fuzz/corpus-nir
+  latency-corpus:
+    runs-on: ubuntu-24.04
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}
+    name: Latency corpus (clang-21, reporting only)
+    # Reports until the cut-over (plan §3 rule 5): the numbers are a record, not a gate.
+    continue-on-error: true
+    env:
+      CC: clang-21
+      CXX: clang++-21
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Force apt to use IPv4
+        run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-latency-corpus
+      - name: Install clang + LLVM 21
+        uses: ./.github/actions/install-llvm
+        with:
+          llvm-version: "21"
+      - name: cmake
+        shell: bash
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_MLIR_BACKEND=OFF -DENABLE_BENCHMARKS=ON -G Ninja -S . -B build
+      - name: build
+        shell: bash
+        run: |
+          cmake --build build --target nautilus-latency-corpus
+      - name: run the corpus
+        shell: bash
+        run: |
+          ./build/nautilus/test/benchmark/nautilus-latency-corpus 3 > corpus.jsonl
+          wc -l corpus.jsonl
+      - name: upload the results
+        uses: actions/upload-artifact@v4
+        with:
+          name: latency-corpus-${{ github.sha }}
+          path: corpus.jsonl
   fuzz-replay-smoke:
     runs-on: ubuntu-24.04
     if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
