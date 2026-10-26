@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{matrix.os}}
     if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: ${{ matrix.os }} ${{ matrix.cc }} ${{ matrix.flags }}
-    # A leg marked `experimental` reports but does not fail the PR (see the UBSan leg).
+    # A leg marked `experimental` reports but does not fail the PR.
     continue-on-error: ${{ matrix.experimental == true }}
     # Backstop against a hung test: a single ctest case hanging on macos-26
     # once ran for ~6h before hitting GitHub's default 360m job timeout. The
@@ -93,9 +93,6 @@ jobs:
             cc: 'clang-21'
             cxx: 'clang++-21'
             flags: '-DENABLE_UB_SANITIZER=ON'
-            # Reports only, until the findings it already has on main are fixed: a local run (clang-21, -O3) fails
-            # "NautilusFunction Compiled Execution Test" (SEGV), "Ptr Val Test", "Atomic Test" and "VectorTest - Interpreter".
-            experimental: true
           # Concurrent compilation/execution, tiered promotion threads and the
           # profiling sampler all share state across threads; only TSan catches
           # the data races there.
