@@ -9,6 +9,7 @@ add_executable(nautilus-nir-tests
         PrinterTest.cpp
         ParserTest.cpp
         ConformanceTest.cpp
+        OptionRegistryTest.cpp
 )
 
 target_link_libraries(nautilus-nir-tests PRIVATE nautilus-nir Catch2::Catch2WithMain)
@@ -17,7 +18,8 @@ catch_discover_tests(nautilus-nir-tests EXTRA_ARGS --allow-running-no-tests)
 
 # .nir tests: a text file in the conformance corpus, run through nautilus-nir-opt by ctest
 # (docs/plans/nautilus-0.4/16-implementation-plan.md, M1.3).
-target_compile_definitions(nautilus-nir-tests PRIVATE NIR_CONFORMANCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../data/nir-conformance")
+target_compile_definitions(nautilus-nir-tests PRIVATE NIR_CONFORMANCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../data/nir-conformance"
+        NIR_OPTIONS_DOC="${PROJECT_SOURCE_DIR}/docs/options.md")
 file(GLOB NIR_TEXT_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../data/nir-conformance/text/*.nir)
 file(GLOB NIR_INVALID_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../data/nir-conformance/text/invalid/*.nir)
 foreach (file ${NIR_TEXT_TESTS})
