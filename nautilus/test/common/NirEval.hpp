@@ -122,6 +122,8 @@ private:
 	uint64_t compare(const Inst& inst, uint64_t a, uint64_t b, TypeId t) const;
 
 	const Module& m_;
+	/// A function that does not finish within this many instructions is reported, not waited for.
+	uint64_t budget_ = 50'000'000;
 };
 
 inline uint64_t Evaluator::callNative(const void* fn, const std::vector<uint64_t>& args, TypeId result) const {
@@ -274,6 +276,9 @@ inline uint64_t Evaluator::run(uint32_t f, std::span<const uint64_t> args) {
 		for (uint32_t k = blk.argCount; k < blk.count; ++k) {
 			const uint32_t id = blk.first + k;
 			const Inst& inst = insts[id];
+			if (budget_-- == 0) {
+				throw std::runtime_error("the evaluator ran out of its instruction budget");
+			}
 			const auto type = static_cast<TypeId>(inst.type);
 			fr.type[id] = type;
 			auto A = [&] {
