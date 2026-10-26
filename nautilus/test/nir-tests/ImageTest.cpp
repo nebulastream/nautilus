@@ -52,7 +52,7 @@ TEST_CASE("CRC-32C check value", "[nir][image]") {
 
 TEST_CASE("a canonical image has the layout of 13 §8.1", "[nir][image]") {
 	auto image = imageOf(small);
-	ImageHeader h;
+	ImageHeader h {};
 	std::memcpy(&h, image.data(), sizeof h);
 	REQUIRE(std::memcmp(h.magic, "NIR\0", 4) == 0);
 	REQUIRE(h.major == 1);
@@ -70,7 +70,7 @@ TEST_CASE("a canonical image has the layout of 13 §8.1", "[nir][image]") {
 	uint64_t expectedOffset = 48 + 24 * 19;
 	uint32_t previous = 0;
 	for (uint32_t i = 0; i < h.sectionCount; ++i) {
-		SectionEntry e;
+		SectionEntry e {};
 		std::memcpy(&e, image.data() + 48 + 24 * i, sizeof e);
 		REQUIRE(e.kind > previous);
 		previous = e.kind;
@@ -86,9 +86,9 @@ TEST_CASE("an empty section has the offset where the next one starts", "[nir][im
 	auto image = imageOf(small);
 	RawImage raw = RawImage::decode(image);
 	REQUIRE(raw.section(SecImports).count == 0);
-	SectionEntry imports, data;
+	SectionEntry imports {}, data {};
 	for (uint32_t i = 0; i < raw.header.sectionCount; ++i) {
-		SectionEntry e;
+		SectionEntry e {};
 		std::memcpy(&e, image.data() + 48 + 24 * i, sizeof e);
 		if (e.kind == SecImports) {
 			imports = e;
@@ -105,7 +105,7 @@ TEST_CASE("debug sections are written exactly when asked", "[nir][image]") {
 	WriteOptions o;
 	o.debug = true;
 	auto image = writeImage(m, o);
-	ImageHeader h;
+	ImageHeader h {};
 	std::memcpy(&h, image.data(), sizeof h);
 	REQUIRE(h.sectionCount == 27);
 	REQUIRE((h.compatFeatures & FEATURE_DEBUG_V1) != 0);
@@ -213,7 +213,7 @@ TEST_CASE("NIR-L006 section table", "[nir][image]") {
 		return rejection(image).code;
 	};
 	auto entryAt = [](std::vector<uint8_t>& image, uint32_t i) {
-		SectionEntry e;
+		SectionEntry e {};
 		std::memcpy(&e, image.data() + 48 + 24 * i, sizeof e);
 		return e;
 	};
@@ -265,7 +265,7 @@ TEST_CASE("NIR-L006 section table", "[nir][image]") {
 	        }) == DiagCode::L006);
 	// a table that does not fit
 	REQUIRE(edit([&](auto& im) {
-		        ImageHeader h;
+		        ImageHeader h {};
 		        std::memcpy(&h, im.data(), sizeof h);
 		        h.sectionCount = 1u << 24;
 		        std::memcpy(im.data(), &h, sizeof h);

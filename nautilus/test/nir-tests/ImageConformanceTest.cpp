@@ -150,7 +150,7 @@ func export @f : (i64) -> i64 {
 	}
 	{
 		auto b = base();
-		SectionEntry e;
+		SectionEntry e {};
 		std::memcpy(&e, b.data() + 48, sizeof e);
 		e.offset += 4;
 		std::memcpy(b.data() + 48, &e, sizeof e);
@@ -159,7 +159,7 @@ func export @f : (i64) -> i64 {
 	}
 	{
 		auto b = base();
-		SectionEntry e;
+		SectionEntry e {};
 		std::memcpy(&e, b.data() + 48, sizeof e);
 		e.count = 1u << 20;
 		std::memcpy(b.data() + 48, &e, sizeof e);
@@ -168,7 +168,7 @@ func export @f : (i64) -> i64 {
 	}
 	{
 		auto b = base();
-		SectionEntry a, c;
+		SectionEntry a {}, c {};
 		std::memcpy(&a, b.data() + 48, sizeof a);
 		std::memcpy(&c, b.data() + 48 + 24, sizeof c);
 		c.offset = a.offset;
