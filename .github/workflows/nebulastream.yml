@@ -19,11 +19,14 @@ run-name: NebulaStream against nautilus ${{ github.ref_name }}
 #
 # A full run takes hours, so it runs once a night, and only when nautilus main
 # or NebulaStream main has moved since the last successful run on main. It also
-# runs on demand and on PRs labeled `nebulastream`.
+# runs on demand and on PRs labeled `nebulastream`. On demand it builds the ref it is started
+# from, so `gh workflow run nebulastream.yml --ref nautilus-0.4` runs it for 0.4;
+# nebulastream-nightly-0.4.yml does that every night (reporting only until the M4 exit).
 on:
   pull_request:
     branches:
       - main
+      - nautilus-0.4
     types: [ opened, reopened, synchronize, labeled ]
   schedule:
     - cron: '17 2 * * *'

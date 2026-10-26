@@ -1,0 +1,22 @@
+name: NebulaStream nightly (nautilus-0.4)
+
+# A schedule runs on the default branch only. This workflow, which lives there once the 0.4 stack is merged, starts
+# nebulastream.yml for the nautilus-0.4 branch every night (docs/plans/nautilus-0.4/16-implementation-plan.md, M1.11).
+# The result is a record and not a gate until the M4 exit (plan §3 rule 9).
+on:
+  schedule:
+    - cron: '47 3 * * *'
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    name: Start the NebulaStream run for nautilus-0.4
+    steps:
+      - name: Dispatch nebulastream.yml on nautilus-0.4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run nebulastream.yml --ref nautilus-0.4 -R "$GITHUB_REPOSITORY"
