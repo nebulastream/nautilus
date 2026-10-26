@@ -150,7 +150,7 @@ docker compose up -d
 
 | Endpoint | Description |
 | --- | --- |
-| `POST /api/compile` | `{source, backend: mlir\|cpp\|bc\|tbc\|asmjit, options?}` → `202 {jobId}` or `200 {cached, result}` |
+| `POST /api/compile` | `{source, backend: mlir\|cpp\|tbc\|asmjit, options?}` → `202 {jobId}` or `200 {cached, result}` |
 | `GET /api/jobs/:id` | `{status, queuePosition?, result?, error?}` |
 | `GET /api/jobs/:id/events` | Server-sent events for status transitions |
 | `GET /api/examples` | Curated example gallery |

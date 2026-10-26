@@ -15,31 +15,30 @@ stitches pre-compiled per-opcode machine-code stencils into executable memory,
 eliminating dispatch entirely — ~3–4× faster than the interpreter on loop
 kernels while reusing the same bytecode, frames, and lowering.
 
-## Why a second bytecode backend?
+## Design goals
 
-The `bc` backend's default configuration dispatches every instruction through
-an indirect function-pointer call, routes *every* call — including
-Nautilus-to-Nautilus calls in the same module — through the dyncall FFI plus a
-dyncallback trampoline into a nested interpreter, copies its whole register
-file on every invocation, and heap-allocates and re-zeroes alloca buffers per
-call. Its fast paths (threaded dispatch, superinstructions, immediates) are
-opt-in. dyncallback also allocates runtime-executable trampolines, which makes
-the backend unusable on iOS.
+`tbc` replaced the register-bytecode interpreter `bc` (removed in 0.4). That
+backend dispatched every instruction through an indirect function-pointer call,
+routed *every* call, including Nautilus-to-Nautilus calls in the same module,
+through the dyncall FFI plus a dyncallback trampoline into a nested interpreter,
+copied its whole register file on every invocation, and heap-allocated alloca
+buffers per call. dyncallback also allocates runtime-executable trampolines,
+which made it unusable on iOS.
 
-`tbc` starts from the state of the art instead of retrofitting it:
+`tbc` starts from the state of the art instead:
 
-| | bc (default) | tbc (default) |
-|---|---|---|
-| dispatch | indirect call per op | tail-call threading (`musttail`) / computed goto |
-| code layout | per-block vectors + `std::variant` terminators | one flat stream, fixed 8-byte words |
-| internal calls | dyncall → dyncallback thunk → nested interpreter | native `CALL`/`RET` in the dispatch loop |
-| frames | full register-file copy, heap allocas | contiguous VM stack, in-frame allocas |
-| fusion / immediates | opt-in, threaded mode only | on by default |
-| executable memory | dyncallback trampolines | none under `ENABLE_FFI_CLOSURES` |
+| | tbc |
+|---|---|
+| dispatch | tail-call threading (`musttail`) / computed goto |
+| code layout | one flat stream, fixed 8-byte words |
+| internal calls | native `CALL`/`RET` in the dispatch loop |
+| frames | contiguous VM stack, in-frame allocas |
+| fusion / immediates | on by default |
+| executable memory | none under `ENABLE_FFI_CLOSURES` |
 
-Measured on the loop kernels of `test/benchmark/ExecutionBenchmark.cpp`
-(Release, x86-64): ~3–4× faster than `bc`'s default *and* best opt-in
-configurations; per-call entry ~1.7× faster.
+On the loop kernels of `test/benchmark/ExecutionBenchmark.cpp` (Release, x86-64)
+it was ~3–4× faster than `bc`'s best configuration when `bc` was removed, and
+per-call entry ~1.7× faster.
 
 ## Design
 
@@ -80,8 +79,8 @@ Three skins, selected via `tbc.dispatch = auto | tailcall | goto | switch`
 
 ### Values and frames
 
-Register slots are untyped 64 bits with the same normalization convention as
-`bc`: bools stored 0/1, narrow integers zero-extended, floats/pointers
+Register slots are untyped 64 bits with the normalization convention:
+bools stored 0/1, narrow integers zero-extended, floats/pointers
 bit-exact. Consumers always read their exact declared width, so upper-bit
 garbage (e.g. from native callers of trampolines) is unobservable.
 
@@ -121,8 +120,7 @@ address escapes to native code (e.g.
 
 Both come from one **`NativeClosure`** per function
 (`backends/NativeClosure.hpp`), built before lowering so calls and
-`FunctionAddressOf` resolve in any lowering order. The component is shared with
-`bc` and owns the mechanism choice in a single place:
+`FunctionAddressOf` resolve in any lowering order. The component owns the mechanism choice in a single place:
 
 - default: a dyncall callback (`dcbNewCallback`), which writes a thunk into RWX
   memory at runtime;
@@ -302,7 +300,7 @@ after which the interpreter's per-instruction dispatch (indirect branch +
 - **Tiering measurement**: stitching is a linear pass over the bytecode, so
   `tbc` + `tbc.mode=jit` is a candidate for *both* tiers — measure tier-0
   latency (stitch time vs. lowering time) and the handoff against the
-  current `asmjit`/`bc` tier-0 defaults before changing any default.
+  current `asmjit`/`tbc` tier-0 defaults before changing any default.
 - **Profiling/debugging story for stitched code**: emit a perf map
   (`/tmp/perf-<pid>.map`) and/or the GDB JIT interface behind an option;
   until then stitched frames show as raw addresses and `tbc.mode=interp` is

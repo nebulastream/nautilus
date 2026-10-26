@@ -445,7 +445,7 @@ Four things in that recipe are not optional:
   the `perf.data` timeline using the monotonic clock, and refuses to run without
   it: `error, jitted code must be sampled with perf record -k 1`.
 - **`engine.backend=mlir`.** The default is tiered compilation, which starts
-  every function on an interpreting tier-0 backend (`asmjit`/`bc`) that emits no
+  every function on an interpreting tier-0 backend (`asmjit`/`tbc`) that emits no
   jitdump at all and promotes to MLIR in the background — so a profile would be
   split across two artifacts at two addresses, only one of which perf can name.
   See [Tiered compilation splits the profile](#tiered-compilation-splits-the-profile).
@@ -906,7 +906,7 @@ several are live at once.
 
 ### Tiered compilation splits the profile
 
-The default is tier-0 (`asmjit`/`bc`/interpreter) with background promotion to
+The default is tier-0 (`asmjit`/`tbc`/interpreter) with background promotion to
 MLIR. One logical function therefore exists as two artifacts at two addresses,
 and the tier-0 backends neither emit a jitdump nor publish a symbol. Profiling
 runs should pin `engine.backend=mlir`, either way.

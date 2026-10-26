@@ -26,13 +26,6 @@ name = "asmjit"
 options = { "engine.backend" = "asmjit" }
 suite = true
 
-# The bytecode interpreter does not support every type NebulaStream's
-# aggregations and joins use yet; its failures are warnings, not errors.
-[[configuration]]
-name = "bc"
-options = { "engine.backend" = "bc" }
-optional = true
-
 [[configuration]]
 name = "tbc"
 options = { "engine.backend" = "tbc" }

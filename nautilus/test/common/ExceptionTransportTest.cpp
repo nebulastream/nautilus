@@ -172,7 +172,7 @@ TEST_CASE("captureCurrentException reports a missing frame", "[ExceptionTranspor
 		captured = captureCurrentException();
 	}
 	// False tells the caller to rethrow rather than silently drop it, which is
-	// what the BC dyncall handlers now do when driven without a frame.
+	// what the dyncall handlers now do when driven without a frame.
 	REQUIRE_FALSE(captured);
 
 	ExceptionFrameScope scope(true);

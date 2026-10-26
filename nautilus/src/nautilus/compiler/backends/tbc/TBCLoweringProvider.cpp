@@ -154,7 +154,7 @@ struct BlockCode {
 	Terminator term;
 	// Set when this block ends in a conditional jump whose condition is a
 	// single-use comparison; the flattener may fuse the trailing compare into
-	// the branch (mirrors bc's fuseCompareIntoBranch).
+	// the branch.
 	bool fuseCompareIntoBranch = false;
 	// Arithmetic ops whose right operand is a small integer constant.
 	std::vector<FoldableImmediate> foldableImmediates;
@@ -341,7 +341,7 @@ private:
 		return blockIndex;
 	}
 
-	// ── Register bookkeeping (ports of the bc allocator helpers) ────────────
+	// ── Register bookkeeping (the allocator helpers) ────────────
 
 	/// When the identifier is already bound, this definition's SSA name doubles
 	/// as a downstream merge-block parameter whose register was chosen by an
@@ -358,7 +358,7 @@ private:
 		return registerProvider.allocRegister();
 	}
 
-	/// Same walk as bc's countAllUsages, additionally classifying
+	/// Walks all usages, additionally classifying
 	/// cross-block reads for the pinning policy documented at
 	/// `crossBlockIds`: a block's arguments and definitions are recorded
 	/// before its uses are scanned, and SSA dominance guarantees a use's
@@ -495,8 +495,8 @@ private:
 	// ── Arithmetic / logic ───────────────────────────────────────────────────
 
 	/// Record the arithmetic op about to be emitted as immediate-foldable when
-	/// its right operand is an i32/i64 constant fitting 16 bits (port of bc's
-	/// recordFoldableImmediate). Pointer arithmetic runs as i64 (see
+	/// its right operand is an i32/i64 constant fitting 16 bits.
+	/// Pointer arithmetic runs as i64 (see
 	/// arithTypeIndex) and emits the identical ADD_i64/SUB_i64 opcodes, so
 	/// `ptr + const`/`ptr - const` fold the same way — this is what lets
 	/// LOAD_off/STORE_off fusion below find an already-folded ADD_imm_i64. If
@@ -543,7 +543,7 @@ private:
 	}
 
 	int arithTypeIndex(Type t) const {
-		// Pointer arithmetic runs as i64, matching bc.
+		// Pointer arithmetic runs as i64.
 		return numTypeIndex(t == Type::ptr ? Type::i64 : t);
 	}
 
@@ -577,7 +577,7 @@ private:
 	void visitCompare(ir::CompareOperation* opt, int block, RegisterFrame& frame) {
 		auto type = opt->getLeftInput()->getStamp();
 		if (type == Type::ptr) {
-			type = Type::i64; // pointer compares run as i64, matching bc
+			type = Type::i64; // pointer compares run as i64
 		} else if (type == Type::b) {
 			type = Type::ui8; // bool slots are normalized 0/1
 		}
@@ -647,7 +647,7 @@ private:
 		} else if (opt->getStamp() == Type::f64) {
 			emit(block, Op::NEG_f64, result, input);
 		} else {
-			// Bitwise negation runs on the full 64-bit slot (bc parity: consumers
+			// Bitwise negation runs on the full 64-bit slot (consumers
 			// always read their exact width, so high garbage is unobservable).
 			emit(block, Op::BNOT_i64, result, input);
 		}
@@ -750,7 +750,7 @@ private:
 		const auto dstType = opt->getStamp();
 		// Identity casts (two C++ types mapping to the same nautilus Type,
 		// e.g. size_t and uint64_t on macOS) and ui64 <-> ptr are register
-		// moves. Pointer-valued targets convert as ui64 (bc parity).
+		// moves. Pointer-valued targets convert as ui64.
 		if (srcType == dstType || (srcType == Type::ui64 && dstType == Type::ptr)) {
 			emit(block, Op::MOV, result, input);
 			return;
@@ -801,8 +801,7 @@ private:
 	// ── Control flow ─────────────────────────────────────────────────────────
 
 	void processInvocation(const ir::BasicBlockInvocation& invocation, int block, RegisterFrame& parentFrame) {
-		// Direct port of bc's block-invocation lowering (see
-		// BCLoweringProvider.cpp for the full rationale): reads strictly
+		// Block-invocation lowering: reads strictly
 		// before writes; fresh targets get fresh registers; with coalescing,
 		// already-bound targets are sequenced as a parallel copy.
 		auto blockInputArguments = invocation.getArguments();
@@ -871,7 +870,7 @@ private:
 		emitParallelCopy(block, std::move(boundPairs));
 	}
 
-	/// Classic parallel-copy sequentialization (port of bc's emitParallelCopy):
+	/// Classic parallel-copy sequentialization (emitParallelCopy):
 	/// emit any move whose destination is no longer needed as a source; break
 	/// genuine cycles by stashing one destination in a fresh temp.
 	void emitParallelCopy(int block, std::vector<std::pair<uint16_t, uint16_t>> pairs) {
@@ -940,8 +939,7 @@ private:
 		useValue(ifOpt->getValue()->getIdentifier(), frame);
 
 		// Route each arm through a landing-pad block so the two arms cannot
-		// clobber shared merge-block parameter registers (see bc's visitIf for
-		// the full ordering rationale).
+		// clobber shared merge-block parameter registers (the ordering matters).
 		const int trueLandingPad = static_cast<int>(blocks.size());
 		blocks.emplace_back();
 		processInvocation(ifOpt->getTrueBlockInvocation(), trueLandingPad, frame);

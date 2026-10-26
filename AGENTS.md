@@ -96,7 +96,7 @@ ctest --test-dir build/dev/plugins/std/test --output-on-failure                #
 | `nautilus/src/nautilus/tracing/` | the tracer: `TraceContext`, `ExecutionTrace`, snapshots, tags (`tag/`), symbolic execution, trace → IR conversion (`phases/TraceToIRConversionPhase.cpp`) |
 | `nautilus/src/nautilus/compiler/` | `CompilationPipeline`, `TieredCompiler` (tier 0 / tier 1 promotion), `Engine.cpp`, dumps and statistics |
 | `nautilus/src/nautilus/compiler/ir/` | the IR (`IRGraph`, `operations/`, `blocks/`) and its passes (`passes/`, run by `IRPassManager`) |
-| `nautilus/src/nautilus/compiler/backends/` | `asmjit` (x86-64, AArch64), `tbc` (threaded bytecode, optional copy-and-patch JIT), `bc` (bytecode), `mlir` (MLIR → LLVM), `cpp` (C++ source + system compiler) |
+| `nautilus/src/nautilus/compiler/backends/` | `asmjit` (x86-64, AArch64), `tbc` (threaded bytecode, optional copy-and-patch JIT), `mlir` (MLIR → LLVM), `cpp` (C++ source + system compiler) |
 | `nautilus/src/nautilus/nir/` | NIR, the 0.4 IR: built next to the 0.3 pipeline, not yet called by the engine (see its `AGENTS.md`) |
 | `third_party/asmjit/` | vendored AsmJit with Nautilus patches, marked `[Nautilus]` |
 | `third_party/xxhash/` | vendored xxHash (XXH3-128 for the NIR structural hash) |

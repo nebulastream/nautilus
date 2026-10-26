@@ -7,7 +7,7 @@
 // =====================================================================================
 // Named extern "C" thunks. The MLIR backend intrinsic registry (see
 // MLIRAtomicIntrinsics.cpp) keys on the addresses of these thunks to lower the matching
-// runtime call to a real LLVM atomic instruction. Outside of the MLIR backend (cpp/bc/
+// runtime call to a real LLVM atomic instruction. Outside of the MLIR backend (cpp/tbc/
 // asmjit/interpreter) the calls fall through to the standard library implementations.
 // =====================================================================================
 

@@ -2441,7 +2441,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 // Potentially-throwing calls are routed through captureThrowingCall<R, Args...>
 // (a real C++ frame) and followed by a pending-exception check that branches to
 // the call's landing pad. Pads and the exceptional exit are emitted after the
-// main CFG, mirroring the X64/BC/TBC/CPP captured backends.
+// main CFG, mirroring the X64/TBC/CPP captured backends.
 
 bool AsmJitLoweringProvider::LoweringContext::callNeedsCapture(const ir::Operation* call) const {
 	if (currentFunction_ == nullptr) {

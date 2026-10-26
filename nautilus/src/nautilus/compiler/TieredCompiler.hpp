@@ -26,7 +26,7 @@ inline constexpr auto INTERPRETER_BACKEND = "interpreter";
  * @brief Configuration for a single compilation tier.
  */
 struct TierConfig {
-	std::string backend; // backend name ("bc", "mlir", "cpp", "asmjit"), or
+	std::string backend; // backend name ("tbc", "mlir", "cpp", "asmjit"), or
 	                     // INTERPRETER_BACKEND for tier 0
 };
 
@@ -37,11 +37,11 @@ struct TierConfig {
  * Tier 1 is the high-performance tier compiled in the background.
  *
  * When constructed from options without explicit tier settings, tier 0 is
- * selected by availability in the order: asmjit, bc, interpreter. The
+ * selected by availability in the order: asmjit, tbc, interpreter. The
  * interpreter tier runs the module uncompiled until tier 1 is promoted.
  */
 struct TieredCompilationConfig {
-	TierConfig tier0 {"bc"};   // low-latency tier (compiled synchronously)
+	TierConfig tier0 {"tbc"};  // low-latency tier (compiled synchronously)
 	TierConfig tier1 {"mlir"}; // high-performance tier (compiled in background)
 
 	/// When true (default) the compiler runs two-tier: a fast tier-0 compile is

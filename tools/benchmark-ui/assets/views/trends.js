@@ -4,7 +4,7 @@
 import { pickDisplayUnit, formatValue, shortHash, firstLine, formatDate } from '../format.js';
 
 const SLOT_VARS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6', '--s7', '--s8'];
-const BACKEND_ORDER = ['mlir', 'cpp', 'bc', 'tbc', 'asmjit', 'interpreted', 'twotier', 'singletier'];
+const BACKEND_ORDER = ['mlir', 'cpp', 'tbc', 'asmjit', 'interpreted', 'twotier', 'singletier'];
 
 function cssVar(name) {
 	return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
