@@ -1,6 +1,7 @@
 #include "nautilus/conversion/Conversion.hpp"
 #include "nautilus/nir/Builder.hpp"
 #include "nautilus/nir/Operands.hpp"
+#include "nautilus/nir/Semantics.hpp"
 #include <algorithm>
 #include <cassert>
 #include <functional>
@@ -25,8 +26,8 @@ namespace {
 /// converter made) or a constant reference. Temporaries become instruction ids when the function is emitted.
 class FunctionConverter {
 public:
-	FunctionConverter(const Module& pre, uint32_t function, Module& out, ConversionStatistics& stats)
-	    : pre_(pre), f_(function), out_(out), stats_(stats), rec_(pre.functions[function]),
+	FunctionConverter(const Module& pre, uint32_t function, Module& out, ConversionStatistics& stats, bool optimize)
+	    : pre_(pre), f_(function), out_(out), stats_(stats), optimize_(optimize), rec_(pre.functions[function]),
 	      insts_(pre.functionInsts(function)), blocks_(pre.functionBlocks(function)) {
 	}
 
@@ -117,6 +118,10 @@ private:
 	uint32_t makeEdge(uint32_t from, uint32_t to);
 	uint32_t padFor(const std::vector<std::pair<uint32_t, Ref>>& entries);
 	uint32_t convertUnwind(uint32_t b, uint32_t cleanupOffset);
+	Ref simplify(Inst& inst);
+	TypeId typeOfRef(Ref r) const {
+		return isConstRef(r) ? static_cast<TypeId>(out_.consts.record(r).type) : temps_[r].type;
+	}
 
 	// ---- emission ----------------------------------------------------------------------------------------------
 
@@ -130,6 +135,13 @@ private:
 	uint32_t f_;
 	Module& out_;
 	ConversionStatistics& stats_;
+	bool optimize_;
+	/// Constant branches are folded and dead blocks dropped; off for a function with an irreducible region, where a
+	/// block can be entered through an edge from a block that comes later.
+	bool foldBranches_ = false;
+	uint32_t irreducibleHere_ = 0;
+	std::vector<uint8_t> visited_;
+	std::vector<uint32_t> emitOrder_;
 	const FunctionRecord& rec_;
 	std::span<const Inst> insts_;
 	std::span<const BlockRecord> blocks_;
@@ -302,6 +314,7 @@ void FunctionConverter::orderBlocks() {
 				latches[t].push_back(s);
 			} else {
 				++stats_.irreducibleRegions;
+				++irreducibleHere_;
 			}
 		}
 	}
@@ -565,6 +578,149 @@ uint32_t FunctionConverter::convertUnwind(uint32_t b, uint32_t cleanupOffset) {
 	return padFor(entries);
 }
 
+Ref FunctionConverter::simplify(Inst& ni) {
+	using namespace semantics;
+	const auto op = static_cast<Op>(ni.op);
+	const auto type = static_cast<TypeId>(ni.type);
+	auto isC = [&](Ref r) {
+		return isConstRef(r);
+	};
+	auto bitsOf = [&](Ref r) {
+		return out_.consts.record(r).bits;
+	};
+	auto make = [&](uint64_t bits, TypeId t, std::initializer_list<Ref> from) -> Ref {
+		auto provenance = Provenance::Literal;
+		for (auto r : from) {
+			if (isC(r)) {
+				provenance = leastTrusted(provenance, static_cast<Provenance>(out_.consts.record(r).provenance));
+			}
+		}
+		return out_.consts.intern(t, provenance, bits);
+	};
+	const bool integer = type == TypeId::I8 || type == TypeId::I16 || type == TypeId::I32 || type == TypeId::I64;
+	const bool isBool = type == TypeId::Bool;
+
+	switch (op) {
+	case Op::Add:
+	case Op::Sub:
+	case Op::Mul:
+	case Op::Div:
+	case Op::Rem:
+	case Op::And:
+	case Op::Or:
+	case Op::BAnd:
+	case Op::BOr:
+	case Op::BXor:
+	case Op::Shl:
+	case Op::Shr: {
+		if (type == TypeId::Ptr) {
+			return NONE;
+		}
+		if (isC(ni.a) && isC(ni.b)) {
+			if (auto r = evalBinary(op, ni.flags, type, bitsOf(ni.a), bitsOf(ni.b))) {
+				return make(*r, type, {ni.a, ni.b});
+			}
+			return NONE; // a division that throws stays
+		}
+		if (op == Op::Div || op == Op::Rem) {
+			// a divisor that makes every division safe needs no check
+			if (!isFloatType(type) && (ni.flags & 2) && isC(ni.b) &&
+			    divisorIsAlwaysSafe(ni.flags & 1, type, bitsOf(ni.b))) {
+				ni.flags &= ~uint8_t(2);
+				++stats_.uncheckedDivisions;
+			}
+			return NONE;
+		}
+		if (!integer && !isBool) {
+			return NONE; // floats: no algebra (IEEE keeps x + 0.0 and x * 1.0 apart from x for -0.0 and NaN payloads)
+		}
+		const bool aZero = isC(ni.a) && canon(bitsOf(ni.a), type) == 0;
+		const bool bZero = isC(ni.b) && canon(bitsOf(ni.b), type) == 0;
+		const bool aOne = isC(ni.a) && canon(bitsOf(ni.a), type) == 1;
+		const bool bOne = isC(ni.b) && canon(bitsOf(ni.b), type) == 1;
+		const bool aOnes = isC(ni.a) && canon(bitsOf(ni.a), type) == mask(type);
+		const bool bOnes = isC(ni.b) && canon(bitsOf(ni.b), type) == mask(type);
+		switch (op) {
+		case Op::Add:
+			return bZero ? ni.a : aZero ? ni.b : NONE;
+		case Op::Sub:
+			return bZero ? ni.a : NONE;
+		case Op::Mul:
+			if (aZero || bZero) {
+				return make(0, type, {ni.a, ni.b});
+			}
+			return bOne ? ni.a : aOne ? ni.b : NONE;
+		case Op::BAnd:
+			if (aZero || bZero) {
+				return make(0, type, {ni.a, ni.b});
+			}
+			return bOnes ? ni.a : aOnes ? ni.b : NONE;
+		case Op::BOr:
+			if (aOnes || bOnes) {
+				return make(mask(type), type, {ni.a, ni.b});
+			}
+			return bZero ? ni.a : aZero ? ni.b : NONE;
+		case Op::BXor:
+			return bZero ? ni.a : aZero ? ni.b : NONE;
+		case Op::Shl:
+		case Op::Shr:
+			return bZero ? ni.a : NONE;
+		case Op::And:
+			if (aZero || bZero) {
+				return make(0, type, {ni.a, ni.b});
+			}
+			return bOne ? ni.a : aOne ? ni.b : NONE;
+		case Op::Or:
+			if (aOne || bOne) {
+				return make(1, type, {ni.a, ni.b});
+			}
+			return bZero ? ni.a : aZero ? ni.b : NONE;
+		default:
+			return NONE;
+		}
+	}
+	case Op::FNeg:
+	case Op::Not:
+	case Op::BNot:
+		if (isC(ni.a)) {
+			if (auto r = evalUnary(op, type, bitsOf(ni.a))) {
+				return make(*r, type, {ni.a});
+			}
+		}
+		return NONE;
+	case Op::Cmp: {
+		const auto operandType = typeOfRef(ni.a);
+		if (isC(ni.a) && isC(ni.b)) {
+			return make(evalCompare(ni.flags, bitsOf(ni.a), bitsOf(ni.b), operandType), TypeId::Bool, {ni.a, ni.b});
+		}
+		// the same integer value on both sides (a float may be NaN)
+		if (ni.a == ni.b && !isFloatType(operandType) && !isC(ni.a)) {
+			const unsigned predicate = ni.flags & 7;
+			return make(predicate == 0 || predicate == 3 || predicate == 5 ? 1 : 0, TypeId::Bool, {});
+		}
+		return NONE;
+	}
+	case Op::Select:
+		if (isC(ni.a)) {
+			return (bitsOf(ni.a) & 1) ? ni.b : ni.c;
+		}
+		return ni.b == ni.c ? ni.b : NONE;
+	case Op::Cast: {
+		if (isC(ni.a)) {
+			const auto from = typeOfRef(ni.a);
+			if (from != TypeId::Ptr && type != TypeId::Ptr) {
+				if (auto r = evalCast(ni.flags & 15, bitsOf(ni.a), from, type)) {
+					return make(*r, type, {ni.a});
+				}
+			}
+		}
+		return NONE;
+	}
+	default:
+		return NONE;
+	}
+}
+
 void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& inst) {
 	const auto op = static_cast<Op>(inst.op);
 	switch (op) {
@@ -585,26 +741,37 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 	default:
 		break;
 	}
-	auto t = newTemp(Kind::Inst, static_cast<TypeId>(inst.type), b);
-	Temp& temp = temps_[t];
-	temp.inst = inst;
 	const auto* info = coreOpInfo(inst.op);
 	if (info == nullptr) {
 		fail(f_, "an extension instruction");
 	}
+	Inst ni = inst;
 	if (info->a == OperandKind::Value || info->a == OperandKind::ValueOpt) {
-		temps_[t].inst.a = operand(inst.a, b);
+		ni.a = operand(inst.a, b);
 	}
 	if (info->b == OperandKind::Value) {
-		temps_[t].inst.b = operand(inst.b, b);
+		ni.b = operand(inst.b, b);
 	}
 	if (info->c == OperandKind::Value) {
-		temps_[t].inst.c = operand(inst.c, b);
+		ni.c = operand(inst.c, b);
 	}
+	if (optimize_) {
+		if (Ref folded = simplify(ni); folded != NONE) {
+			++stats_.folded;
+			if (isVariable_[id]) {
+				setDef(id, b, folded);
+			} else {
+				valueOf_[id] = folded;
+			}
+			return;
+		}
+	}
+	auto t = newTemp(Kind::Inst, static_cast<TypeId>(inst.type), b);
+	temps_[t].inst = ni;
 	switch (op) {
 	case Op::Div:
 	case Op::Rem:
-		if (inst.flags & 2) {
+		if (ni.flags & 2) {
 			auto pad = convertUnwind(b, inst.c);
 			temps_[t].unwind = pad;
 			temps_[t].usesPad = pad != NO_CLEANUP;
@@ -647,41 +814,55 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 void FunctionConverter::convertTerminator(uint32_t b, const Inst& inst) {
 	auto t = newTemp(Kind::Inst, TypeId::Void, b);
 	temps_[t].inst = inst;
+	// the successors whose edge is live: both of a conditional branch unless its condition folded
+	std::vector<uint32_t> targets;
+	std::vector<uint32_t> dropped;
 	switch (static_cast<Op>(inst.op)) {
 	case Op::Ret:
 		temps_[t].inst.a = operand(inst.a, b);
 		break;
 	case Op::Br:
+		targets.push_back(succEdgesStatic_[b][0]);
 		temps_[t].inst.a = inst.a;
 		break;
 	case Op::CondBr: {
 		const uint32_t* list = pre_.extra.data() + inst.c;
-		temps_[t].inst.a = operand(inst.a, b);
+		auto cond = operand(inst.a, b);
+		temps_[t].inst.a = cond;
 		temps_[t].inst.b = inst.b;
 		temps_[t].inst.c = list[0]; // the probability
+		if (foldBranches_ && isConstRef(cond)) {
+			const bool taken = out_.consts.record(cond).bits & 1;
+			const auto target = succEdgesStatic_[b][taken ? 0 : 1];
+			// the conditional branch becomes a jump to the taken target
+			temps_[t].inst.op = static_cast<uint16_t>(Op::Br);
+			temps_[t].inst.a = target;
+			temps_[t].inst.b = 0;
+			temps_[t].inst.c = 0;
+			targets.push_back(target);
+			dropped.push_back(succEdgesStatic_[b][taken ? 1 : 0]);
+			++stats_.foldedBranches;
+		} else {
+			targets.push_back(succEdgesStatic_[b][0]);
+			targets.push_back(succEdgesStatic_[b][1]);
+		}
 		break;
 	}
 	default:
 		fail(f_, "not a terminator");
 	}
 	body_[b].push_back(t);
-	// register the edges; a block whose last incoming edge this was can be sealed
-	std::vector<uint32_t> targets;
-	targets.push_back(succEdgesStatic_[b].empty() ? NONE : succEdgesStatic_[b][0]);
-	if (static_cast<Op>(inst.op) == Op::CondBr) {
-		targets.push_back(succEdgesStatic_[b][1]);
-	}
+	// register the live edges; a block whose last incoming edge this was can be sealed
 	for (size_t i = 0; i < targets.size(); ++i) {
-		if (targets[i] == NONE) {
-			continue;
-		}
 		auto e = makeEdge(b, targets[i]);
 		(i == 0 ? temps_[t].edgeTrue : temps_[t].edgeFalse) = e;
 	}
 	for (auto to : targets) {
-		if (to == NONE) {
-			continue;
+		if (--pending_[to] == 0) {
+			seal(to);
 		}
+	}
+	for (auto to : dropped) {
 		if (--pending_[to] == 0) {
 			seal(to);
 		}
@@ -700,23 +881,107 @@ void FunctionConverter::convertBlock(uint32_t b) {
 
 void FunctionConverter::emit() {
 	Builder builder(out_);
+	emitOrder_.clear();
+	for (auto b : layout_) {
+		if (visited_[b]) {
+			emitOrder_.push_back(b);
+		}
+	}
+	for (uint32_t i = 0; i < emitOrder_.size(); ++i) {
+		layoutIndex_[emitOrder_[i]] = i;
+	}
+
+	// ---- the dead-value sweep (§3.3): mark from the roots, drop what is not reached --------------------------------
+	std::vector<uint8_t> marked(temps_.size(), 0);
+	std::vector<uint32_t> work;
+	auto mark = [&](Ref r) {
+		r = resolve(r);
+		if (isTemp(r) && !marked[r]) {
+			marked[r] = 1;
+			work.push_back(r);
+		}
+	};
+	if (optimize_) {
+		for (auto b : emitOrder_) {
+			for (auto p : phis_[b]) {
+				if (temps_[p].kind == Kind::Param) {
+					mark(p);
+				}
+			}
+			for (auto t : body_[b]) {
+				const auto& inst = temps_[t].inst;
+				const auto* info = coreOpInfo(inst.op);
+				const bool checkedDivision =
+				    (inst.op == static_cast<uint16_t>(Op::Div) || inst.op == static_cast<uint16_t>(Op::Rem)) &&
+				    (inst.flags & 2);
+				if ((info->flags & (OpTerminator | OpEffect)) || checkedDivision) {
+					mark(t);
+				}
+			}
+		}
+		while (!work.empty()) {
+			auto x = work.back();
+			work.pop_back();
+			const auto& temp = temps_[x];
+			if (temp.kind == Kind::Phi) {
+				for (auto op : temp.ops) {
+					mark(op);
+				}
+				continue;
+			}
+			if (temp.kind != Kind::Inst) {
+				continue;
+			}
+			const auto* info = coreOpInfo(temp.inst.op);
+			if (info->a == OperandKind::Value || info->a == OperandKind::ValueOpt) {
+				mark(temp.inst.a);
+			}
+			if (info->b == OperandKind::Value) {
+				mark(temp.inst.b);
+			}
+			if (info->c == OperandKind::Value) {
+				mark(temp.inst.c);
+			}
+			for (auto v : temp.list) {
+				mark(v);
+			}
+			if (temp.usesPad) {
+				for (const auto& entry : pads_[temp.unwind].entries) {
+					mark(entry.second);
+				}
+			}
+		}
+	} else {
+		std::fill(marked.begin(), marked.end(), 1);
+	}
+
 	// the final phis of every block, and the ids
 	std::vector<std::vector<uint32_t>> finalPhis(n_);
+	std::vector<std::vector<uint32_t>> liveBody(n_);
 	finalId_.assign(temps_.size(), NONE);
 	uint32_t next = 0;
-	for (auto b : layout_) {
+	for (auto b : emitOrder_) {
 		for (auto phi : phis_[b]) {
 			if (fwd_[phi] != NONE) {
+				continue;
+			}
+			if (!marked[phi]) {
+				++stats_.deadValues;
 				continue;
 			}
 			finalPhis[b].push_back(phi);
 			finalId_[phi] = next++;
 		}
 		for (auto t : body_[b]) {
+			if (!marked[t]) {
+				++stats_.deadValues;
+				continue;
+			}
+			liveBody[b].push_back(t);
 			finalId_[t] = next++;
 		}
 	}
-	const uint32_t blockCount = static_cast<uint32_t>(layout_.size());
+	const uint32_t blockCount = static_cast<uint32_t>(emitOrder_.size());
 
 	// slot of an incoming edge in its target's phis
 	std::vector<uint32_t> edgeSlot(dynEdges_.size(), 0);
@@ -735,14 +1000,25 @@ void FunctionConverter::emit() {
 		}
 		return args;
 	};
+	// landing pads are numbered by their first use among the instructions that are emitted
+	std::vector<uint32_t> padOrder;
+	std::unordered_map<uint32_t, uint32_t> padBlock;
+	auto padOf = [&](uint32_t pad) {
+		auto it = padBlock.find(pad);
+		if (it == padBlock.end()) {
+			it = padBlock.emplace(pad, blockCount + static_cast<uint32_t>(padOrder.size())).first;
+			padOrder.push_back(pad);
+		}
+		return it->second;
+	};
 
 	auto signature = rec_.signature;
 	builder.beginFunction(rec_.nameId, signature, static_cast<Visibility>(rec_.visibility), Level::SSA, rec_.attrs);
 	for (const auto& a : pre_.functionAllocas(f_)) {
 		builder.addAlloca(a.size, a.align);
 	}
-	for (uint32_t li = 0; li < layout_.size(); ++li) {
-		const auto b = layout_[li];
+	for (uint32_t li = 0; li < emitOrder_.size(); ++li) {
+		const auto b = emitOrder_[li];
 		builder.beginBlock(static_cast<uint16_t>(finalPhis[b].size()), 0);
 		++stats_.blocks;
 		uint32_t position = 0;
@@ -754,7 +1030,7 @@ void FunctionConverter::emit() {
 				++stats_.phis;
 			}
 		}
-		for (auto t : body_[b]) {
+		for (auto t : liveBody[b]) {
 			auto& temp = temps_[t];
 			Inst inst = temp.inst;
 			const auto op = static_cast<Op>(inst.op);
@@ -769,10 +1045,7 @@ void FunctionConverter::emit() {
 				inst.c = finalRef(inst.c);
 			}
 			auto unwindWord = [&](const Temp& tmp) {
-				if (!tmp.usesPad) {
-					return tmp.unwind;
-				}
-				return blockCount + tmp.unwind;
+				return tmp.usesPad ? padOf(tmp.unwind) : tmp.unwind;
 			};
 			switch (op) {
 			case Op::Div:
@@ -825,7 +1098,8 @@ void FunctionConverter::emit() {
 		}
 	}
 	// landing pads, in the order of their first reference
-	for (const auto& pad : pads_) {
+	for (auto padIndex : padOrder) {
+		const auto& pad = pads_[padIndex];
 		builder.beginBlock(0, BLOCK_LANDING_PAD);
 		++stats_.blocks;
 		++stats_.landingPads;
@@ -876,11 +1150,24 @@ void FunctionConverter::run() {
 	}
 	sealed_[0] = 1;
 
+	foldBranches_ = optimize_ && irreducibleHere_ == 0;
+	visited_.assign(n_, 0);
 	for (auto b : layout_) {
+		if (foldBranches_ && b != 0 && incoming_[b].empty()) {
+			// no live edge enters the block: it is never emitted, and its successors no longer wait for it
+			++stats_.deadBlocks;
+			for (auto to : succEdgesStatic_[b]) {
+				if (--pending_[to] == 0) {
+					seal(to);
+				}
+			}
+			continue;
+		}
+		visited_[b] = 1;
 		convertBlock(b);
 	}
 	for (auto b : layout_) {
-		if (!sealed_[b]) {
+		if (visited_[b] && !sealed_[b]) {
 			fail(f_, "block ^b" + std::to_string(b) + " was never sealed");
 		}
 	}
@@ -889,7 +1176,7 @@ void FunctionConverter::run() {
 
 } // namespace
 
-Module convert(const Module& preSSA, const ConversionOptions&, ConversionStatistics* statistics) {
+Module convert(const Module& preSSA, const ConversionOptions& options, ConversionStatistics* statistics) {
 	ConversionStatistics local;
 	auto& stats = statistics != nullptr ? *statistics : local;
 	stats = {};
@@ -910,7 +1197,7 @@ Module convert(const Module& preSSA, const ConversionOptions&, ConversionStatist
 		if (preSSA.functions[f].level != static_cast<uint8_t>(Level::PreSSA)) {
 			throw std::runtime_error("conversion of function #" + std::to_string(f) + ": it is not a pre-SSA function");
 		}
-		FunctionConverter(preSSA, f, out, stats).run();
+		FunctionConverter(preSSA, f, out, stats, options.optimize).run();
 	}
 	out.rebuildIndexes();
 	return out;

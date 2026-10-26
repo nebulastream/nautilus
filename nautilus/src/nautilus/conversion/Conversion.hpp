@@ -19,9 +19,22 @@ struct ConversionStatistics {
 	/// Reducible loops and irreducible regions found.
 	uint32_t loops = 0;
 	uint32_t irreducibleRegions = 0;
+	/// Instructions replaced by a constant or one of their operands on emission, and `div`/`rem` whose check was
+	/// dropped.
+	uint32_t folded = 0;
+	uint32_t uncheckedDivisions = 0;
+	/// Blocks never emitted because no live edge entered them, and conditional branches that became jumps.
+	uint32_t deadBlocks = 0;
+	uint32_t foldedBranches = 0;
+	/// Instructions and block parameters the dead-value sweep removed.
+	uint32_t deadValues = 0;
 };
 
-struct ConversionOptions {};
+struct ConversionOptions {
+	/// Fold and simplify on emission, fold constant branches, drop dead blocks and values. Off, the conversion only
+	/// builds SSA (the tests compare the two).
+	bool optimize = true;
+};
 
 /// Converts every function of a pre-SSA module to SSA. The result shares the module-level tables (constants, callees,
 /// pointers, bindings, names, data) with the input and has its own `insts`, `blocks`, `extra`, `allocas` and

@@ -6,6 +6,7 @@
 // later the backends, are compared.
 
 #include "nautilus/nir/Module.hpp"
+#include "nautilus/nir/Semantics.hpp"
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -51,45 +52,19 @@ public:
 
 private:
 	static uint32_t widthOf(TypeId t) {
-		switch (t) {
-		case TypeId::Bool:
-			return 1;
-		case TypeId::I8:
-			return 8;
-		case TypeId::I16:
-			return 16;
-		case TypeId::I32:
-		case TypeId::F32:
-			return 32;
-		default:
-			return 64;
-		}
+		return semantics::widthOf(t);
 	}
 	static uint64_t mask(TypeId t) {
-		auto w = widthOf(t);
-		return w == 64 ? ~0ull : ((1ull << w) - 1);
+		return semantics::mask(t);
 	}
 	static uint64_t canon(uint64_t v, TypeId t) {
-		return v & mask(t);
+		return semantics::canon(v, t);
 	}
 	static int64_t sext(uint64_t v, TypeId t) {
-		auto w = widthOf(t);
-		if (w == 64) {
-			return static_cast<int64_t>(v);
-		}
-		uint64_t sign = 1ull << (w - 1);
-		v &= mask(t);
-		return static_cast<int64_t>((v ^ sign) - sign);
-	}
-	static double asDouble(uint64_t bits, TypeId t) {
-		return t == TypeId::F32 ? static_cast<double>(std::bit_cast<float>(static_cast<uint32_t>(bits)))
-		                        : std::bit_cast<double>(bits);
-	}
-	static uint64_t fromDouble(double v, TypeId t) {
-		return t == TypeId::F32 ? std::bit_cast<uint32_t>(static_cast<float>(v)) : std::bit_cast<uint64_t>(v);
+		return semantics::sext(v, t);
 	}
 	static bool isFloat(TypeId t) {
-		return t == TypeId::F32 || t == TypeId::F64;
+		return semantics::isFloatType(t);
 	}
 
 	struct Frame {
@@ -141,101 +116,15 @@ inline uint64_t Evaluator::callNative(const void* fn, const std::vector<uint64_t
 }
 
 inline uint64_t Evaluator::cast(uint8_t kind, uint64_t v, TypeId from, TypeId to) const {
-	enum : uint8_t { Sext, Zext, Trunc, SiToFp, UiToFp, FpToSi, FpToUi, FpExt, FpTrunc, Bitcast, PtrToInt, IntToPtr };
-	switch (kind) {
-	case Sext:
-		return canon(static_cast<uint64_t>(sext(v, from)), to);
-	case Zext:
-	case Trunc:
-	case PtrToInt:
-	case IntToPtr:
-		return canon(v, to);
-	case SiToFp:
-		return fromDouble(static_cast<double>(sext(v, from)), to);
-	case UiToFp:
-		return fromDouble(static_cast<double>(canon(v, from)), to);
-	case FpToSi:
-	case FpToUi: {
-		double d = asDouble(v, from);
-		bool isSigned = kind == FpToSi;
-		unsigned w = widthOf(to);
-		if (std::isnan(d)) {
-			return 0;
-		}
-		if (isSigned) {
-			double lo = -std::ldexp(1.0, w - 1);
-			double hi = std::ldexp(1.0, w - 1);
-			if (d <= lo) {
-				return canon(
-				    static_cast<uint64_t>(w == 64 ? std::numeric_limits<int64_t>::min() : -(int64_t(1) << (w - 1))),
-				    to);
-			}
-			if (d >= hi) {
-				return canon(
-				    static_cast<uint64_t>(w == 64 ? std::numeric_limits<int64_t>::max() : (int64_t(1) << (w - 1)) - 1),
-				    to);
-			}
-			return canon(static_cast<uint64_t>(static_cast<int64_t>(d)), to);
-		}
-		if (d <= 0) {
-			return 0;
-		}
-		double hi = std::ldexp(1.0, w);
-		if (d >= hi) {
-			return mask(to);
-		}
-		return canon(static_cast<uint64_t>(d), to);
+	auto r = semantics::evalCast(kind, v, from, to);
+	if (!r) {
+		throw std::runtime_error("invalid cast kind");
 	}
-	case FpExt:
-		return std::bit_cast<uint64_t>(static_cast<double>(std::bit_cast<float>(static_cast<uint32_t>(v))));
-	case FpTrunc:
-		return std::bit_cast<uint32_t>(static_cast<float>(std::bit_cast<double>(v)));
-	case Bitcast:
-		return canon(v, to);
-	}
-	throw std::runtime_error("invalid cast kind");
+	return *r;
 }
 
 inline uint64_t Evaluator::compare(const Inst& inst, uint64_t a, uint64_t b, TypeId t) const {
-	const unsigned predicate = inst.flags & 7;
-	const bool isUnsigned = inst.flags & 8;
-	if (isFloat(t)) {
-		double x = asDouble(a, t), y = asDouble(b, t);
-		switch (predicate) {
-		case 0:
-			return x == y;
-		case 1:
-			return !(x == y); // NaN: ne is true
-		case 2:
-			return x < y;
-		case 3:
-			return x <= y;
-		case 4:
-			return x > y;
-		default:
-			return x >= y;
-		}
-	}
-	bool lt, eq = a == b;
-	if (isUnsigned || t == TypeId::Bool || t == TypeId::Ptr) {
-		lt = canon(a, t) < canon(b, t);
-	} else {
-		lt = sext(a, t) < sext(b, t);
-	}
-	switch (predicate) {
-	case 0:
-		return eq;
-	case 1:
-		return !eq;
-	case 2:
-		return lt;
-	case 3:
-		return lt || eq;
-	case 4:
-		return !lt && !eq;
-	default:
-		return !lt;
-	}
+	return semantics::evalCompare(inst.flags, a, b, t);
 }
 
 inline uint64_t Evaluator::run(uint32_t f, std::span<const uint64_t> args) {
@@ -304,93 +193,28 @@ inline uint64_t Evaluator::run(uint32_t f, std::span<const uint64_t> args) {
 				switch (static_cast<Op>(inst.op)) {
 				case Op::Add:
 				case Op::Sub:
-				case Op::Mul: {
-					const auto op = static_cast<Op>(inst.op);
-					if (isFloat(type)) {
-						double x = asDouble(A(), type), y = asDouble(B(), type);
-						double r = op == Op::Add ? x + y : op == Op::Sub ? x - y : x * y;
-						if (type == TypeId::F32) {
-							float fx = std::bit_cast<float>(static_cast<uint32_t>(A()));
-							float fy = std::bit_cast<float>(static_cast<uint32_t>(B()));
-							float fr32 = op == Op::Add ? fx + fy : op == Op::Sub ? fx - fy : fx * fy;
-							fr.value[id] = std::bit_cast<uint32_t>(fr32);
-						} else {
-							fr.value[id] = std::bit_cast<uint64_t>(r);
-						}
-					} else {
-						uint64_t x = A(), y = B();
-						fr.value[id] = canon(op == Op::Add ? x + y : op == Op::Sub ? x - y : x * y, type);
-					}
-					break;
-				}
+				case Op::Mul:
+				case Op::And:
+				case Op::Or:
+				case Op::BAnd:
+				case Op::BOr:
+				case Op::BXor:
+				case Op::Shl:
+				case Op::Shr:
 				case Op::Div:
 				case Op::Rem: {
-					const bool rem = inst.op == static_cast<uint16_t>(Op::Rem);
-					if (isFloat(type)) {
-						if (type == TypeId::F32) {
-							float x = std::bit_cast<float>(static_cast<uint32_t>(A()));
-							float y = std::bit_cast<float>(static_cast<uint32_t>(B()));
-							fr.value[id] = std::bit_cast<uint32_t>(rem ? std::fmod(x, y) : x / y);
-						} else {
-							double x = std::bit_cast<double>(A()), y = std::bit_cast<double>(B());
-							fr.value[id] = std::bit_cast<uint64_t>(rem ? std::fmod(x, y) : x / y);
-						}
-						break;
+					auto r = semantics::evalBinary(static_cast<Op>(inst.op), inst.flags, type, A(), B());
+					if (!r) {
+						throw ArithmeticError("a division that throws");
 					}
-					const bool isUnsigned = inst.flags & 1;
-					uint64_t x = A(), y = B();
-					if (canon(y, type) == 0) {
-						throw ArithmeticError("division by zero");
-					}
-					if (isUnsigned) {
-						x = canon(x, type);
-						y = canon(y, type);
-						fr.value[id] = canon(rem ? x % y : x / y, type);
-					} else {
-						int64_t sx = sext(x, type), sy = sext(y, type);
-						if (sy == -1 && sx == sext(1ull << (widthOf(type) - 1), type)) {
-							throw ArithmeticError("signed overflow in division");
-						}
-						fr.value[id] = canon(static_cast<uint64_t>(rem ? sx % sy : sx / sy), type);
-					}
+					fr.value[id] = *r;
 					break;
 				}
 				case Op::FNeg:
-					fr.value[id] = A() ^ (1ull << (widthOf(type) - 1));
-					break;
-				case Op::And:
-					fr.value[id] = A() & B();
-					break;
-				case Op::Or:
-					fr.value[id] = A() | B();
-					break;
 				case Op::Not:
-					fr.value[id] = (A() & 1) ^ 1;
-					break;
-				case Op::BAnd:
-					fr.value[id] = A() & B();
-					break;
-				case Op::BOr:
-					fr.value[id] = A() | B();
-					break;
-				case Op::BXor:
-					fr.value[id] = A() ^ B();
-					break;
 				case Op::BNot:
-					fr.value[id] = canon(~A(), type);
+					fr.value[id] = *semantics::evalUnary(static_cast<Op>(inst.op), type, A());
 					break;
-				case Op::Shl:
-					fr.value[id] = canon(A() << (B() % widthOf(type)), type);
-					break;
-				case Op::Shr: {
-					unsigned amount = static_cast<unsigned>(canon(B(), type) % widthOf(type));
-					if (inst.flags & 1) {
-						fr.value[id] = canon(canon(A(), type) >> amount, type);
-					} else {
-						fr.value[id] = canon(static_cast<uint64_t>(sext(A(), type) >> amount), type);
-					}
-					break;
-				}
 				case Op::Cmp:
 					fr.value[id] = compare(inst, A(), B(), typeOf(fr, inst.a));
 					break;

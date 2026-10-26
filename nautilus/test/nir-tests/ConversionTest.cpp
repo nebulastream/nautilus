@@ -219,3 +219,161 @@ TEST_CASE("a long chain of blocks converts without deep recursion", "[nir][conve
 	text += "}\n";
 	converted(text);
 }
+
+// ---- optimization during emission (03 §3 steps 2 and 4, §3.3) -------------------------------------------------------
+
+TEST_CASE("constants fold and identities simplify on emission", "[nir][conversion][fold]") {
+	ConversionStatistics stats;
+	auto text = converted(R"(nir 1.0
+
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = add 2:i64, 3:i64
+  %2 = add %0, 0:i64
+  %3 = mul %2, 1:i64
+  %4 = band %3, -1:i64
+  %5 = add %4, %1
+  [6] ret %5
+}
+)",
+	                      &stats);
+	CHECK(stats.folded == 4);
+	// only the addition of the parameter and 5 is left
+	CHECK(text.find("add %0, 5:i64") != std::string::npos);
+	CHECK(text.find("mul") == std::string::npos);
+	CHECK(stats.instructions == 2);
+}
+
+TEST_CASE("a division by a safe constant needs no check and no landing pad", "[nir][conversion][fold]") {
+	ConversionStatistics stats;
+	auto text = converted(R"(nir 1.0
+pointer #p0 = destructor symbol "~T"
+callee #c0 = external #p0 : (ptr) -> void attrs(noUnwind)
+
+func export pressa @f : (i64, ptr) -> i64 {
+^b0(%0: i64, %1: ptr):
+  %2 = div.s.checked %0, 4:i64 cleanup [(#c0, %1)]
+  %3 = div.s.checked %0, -1:i64 cleanup [(#c0, %1)]
+  %4 = add %2, %3
+  [5] ret %4
+}
+)",
+	                      &stats);
+	CHECK(stats.uncheckedDivisions == 1);
+	// the division by -1 can still throw (the minimum divided by -1), so its pad stays
+	CHECK(stats.landingPads == 1);
+	CHECK(text.find("div.s %0, 4:i64") != std::string::npos);
+}
+
+TEST_CASE("a division by zero is never folded", "[nir][conversion][fold]") {
+	auto text = converted(R"(nir 1.0
+
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = div.s.checked 7:i64, 0:i64 cleanup []
+  [2] ret %1
+}
+)");
+	CHECK(text.find("div.s.checked") != std::string::npos);
+}
+
+TEST_CASE("a constant branch keeps only the taken edge and the dead block disappears", "[nir][conversion][fold]") {
+	ConversionStatistics stats;
+	auto text = converted(R"(nir 1.0
+
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = var 1:i64
+  %2 = cmp.lt.s 1:i64, 2:i64
+  [3] condbr %2, ^b1, ^b2
+^b1:
+  %4 = add %1, %0
+  [5] assign %1, %4
+  [6] br ^b3
+^b2:
+  [7] assign %1, 99:i64
+  [8] br ^b3
+^b3:
+  [9] ret %1
+}
+)",
+	                      &stats);
+	CHECK(stats.foldedBranches == 1);
+	CHECK(stats.deadBlocks == 1);
+	// no merge parameter is left: only one edge enters the merge block
+	CHECK(stats.phis == 0);
+	CHECK(text.find("99") == std::string::npos);
+}
+
+TEST_CASE("a loop behind a dead branch is dropped with its header", "[nir][conversion][fold]") {
+	ConversionStatistics stats;
+	converted(R"(nir 1.0
+
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = var 0:i64
+  [2] condbr false:bool, ^b1, ^b4
+^b1:
+  [3] br ^b2
+^b2:
+  %4 = cmp.lt.s %1, %0
+  [5] condbr %4, ^b3, ^b4
+^b3:
+  %6 = add %1, 1:i64
+  [7] assign %1, %6
+  [8] br ^b2
+^b4:
+  [9] ret %1
+}
+)",
+	          &stats);
+	CHECK(stats.deadBlocks == 3);
+	CHECK(stats.loops == 1);
+}
+
+TEST_CASE("the dead-value sweep removes a loop-carried variable nobody reads", "[nir][conversion][fold]") {
+	ConversionStatistics stats;
+	auto text = converted(R"(nir 1.0
+
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = var 0:i64
+  %2 = var 0:i64
+  [3] br ^b1
+^b1:
+  %4 = cmp.lt.s %1, %0
+  [5] condbr %4, ^b2, ^b3
+^b2:
+  %6 = add %1, 1:i64
+  [7] assign %1, %6
+  %8 = add %2, 2:i64
+  [9] assign %2, %8
+  [10] br ^b1
+^b3:
+  [11] ret %1
+}
+)",
+	                      &stats);
+	// %2 is assigned in the loop and never read after it: its phi and its additions go
+	CHECK(stats.phis == 1);
+	CHECK(text.find("2:i64") == std::string::npos);
+	CHECK(stats.deadValues >= 2);
+}
+
+TEST_CASE("an unoptimized conversion keeps everything the trace recorded", "[nir][conversion][fold]") {
+	auto pre = parseOk(R"(nir 1.0
+
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = add 2:i64, 3:i64
+  %2 = add %0, %1
+  [3] ret %2
+}
+)");
+	ConversionStatistics folded, plain;
+	convert(pre, {}, &folded);
+	convert(pre, {.optimize = false}, &plain);
+	CHECK(folded.instructions == 2);
+	CHECK(plain.instructions == 3);
+	CHECK(plain.folded == 0);
+}
