@@ -236,3 +236,16 @@ TEST_CASE("floating-point literals parse the same way everywhere", "[nir][parser
 	REQUIRE_FALSE(nautilus::parseFloatText("abc", d));
 	REQUIRE_FALSE(nautilus::parseFloatText(" 1", d));
 }
+
+TEST_CASE("NIR-V051 an instruction does not use its own result", "[nir][verifier][flow]") {
+	// found by the NIR fuzzer: `%1 = var %1` verified, and its text did not parse back
+	Module m;
+	Builder b(m);
+	auto sig = m.internSignature(test::tw(TypeId::I64), {});
+	b.beginFunction(m.internName("f"), sig, Visibility::Exported, Level::PreSSA);
+	b.beginBlock();
+	b.emit(Op::Var, TypeId::I64, 0, 0); // uses %0, which is itself
+	b.emit(Op::Ret, TypeId::Void, 0, 0);
+	b.endFunction();
+	REQUIRE(has(verify(m), DiagCode::V051));
+}

@@ -610,7 +610,7 @@ private:
 				const Inst& inst = insts_[id];
 				if (check) {
 					forEachRef(inst, m_.extra.data(), level_, [&](const uint32_t& r) {
-						if (isValueRef(r) && r < insts_.size() && r != id && !((set[r / 64] >> (r % 64)) & 1)) {
+						if (isValueRef(r) && r < insts_.size() && !((set[r / 64] >> (r % 64)) & 1)) {
 							report(DiagCode::V051,
 							       "%" + std::to_string(r) + " is not defined on every path to this use", id, b);
 						}

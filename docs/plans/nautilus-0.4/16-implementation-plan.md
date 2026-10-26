@@ -192,6 +192,25 @@ opened as drafts early and kept up to date with the branch.
 | 18 | GPU production features and validation: shared memory, atomics, warp ops, math; device-code caching, artifacts carrying the NIR image; Metal benchmarks and validation tooling, `docs/gpu.md` | M7.5–M7.7 | 13, 17 | 5–12 |
 | 19 | Documentation, migration guide, release validation, merge and tag | M8.1–M8.3 | 13–18 | 2.5–7 |
 
+**PR 1 status.** M1.1–M1.6 are implemented on `claude/nir-format-pr1` (code in `nautilus/src/nautilus/nir/`,
+tests in `nautilus/test/nir-tests/`, conformance material in `nautilus/test/data/nir-conformance/`). Where the code
+differs from the work packages above:
+
+- **Load is not zero-copy yet** (M1.5): `loadImage` copies the sections into the `Module` vectors. Zero-copy needs a
+  `Module` that can hold spans over a buffer; it is deferred to the PR that first needs the saving (PR 12, M5.5).
+- **`OptionRegistry` is compiled into `nautilus-nir`** (M1.4a), not into `nautilus`, until the cut-over links the two;
+  `options.hpp` is untouched.
+- **Debug sections** are read and written but dropped by `canonicalize` (M1.4): remapping them needs the debug
+  producers of M4.9.
+- **Not in this PR** (they depend on the registry of PR 2): extension productions in the text form (M1.3a), extension
+  checks `NIR-V070`–`V072`, `NIR-L010`–`L012`, `NIR-L015`, and `extension` lines. Extension types print as
+  `!ext.t<N>` placeholders and the parser does not read them.
+- **Bundling** (§8.5) is M5.4: `writeImage` serializes imports as they are, which the loader then rejects
+  (`NIR-V038`); the hash input of such a module (§7.3) is written the same way.
+- **Fuzzing:** `nautilus-nir-fuzz` (libFuzzer) and `nautilus-nir-fuzz-replay` (any compiler, deterministic mutation).
+  Four crashes were found and fixed while writing them (see the commit messages); the one-CPU-hour exit of M1.6 is to be
+  confirmed by the first weekly sweep.
+
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 9.
 

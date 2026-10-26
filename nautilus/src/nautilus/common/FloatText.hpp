@@ -11,15 +11,16 @@ namespace nautilus {
 /// `hex` selects the form after a `0x` prefix, which the caller has removed (`std::from_chars` convention).
 ///
 /// Uses `std::from_chars` where the standard library has the floating-point overloads (`__cpp_lib_to_chars`); on the
-/// others (libc++ before LLVM 20, which includes older Apple SDKs) it uses `strtod`/`strtof`, which give the same result
-/// for finite literals in the "C" locale.
+/// others (libc++ before LLVM 20, which includes older Apple SDKs) it uses `strtod`/`strtof`, which give the same
+/// result for finite literals in the "C" locale.
 template <class F>
 bool parseFloatText(std::string_view text, F& out, bool hex = false) {
 	if (text.empty()) {
 		return false;
 	}
 #if defined(__cpp_lib_to_chars)
-	auto r = std::from_chars(text.data(), text.data() + text.size(), out, hex ? std::chars_format::hex : std::chars_format::general);
+	auto r = std::from_chars(text.data(), text.data() + text.size(), out,
+	                         hex ? std::chars_format::hex : std::chars_format::general);
 	return r.ec == std::errc() && r.ptr == text.data() + text.size();
 #else
 	std::string s = hex ? "0x" + std::string(text) : std::string(text);
