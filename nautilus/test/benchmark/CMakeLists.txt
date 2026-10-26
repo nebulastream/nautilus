@@ -15,4 +15,11 @@ if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
     target_link_libraries(nautilus-benchmarks PUBLIC nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
     catch_discover_tests(nautilus-benchmarks EXTRA_ARGS --allow-running-no-tests)
+
+    # the tracer alone, for a profiler: nautilus-tracing-corpus [function [reps]]
+    add_executable(nautilus-tracing-corpus TracingCorpus.cpp)
+    target_include_directories(nautilus-tracing-corpus PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../src>)
+    target_link_libraries(nautilus-tracing-corpus PRIVATE nautilus)
 endif ()

@@ -1,6 +1,8 @@
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/tracing/tag/Trie.hpp"
 #include <catch2/catch_test_macros.hpp>
+#include <set>
+#include <vector>
 
 namespace nautilus::tracing {
 
@@ -72,6 +74,48 @@ TEST_CASE("TrieNode tries sharing one arena do not cross-contaminate", "[Trie]")
 	REQUIRE(childOfOne != childOfTwo);
 	REQUIRE(childOfOne->getParent() == &rootOne);
 	REQUIRE(childOfTwo->getParent() == &rootTwo);
+}
+
+} // namespace nautilus::tracing
+
+namespace nautilus::tracing {
+
+TEST_CASE("TrieNode::append switches to hashed children at the ninth child and keeps identity", "[Trie]") {
+	common::Arena arena;
+	TrieNode<uint64_t> root;
+	std::vector<TrieNode<uint64_t>*> nodes;
+	// code addresses are aligned: the hash must not depend on the low bits being varied
+	for (uint64_t i = 0; i < 9; i++) {
+		uint64_t address = 0x5555'0000'0000ull + i * 16;
+		nodes.push_back(root.append(address, arena)); // the ninth switches to the table
+	}
+	for (uint64_t i = 0; i < nodes.size(); i++) {
+		uint64_t address = 0x5555'0000'0000ull + i * 16;
+		REQUIRE(root.append(address, arena) == nodes[i]);
+	}
+}
+
+TEST_CASE("TrieNode::append with thousands of aligned children finds each one", "[Trie]") {
+	common::Arena arena;
+	TrieNode<uint64_t> root;
+	constexpr uint64_t count = 5000;
+	std::vector<TrieNode<uint64_t>*> nodes;
+	for (uint64_t i = 0; i < count; i++) {
+		uint64_t address = 0x7f00'0000'0000ull + i * 32;
+		auto* node = root.append(address, arena);
+		REQUIRE(node->getParent() == &root);
+		nodes.push_back(node);
+	}
+	std::set<TrieNode<uint64_t>*> distinct(nodes.begin(), nodes.end());
+	REQUIRE(distinct.size() == count);
+	for (uint64_t i = 0; i < count; i++) {
+		uint64_t address = 0x7f00'0000'0000ull + i * 32;
+		REQUIRE(root.append(address, arena) == nodes[i]);
+		REQUIRE(nodes[i]->getContent() == address);
+	}
+	// a child of a hashed child still chains up
+	uint64_t below = 42;
+	REQUIRE(nodes[1234]->append(below, arena)->getParent() == nodes[1234]);
 }
 
 } // namespace nautilus::tracing

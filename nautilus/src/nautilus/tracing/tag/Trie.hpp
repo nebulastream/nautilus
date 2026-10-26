@@ -4,6 +4,8 @@
 #include "nautilus/common/Arena.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <functional>
 
 namespace nautilus::tracing {
 
@@ -36,12 +38,23 @@ public:
 	 * @return TrieNode<T>*
 	 */
 	TrieNode<T>* append(T& value, common::Arena& arena) {
+		if (table != nullptr) {
+			return appendHashed(value, arena);
+		}
 		for (size_t i = 0; i < childCount; i++) {
 			if (children[i]->content == value) {
 				return children[i];
 			}
 		}
 		auto* child = arena.createUnmanaged<TrieNode<T>>(value, this);
+		if (childCount == MAX_LINEAR_CHILDREN) {
+			// A node with many children (a function with many distinct call sites below one return address) would scan
+			// them all on every tag: move them into an open-addressing table.
+			buildTable(arena);
+			insert(child);
+			++childCount;
+			return child;
+		}
 		if (childCount == childCapacity) {
 			const size_t newCapacity = childCapacity == 0 ? 4 : childCapacity * 2;
 			auto** newChildren =
@@ -66,12 +79,77 @@ public:
 	}
 
 private:
+	/// Up to this many children are searched linearly; a node with more uses a hash table.
+	static constexpr size_t MAX_LINEAR_CHILDREN = 8;
+
+	static size_t hashOf(const T& value) noexcept {
+		const uint64_t h = static_cast<uint64_t>(std::hash<T> {}(value)) * 0x9E3779B97F4A7C15ull;
+		return static_cast<size_t>(h ^ (h >> 32));
+	}
+
+	TrieNode<T>* appendHashed(T& value, common::Arena& arena) {
+		for (size_t slot = hashOf(value) & tableMask;; slot = (slot + 1) & tableMask) {
+			auto* entry = table[slot];
+			if (entry == nullptr) {
+				break;
+			}
+			if (entry->content == value) {
+				return entry;
+			}
+		}
+		if ((childCount + 1) * 2 > tableMask + 1) {
+			growTable(arena);
+		}
+		auto* child = arena.createUnmanaged<TrieNode<T>>(value, this);
+		insert(child);
+		++childCount;
+		return child;
+	}
+
+	void insert(TrieNode<T>* child) {
+		size_t slot = hashOf(child->content) & tableMask;
+		while (table[slot] != nullptr) {
+			slot = (slot + 1) & tableMask;
+		}
+		table[slot] = child;
+	}
+
+	void allocateTable(size_t capacity, common::Arena& arena) {
+		table = static_cast<TrieNode<T>**>(arena.allocate(capacity * sizeof(TrieNode<T>*), alignof(TrieNode<T>*)));
+		std::memset(static_cast<void*>(table), 0, capacity * sizeof(TrieNode<T>*));
+		tableMask = capacity - 1;
+	}
+
+	void buildTable(common::Arena& arena) {
+		auto** linear = children;
+		allocateTable(4 * MAX_LINEAR_CHILDREN, arena);
+		for (size_t i = 0; i < childCount; i++) {
+			insert(linear[i]);
+		}
+		children = nullptr;
+		childCapacity = 0;
+	}
+
+	void growTable(common::Arena& arena) {
+		auto** old = table;
+		const size_t oldCapacity = tableMask + 1;
+		allocateTable(oldCapacity * 2, arena);
+		for (size_t i = 0; i < oldCapacity; i++) {
+			if (old[i] != nullptr) {
+				insert(old[i]);
+			}
+		}
+	}
+
 	T content;
 	// Arena-owned array of child pointers; never owns heap memory itself, so TrieNode stays
 	// trivially destructible and can be allocated via Arena::createUnmanaged.
 	TrieNode<T>** children = nullptr;
 	size_t childCount = 0;
 	size_t childCapacity = 0;
+	// Open-addressing table of the children once there are more than MAX_LINEAR_CHILDREN; null before that.
+	TrieNode<T>** table = nullptr;
+	size_t tableMask = 0;
 	TrieNode<T>* parent;
 };
 } // namespace nautilus::tracing
