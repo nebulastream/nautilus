@@ -18,6 +18,7 @@ if (ENABLE_TRACING)
     add_subdirectory(tracing-tests)
 endif ()
 add_subdirectory(val-tests)
+add_subdirectory(nir-tests)
 
 if(ENABLE_LLVM_IR_TEST)
     add_subdirectory(llvm-ir-test)
