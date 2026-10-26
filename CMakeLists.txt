@@ -112,6 +112,11 @@ elseif (ENABLE_THREAD_SANITIZER)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
 elseif (ENABLE_UB_SANITIZER)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize-recover=all")
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        # Nautilus hands out pointers to JIT-compiled code and to closure thunks, which carry no type information in
+        # front of them; -fsanitize=function reads it when such a pointer is called through a typed function pointer.
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-sanitize=function")
+    endif ()
 elseif (ENABLE_LEAK_SANITIZER)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=leak")
 endif ()
