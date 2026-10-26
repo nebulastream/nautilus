@@ -96,7 +96,13 @@ constexpr bool attrsImply(uint32_t have, uint32_t need) {
 	return (need & ~have & GUARANTEE_MASK) == 0;
 }
 
-enum class PointerKind : uint8_t { Callee = 0, CaptureThunk = 1, Destructor = 2, TracedAddress = 3, ExtensionPayload = 4 };
+enum class PointerKind : uint8_t {
+	Callee = 0,
+	CaptureThunk = 1,
+	Destructor = 2,
+	TracedAddress = 3,
+	ExtensionPayload = 4
+};
 enum class PointerMode : uint8_t { ProcessLocal = 0, PortableByName = 1, PortableBuildId = 2 };
 
 struct PointerRecord {
