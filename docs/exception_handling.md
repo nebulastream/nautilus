@@ -77,7 +77,6 @@ two transports — native unwinding or captured host-rethrow:
 |---|---|---|
 | **MLIR** (native JIT) | Native unwind | Lowered to LLVM `invoke` / `landingpad` / `resume` with `__gxx_personality_v0`. Real unwinder; the most efficient path. Pad-less calls (no live destructors) are lowered as plain calls — no personality or landing pad — since the exception propagates natively through the unwindable LLVM frame. |
 | **CPP** (source backend) | Captured host-rethrow | The emitted C++ source routes the call through a capture thunk and a pending-exception check. |
-| **BC** (bytecode interpreter) | Captured host-rethrow | Interpreter frames carry no unwind tables, so the exception is caught by a real C++ frame before it crosses the interpreter. |
 | **TBC** (TBC VM) | Captured host-rethrow | Same captured transport. |
 | **AsmJit** (X64 and A64 JIT) | Captured host-rethrow | JIT machine code has no unwind tables; uses the capture thunk plus a pending-exception check. Implemented for both x86-64 and AArch64. |
 | **Interpreter** (no compilation) | Native C++ unwinding | The function runs directly, so exceptions propagate through the host C++ runtime unchanged. |

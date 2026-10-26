@@ -24,7 +24,7 @@ to `ON` so that the plugin targets (`nautilus-std`, `nautilus-simd`,
 |---|---|---|
 | `./demo` | [src/DemoJit.cpp](src/DemoJit.cpp) | Baseline `conditionalSum` with raw C pointers. Runs on the default engine configuration — the **tiered JIT compiler** (see `nautilus/src/nautilus/compiler/Engine.cpp`), which is the production-recommended path. |
 | `./demo_modules` | [src/DemoModules.cpp](src/DemoModules.cpp) | The `NautilusModule` API: register several functions (`add`, `mul`, `factorial`) into one compilation unit and fetch typed handles by name. |
-| `./demo_backends` | [src/DemoBackends.cpp](src/DemoBackends.cpp) | Compiles the same `sumOfSquares` with every backend enabled at configure time (`mlir`, `cpp`, `bc`, `asmjit`) and prints a short wall-clock comparison. |
+| `./demo_backends` | [src/DemoBackends.cpp](src/DemoBackends.cpp) | Compiles the same `sumOfSquares` with every backend enabled at configure time (`mlir`, `cpp`, `tbc`, `asmjit`) and prints a short wall-clock comparison. |
 | `./demo_regions` | [src/DemoRegions.cpp](src/DemoRegions.cpp) | Nested `nautilus::region()`s (`scan` > `classify` > `accumulate`) and the two attributes each records — its name and the source location it was written at. Dumps the trace and the Nautilus IR so you can read the region each block and operation came from, and shows a helper naming a region on its caller's behalf. See [docs/region.md](../docs/region.md). |
 | `./demo_profiling` | [src/DemoProfiling.cpp](src/DemoProfiling.cpp) | Profiling a pipeline from inside the process with the [profiling plugin](../plugins/profiling): hardware counter totals for exactly one call, a per-`region()` breakdown of where the cycles went, the Nautilus-IR dump annotated with those samples, and a flame graph written beside the binary. The kernel nests `region()`s of deliberately unequal cost (`query` > `scan` / `aggregate` > `mix` / `merge`), calls a separately registered Nautilus function that the MLIR inliner folds back in, and reaches a host function through `invoke()` so the profile has a real host frame under a JIT one. Needs no external tooling. See [docs/profiling.md](../docs/profiling.md). |
 | `./demo_runtime_calls` | [src/DemoRuntimeCalls.cpp](src/DemoRuntimeCalls.cpp) | Four function-call patterns: (1) opaque `invoke()` into a C++ helper, (2) one `NautilusFunction` calling another, (3) recursive `NautilusFunction`, (4) `getFuncPtr()` to pass a compiled function pointer to a runtime callback. |
@@ -84,7 +84,7 @@ val<int32_t> conditionalSum(val<int32_t> size, val<bool*> mask, val<int32_t*> ar
 
 int main(int, char* []) {
     engine::Options options;
-    // select the compilation backend, e.g. mlir, cpp, or bc
+    // select the compilation backend, e.g. mlir, cpp, or tbc
     options.setOption("engine.backend", "mlir");
     auto engine = engine::NautilusEngine(options);
     // register a function pointer to nautilus.

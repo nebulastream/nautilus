@@ -1,6 +1,6 @@
 // Client-side mirror of the server API types (tools/playground/server/src/types.ts).
 
-export const BACKENDS = ['mlir', 'cpp', 'bc', 'tbc', 'asmjit', 'cuda', 'metal'] as const;
+export const BACKENDS = ['mlir', 'cpp', 'tbc', 'asmjit', 'cuda', 'metal'] as const;
 export type Backend = (typeof BACKENDS)[number];
 
 export interface CompileOptions {

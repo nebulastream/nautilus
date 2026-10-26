@@ -9,7 +9,7 @@ description: Build Nautilus and run the right tests for a change. Use before pus
 
 | Change touches | Preset | Why |
 |---|---|---|
-| anything, first iteration | `dev` | no MLIR download; asmjit, tbc, bc, cpp backends |
+| anything, first iteration | `dev` | no MLIR download; asmjit, tbc, cpp backends |
 | the MLIR backend, the inlining plugin, LLVM IR tests | `full` | needs MLIR (~500 MB download on first configure) |
 | threads, promotion, caches, concurrency | `tsan` | data races show only under TSan |
 | memory ownership, arenas, loaders | `asan` | ASan + LeakSanitizer |

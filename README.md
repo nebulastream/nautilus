@@ -94,7 +94,7 @@ val<int32_t> conditionalSum(val<int32_t> size, val<bool*> mask, val<int32_t*> ar
 
 int main(int, char*[]) {
 	engine::Options options;
-	// select the compilation backend, e.g. mlir, cpp, or bc
+	// select the compilation backend, e.g. mlir, cpp, or tbc
 	options.setOption("engine.backend", "mlir");
 	auto engine = engine::NautilusEngine(options);
 	// register a function pointer to nautilus
@@ -137,7 +137,7 @@ Common build options (see `CMakeLists.txt` for the full list):
 | `ENABLE_BENCHMARKS` | OFF | Build performance benchmarks |
 | `ENABLE_MLIR_BACKEND` | ON | Enable the MLIR code generation backend |
 | `ENABLE_C_BACKEND` | ON | Enable the C++ code generation backend |
-| `ENABLE_BC_BACKEND` | ON | Enable the bytecode interpreter backend |
+| `ENABLE_TBC_BACKEND` | ON | Enable the threaded bytecode interpreter backend |
 | `ENABLE_ASMJIT_BACKEND` | ON | Enable the AsmJit backend |
 | `ENABLE_BUILTIN_PLUGIN` | ON | Enable the compiler builtins plugin (memory prefetch) |
 | `ENABLE_GPU_PLUGIN` | OFF | Enable the GPU plugin (CUDA + Metal backends) |
@@ -176,7 +176,7 @@ nautilus/
 │   ├── tracing/         Captures execution traces from val<T> operations
 │   └── compiler/
 │       ├── ir/           Control-flow graph, SSA, and optimization phases
-│       └── backends/     Code-generation backends (mlir, cpp, bc, asmjit)
+│       └── backends/     Code-generation backends (mlir, cpp, tbc, asmjit)
 └── test/                execution-tests, val-tests, llvm-ir-test, benchmarks
 ```
 

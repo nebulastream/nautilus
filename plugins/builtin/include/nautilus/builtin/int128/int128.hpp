@@ -38,7 +38,7 @@ void int128_store_impl(void*, int128_data*);
 /// The value travels through the Nautilus IR as an opaque pointer. Every
 /// operation is recorded as a traced `invoke` to a runtime helper in `builtin::detail`;
 /// when the MLIR backend is enabled its intrinsic plugin replaces those calls
-/// with native LLVM `i128` operations. Scalar backends (C++, BC, TBC, AsmJit)
+/// with native LLVM `i128` operations. Scalar backends (C++, TBC, AsmJit)
 /// fall back to the portable runtime helpers.
 template <>
 class val<detail::int128_t> : public val_base {

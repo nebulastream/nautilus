@@ -11,7 +11,7 @@ namespace nautilus::compiler::ir {
  * iteration.
  *
  * This is the highest per-hit payoff of the IR passes for the dispatch-bound
- * interpreters (`bc`/`tbc`): every hoisted operation saves
+ * interpreters (`tbc`): every hoisted operation saves
  * `(iterations - 1)` dispatches; for `asmjit` it removes re-computation from
  * the loop body. It is also the highest-risk pass, so it ships **opt-in**
  * (`ir.enableLICM`, default off) and is sequenced as a single-shot pass after
@@ -33,7 +33,7 @@ namespace nautilus::compiler::ir {
  *  - loops whose body contains a **nested** loop are skipped entirely. A value
  *    hoisted out of the outer loop would have a live range spanning the inner
  *    loop's back edge, which the direct-lowering interpreter backends
- *    (`bc`/`tbc`/`asmjit`) do not keep live -- in trace IR, every value that
+ *    (`tbc`/`asmjit`) do not keep live -- in trace IR, every value that
  *    crosses a loop is a block argument, so this pattern is otherwise never
  *    generated. Single-loop hoists are backend-correct; nested handling would
  *    require threading the hoisted value through the inner loop's arguments and

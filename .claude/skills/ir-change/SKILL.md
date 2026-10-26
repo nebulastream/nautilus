@@ -56,7 +56,6 @@ grep -rln "SelectOp\b\|SelectOperation\|Op::SELECT" nautilus/src nautilus/includ
 - [ ] `tbc`: `TBCOpcodes.hpp`, `TBCLoweringProvider.cpp`, `TBCInterpreter.cpp`,
       `TBCCode.cpp`, and the copy-and-patch stencils in `tbc/jit/`
       (`TBCStencilSource.cpp`, then the `tbc-regen-stencils` target).
-- [ ] `bc`: `ByteCode.hpp`, `BCLoweringProvider`.
 - [ ] `mlir`: `MLIRLoweringProvider`.
 - [ ] `cpp`: `CPPLoweringProvider`.
 

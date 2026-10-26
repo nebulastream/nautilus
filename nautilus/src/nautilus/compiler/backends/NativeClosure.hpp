@@ -15,7 +15,7 @@
 //     PROT_EXEC. This is what makes the interpreting backends usable where
 //     runtime codegen is banned.
 //
-// Both backends that need native entry points (bc and tbc) share this component,
+// The backend that needs native entry points (tbc) uses this component,
 // so the mechanism split lives here and nowhere else.
 #ifdef NAUTILUS_FFI_CLOSURES
 #include <ffi.h>

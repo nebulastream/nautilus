@@ -72,7 +72,7 @@ inline std::vector<Config> configs() {
 		// Individual default-ON optimization passes flipped OFF, each isolating a
 		// distinct lowering path. NOTE: we deliberately do NOT expose a blanket
 		// `ir.runPasses=false` -- that also disables constant folding, and the
-		// resulting unoptimized IR of a large generated program can exceed the BC
+		// resulting unoptimized IR of a large generated program can exceed the tbc
 		// backend's 32767-register limit (see README.md "Config sweep"); these
 		// per-pass toggles keep constant folding on, so the IR stays bounded while
 		// still exercising the un-optimized path.
@@ -104,9 +104,6 @@ inline std::vector<Config> configs() {
 #endif
 #ifdef ENABLE_C_BACKEND
 	addCompiling("cpp");
-#endif
-#ifdef ENABLE_BC_BACKEND
-	addCompiling("bc");
 #endif
 #ifdef ENABLE_TBC_BACKEND
 	addCompiling("tbc");
@@ -632,7 +629,7 @@ std::vector<Finding> checkOneVoidReturn(ByteReader& reader) {
 /// backend's Cast lowering only ever supported casts among the original ten
 /// numeric types (bool never participated in Kind::Cast either -- see
 /// BOOL_KINDS in Ast.hpp) -- so a bool<->double (mixed) or bool<->int8
-/// (narrowReturn) boundary cast throws in bc/tbc. Skipping these two shapes
+/// (narrowReturn) boundary cast throws in tbc. Skipping these two shapes
 /// for bool avoids exercising a Cast target/source the backends were never
 /// built to support, the same reasoning that already excludes Kind::Cast
 /// from BOOL_KINDS.

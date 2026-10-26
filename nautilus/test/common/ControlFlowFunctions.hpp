@@ -323,7 +323,7 @@ val<int32_t> withBranchProbability(val<int32_t> value) {
 // after the if, then combined with a constant. The merge block's parameter
 // reuses the SSA identifier that the untaken arm re-defines (the constant is
 // traced once per path), and the taken arm's edge is emitted first, so it
-// binds that identifier before the other arm's definition runs. The BC
+// binds that identifier before the other arm's definition runs. The bytecode
 // backend's emplace-only frame binding then silently dropped the later
 // definition: the constant was written to a fresh register nobody read, the
 // merge parameter's register stayed zero-initialised, and the final addition

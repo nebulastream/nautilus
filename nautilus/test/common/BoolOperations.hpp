@@ -129,11 +129,11 @@ val<bool> boolProbabilityTest(val<bool> x) {
 	return x;
 }
 
-// --- Regression tests for bc backend register-slot zero-extension ---
+// --- Regression tests for bytecode backend register-slot zero-extension ---
 //
 // These exercise the case where a `bool` value is produced by a runtime
 // `invoke()` (a Call in the IR) and then returned from the JIT'd
-// function. On the bc backend the bool value is written into a 64-bit
+// function. On the bytecode backend the bool value is written into a 64-bit
 // register slot. If only the low byte is written, stale upper bytes from
 // previous register use leak through the int64_t function-return path
 // and flip a `false` result to `true`. To make any such bug observable,
@@ -189,7 +189,7 @@ val<bool> invokePointerCmpFalse() {
 // --- Narrow integer return regression tests ---
 //
 // Mirror the bool repro for every narrow integer width that goes
-// through writeReg<T>() in the bc backend. The dirty-pointer invoke
+// through writeReg<T>() in the bytecode backend. The dirty-pointer invoke
 // ensures the register slot reused for the narrow return previously
 // held non-zero upper bytes, so any partial-width write would surface
 // as a wrong value (especially for zero / negative values where the

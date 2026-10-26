@@ -37,7 +37,7 @@ namespace nautilus::compiler::ir {
  *
  * Pass-through pruning (2) replaces a block's own argument with a value
  * defined in another (dominating) block, so lowered code reads values
- * across block boundaries. The `bc`/`tbc` register allocators support
+ * across block boundaries. The `tbc` register allocator support
  * this by pinning any identifier that is read outside its defining block
  * (see `crossBlockIds` in the two lowering providers) -- their free-list
  * recycling is only valid for block-locally-used values. `asmjit` (real

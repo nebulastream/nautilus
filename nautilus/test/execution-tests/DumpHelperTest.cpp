@@ -23,7 +23,7 @@ TEST_CASE("DumpHelperFolderCreationNoDumpToFile") {
 	dumpHandler.dump("after_mlir_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_llvm_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_cpp_generation", "trace", []() { return "Some fancy text"; });
-	dumpHandler.dump("after_bc_generation", "trace", []() { return "Some fancy text"; });
+	dumpHandler.dump("after_tbc_generation", "trace", []() { return "Some fancy text"; });
 
 	const auto dumpFolderExists = std::filesystem::exists(path);
 	REQUIRE(dumpFolderExists == false);
@@ -45,7 +45,7 @@ TEST_CASE("DumpHelperFolderCreationNoDumpAll") {
 	dumpHandler.dump("after_mlir_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_llvm_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_cpp_generation", "trace", []() { return "Some fancy text"; });
-	dumpHandler.dump("after_bc_generation", "trace", []() { return "Some fancy text"; });
+	dumpHandler.dump("after_tbc_generation", "trace", []() { return "Some fancy text"; });
 
 	const auto dumpFolderExists = std::filesystem::exists(path);
 	REQUIRE(dumpFolderExists == false);
@@ -68,7 +68,7 @@ TEST_CASE("DumpHelperFolderCreationDumpAll") {
 	dumpHandler.dump("after_mlir_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_llvm_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_cpp_generation", "trace", []() { return "Some fancy text"; });
-	dumpHandler.dump("after_bc_generation", "trace", []() { return "Some fancy text"; });
+	dumpHandler.dump("after_tbc_generation", "trace", []() { return "Some fancy text"; });
 
 	const auto dumpFolderExists = std::filesystem::exists(path);
 	REQUIRE(dumpFolderExists == true);

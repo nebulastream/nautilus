@@ -454,16 +454,6 @@ engine::NautilusEngine makeCppEngine() {
 }
 #endif // ENABLE_C_BACKEND
 
-#ifdef ENABLE_BC_BACKEND
-engine::NautilusEngine makeBcEngine() {
-	engine::Options options;
-	options.setOption("engine.Compilation", true);
-	options.setOption("engine.backend", std::string("bc"));
-	options.setOption("engine.compilationStrategy", std::string("legacy"));
-	return engine::NautilusEngine {options};
-}
-#endif // ENABLE_BC_BACKEND
-
 #ifdef ENABLE_TBC_BACKEND
 engine::NautilusEngine makeTbcEngine() {
 	engine::Options options;
@@ -524,9 +514,6 @@ std::vector<BackendSpec> exceptionBackends() {
 #endif
 #ifdef ENABLE_C_BACKEND
 	backends.push_back({"cpp", makeCppEngine, "cpp"});
-#endif
-#ifdef ENABLE_BC_BACKEND
-	backends.push_back({"bc", makeBcEngine, "bc"});
 #endif
 #ifdef ENABLE_TBC_BACKEND
 	backends.push_back({"tbc", makeTbcEngine, "tbc"});
@@ -615,9 +602,6 @@ TEST_CASE("interpreter invokes use native C++ exception unwinding") {
 	REQUIRE_THROWS_AS(function(), std::runtime_error);
 	REQUIRE(destructorCalls == 1);
 }
-
-// BC's per-dispatch-mode exception unwinding is covered by
-// backends/bc/BCExceptionDispatchTest.cpp instead of here.
 
 TEST_CASE("throwing invokes without live structs retain exception handling") {
 	common::Arena arena;

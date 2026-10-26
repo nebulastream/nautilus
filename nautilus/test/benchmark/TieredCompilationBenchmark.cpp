@@ -29,15 +29,15 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 	};
 
 	for (auto& [name, registerFn] : testFuncs) {
-#if defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-		// Two-tier: fast tier-0 (bc) compile returned immediately plus the
+#if defined(ENABLE_TBC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
+		// Two-tier: fast tier-0 (tbc) compile returned immediately plus the
 		// high-performance tier-1 (mlir) promotion, which the engine destructor
 		// joins at the end of the measured region. Measures end-to-end cost.
 		Catch::Benchmark::Benchmark("tiered_twotier_" + name)
 		    .operator=([&registerFn](Catch::Benchmark::Chronometer meter) {
 			    meter.measure([&registerFn] {
 				    TieredCompilationConfig config;
-				    config.tier0.backend = "bc";
+				    config.tier0.backend = "tbc";
 				    config.tier1.backend = "mlir";
 				    config.backgroundPromotion = true;
 				    common::ArenaPool traceArenaPool;
@@ -56,7 +56,7 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 		    .operator=([&registerFn](Catch::Benchmark::Chronometer meter) {
 			    meter.measure([&registerFn] {
 				    TieredCompilationConfig config;
-				    config.tier0.backend = "bc";
+				    config.tier0.backend = "tbc";
 				    config.tier1.backend = "mlir";
 				    config.backgroundPromotion = false;
 				    common::ArenaPool traceArenaPool;
@@ -77,8 +77,8 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 #ifdef ENABLE_C_BACKEND
 		backends.emplace_back("cpp");
 #endif
-#ifdef ENABLE_BC_BACKEND
-		backends.emplace_back("bc");
+#ifdef ENABLE_TBC_BACKEND
+		backends.emplace_back("tbc");
 #endif
 
 		for (auto& backend : backends) {
@@ -99,8 +99,8 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 
 TEST_CASE("Tiered Execution Throughput Benchmark") {
 	std::vector<std::string> backends;
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
+#ifdef ENABLE_TBC_BACKEND
+	backends.emplace_back("tbc");
 #endif
 #ifdef ENABLE_MLIR_BACKEND
 	backends.emplace_back("mlir");
@@ -136,11 +136,11 @@ TEST_CASE("Tiered Execution Throughput Benchmark") {
 }
 
 TEST_CASE("Tiered End-to-End Benchmark") {
-#if defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-	Catch::Benchmark::Benchmark("e2e_tiered_bc_to_mlir").operator=([](Catch::Benchmark::Chronometer meter) {
+#if defined(ENABLE_TBC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
+	Catch::Benchmark::Benchmark("e2e_tiered_tbc_to_mlir").operator=([](Catch::Benchmark::Chronometer meter) {
 		meter.measure([] {
 			TieredCompilationConfig config;
-			config.tier0.backend = "bc";
+			config.tier0.backend = "tbc";
 			config.tier1.backend = "mlir";
 			common::ArenaPool traceArenaPool;
 			common::ArenaPool irArenaPool;
@@ -171,7 +171,7 @@ TEST_CASE("Tiered End-to-End Benchmark") {
 		});
 	});
 #else
-	SKIP("Need bc and mlir backends for end-to-end benchmark");
+	SKIP("Need tbc and mlir backends for end-to-end benchmark");
 #endif
 }
 

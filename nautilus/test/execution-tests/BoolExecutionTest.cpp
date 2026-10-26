@@ -152,7 +152,7 @@ void boolTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(false) == false);
 	}
 
-	// Regression: bc backend used to leave stale upper bytes in the
+	// Regression: the bytecode backend used to leave stale upper bytes in the
 	// 64-bit register slot when writing a narrow bool result, which the
 	// function-return path then read as a non-zero int64_t and reported
 	// as `true`. See ByteCode.hpp writeReg<>.
@@ -170,7 +170,7 @@ void boolTest(engine::NautilusEngine& engine) {
 	}
 
 	// Narrow-integer return regression: each writeReg<T> path in the
-	// bc backend must zero-extend into the full 64-bit register slot.
+	// the bytecode backend must zero-extend into the full 64-bit register slot.
 	// We test 0, -1 / max, and a typical mid value for each width.
 	SECTION("invokeReturnsI8AfterDirtyReg") {
 		auto f = engine.registerFunction(invokeReturnsI8AfterDirtyReg);

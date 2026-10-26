@@ -23,7 +23,7 @@ using OpType = Operation::OperationType;
 /// and structurally trivial to number, but deduping them is deliberately
 /// excluded in v1: merging two equal constants can make a single constant feed
 /// both a store/edge and another use, a sharing pattern that the direct-
-/// lowering interpreter backends (`bc`/`tbc`) mis-lower (their constant-image /
+/// lowering interpreter backends (`tbc`) mis-lower (their constant-image /
 /// edge-copy machinery assumes trace IR's one-constant-per-use shape). Constant
 /// duplication is already handled by constant folding + DCE, so the loss is
 /// small; deduping the *computed* redundancy (address arithmetic, compares,

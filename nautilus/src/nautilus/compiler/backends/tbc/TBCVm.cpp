@@ -84,7 +84,7 @@ void doExtCall(const CallSite& site, void* target, uint64_t* fp, uint16_t dstReg
 		return;
 	case Type::b:
 		// Mask to the low byte: callees are only required to set the low byte
-		// of a bool return register (same rationale as bc's Dyncall::callB).
+		// of a bool return register (the native entry points zero-extend bools).
 		writeReg<bool>(fp, dstReg, (dcCallBool(vm, target) & 0xFF) != 0);
 		return;
 	case Type::i8:

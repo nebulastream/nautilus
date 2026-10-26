@@ -107,9 +107,6 @@ TEST_CASE("Backend Compilation Benchmark") {
 #ifdef ENABLE_C_BACKEND
 	backends.emplace_back("cpp");
 #endif
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
-#endif
 #ifdef ENABLE_TBC_BACKEND
 	backends.emplace_back("tbc");
 #endif
