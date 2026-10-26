@@ -1,0 +1,413 @@
+#pragma once
+
+#include <cstdint>
+#include <nautilus/Engine.hpp>
+#include <nautilus/val.hpp>
+#include <nautilus/val_memcpy.hpp>
+#include <nautilus/val_ptr.hpp>
+
+namespace nautilus {
+
+inline val<int32_t> load(val<int32_t*> array, val<int32_t> index) {
+	val<int32_t> value = array[index];
+	return value;
+}
+
+inline int32_t globalPtr;
+inline val<int32_t> loadConst() {
+	val<int32_t> value = *val<int32_t*>(&globalPtr);
+	return value;
+}
+
+inline val<int32_t> castVoidPtr(val<void*> array) {
+	auto intPtr = static_cast<val<int32_t*>>(array);
+	return intPtr[0];
+}
+
+inline val<int32_t> ptrAssignment(val<int32_t*> ptr, val<int32_t*> ptr2) {
+	auto tempPtr = ptr;
+	ptr = ptr2;
+	return val<int32_t>(*ptr) + val<int32_t>(*tempPtr);
+}
+
+template <typename T>
+val<bool> isNullptr(val<T*> ptr) {
+	return ptr == nullptr;
+}
+
+template <typename T>
+val<bool> isNotNullptr(val<T*> ptr) {
+	return ptr != nullptr;
+}
+
+template <typename T>
+val<bool> ptrEquals(val<T*> left, val<T*> right) {
+	return left == right;
+}
+
+template <typename T>
+val<bool> ptrNotEquals(val<T*> left, val<T*> right) {
+	return left != right;
+}
+
+template <typename T>
+val<bool> ptrLessThan(val<T*> left, val<T*> right) {
+	return left < right;
+}
+
+template <typename T>
+val<bool> ptrLessThanEquals(val<T*> left, val<T*> right) {
+	return left <= right;
+}
+
+template <typename T>
+val<bool> ptrGreaterThan(val<T*> left, val<T*> right) {
+	return left > right;
+}
+
+template <typename T>
+val<bool> ptrGreaterThanEquals(val<T*> left, val<T*> right) {
+	return left >= right;
+}
+
+template <typename A, typename B>
+val<B> castPtrAndGetValue(val<A*> array) {
+	auto intPtr = static_cast<val<B*>>(array);
+	return intPtr[0];
+}
+
+template <typename A, typename B, typename C>
+val<C> divAWithB(val<A> a, val<B> b) {
+	return a / b;
+}
+
+template <typename A, typename B, typename C>
+val<C> mulAWithB(val<A> a, val<B> b) {
+	return a * b;
+}
+
+template <typename A, typename B, typename C>
+val<C> subAWithB(val<A> a, val<B> b) {
+	return a - b;
+}
+
+template <typename A, typename B, typename C>
+val<C> addAWithB(val<A> a, val<B> b) {
+	return a + b;
+}
+
+inline val<int32_t> pointerAdd(val<int32_t*> ptr, val<int32_t> offset) {
+	auto result = ptr + offset;
+	return *result;
+}
+
+inline val<int32_t> pointerSub(val<int32_t*> ptr, val<int32_t> offset) {
+	auto result = ptr - offset;
+	return *result;
+}
+
+inline val<int32_t> pointerAddConst(val<int32_t*> ptr) {
+	auto result = ptr + 2;
+	return *result;
+}
+
+inline val<int32_t> pointerSubConst(val<int32_t*> ptr) {
+	auto result = ptr - 2;
+	return *result;
+}
+
+inline val<int32_t> sumArray(val<int32_t*> array, val<int32_t> length) {
+	val<int32_t> sum = val<int32_t>(0);
+	for (val<int32_t> i = 0; i < length; i = i + 1) {
+		val<int32_t> value = array[i];
+		sum = sum + value;
+	}
+	return sum;
+}
+
+template <typename T>
+void addArray(val<T*> array, val<T*> array2, val<T> length) {
+	for (val<T> i = 0; i < length; i = i + 1) {
+		val<T> left = array[i];
+		val<T> right = array2[i];
+		array[i] = left + right;
+	}
+}
+
+inline void callMemcpy(val<int32_t*> src, val<int32_t*> dest) {
+	memcpy(dest, src, 0);
+}
+
+inline val<int32_t> pointerAddNegativeOffset(val<int32_t*> ptr, val<int32_t> offset) {
+	auto result = ptr - offset;
+	return *result;
+}
+
+inline val<bool> pointerLessThanAfterAdd(val<int32_t*> base, val<int32_t> offset) {
+	auto advanced = base + offset;
+	return base < advanced;
+}
+
+inline val<bool> pointerGreaterThanAfterAdd(val<int32_t*> base, val<int32_t> offset) {
+	auto advanced = base + offset;
+	return advanced > base;
+}
+
+inline val<int32_t> pointerRoundTrip(val<int32_t*> ptr, val<int32_t> offset) {
+	auto advanced = ptr + offset;
+	auto back = advanced - offset;
+	return *back;
+}
+
+inline val<int32_t> pointerMultiStep(val<int32_t*> ptr) {
+	auto p1 = ptr + 1;
+	auto p2 = p1 + 1;
+	auto p3 = p2 + 1;
+	return *p3;
+}
+
+// gh-502: arithmetic on const / rvalue pointers must scale the offset by the element size and yield a pointer.
+inline val<int32_t> constPointerAddStatic(val<int32_t*> ptr) {
+	const val<int32_t*> base = ptr + 1;
+	val<int32_t> sum = 0;
+	for (static_val<uint64_t> i = 0; i < uint64_t {3}; i++) {
+		sum = sum + *(base + i);
+	}
+	return sum;
+}
+
+inline val<int32_t> constPointerAddInt(val<int32_t*> ptr) {
+	const val<int32_t*> base = ptr;
+	return *(base + uint64_t {2});
+}
+
+inline val<int32_t> constPointerSubInt(val<int32_t*> ptr) {
+	const val<int32_t*> base = ptr;
+	return *(base - uint64_t {2});
+}
+
+inline val<int32_t> rvaluePointerAdd(val<int32_t*> ptr) {
+	return *((ptr + 1) + 2);
+}
+
+inline val<int32_t> offsetPlusPointer(val<int32_t*> ptr) {
+	return *(2 + ptr);
+}
+
+inline val<int64_t> pointerDifference(val<int32_t*> begin, val<int32_t*> end) {
+	return end - begin;
+}
+
+inline val<int32_t> pointerPostIncrement(val<int32_t*> ptr) {
+	auto old = ptr++;
+	return *old * 10 + *ptr;
+}
+
+inline val<int32_t> pointerPostDecrement(val<int32_t*> ptr) {
+	auto old = ptr--;
+	--ptr;
+	return *old * 10 + *ptr;
+}
+
+inline val<int32_t> negativeIndex(val<int32_t*> ptr, val<int8_t> index) {
+	return ptr[index];
+}
+
+class BaseClass {};
+
+class CustomClass : public BaseClass {
+public:
+	int x;
+	int y;
+	int z;
+};
+
+inline val<CustomClass*> customPointerAdd(val<CustomClass*> customClassPtr, val<int32_t> offset) {
+	auto result = customClassPtr + offset;
+	return result;
+}
+
+template <typename PtrElem, typename OffsetType>
+val<PtrElem> pointerAddInt(val<PtrElem*> ptr, val<OffsetType> offset) {
+	auto result = ptr + offset;
+	return *result;
+}
+
+template <typename PtrElem, typename OffsetType>
+val<PtrElem> pointerSubInt(val<PtrElem*> ptr, val<OffsetType> offset) {
+	auto result = ptr - offset;
+	return *result;
+}
+
+template <typename PtrElem>
+val<PtrElem> pointerAddConstInt(val<PtrElem*> ptr) {
+	auto result = ptr + 2;
+	return *result;
+}
+
+template <typename PtrElem>
+val<PtrElem> pointerSubConstInt(val<PtrElem*> ptr) {
+	auto result = ptr - 2;
+	return *result;
+}
+
+template <typename PtrElem, typename OffsetType>
+val<PtrElem> pointerPlusAssign(val<PtrElem*> ptr, val<OffsetType> offset) {
+	ptr += offset;
+	return *ptr;
+}
+
+template <typename PtrElem, typename OffsetType>
+val<PtrElem> pointerMinusAssign(val<PtrElem*> ptr, val<OffsetType> offset) {
+	ptr -= offset;
+	return *ptr;
+}
+
+template <typename PtrElem>
+val<PtrElem> pointerPreIncrement(val<PtrElem*> ptr) {
+	++ptr;
+	return *ptr;
+}
+
+inline val<int32_t> passCustomClass(val<CustomClass*> customClassPtr) {
+	return invoke<>(+[](CustomClass* ptr) noexcept { return ptr->x; }, customClassPtr);
+}
+
+inline val<int32_t> castCustomClass(val<BaseClass*> voidPtr) {
+	// cast base struct to custom struct
+	auto resultPtr = static_cast<val<CustomClass*>>(voidPtr);
+	return invoke<>(+[](CustomClass* ptr) noexcept { return ptr->x; }, resultPtr);
+}
+
+struct FieldStruct {
+	int x;
+};
+
+inline val<int32_t> getField(val<FieldStruct*> ptr) {
+	// cast base struct to custom struct
+	val<int32_t> intValue = ptr.get(&FieldStruct::x);
+	val<int32_t&> intRef = ptr.get(&FieldStruct::x);
+	return intValue + intRef;
+}
+
+inline void setFieldConst(val<FieldStruct*> ptr) {
+	ptr.set(&FieldStruct::x, 42);
+}
+
+inline void setFieldIndirect(val<FieldStruct*> ptr, val<int32_t> x) {
+	ptr.set(&FieldStruct::x, x);
+}
+
+struct CustomStruct2 {
+	int x;
+};
+
+/*
+ * Specialize the pointer type to implement some custom wrapper functions
+ */
+template <>
+class val<CustomStruct2*> : public base_ptr_val<CustomStruct2*> {
+public:
+	using base_ptr_val<CustomStruct2*>::base_ptr_val;
+	val<int32_t> getX() {
+		return invoke<>(+[](CustomStruct2* ptr) noexcept { return ptr->x; }, *this);
+	}
+};
+
+inline val<int32_t> specializeType(val<CustomStruct2*> customClassPtr) {
+	return customClassPtr.getX();
+}
+
+class WrapperType {
+public:
+	val<int32_t> add() {
+		return a.getX() + b.getX();
+	}
+	val<CustomStruct2*> a;
+	val<CustomStruct2*> b;
+};
+
+inline val<int32_t> useWrapper(val<CustomStruct2*> a, val<CustomStruct2*> b) {
+	WrapperType wrapper = {a, b};
+	return wrapper.add();
+}
+
+// Regression (issue #95): max() via a native C++ ternary over two
+// pre-existing val<int32_t> lvalues used to always store the "greater" arm's
+// value regardless of which arm was actually taken ("double jump"
+// miscompilation -- see ternary_double_jump_gh_95 in TracingTest.cpp for the
+// trace-level pin).
+inline void storeMaxViaTernary(val<int32_t*> x, val<int32_t*> y) {
+	val<int32_t> a {*x};
+	val<int32_t> b {*y};
+	*x = (val<int32_t>) (a > b ? a : b);
+}
+
+// Issue #517: offsets C++ already knows are folded into one constant, and pointer arithmetic does not copy its
+// operands.
+inline val<int32_t> pointerAddZero(val<int32_t*> ptr) {
+	auto result = ptr + 0;
+	return *result;
+}
+
+inline val<int32_t> derefPointerTemporary(val<int32_t*> ptr) {
+	return *(ptr + 2);
+}
+
+inline val<int32_t> pointerSubUnsignedConst(val<int32_t*> ptr) {
+	return *(ptr - 2u);
+}
+
+inline val<int8_t> bytePointerIndexSizeT(val<int8_t*> ptr, val<size_t> index) {
+	return ptr[index];
+}
+
+inline val<int32_t> staticOffsetLoop(val<int32_t*> ptr) {
+	val<int32_t> sum = 0;
+	for (static_val<int32_t> i = 0; i < 3; i++) {
+		sum = sum + ptr[i];
+	}
+	return sum;
+}
+
+struct TwoFieldStruct {
+	int32_t a;
+	int32_t b;
+};
+
+inline val<int32_t> getSecondField(val<TwoFieldStruct*> ptr) {
+	val<int32_t> value = ptr.get(&TwoFieldStruct::b);
+	return value;
+}
+
+// A reference obtained by dereferencing a pointer keeps referring to the old address after the pointer is
+// reassigned, so the reference must not share the pointer's traced value.
+inline void storeThroughStaleReference(val<int32_t*> ptr, val<int32_t> value) {
+	val<int32_t&> ref = *ptr;
+	ptr = ptr + 1;
+	ref = value;
+	*ptr = value + 1;
+}
+
+// `ptr + 0` is a new value: assigning to it leaves `ptr` unchanged.
+inline val<int32_t> assignToZeroOffset(val<int32_t*> ptr) {
+	auto result = ptr + 0;
+	result = result + 1;
+	return *ptr * 10 + *result;
+}
+
+// A moved-from pointer can be assigned again without changing the pointer it was moved to (the pattern of
+// val<std::vector>::release()).
+inline val<int32_t> moveThenReassign(val<int32_t*> ptr) {
+	auto moved = std::move(ptr);
+	ptr = moved + 1;
+	return *moved * 10 + *ptr;
+}
+
+inline void addToAllInLoop(val<int32_t*> ptr, val<int32_t> length, val<int32_t> value) {
+	for (val<int32_t> i = 0; i < length; i = i + 1) {
+		ptr[i] += value;
+	}
+}
+
+} // namespace nautilus

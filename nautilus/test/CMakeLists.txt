@@ -18,6 +18,7 @@ if (ENABLE_TRACING)
     add_subdirectory(tracing-tests)
 endif ()
 add_subdirectory(val-tests)
+add_subdirectory(api-compat)
 add_subdirectory(nir-tests)
 add_subdirectory(extension-tests)
 

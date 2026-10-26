@@ -662,6 +662,13 @@ README §6 and [02 §8](02-nir.md).
   conventions for this branch).
 - **Done when:** `doc-check` passes and fails on a planted stale path.
 
+**M1.8–M1.10 status (PR 2):** the chunk pool is in (`common/ChunkPool.*`; the corpus check against the baseline waits for
+the committed baselines). `bc` is removed. The corpus driver is `nautilus/test/benchmark/latency-corpus/` with a
+reporting `latency-corpus` CI job and a `baselines-0.3` workflow that records the numbers of `main` as an artifact;
+`test/api-compat/` holds the 15 clean files of 0.3's tests (`ExecutionTest.cpp` is still to be split case by case, and
+`example/` is not copied yet). Still open: the committed `test/baselines/0.3/` with the recorded `FunctionAttributes` and
+per-function IR op counts, the reference machine (needs an owner, §16), and the pinned CI container image.
+
 **M1 exit:** M1.1–M1.12 (with M1.3a, M1.4a and M1.7a) done; the spec is
 marked final ([13 §11](13-nir-spec.md)).
 
