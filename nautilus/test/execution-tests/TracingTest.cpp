@@ -1126,8 +1126,9 @@ TEST_CASE("The SSA NIR of a traced function computes what the function computes"
 	                std::vector<std::tuple<uint8_t>> {{0}, {1}, {200}, {255}});
 	checkConversion("staticCast_i32_ui8", staticCastExpression<int32_t, uint8_t>, ints1);
 	checkConversion("staticCast_i32_f64", staticCastExpression<int32_t, double>, ints1);
+	// out-of-range values are left out: C++ leaves them undefined, NIR saturates them (D11)
 	checkConversion("staticCast_f64_i32", staticCastExpression<double, int32_t>,
-	                std::vector<std::tuple<double>> {{-1.9}, {0.0}, {3.99}, {1e12}, {-1e12}});
+	                std::vector<std::tuple<double>> {{-1.9}, {0.0}, {3.99}});
 	checkConversion("staticCast_f32_f64", staticCastExpression<float, double>,
 	                std::vector<std::tuple<float>> {{-1.5f}, {0.25f}});
 	checkConversion("staticCast_i64_bool", staticCastExpression<int64_t, bool>,
