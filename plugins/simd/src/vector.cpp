@@ -1,3 +1,5 @@
+#include "nautilus/extensions/IntrinsicRegistration.hpp"
+#include "vector_impl.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -521,3 +523,75 @@ VEC_INVOKE_BINARY(int64_t, 8, i64x8, lshr)
 } // namespace detail
 
 } // namespace nautilus
+
+// The backend-neutral registration (04 §3.5). A vector value is a pointer to a thread-local ring slot, so every
+// operation reads and writes memory the optimizer cannot see; only "does not throw" holds for all of them. The names
+// are `simd.<op>_<type>`, e.g. `simd.add_f32x4`.
+namespace {
+
+struct VectorIntrinsicRegistrar {
+	VectorIntrinsicRegistrar() {
+		using namespace nautilus::ext;
+		using namespace nautilus;
+#define SIMD_REG(NAME, SUFFIX)                                                                                         \
+	registerIntrinsicFor("simd." #NAME "_" #SUFFIX, &vector_##NAME##_##SUFFIX##_impl, AttrNoUnwind)
+#define SIMD_REG_ALL(SUFFIX)                                                                                           \
+	SIMD_REG(load, SUFFIX);                                                                                            \
+	SIMD_REG(store, SUFFIX);                                                                                           \
+	SIMD_REG(add, SUFFIX);                                                                                             \
+	SIMD_REG(sub, SUFFIX);                                                                                             \
+	SIMD_REG(mul, SUFFIX);                                                                                             \
+	SIMD_REG(div, SUFFIX);                                                                                             \
+	SIMD_REG(abs, SUFFIX);                                                                                             \
+	SIMD_REG(neg, SUFFIX);                                                                                             \
+	SIMD_REG(min, SUFFIX);                                                                                             \
+	SIMD_REG(max, SUFFIX);                                                                                             \
+	SIMD_REG(reduce_add, SUFFIX);                                                                                      \
+	SIMD_REG(reduce_min, SUFFIX);                                                                                      \
+	SIMD_REG(reduce_max, SUFFIX);                                                                                      \
+	SIMD_REG(eq, SUFFIX);                                                                                              \
+	SIMD_REG(ne, SUFFIX);                                                                                              \
+	SIMD_REG(lt, SUFFIX);                                                                                              \
+	SIMD_REG(le, SUFFIX);                                                                                              \
+	SIMD_REG(gt, SUFFIX);                                                                                              \
+	SIMD_REG(ge, SUFFIX);                                                                                              \
+	SIMD_REG(blend, SUFFIX);                                                                                           \
+	SIMD_REG(and, SUFFIX);                                                                                             \
+	SIMD_REG(or, SUFFIX);                                                                                              \
+	SIMD_REG(xor, SUFFIX);                                                                                             \
+	SIMD_REG(broadcast, SUFFIX);                                                                                       \
+	SIMD_REG(gather, SUFFIX);                                                                                          \
+	SIMD_REG(scatter, SUFFIX);                                                                                         \
+	SIMD_REG(compress_store, SUFFIX);                                                                                  \
+	SIMD_REG(extract, SUFFIX);                                                                                         \
+	SIMD_REG(insert, SUFFIX);                                                                                          \
+	SIMD_REG(shuffle, SUFFIX)
+#define SIMD_REG_FLOAT(SUFFIX)                                                                                         \
+	SIMD_REG_ALL(SUFFIX);                                                                                              \
+	SIMD_REG(fma, SUFFIX)
+#define SIMD_REG_INT(SUFFIX)                                                                                           \
+	SIMD_REG_ALL(SUFFIX);                                                                                              \
+	SIMD_REG(shl, SUFFIX);                                                                                             \
+	SIMD_REG(shr, SUFFIX);                                                                                             \
+	SIMD_REG(lshr, SUFFIX)
+		SIMD_REG_FLOAT(f32x4);
+		SIMD_REG_FLOAT(f32x8);
+		SIMD_REG_FLOAT(f32x16);
+		SIMD_REG_FLOAT(f64x2);
+		SIMD_REG_FLOAT(f64x4);
+		SIMD_REG_FLOAT(f64x8);
+		SIMD_REG_INT(i32x4);
+		SIMD_REG_INT(i32x8);
+		SIMD_REG_INT(i32x16);
+		SIMD_REG_INT(i64x2);
+		SIMD_REG_INT(i64x4);
+		SIMD_REG_INT(i64x8);
+#undef SIMD_REG_INT
+#undef SIMD_REG_FLOAT
+#undef SIMD_REG_ALL
+#undef SIMD_REG
+	}
+};
+const VectorIntrinsicRegistrar vectorRegistrar_;
+
+} // namespace
