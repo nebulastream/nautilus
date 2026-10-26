@@ -55,7 +55,7 @@ std::string inspectImage(std::span<const uint8_t> image, const InspectOptions& o
 	if (image.size() < sizeof(ImageHeader)) {
 		return "not an image: " + std::to_string(image.size()) + " bytes, a header has 48\n";
 	}
-	ImageHeader h;
+	ImageHeader h {};
 	std::memcpy(&h, image.data(), sizeof h);
 	bool magic = std::memcmp(h.magic, "NIR\0", 4) == 0;
 	out += std::string("NIR image, magic ") + (magic ? "ok" : "BAD") + "\n";

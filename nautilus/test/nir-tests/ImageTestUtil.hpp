@@ -24,7 +24,7 @@ struct RawImage {
 		RawImage r;
 		std::memcpy(&r.header, image.data(), sizeof(ImageHeader));
 		for (uint32_t i = 0; i < r.header.sectionCount; ++i) {
-			SectionEntry e;
+			SectionEntry e {};
 			std::memcpy(&e, image.data() + sizeof(ImageHeader) + i * sizeof(SectionEntry), sizeof e);
 			Section s {e.kind, e.stride, e.count, {}};
 			s.bytes.assign(image.begin() + e.offset, image.begin() + e.offset + e.count * e.stride);
@@ -70,7 +70,7 @@ struct RawImage {
 
 /// Recomputes the checksum of an image whose bytes were edited in place.
 inline void fixChecksum(std::vector<uint8_t>& image) {
-	ImageHeader h;
+	ImageHeader h {};
 	std::memcpy(&h, image.data(), sizeof h);
 	h.crc32c = crc32c(std::span<const uint8_t>(image).subspan(sizeof(ImageHeader)));
 	std::memcpy(image.data(), &h, sizeof h);
