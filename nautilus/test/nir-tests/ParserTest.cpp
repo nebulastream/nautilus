@@ -176,6 +176,9 @@ TEST_CASE("NIR-P002 syntax errors", "[nir][parser]") {
 	REQUIRE(errorOf("") == DiagCode::P002);
 	REQUIRE(errorOf("nir 2.0") == DiagCode::P002);
 	REQUIRE(errorOf("nir 1.1") == DiagCode::P002);
+	REQUIRE(errorOf("nir 1.99999999999999999999") == DiagCode::P002); // found by the fuzzer: stoi threw
+	REQUIRE(errorOf("nir 1.") == DiagCode::P002);
+	REQUIRE(errorOf("nir 1.x") == DiagCode::P002);
 	REQUIRE(errorOf("nir 1.0\nfunc @f : () -> void {\n^b0:\n  frobnicate\n}\n") == DiagCode::P002);
 	REQUIRE(errorOf("nir 1.0\nfunc @f : () -> void {\n^b0:\n  ret\n") == DiagCode::P002);
 	REQUIRE(errorOf("nir 1.0\nfunc @f : () -> void {\n}\n") == DiagCode::P002);

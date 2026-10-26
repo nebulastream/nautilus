@@ -1,4 +1,5 @@
 #include "nautilus/nir/Parser.hpp"
+#include "nautilus/common/FloatText.hpp"
 #include "nautilus/nir/Operands.hpp"
 #include "nautilus/nir/Verifier.hpp"
 #include <algorithm>
@@ -358,11 +359,13 @@ public:
 	Module run() {
 		expectIdent("nir");
 		auto v = next();
-		if (v.kind != Tok::Number || v.text.rfind("1.", 0) != 0 ||
-		    v.text.find_first_not_of("0123456789", 2) != std::string::npos || v.text.size() < 3) {
+		// the version is `1.<minor>`; the minor version is a short run of digits (a longer one is not a version)
+		bool versionOk = v.kind == Tok::Number && v.text.rfind("1.", 0) == 0 && v.text.size() >= 3 &&
+		                 v.text.size() <= 11 && v.text.find_first_not_of("0123456789", 2) == std::string::npos;
+		if (!versionOk) {
 			fail(DiagCode::P002, v, "the version must be 1.x");
 		}
-		if (std::stoi(v.text.substr(2)) > 0) {
+		if (std::stoul(v.text.substr(2)) > 0) {
 			fail(DiagCode::P002, v, "unsupported minor version " + v.text);
 		}
 		if (acceptIdent("module")) {
@@ -924,8 +927,8 @@ private:
 			if (digits.empty() || r.ec != std::errc() || r.ptr != digits.data() + digits.size()) {
 				bad("not an integer literal: " + lit);
 			}
-			unsigned __int128 maxPos = (static_cast<unsigned __int128>(1) << n) - 1;
-			unsigned __int128 maxNeg = static_cast<unsigned __int128>(1) << (n - 1);
+			unsigned long long maxPos = n == 64 ? ~0ull : (1ull << n) - 1;
+			unsigned long long maxNeg = 1ull << (n - 1);
 			if (neg ? mag > maxNeg : mag > maxPos) {
 				bad("the literal " + lit + " is out of range for " + t.type);
 			}
@@ -967,20 +970,16 @@ private:
 			return signBit | expAll | v;
 		}
 		bool hex = body.rfind("0x", 0) == 0 || body.rfind("0X", 0) == 0;
-		const char* first = body.data() + (hex ? 2 : 0);
-		const char* last = body.data() + body.size();
-		auto fmt = hex ? std::chars_format::hex : std::chars_format::general;
+		std::string_view digits = std::string_view(body).substr(hex ? 2 : 0);
 		if (single) {
 			float f = 0;
-			auto r = std::from_chars(first, last, f, fmt);
-			if (r.ec != std::errc() || r.ptr != last) {
+			if (!nautilus::parseFloatText(digits, f, hex)) {
 				fail(DiagCode::P006, t, "not a float literal: " + lit);
 			}
 			return std::bit_cast<uint32_t>(f) | signBit;
 		}
 		double d = 0;
-		auto r = std::from_chars(first, last, d, fmt);
-		if (r.ec != std::errc() || r.ptr != last) {
+		if (!nautilus::parseFloatText(digits, d, hex)) {
 			fail(DiagCode::P006, t, "not a float literal: " + lit);
 		}
 		return std::bit_cast<uint64_t>(d) | signBit;
@@ -1309,8 +1308,7 @@ private:
 				}
 				if (pt.text.find('.') != std::string::npos) {
 					double p = 0;
-					auto r = std::from_chars(pt.text.data(), pt.text.data() + pt.text.size(), p);
-					if (r.ec != std::errc() || p < 0 || p > 1) {
+					if (!nautilus::parseFloatText(pt.text, p) || p < 0 || p > 1) {
 						fail(DiagCode::P006, pt, "a probability fraction is in [0, 1]");
 					}
 					prob = static_cast<uint32_t>(std::nearbyint(p * 4294967294.0));

@@ -109,8 +109,11 @@ LoadResult loadImage(std::span<const uint8_t> image, const LoadOptions& options)
 			} else if (e.stride == 0) {
 				reject(DiagCode::L007, "section " + std::to_string(e.kind) + " has stride 0");
 			}
-			// bounds, with a 128-bit product so that nothing overflows
-			unsigned __int128 size = static_cast<unsigned __int128>(e.count) * e.stride;
+			// bounds, without letting the product overflow
+			if (e.count != 0 && e.stride > UINT64_MAX / e.count) {
+				reject(DiagCode::L006, "section " + std::to_string(e.kind) + " is out of bounds");
+			}
+			uint64_t size = e.count * e.stride;
 			if (e.offset > header.totalSize || size > header.totalSize - e.offset) {
 				reject(DiagCode::L006, "section " + std::to_string(e.kind) + " is out of bounds");
 			}
@@ -118,7 +121,7 @@ LoadResult loadImage(std::span<const uint8_t> image, const LoadOptions& options)
 				if (e.offset < dataStart) {
 					reject(DiagCode::L006, "section " + std::to_string(e.kind) + " overlaps the section table");
 				}
-				ranges.push_back({e.offset, e.offset + static_cast<uint64_t>(size)});
+				ranges.push_back({e.offset, e.offset + size});
 			}
 		}
 		std::sort(ranges.begin(), ranges.end(), [](auto& a, auto& b) { return a.begin < b.begin; });

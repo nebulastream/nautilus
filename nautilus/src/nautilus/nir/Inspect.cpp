@@ -107,8 +107,11 @@ std::string inspectImage(std::span<const uint8_t> image, const InspectOptions& o
 	if (options.hexDump) {
 		for (auto& e : entries) {
 			auto* info = sectionInfo(e.kind);
-			unsigned __int128 size = static_cast<unsigned __int128>(e.count) * e.stride;
-			if (e.stride == 0 || e.offset > image.size() || size > image.size() - e.offset) {
+			if (e.stride == 0 || (e.count != 0 && e.stride > UINT64_MAX / e.count)) {
+				continue;
+			}
+			uint64_t size = e.count * e.stride;
+			if (e.offset > image.size() || size > image.size() - e.offset) {
 				continue;
 			}
 			out += std::string("\n") + (info ? info->name : "section " + std::to_string(e.kind)) + " (" +

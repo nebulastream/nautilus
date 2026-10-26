@@ -17,9 +17,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <vector>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace nautilus::nir::fuzz {
 
@@ -101,7 +101,7 @@ inline void checkModule(const Module& m) {
 			violated("a canonical image is not stable under load and write");
 		}
 	}
-	(void)structuralHash(m, effectiveOptions({}));
+	(void) structuralHash(m, effectiveOptions({}));
 }
 
 inline void runInput(const uint8_t* data, size_t size) {

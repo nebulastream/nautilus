@@ -1,4 +1,5 @@
 #include "nautilus/common/OptionRegistry.hpp"
+#include "nautilus/common/FloatText.hpp"
 #include <algorithm>
 #include <charconv>
 #include <cstring>
@@ -167,8 +168,7 @@ OptionValue parseOptionValue(const OptionSpec& spec, std::string_view text) {
 	}
 	case OptionType::Double: {
 		double v = 0;
-		auto r = std::from_chars(text.data(), text.data() + text.size(), v);
-		if (r.ec == std::errc() && r.ptr == text.data() + text.size() && !text.empty()) {
+		if (parseFloatText(text, v)) {
 			return v;
 		}
 		break;

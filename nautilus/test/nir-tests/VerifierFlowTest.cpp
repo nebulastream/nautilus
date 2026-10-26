@@ -1,4 +1,5 @@
 #include "TestModules.hpp"
+#include "nautilus/common/FloatText.hpp"
 #include "nautilus/nir/Verifier.hpp"
 #include <catch2/catch_all.hpp>
 
@@ -206,4 +207,32 @@ TEST_CASE("NIR-V051 pre-SSA definitions reach every use", "[nir][verifier][flow]
 	};
 	requireValid(build(false));
 	REQUIRE(has(verify(build(true)), DiagCode::V051));
+}
+
+TEST_CASE("a landing pad whose br has a bad extra offset is reported, not followed", "[nir][verifier][flow]") {
+	// found by the NIR fuzzer: the pad checks read the br's argument list before its bounds were known
+	auto m = cfgModule({{Blk::Ret, 0, 0, {1, 2}}, {Blk::Br, 2, 0, {}, true}, {Blk::Resume, 0, 0, {}, true}});
+	REQUIRE(verify(m).empty());
+	test::inst(m, Op::Br).c = 0x7FFFFF00; // far outside `extra`
+	auto d = verify(m);
+	REQUIRE(has(d, DiagCode::V008));
+}
+
+TEST_CASE("floating-point literals parse the same way everywhere", "[nir][parser]") {
+	double d = 0;
+	float f = 0;
+	REQUIRE(nautilus::parseFloatText("1.5", d));
+	REQUIRE(d == 1.5);
+	REQUIRE(nautilus::parseFloatText("1e-3", d));
+	REQUIRE(d == 1e-3);
+	REQUIRE(nautilus::parseFloatText("1.8p+1", d, true));
+	REQUIRE(d == 3.0);
+	REQUIRE(nautilus::parseFloatText("3.4028235e38", f));
+	REQUIRE(f == 3.4028235e38f);
+	REQUIRE(nautilus::parseFloatText("5", d));
+	REQUIRE(d == 5.0);
+	REQUIRE_FALSE(nautilus::parseFloatText("", d));
+	REQUIRE_FALSE(nautilus::parseFloatText("1.5x", d));
+	REQUIRE_FALSE(nautilus::parseFloatText("abc", d));
+	REQUIRE_FALSE(nautilus::parseFloatText(" 1", d));
 }
