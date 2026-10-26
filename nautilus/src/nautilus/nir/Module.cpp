@@ -1,5 +1,6 @@
 #include "nautilus/nir/Module.hpp"
 #include <cstring>
+#include <random>
 
 namespace nautilus::nir {
 
@@ -87,6 +88,40 @@ uint32_t Module::internData(std::span<const std::byte> bytes, uint32_t align) {
 	return id;
 }
 
+void Module::rebuildIndexes() {
+	nameIndex_.clear();
+	signatureIndex_.clear();
+	calleeIndex_.clear();
+	pointerIndex_.clear();
+	dataIndex_.clear();
+	for (uint32_t i = 0; i < names.size(); ++i) {
+		nameIndex_.emplace(std::string(name(i)), i);
+	}
+	for (uint32_t i = 0; i < signatures.size(); ++i) {
+		auto& s = signatures[i];
+		std::vector<uint32_t> key {s.result};
+		key.insert(key.end(), extra.begin() + s.paramTypes, extra.begin() + s.paramTypes + s.paramCount);
+		signatureIndex_.emplace(std::move(key), i);
+	}
+	for (uint32_t i = 0; i < callees.size(); ++i) {
+		auto& r = callees[i];
+		calleeIndex_.emplace(std::array<uint32_t, 4> {r.kind, r.target, r.signature, r.attrs}, i);
+	}
+	for (uint32_t i = 0; i < pointers.size(); ++i) {
+		auto& r = pointers[i];
+		pointerIndex_.emplace(std::array<uint64_t, 4> {static_cast<uint64_t>(r.kind) |
+		                                                   (static_cast<uint64_t>(r.mode) << 8) |
+		                                                   (static_cast<uint64_t>(r.provenance) << 16),
+		                                               r.nameId, r.address, r.reserved},
+		                      i);
+	}
+	for (uint32_t i = 0; i < data.size(); ++i) {
+		auto& d = data[i];
+		auto first = dataBytes.begin() + d.byteOffset;
+		dataIndex_.emplace(std::make_pair(d.align, std::vector<std::byte>(first, first + d.size)), i);
+	}
+}
+
 uint32_t Module::addImport(const ImportRecord& r) {
 	imports.push_back(r);
 	return static_cast<uint32_t>(imports.size() - 1);
@@ -116,6 +151,15 @@ std::span<const BlockRecord> Module::functionBlocks(uint32_t f) const {
 std::span<const AllocaRecord> Module::functionAllocas(uint32_t f) const {
 	auto& fn = functions[f];
 	return std::span<const AllocaRecord>(allocas).subspan(fn.firstAlloca, fn.allocaCount);
+}
+
+uint64_t currentProcessToken() {
+	static const uint64_t token = [] {
+		std::random_device rd;
+		uint64_t t = (static_cast<uint64_t>(rd()) << 32) | rd();
+		return t == 0 ? 1 : t;
+	}();
+	return token;
 }
 
 } // namespace nautilus::nir

@@ -71,6 +71,10 @@ public:
 	/// Appends a list to `extra` and returns its word offset.
 	uint32_t addExtra(std::span<const uint32_t> words);
 
+	/// Recomputes the interning tables from the sections, for modules assembled by writing the arrays directly (the
+	/// parser, the image loader). Of equal records the first one wins.
+	void rebuildIndexes();
+
 	/// Instructions, blocks and allocas of function `f`.
 	std::span<const Inst> functionInsts(uint32_t f) const;
 	std::span<Inst> functionInsts(uint32_t f);
@@ -84,5 +88,8 @@ private:
 	std::map<std::array<uint64_t, 4>, uint32_t> pointerIndex_;
 	std::map<std::pair<uint32_t, std::vector<std::byte>>, uint32_t> dataIndex_;
 };
+
+/// The 64-bit token of this process, drawn at random once and never 0 (13-nir-spec.md §4.4).
+uint64_t currentProcessToken();
 
 } // namespace nautilus::nir

@@ -7,6 +7,7 @@ add_executable(nautilus-nir-tests
         VerifierFunctionTest.cpp
         VerifierFlowTest.cpp
         PrinterTest.cpp
+        ParserTest.cpp
 )
 
 target_link_libraries(nautilus-nir-tests PRIVATE nautilus-nir Catch2::Catch2WithMain)

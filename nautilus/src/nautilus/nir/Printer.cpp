@@ -64,7 +64,9 @@ bool isBareName(std::string_view s) {
 	if (s.empty()) {
 		return false;
 	}
-	auto start = [](char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' || c == '$'; };
+	auto start = [](char c) {
+		return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' || c == '$';
+	};
 	if (!start(s[0])) {
 		return false;
 	}
@@ -106,16 +108,17 @@ public:
 		}
 		for (uint32_t i = 0; i < m_.imports.size(); ++i) {
 			auto& r = m_.imports[i];
-			os_ << "import #i" << i << " = " << quote(m_.name(r.moduleNameId)) << " :: "
-			    << quote(m_.name(r.functionNameId)) << " : " << signature(r.signature) << attrsText(r.attrs) << "\n";
+			os_ << "import #i" << i << " = " << quote(m_.name(r.moduleNameId))
+			    << " :: " << quote(m_.name(r.functionNameId)) << " : " << signature(r.signature) << attrsText(r.attrs)
+			    << "\n";
 		}
 		for (uint32_t i = 0; i < m_.pointers.size(); ++i) {
 			pointer(i);
 		}
 		for (uint32_t i = 0; i < m_.bindings.size(); ++i) {
 			auto& b = m_.bindings[i];
-			os_ << "binding #b" << i << " = " << quote(m_.name(b.nameId)) << " : " << typeName(static_cast<TypeId>(b.type))
-			    << " size " << b.size << " align " << b.align << "\n";
+			os_ << "binding #b" << i << " = " << quote(m_.name(b.nameId)) << " : "
+			    << typeName(static_cast<TypeId>(b.type)) << " size " << b.size << " align " << b.align << "\n";
 		}
 		for (uint32_t i = 0; i < m_.data.size(); ++i) {
 			auto& d = m_.data[i];
@@ -341,7 +344,7 @@ private:
 		for (size_t k = skipped; k < ids.size(); ++k) {
 			os_ << "  " << instruction(ids[k], insts[ids[k]]) << "\n";
 		}
-		(void)f;
+		(void) f;
 	}
 
 	std::string unwind(uint32_t u) const {
@@ -387,8 +390,12 @@ private:
 		auto op = static_cast<Op>(inst.op);
 		auto* info = coreOpInfo(inst.op);
 		std::string name = info ? info->name : "?op" + std::to_string(inst.op);
-		auto A = [&] { return operand(inst.a); };
-		auto B = [&] { return operand(inst.b); };
+		auto A = [&] {
+			return operand(inst.a);
+		};
+		auto B = [&] {
+			return operand(inst.b);
+		};
 		std::string text;
 		switch (op) {
 		case Op::Add:
@@ -437,8 +444,8 @@ private:
 			text = name + " " + A() + ", " + B() + ", " + operand(inst.c);
 			break;
 		case Op::Cast: {
-			static const char* const kinds[] = {"sext",  "zext",    "trunc",    "sitofp",   "uitofp",  "fptosi",
-			                                    "fptoui", "fpext",  "fptrunc",  "bitcast",  "ptrtoint", "inttoptr"};
+			static const char* const kinds[] = {"sext",   "zext",  "trunc",   "sitofp",  "uitofp",   "fptosi",
+			                                    "fptoui", "fpext", "fptrunc", "bitcast", "ptrtoint", "inttoptr"};
 			auto k = inst.flags & 0xF;
 			text = std::string("cast.") + (k < 12 ? kinds[k] : "?") + " " + A() + " : " +
 			       typeName(static_cast<TypeId>(inst.type));

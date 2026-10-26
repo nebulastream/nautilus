@@ -113,10 +113,11 @@ TEST_CASE("the printer covers every opcode", "[nir][printer]") {
 	test::buildPreSSA(m);
 	auto text = print(m);
 	INFO(text);
-	for (auto name : {"add", "sub", "mul", "div.u.checked", "rem.s", "fneg", "and", "or", "not", "band", "bor", "bxor",
-	                  "bnot", "shl", "shr.u", "cmp.lt.u", "select", "cast.sitofp", "load", "store", "alloca", "call #c0",
-	                  "call.indirect", "funcaddr", "bind.addr", "data.addr", "ptr.const", "br ^b2", "condbr", "ret",
-	                  "resume", "assign", "var", "cleanup []"}) {
+	for (auto name : {"add",      "sub",           "mul",      "div.u.checked", "rem.s",     "fneg",      "and",
+	                  "or",       "not",           "band",     "bor",           "bxor",      "bnot",      "shl",
+	                  "shr.u",    "cmp.lt.u",      "select",   "cast.sitofp",   "load",      "store",     "alloca",
+	                  "call #c0", "call.indirect", "funcaddr", "bind.addr",     "data.addr", "ptr.const", "br ^b2",
+	                  "condbr",   "ret",           "resume",   "assign",        "var",       "cleanup []"}) {
 		INFO(name);
 		REQUIRE(text.find(name) != std::string::npos);
 	}
