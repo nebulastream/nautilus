@@ -138,6 +138,8 @@ Summary summarize(const ExecutionTrace& trace) {
 
 struct ModuleState {
 	nir::Module m;
+	/// the attributes of an internal function: what every call of it states (the guarantees they share)
+	std::unordered_map<std::string, uint32_t> internalAttrs;
 	std::unordered_map<std::string, Summary> summaries;
 	std::unordered_map<std::string, uint32_t> functionIndex;
 	std::map<const void*, uint32_t> internalCallee; // NautilusFunctionDefinition identity or name -> callee index
@@ -204,9 +206,9 @@ private:
 	std::string name_;
 	bool exported_;
 
-	std::vector<uint32_t> order_;       // trace block ids in layout order
-	std::vector<uint32_t> newBlockId_;  // trace block id -> NIR block id
-	std::vector<nir::Ref> idOf_;        // value ref -> instruction id
+	std::vector<uint32_t> order_;      // trace block ids in layout order
+	std::vector<uint32_t> newBlockId_; // trace block id -> NIR block id
+	std::vector<nir::Ref> idOf_;       // value ref -> instruction id
 	Type returnType_ = Type::v;
 };
 
@@ -305,6 +307,7 @@ uint32_t FunctionConverter::calleeFor(const FunctionCall& call, Type resultType)
 			params.push_back(typeWord(p));
 		}
 		record.signature = m_.internSignature(typeWord(callee.result), params);
+		record.attrs = s_.internalAttrs.at(call.functionName);
 		record.kind = static_cast<uint8_t>(nir::CalleeKind::Internal);
 		record.target = it->second;
 	} else {
@@ -339,8 +342,12 @@ nir::Ref FunctionConverter::cast(const TypedValueRef& source, Type target) {
 	auto to = typeInfo(target);
 	auto value = valueOf(source);
 	enum : uint8_t { Sext, Zext, Trunc, SiToFp, UiToFp, FpToSi, FpToUi, FpExt, FpTrunc, Bitcast, PtrToInt, IntToPtr };
-	auto isInt = [](TypeId t) { return nir::isInteger(t); };
-	auto width = [](TypeId t) { return nir::sizeOf(t); };
+	auto isInt = [](TypeId t) {
+		return nir::isInteger(t);
+	};
+	auto width = [](TypeId t) {
+		return nir::sizeOf(t);
+	};
 
 	if (from.id == to.id) {
 		// same representation (int32 <-> uint32, ptr <-> ptr): a new variable with the same value
@@ -349,9 +356,13 @@ nir::Ref FunctionConverter::cast(const TypedValueRef& source, Type target) {
 	if (from.id == TypeId::Bool && isInt(to.id)) {
 		return emitCast(value, Zext, to.id);
 	}
-	if (isInt(from.id) && to.id == TypeId::Bool) {
+	if ((isInt(from.id) || from.isFloat) && to.id == TypeId::Bool) {
+		// C++ converts to bool by comparing with zero (a NaN is true); truncation to bool is not a NIR cast
 		auto zero = m_.consts.intern(from.id, nir::Provenance::Literal, 0);
 		return b_.emit(NOp::Cmp, TypeId::Bool, 1 /* ne */, value, zero);
+	}
+	if (from.id == TypeId::Bool && to.isFloat) {
+		return emitCast(emitCast(value, Zext, TypeId::I32), UiToFp, to.id);
 	}
 	if (isInt(from.id) && isInt(to.id)) {
 		if (width(to.id) > width(from.id)) {
@@ -374,6 +385,10 @@ nir::Ref FunctionConverter::cast(const TypedValueRef& source, Type target) {
 	if (from.id == TypeId::Ptr && isInt(to.id)) {
 		auto asInt = emitCast(value, PtrToInt, TypeId::I64);
 		return to.id == TypeId::I64 ? asInt : emitCast(asInt, Trunc, to.id);
+	}
+	if (from.id == TypeId::Ptr && to.isFloat) {
+		// the address as a number: ptrtoint, then uitofp
+		return emitCast(emitCast(value, PtrToInt, TypeId::I64), UiToFp, to.id);
 	}
 	if (isInt(from.id) && to.id == TypeId::Ptr) {
 		auto wide = from.id == TypeId::I64 ? value : emitCast(value, from.isSigned ? Sext : Zext, TypeId::I64);
@@ -482,7 +497,9 @@ nir::Ref FunctionConverter::cmpFlags(Op op, const TypedValueRef& operand, uint8_
 
 void FunctionConverter::emitOperation(const TraceOperation& op, uint32_t traceBlock) {
 	(void) traceBlock;
-	auto in = [&](size_t i) -> const TypedValueRef& { return std::get<TypedValueRef>(op.input[i]); };
+	auto in = [&](size_t i) -> const TypedValueRef& {
+		return std::get<TypedValueRef>(op.input[i]);
+	};
 	auto result = [&](nir::Ref id) {
 		if (op.resultRef.ref != 0 && op.resultType != Type::v) {
 			define(op.resultRef.ref, id);
@@ -492,20 +509,34 @@ void FunctionConverter::emitOperation(const TraceOperation& op, uint32_t traceBl
 	case Op::CONST: {
 		auto type = typeInfo(op.resultType);
 		const auto& literal = std::get<ConstantLiteral>(op.input[0]);
+		const bool known = op.resultRef.ref < idOf_.size() && idOf_[op.resultRef.ref] != nir::NONE;
+		nir::Ref value;
 		if (type.id == TypeId::Ptr) {
+			// a traced pointer is never a constant: it is a ptr.const of a pointers entry (01 §6)
 			auto address = std::get<void*>(literal);
 			if (address == nullptr) {
-				result(b_.emit(NOp::PtrConst, TypeId::Ptr, 0, nir::NONE));
+				value = b_.emit(NOp::PtrConst, TypeId::Ptr, 0, nir::NONE);
 			} else {
 				s_.processLocal = true;
-				auto entry = m_.internPointer(nir::PointerRecord {static_cast<uint8_t>(nir::PointerKind::TracedAddress),
-				                                                  0, static_cast<uint8_t>(nir::Provenance::RawProcessValue),
-				                                                  0, 0, reinterpret_cast<uintptr_t>(address), 0});
-				result(b_.emit(NOp::PtrConst, TypeId::Ptr, 0, entry));
+				auto entry =
+				    m_.internPointer(nir::PointerRecord {static_cast<uint8_t>(nir::PointerKind::TracedAddress), 0,
+				                                         static_cast<uint8_t>(nir::Provenance::RawProcessValue), 0, 0,
+				                                         reinterpret_cast<uintptr_t>(address), 0});
+				value = b_.emit(NOp::PtrConst, TypeId::Ptr, 0, entry);
+			}
+			if (known) {
+				b_.emit(NOp::Assign, TypeId::Void, 0, idOf_[op.resultRef.ref], value);
+			} else {
+				define(op.resultRef.ref, value);
 			}
 		} else {
-			auto constant = m_.consts.intern(type.id, nir::Provenance::Literal, literalBits(literal));
-			result(b_.emit(NOp::Var, type.id, 0, constant));
+			value = m_.consts.intern(type.id, nir::Provenance::Literal, literalBits(literal));
+			if (known) {
+				// the same call site reached on another path: a write onto the variable the first visit made (#95)
+				b_.emit(NOp::Assign, TypeId::Void, 0, idOf_[op.resultRef.ref], value);
+			} else {
+				define(op.resultRef.ref, b_.emit(NOp::Var, type.id, 0, value));
+			}
 		}
 		break;
 	}
@@ -656,8 +687,12 @@ void FunctionConverter::run() {
 
 	auto signature = signatureFor(returnType_, parameters);
 	auto nameId = m_.internName(name_);
+	uint32_t attrs = 0;
+	if (auto it = s_.internalAttrs.find(name_); it != s_.internalAttrs.end()) {
+		attrs = it->second;
+	}
 	b_.beginFunction(nameId, signature, exported_ ? nir::Visibility::Exported : nir::Visibility::Internal,
-	                 nir::Level::PreSSA);
+	                 nir::Level::PreSSA, attrs);
 	for (const auto& spec : trace_.allocaSpecs) {
 		b_.addAlloca(static_cast<uint32_t>(spec.size), static_cast<uint32_t>(spec.align));
 	}
@@ -692,6 +727,22 @@ nir::Module toPreSSA(const TraceModule& module, const Options& options) {
 	for (uint32_t i = 0; i < names.size(); ++i) {
 		state.functionIndex[names[i]] = i;
 		state.summaries[names[i]] = summarize(*module.getFunction(names[i]));
+	}
+	// the attributes of an internal function are what its call sites state; the pre-SSA module has no inference yet
+	for (const auto& name : names) {
+		for (const auto* block : module.getFunction(name)->blocks) {
+			for (const auto* op : block->operations) {
+				if ((op->op == Op::CALL || op->op == Op::CALL_WITH_EXCEPTION_HANDLING || op->op == Op::FUNC_ADDR) &&
+				    std::get<FunctionCall*>(op->input[0])->kind == CalleeKind::Internal) {
+					const auto& call = *std::get<FunctionCall*>(op->input[0]);
+					auto bits = op->op == Op::FUNC_ADDR ? 0u : attrBits(call.fnAttrs);
+					auto [it, inserted] = state.internalAttrs.emplace(call.functionName, bits);
+					if (!inserted) {
+						it->second &= bits;
+					}
+				}
+			}
+		}
 	}
 	for (const auto& name : names) {
 		FunctionConverter(state, *module.getFunction(name), name, isEntry(name)).run();
