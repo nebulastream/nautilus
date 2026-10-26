@@ -22,3 +22,9 @@ the SSA `IRGraph`. Read `docs/tracing.md` and `docs/region.md` first.
 - **Tests:** `nautilus-tracing-unit-tests` for internals, `nautilus-tracing-tests`
   for dumps, `nautilus-execution-tests` for behavior, the differential fuzzer for
   mixed control flow.
+- **Statistics:** `TraceContext` counts iterations, replayed and paused operations, snapshots and copies by kind
+  (`TracingStatistics.hpp`) and times the first pass and the re-runs, split into follow, record and paused time. The
+  compilation pipeline reports them as `tracing.*` (`engine.logStatistics=true`).
+- **NIR:** `nir/NirTrace.cpp` maps a finished trace to pre-SSA NIR. `tracing.verifyNir=true` runs the NIR verifier
+  on it for every compilation (`NAUTILUS_OPTIONS="tracing.verifyNir=true" ctest --preset dev` checks the mapping on
+  the whole suite); `nautilus-tracing-tests` compares the text with `nautilus/test/data/*/nir`.

@@ -607,6 +607,7 @@ val<ValueType> inline ptrAddStatic(const val<ValueType>& left, size_t count) {
 			return ptrAdd(left, val<size_t>(count));
 		}
 		if (offsetBytes == 0) {
+			tracing::noteExplicitCopy();
 			return val<ValueType>(left.value, tracing::traceCopy(left.state));
 		}
 		auto offsetRef = tracing::traceConstant(offsetBytes);

@@ -239,6 +239,25 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 	}
+	if (statistics != nullptr) {
+		const auto& t = traceModule->statistics;
+		statistics->set("tracing.iterations", static_cast<int64_t>(t.iterations));
+		statistics->set("tracing.replayedOperations", static_cast<int64_t>(t.replayedOperations));
+		statistics->set("tracing.snapshots", static_cast<int64_t>(t.snapshots));
+		statistics->set("tracing.operations", static_cast<int64_t>(t.operations));
+		statistics->set("tracing.pausedOperations", static_cast<int64_t>(t.pausedOperations));
+		statistics->set("tracing.copies", static_cast<int64_t>(t.copies()));
+		statistics->set("tracing.copies.construct", static_cast<int64_t>(t.copiesConstruct));
+		statistics->set("tracing.copies.assign", static_cast<int64_t>(t.copiesAssign));
+		statistics->set("tracing.copies.explicit", static_cast<int64_t>(t.copiesExplicit));
+		statistics->set("tracing.scopes", static_cast<int64_t>(t.scopes));
+		statistics->set("tracing.maxScopeIterations", static_cast<int64_t>(t.maxScopeIterations));
+		statistics->set("tracing.firstRun.ms", t.firstRunMs);
+		statistics->set("tracing.rerun.ms", t.rerunMs);
+		statistics->set("tracing.rerun.follow.ms", t.rerunFollowMs);
+		statistics->set("tracing.rerun.record.ms", t.rerunRecordMs);
+		statistics->set("tracing.rerun.paused.ms", t.rerunPausedMs);
+	}
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
 	if (const bool verifyNir = moduleOptions.getOptionOrDefault("tracing.verifyNir", false);
 	    verifyNir || dumpHandler.shouldDump("after_nir_tracing")) {

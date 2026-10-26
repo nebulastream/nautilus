@@ -3,6 +3,7 @@
 
 #include "Block.hpp"
 #include "TraceOperation.hpp"
+#include "TracingStatistics.hpp"
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/common/RegionAttributes.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
@@ -125,6 +126,9 @@ public:
 	std::vector<std::string> getFunctionNames() const;
 
 	std::string toString() const;
+
+	/// What tracing the functions of this module counted.
+	TracingStatistics statistics;
 
 private:
 	std::unordered_map<std::string, TraceFunctionDefinition> functions;

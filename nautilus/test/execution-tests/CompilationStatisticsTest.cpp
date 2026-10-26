@@ -65,6 +65,25 @@ TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats") {
 		REQUIRE(std::get<double>(*value) >= 0.0);
 	}
 
+	// What tracing counted (M2.0): counters and the first-run/re-run times.
+	for (const auto* key :
+	     {"tracing.iterations", "tracing.replayedOperations", "tracing.snapshots", "tracing.operations",
+	      "tracing.pausedOperations", "tracing.copies", "tracing.copies.construct", "tracing.copies.assign",
+	      "tracing.copies.explicit", "tracing.scopes", "tracing.maxScopeIterations"}) {
+		INFO("missing key: " << key);
+		const auto* value = stats->find(key);
+		REQUIRE(value != nullptr);
+		REQUIRE(std::holds_alternative<int64_t>(*value));
+	}
+	REQUIRE(std::get<int64_t>(*stats->find("tracing.iterations")) == 1);
+	for (const auto* key : {"tracing.firstRun.ms", "tracing.rerun.ms", "tracing.rerun.follow.ms",
+	                        "tracing.rerun.record.ms", "tracing.rerun.paused.ms"}) {
+		INFO("missing key: " << key);
+		const auto* value = stats->find(key);
+		REQUIRE(value != nullptr);
+		REQUIRE(std::holds_alternative<double>(*value));
+	}
+
 	// IR entity counts appear after IR generation.
 	const auto* operations = stats->find("ir.operations");
 	REQUIRE(operations != nullptr);

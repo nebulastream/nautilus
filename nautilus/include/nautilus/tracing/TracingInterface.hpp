@@ -45,6 +45,11 @@ public:
 	/// Trace a copy of an existing traced value.
 	virtual TypedValueRef& traceCopy(const TypedValueRef& ref) = 0;
 
+	/// The next traceCopy is a copy the library makes on purpose (`ptr + 0`), not a `val` copy construction. Only the
+	/// statistics tell the two apart.
+	virtual void noteExplicitCopy() {
+	}
+
 	/// Trace a binary operation (e.g. ADD, MUL, EQ, ...).
 	virtual TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
 	                                     const TypedValueRef& right) = 0;

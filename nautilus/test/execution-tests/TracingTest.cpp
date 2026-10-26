@@ -912,3 +912,57 @@ TEST_CASE("Nautilus Function Call Trace Test") {
 	runTraceTests("nautilus-function-call-tests", tests);
 }
 } // namespace nautilus::engine
+
+// The tracing statistics (docs/plans/nautilus-0.4/10-observability.md §3, M2.0).
+namespace nautilus::engine {
+
+namespace {
+
+val<int32_t*> pointerPlusZero(val<int32_t*> p) {
+	return p + 0;
+}
+
+tracing::TracingStatistics statisticsOf(std::function<void()> function) {
+	common::Arena arena;
+	std::list<compiler::CompilableFunction> functions;
+	functions.emplace_back("execute", std::move(function));
+	return tracing::TraceContext::Trace(functions, engine::Options {}, arena)->statistics;
+}
+
+} // namespace
+
+TEST_CASE("Tracing statistics: straight-line code is one pass", "[tracing][statistics]") {
+	auto stats = statisticsOf(details::createFunctionWrapper(int8AddExpression));
+	CHECK(stats.iterations == 1);
+	CHECK(stats.scopes == 1);
+	CHECK(stats.maxScopeIterations == 1);
+	CHECK(stats.replayedOperations == 0);
+	CHECK(stats.pausedOperations == 0);
+	CHECK(stats.snapshots > 0);
+	CHECK(stats.operations > 0);
+	CHECK(stats.rerunMs == 0);
+	CHECK(stats.firstRunMs > 0);
+}
+
+TEST_CASE("Tracing statistics: independent branches are replayed", "[tracing][statistics]") {
+	auto stats = statisticsOf(details::createFunctionWrapper(chainedIf10));
+	// ten independent ifs need eleven passes; every re-run steps over the path it follows
+	CHECK(stats.iterations == 11);
+	CHECK(stats.maxScopeIterations == 11);
+	CHECK(stats.replayedOperations > 0);
+	CHECK(stats.rerunMs > 0);
+	// the split covers the re-run time and no more
+	CHECK(stats.rerunFollowMs + stats.rerunRecordMs + stats.rerunPausedMs <= stats.rerunMs * 1.001 + 1e-6);
+	CHECK(stats.rerunFollowMs > 0);
+}
+
+TEST_CASE("Tracing statistics: copies by kind", "[tracing][statistics]") {
+	auto assignments = statisticsOf(details::createFunctionWrapper(assignAdd));
+	CHECK(assignments.copiesAssign > 0);
+	auto pointers = statisticsOf(details::createFunctionWrapper(pointerPlusZero));
+	CHECK(pointers.copiesExplicit == 1);
+	CHECK(pointers.copiesConstruct == 0);
+	CHECK(pointers.copies() == pointers.copiesExplicit + pointers.copiesConstruct);
+}
+
+} // namespace nautilus::engine

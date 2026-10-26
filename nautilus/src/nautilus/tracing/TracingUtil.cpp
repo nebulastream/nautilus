@@ -54,6 +54,12 @@ TypedValueRef traceCopy(const TypedValueRef& ref) {
 	return {};
 }
 
+void noteExplicitCopy() {
+	if (activeTracer) {
+		activeTracer->noteExplicitCopy();
+	}
+}
+
 void allocateValRef(ValueRef ref) {
 	if (activeTracer) {
 		activeTracer->allocateValRef(ref);

@@ -71,6 +71,8 @@ TypedValueRef traceConstant(T&& value) {
 
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
 TypedValueRef traceCopy(const TypedValueRef& ref);
+/// The next traceCopy is a copy the library makes on purpose (`ptr + 0`); see TracingInterface::noteExplicitCopy.
+void noteExplicitCopy();
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                          FunctionAttributes fnAttrs);

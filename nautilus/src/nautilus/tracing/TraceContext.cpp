@@ -13,6 +13,7 @@
 #include <cassert>
 #include <cstddef>
 #include <fmt/format.h>
+#include <utility>
 
 namespace fmt {
 template <>
@@ -97,6 +98,7 @@ std::string TraceContext::describeCurrentFunction() const {
 
 TypedValueRef& TraceContext::registerFunctionArgument(Type type, size_t index) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	if (parent_ != nullptr) {
@@ -111,6 +113,7 @@ bool TraceContext::isFollowing() {
 }
 
 TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
+	++session_->stats_.replayedOperations;
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	auto consumedTag = currentOperation.tag;
 	state->executionTrace.nextOperation();
@@ -141,6 +144,7 @@ TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
 
 TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	log::debug("Trace Constant");
@@ -164,6 +168,7 @@ TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& con
 template <typename OnCreation>
 TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	if (isFollowing()) {
@@ -174,7 +179,7 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 			return onCreation(tag);
 		} else {
 			// Already explored from here: enter passive mode.
-			paused_ = true;
+			pause();
 			return dummyRef_;
 		}
 	}
@@ -193,11 +198,14 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 	// Copies are about half of all traced operations in real workloads, so this path does one tag lookup and
 	// no logging.
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
+	const bool explicitCopy = std::exchange(nextCopyExplicit_, false);
 	if (isFollowing()) {
 		return follow(ASSIGN);
 	}
+	++(explicitCopy ? session_->stats_.copiesExplicit : session_->stats_.copiesConstruct);
 	auto tag = recordSnapshot();
 	auto& trace = state->executionTrace;
 	if (state->recordCopySites) {
@@ -234,6 +242,7 @@ TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
                                        const std::vector<tracing::TypedValueRef>& arguments,
                                        FunctionAttributes fnAttrs) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	// Normalization is session-wide: a call traced inside a region must normalize to
@@ -256,6 +265,7 @@ TypedValueRef& TraceContext::traceCallWithExceptionHandling(void* fptn, Type res
                                                             const std::vector<tracing::TypedValueRef>& arguments,
                                                             FunctionAttributes fnAttrs, void* captureFunc) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	auto functionName = session_->normalizedFunctionName(fptn);
@@ -277,6 +287,7 @@ TypedValueRef& TraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Ty
                                                const std::vector<tracing::TypedValueRef>& arguments,
                                                FunctionAttributes fnAttrs, void* captureFunc) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	auto op = Op::INDIRECT_CALL;
@@ -296,6 +307,7 @@ TraceContext::traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrR
                                                      const std::vector<tracing::TypedValueRef>& arguments,
                                                      FunctionAttributes fnAttrs, void* captureFunc) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	auto op = Op::INDIRECT_CALL_WITH_EXCEPTION_HANDLING;
@@ -349,6 +361,7 @@ TypedValueRef& TraceContext::traceNautilusCall(const NautilusFunctionDefinition*
                                                const std::vector<tracing::TypedValueRef>& arguments,
                                                FunctionAttributes fnAttrs) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	bool newlyRegistered = false;
@@ -372,6 +385,7 @@ TypedValueRef& TraceContext::traceNautilusCallWithExceptionHandling(
     const NautilusFunctionDefinition* definition, std::function<void()> fwrapper, Type resultType,
     const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	bool newlyRegistered = false;
@@ -394,6 +408,7 @@ TypedValueRef& TraceContext::traceNautilusCallWithExceptionHandling(
 TypedValueRef& TraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
                                                       std::function<void()> fwrapper) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	bool newlyRegistered = false;
@@ -415,12 +430,14 @@ TypedValueRef& TraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefi
 
 void TraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return;
 	}
 	if (isFollowing()) {
 		follow(ASSIGN);
 		return;
 	}
+	++session_->stats_.copiesAssign;
 	auto tag = recordSnapshot();
 	auto& trace = state->executionTrace;
 
@@ -447,7 +464,7 @@ void TraceContext::traceAssignment(const TypedValueRef& target, const TypedValue
 		}
 	}
 	if (!trace.checkTag(tag)) {
-		paused_ = true;
+		pause();
 		return;
 	}
 	trace.addAssignmentOperation(tag, target, source, resultType);
@@ -455,6 +472,7 @@ void TraceContext::traceAssignment(const TypedValueRef& target, const TypedValue
 
 void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return;
 	}
 	if (parent_ != nullptr) {
@@ -473,6 +491,7 @@ void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& re
 TypedValueRef& TraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
                                            const TypedValueRef& right) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
@@ -482,6 +501,7 @@ TypedValueRef& TraceContext::traceBinaryOp(Op op, Type resultType, const TypedVa
 
 TypedValueRef& TraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
@@ -492,6 +512,7 @@ TypedValueRef& TraceContext::traceUnaryOp(Op op, Type resultType, const TypedVal
 TypedValueRef& TraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
                                             const TypedValueRef& second, const TypedValueRef& third) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return dummyRef_;
 	}
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
@@ -501,6 +522,7 @@ TypedValueRef& TraceContext::traceTernaryOp(Op op, Type resultType, const TypedV
 
 bool TraceContext::traceBool(const TypedValueRef& value, const double probability) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		// In passive mode, return false to guarantee loop termination.
 		return false;
 	}
@@ -509,9 +531,14 @@ bool TraceContext::traceBool(const TypedValueRef& value, const double probabilit
 	bool shouldTerminate = false;
 
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
+		++session_->stats_.replayedOperations;
 		auto recordResult = state->symbolicExecutionContext.follow();
 		result = recordResult.branchDirection;
 		shouldTerminate = recordResult.shouldTerminate;
+		// the last decision of the path is the one that flips: from here on the pass records
+		if (state->symbolicExecutionContext.getCurrentMode() != SymbolicExecutionContext::MODE::FOLLOW) {
+			enterPhase(Phase::Record);
+		}
 	} else {
 		// record
 		auto tag = recordSnapshot();
@@ -522,14 +549,14 @@ bool TraceContext::traceBool(const TypedValueRef& value, const double probabilit
 			shouldTerminate = recordResult.shouldTerminate;
 		} else {
 			// Control flow merge/loop detected. Enter passive mode.
-			paused_ = true;
+			pause();
 			return false;
 		}
 	}
 
 	if (shouldTerminate) {
 		// The symbolic execution signals termination (SecondVisit): enter passive mode.
-		paused_ = true;
+		pause();
 		return false;
 	}
 
@@ -560,9 +587,16 @@ void TraceContext::runScope(std::function<void()>& body) {
 		symbolicExecutionContext.next();
 		state->executionTrace.setCurrentBlock(entryBlock_);
 		resume(); // Reset persistent state (staticVars, aliveVars, paused_)
+		++session_->stats_.iterations;
+		if (parent_ == nullptr) {
+			beginPass(traceIteration > 1);
+		}
 
 		// Execute the scope body - it always returns normally.
 		body();
+		if (parent_ == nullptr) {
+			endPass();
+		}
 
 		// A region scope has no terminator of its own; see traceScopeExit().
 		if (parent_ != nullptr) {
@@ -574,6 +608,53 @@ void TraceContext::runScope(std::function<void()>& body) {
 		assert(staticVars.empty() && "static variable stack not empty after tracing iteration");
 	}
 	log::debug("Scope traced with {} iterations", traceIteration);
+	++session_->stats_.scopes;
+	session_->stats_.maxScopeIterations = std::max<uint64_t>(session_->stats_.maxScopeIterations, traceIteration);
+}
+
+void TraceContext::beginPass(bool rerun) {
+	rerunPass_ = rerun;
+	phase_ = rerun ? Phase::Follow : Phase::Record;
+	phaseStart_ = passStart_ = std::chrono::steady_clock::now();
+}
+
+void TraceContext::accountPhase(std::chrono::steady_clock::time_point now) {
+	if (!rerunPass_) {
+		return;
+	}
+	const double ms = std::chrono::duration<double, std::milli>(now - phaseStart_).count();
+	auto& stats = session_->stats_;
+	switch (phase_) {
+	case Phase::Follow:
+		stats.rerunFollowMs += ms;
+		break;
+	case Phase::Record:
+		stats.rerunRecordMs += ms;
+		break;
+	case Phase::Paused:
+		stats.rerunPausedMs += ms;
+		break;
+	case Phase::None:
+		break;
+	}
+}
+
+void TraceContext::enterPhase(Phase phase) {
+	if (phase_ == Phase::None || phase_ == phase) {
+		return;
+	}
+	const auto now = std::chrono::steady_clock::now();
+	accountPhase(now);
+	phase_ = phase;
+	phaseStart_ = now;
+}
+
+void TraceContext::endPass() {
+	const auto now = std::chrono::steady_clock::now();
+	accountPhase(now);
+	const double ms = std::chrono::duration<double, std::milli>(now - passStart_).count();
+	(rerunPass_ ? session_->stats_.rerunMs : session_->stats_.firstRunMs) += ms;
+	phase_ = Phase::None;
 }
 
 TraceContext::RegionScopeState& TraceContext::regionState() {
@@ -655,7 +736,7 @@ void TraceContext::traceScopeExit() {
 	auto& trace = state->executionTrace;
 	if (!trace.checkTag(snapshot)) {
 		// This pass's tail was merged with an earlier pass's exit. The pass is over.
-		paused_ = true;
+		pause();
 		return;
 	}
 	trace.getBlock(region.exitBlock).predecessors.emplace_back(trace.getCurrentBlockIndex());
@@ -664,6 +745,7 @@ void TraceContext::traceScopeExit() {
 
 void TraceContext::traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) {
 	if (paused_) {
+		++session_->stats_.pausedOperations;
 		return;
 	}
 	auto& trace = state->executionTrace;
@@ -690,7 +772,7 @@ void TraceContext::traceRegion(std::function<void()>& regionFunction, const Regi
 	if (!trace.checkTag(key)) {
 		// Re-entering the same region call site in the same state is a control-flow
 		// re-entry (a loop around the region); checkTag has merged, so this pass ends.
-		paused_ = true;
+		pause();
 		return;
 	}
 
@@ -802,6 +884,7 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 	functionsToTrace = functions;
 	registeredFunctions.clear();
 	usedFunctionNames.clear();
+	stats_ = {};
 	setActiveTracer(this);
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// escapes the per-function loop below.
@@ -864,8 +947,12 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 		// The trace is complete, so the blocks that only bounded region bodies can go.
 		executionTrace.collapseRegionSeams();
 		resolveCalleeNames(executionTrace, options);
+		for (const auto* block : executionTrace.blocks) {
+			stats_.operations += block->operations.size();
+		}
 		log::trace("Final trace: {}", executionTrace);
 	}
+	traceModule->statistics = stats_;
 
 	// activeTracer is cleared by ActiveTracerGuard.
 	return traceModule;
@@ -998,6 +1085,7 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 }
 
 Snapshot TraceContext::recordSnapshot() {
+	++session_->stats_.snapshots;
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
 }
 
