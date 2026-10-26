@@ -23,6 +23,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         ModuleLifecycleTest.cpp
         ModuleTest.cpp
         TieredCompilationTest.cpp
+        ArenaMemoryTest.cpp
         PointerExecutionTest.cpp
         RegionTest.cpp
         SelectExecutionTest.cpp
