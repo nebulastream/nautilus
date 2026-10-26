@@ -25,8 +25,8 @@ struct Hash128 {
 Hash128 hashBytes(std::span<const uint8_t> data);
 
 /// The structural hash of 13-nir-spec.md §7.2: XXH3-128 over bytes [48, totalSize) of the canonical image of the
-/// module canonicalized as if it were anonymous and without debug sections, then the options block of the code-affecting
-/// options in effect. The module must be at the SSA level. A cache key, not a security property.
+/// module canonicalized as if it were anonymous and without debug sections, then the options block of the
+/// code-affecting options in effect. The module must be at the SSA level. A cache key, not a security property.
 Hash128 structuralHash(const Module& m, const EffectiveOptions& options, const CanonOptions& canon = {});
 
 /// The key of compiled code that inlined imports (§7.3): XXH3-128 over the module's key, a u32 count and, per

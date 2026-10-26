@@ -51,15 +51,17 @@ TEST_CASE("XXH3-128 with seed 0 matches the reference values", "[nir][hash]") {
 
 TEST_CASE("equal modules hash equally, whatever their table order and name", "[nir][hash]") {
 	auto a = parseOk(program);
-	auto b = parseOk(replace(replace(program, "module \"one\"", "module \"two\""), "pointer #p0 = callee symbol \"ext_a\"",
-	                         "pointer #p0 = callee symbol \"never_used\"\npointer #p1 = callee symbol \"ext_a\""));
+	auto b =
+	    parseOk(replace(replace(program, "module \"one\"", "module \"two\""), "pointer #p0 = callee symbol \"ext_a\"",
+	                    "pointer #p0 = callee symbol \"never_used\"\npointer #p1 = callee symbol \"ext_a\""));
 	// callees refer to #p1 in b
-	auto text = replace(replace(program, "module \"one\"", "module \"two\""),
-	                    "pointer #p0 = callee symbol \"ext_a\"\ncallee #c0 = external #p0",
-	                    "pointer #p0 = callee symbol \"never_used\"\npointer #p1 = callee symbol \"ext_a\"\ncallee #c0 = external #p1");
+	auto text = replace(
+	    replace(program, "module \"one\"", "module \"two\""),
+	    "pointer #p0 = callee symbol \"ext_a\"\ncallee #c0 = external #p0",
+	    "pointer #p0 = callee symbol \"never_used\"\npointer #p1 = callee symbol \"ext_a\"\ncallee #c0 = external #p1");
 	auto c = parseOk(text);
 	REQUIRE(hashOf(a) == hashOf(c));
-	(void)b;
+	(void) b;
 }
 
 TEST_CASE("changing the program changes the hash", "[nir][hash]") {

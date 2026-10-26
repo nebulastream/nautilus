@@ -13,6 +13,7 @@ add_executable(nautilus-nir-tests
         CanonicalizeTest.cpp
         ImageTest.cpp
         HashTest.cpp
+        ImageConformanceTest.cpp
 )
 
 target_link_libraries(nautilus-nir-tests PRIVATE nautilus-nir Catch2::Catch2WithMain)

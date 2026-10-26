@@ -1,0 +1,202 @@
+# structural hash 98f40775218b9a85f28320f0c0632944
+NIR image, magic ok
+version 1.0
+compat features: none
+incompat features: none
+totalSize 984
+crc32c b2be0382 (ok)
+sections 19
+
+header
+00000000  4e 49 52 00                                      ; magic
+00000004  01 00 00 00                                      ; major, minor
+00000008  00 00 00 00                                      ; compatFeatures
+0000000c  00 00 00 00                                      ; incompatFeatures
+00000010  d8 03 00 00 00 00 00 00                          ; totalSize
+00000018  13 00 00 00                                      ; sectionCount
+0000001c  82 03 be b2                                      ; crc32c
+00000020  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; reserved
+
+section table
+  kind 1 insts: stride 16, offset 504, count 7
+00000030  01 00 00 00 10 00 00 00                          ; kind, stride
+00000038  f8 01 00 00 00 00 00 00 07 00 00 00 00 00 00 00  ; offset, count -> insts
+  kind 2 extra: stride 4, offset 616, count 14
+00000048  02 00 00 00 04 00 00 00                          ; kind, stride
+00000050  68 02 00 00 00 00 00 00 0e 00 00 00 00 00 00 00  ; offset, count -> extra
+  kind 3 consts: stride 16, offset 672, count 0
+00000060  03 00 00 00 10 00 00 00                          ; kind, stride
+00000068  a0 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; offset, count -> consts
+  kind 4 constBytes: stride 1, offset 672, count 0
+00000078  04 00 00 00 01 00 00 00                          ; kind, stride
+00000080  a0 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; offset, count -> constBytes
+  kind 5 blocks: stride 16, offset 672, count 2
+00000090  05 00 00 00 10 00 00 00                          ; kind, stride
+00000098  a0 02 00 00 00 00 00 00 02 00 00 00 00 00 00 00  ; offset, count -> blocks
+  kind 6 functions: stride 40, offset 704, count 1
+000000a8  06 00 00 00 28 00 00 00                          ; kind, stride
+000000b0  c0 02 00 00 00 00 00 00 01 00 00 00 00 00 00 00  ; offset, count -> functions
+  kind 7 signatures: stride 12, offset 744, count 2
+000000c0  07 00 00 00 0c 00 00 00                          ; kind, stride
+000000c8  e8 02 00 00 00 00 00 00 02 00 00 00 00 00 00 00  ; offset, count -> signatures
+  kind 8 callees: stride 16, offset 768, count 2
+000000d8  08 00 00 00 10 00 00 00                          ; kind, stride
+000000e0  00 03 00 00 00 00 00 00 02 00 00 00 00 00 00 00  ; offset, count -> callees
+  kind 9 allocas: stride 8, offset 800, count 1
+000000f0  09 00 00 00 08 00 00 00                          ; kind, stride
+000000f8  20 03 00 00 00 00 00 00 01 00 00 00 00 00 00 00  ; offset, count -> allocas
+  kind 10 pointers: stride 24, offset 808, count 3
+00000108  0a 00 00 00 18 00 00 00                          ; kind, stride
+00000110  28 03 00 00 00 00 00 00 03 00 00 00 00 00 00 00  ; offset, count -> pointers
+  kind 11 bindings: stride 16, offset 880, count 0
+00000120  0b 00 00 00 10 00 00 00                          ; kind, stride
+00000128  70 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; offset, count -> bindings
+  kind 12 names: stride 8, offset 880, count 5
+00000138  0c 00 00 00 08 00 00 00                          ; kind, stride
+00000140  70 03 00 00 00 00 00 00 05 00 00 00 00 00 00 00  ; offset, count -> names
+  kind 13 nameBytes: stride 1, offset 920, count 44
+00000150  0d 00 00 00 01 00 00 00                          ; kind, stride
+00000158  98 03 00 00 00 00 00 00 2c 00 00 00 00 00 00 00  ; offset, count -> nameBytes
+  kind 14 extensions: stride 8, offset 968, count 0
+00000168  0e 00 00 00 08 00 00 00                          ; kind, stride
+00000170  c8 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; offset, count -> extensions
+  kind 19 module: stride 16, offset 968, count 1
+00000180  13 00 00 00 10 00 00 00                          ; kind, stride
+00000188  c8 03 00 00 00 00 00 00 01 00 00 00 00 00 00 00  ; offset, count -> module
+  kind 20 imports: stride 16, offset 984, count 0
+00000198  14 00 00 00 10 00 00 00                          ; kind, stride
+000001a0  d8 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; offset, count -> imports
+  kind 23 data: stride 16, offset 984, count 0
+000001b0  17 00 00 00 10 00 00 00                          ; kind, stride
+000001b8  d8 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; offset, count -> data
+  kind 24 dataBytes: stride 1, offset 984, count 0
+000001c8  18 00 00 00 01 00 00 00                          ; kind, stride
+000001d0  d8 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; offset, count -> dataBytes
+  kind 25 functionAttrs: stride 16, offset 984, count 0
+000001e0  19 00 00 00 10 00 00 00                          ; kind, stride
+000001e8  d8 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; offset, count -> functionAttrs
+
+insts (7 x 16 bytes)
+000001f8  28 00 08 00 00 00 00 00 00 00 00 00 00 00 00 00  ; [0]
+00000208  1e 00 08 00 00 00 00 00 00 00 00 00 00 00 00 00  ; [1]
+00000218  20 00 05 00 00 00 00 00 00 00 00 00 02 00 00 00  ; [2]
+00000228  20 00 00 00 01 00 00 00 00 00 00 00 06 00 00 00  ; [3]
+00000238  32 00 00 00 02 00 00 00 00 00 00 00 00 00 00 00  ; [4]
+00000248  20 00 00 00 01 00 00 00 00 00 00 00 0a 00 00 00  ; [5]
+00000258  33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; [6]
+
+extra (14 x 4 bytes)
+00000268  08 00 00 00                                      ; [0]
+0000026c  08 00 00 00                                      ; [1]
+00000270  01 00 00 00                                      ; [2]
+00000274  01 00 00 00                                      ; [3]
+00000278  01 00 00 00                                      ; [4]
+0000027c  01 00 00 00                                      ; [5]
+00000280  01 00 00 00                                      ; [6]
+00000284  01 00 00 00                                      ; [7]
+00000288  ff ff ff ff                                      ; [8]
+0000028c  ff ff ff ff                                      ; [9]
+00000290  01 00 00 00                                      ; [10]
+00000294  01 00 00 00                                      ; [11]
+00000298  ff ff ff ff                                      ; [12]
+0000029c  ff ff ff ff                                      ; [13]
+
+consts (0 x 16 bytes)
+
+constBytes (0 x 1 bytes)
+
+blocks (2 x 16 bytes)
+000002a0  00 00 00 00 05 00 00 00 01 00 00 00 00 00 00 00  ; [0]
+000002b0  05 00 00 00 02 00 00 00 00 00 01 00 00 00 00 00  ; [1]
+
+functions (1 x 40 bytes)
+000002c0  00 00 00 00 00 00 00 00 00 00 00 00 07 00 00 00  ; [0]
+000002d0  00 00 00 00 02 00 00 00 00 00 00 00 01 00 00 00
+000002e0  00 00 00 00 01 01 00 00
+
+signatures (2 x 12 bytes)
+000002e8  05 00 00 00 01 00 00 00 00 00 00 00              ; [0]
+000002f4  00 00 00 00 01 00 00 00 01 00 00 00              ; [1]
+
+callees (2 x 16 bytes)
+00000300  01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; [0]
+00000310  01 00 00 00 02 00 00 00 01 00 00 00 10 00 00 00  ; [1]
+
+allocas (1 x 8 bytes)
+00000320  10 00 00 00 08 00 00 00                          ; [0]
+
+pointers (3 x 24 bytes)
+00000328  00 01 00 00 01 00 00 00 00 00 00 00 00 00 00 00  ; [0]
+00000338  00 00 00 00 00 00 00 00
+00000340  01 01 00 00 02 00 00 00 00 00 00 00 00 00 00 00  ; [1]
+00000350  00 00 00 00 00 00 00 00
+00000358  02 01 00 00 03 00 00 00 00 00 00 00 00 00 00 00  ; [2]
+00000368  00 00 00 00 00 00 00 00
+
+bindings (0 x 16 bytes)
+
+names (5 x 8 bytes)
+00000370  00 00 00 00 03 00 00 00                          ; [0]
+00000378  03 00 00 00 07 00 00 00                          ; [1]
+00000380  0a 00 00 00 0d 00 00 00                          ; [2]
+00000388  17 00 00 00 0f 00 00 00                          ; [3]
+00000390  26 00 00 00 06 00 00 00                          ; [4]
+
+nameBytes (44 x 1 bytes)
+00000398  72                                               ; [0]
+00000399  75                                               ; [1]
+0000039a  6e                                               ; [2]
+0000039b  70                                               ; [3]
+0000039c  72                                               ; [4]
+0000039d  6f                                               ; [5]
+0000039e  63                                               ; [6]
+0000039f  65                                               ; [7]
+000003a0  73                                               ; [8]
+000003a1  73                                               ; [9]
+000003a2  70                                               ; [10]
+000003a3  72                                               ; [11]
+000003a4  6f                                               ; [12]
+000003a5  63                                               ; [13]
+000003a6  65                                               ; [14]
+000003a7  73                                               ; [15]
+000003a8  73                                               ; [16]
+000003a9  24                                               ; [17]
+000003aa  74                                               ; [18]
+000003ab  68                                               ; [19]
+000003ac  75                                               ; [20]
+000003ad  6e                                               ; [21]
+000003ae  6b                                               ; [22]
+000003af  42                                               ; [23]
+000003b0  75                                               ; [24]
+000003b1  66                                               ; [25]
+000003b2  66                                               ; [26]
+000003b3  65                                               ; [27]
+000003b4  72                                               ; [28]
+000003b5  3a                                               ; [29]
+000003b6  3a                                               ; [30]
+000003b7  7e                                               ; [31]
+000003b8  42                                               ; [32]
+000003b9  75                                               ; [33]
+000003ba  66                                               ; [34]
+000003bb  66                                               ; [35]
+000003bc  65                                               ; [36]
+000003bd  72                                               ; [37]
+000003be  6e                                               ; [38]
+000003bf  65                                               ; [39]
+000003c0  73                                               ; [40]
+000003c1  2e                                               ; [41]
+000003c2  71                                               ; [42]
+000003c3  31                                               ; [43]
+
+extensions (0 x 8 bytes)
+
+module (1 x 16 bytes)
+000003c8  04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ; [0]
+
+imports (0 x 16 bytes)
+
+data (0 x 16 bytes)
+
+dataBytes (0 x 1 bytes)
+
+functionAttrs (0 x 16 bytes)
