@@ -1,0 +1,11 @@
+nir 1.0
+
+func export pressa @execute : (ptr) -> i8 sext {
+^b0(%0: ptr):
+  %1 = var 1:i64
+  %2 = add %0, %1
+  [3] assign %0, %2
+  %4 = var %0
+  %5 = load %4 : i8
+  [6] ret %5
+}

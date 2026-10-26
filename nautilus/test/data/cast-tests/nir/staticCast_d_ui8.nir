@@ -1,0 +1,7 @@
+nir 1.0
+
+func export pressa @execute : (f64) -> i8 zext {
+^b0(%0: f64):
+  %1 = cast.fptoui %0 : i8
+  [2] ret %1
+}

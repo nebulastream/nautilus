@@ -1,0 +1,17 @@
+nir 1.0
+callee #c0 = internal @writeDouble : (ptr, f64) -> void
+
+func export pressa @execute : (ptr, f64) -> f64 {
+^b0(%0: ptr, %1: f64):
+  [2] call #c0(%0, %1) cleanup []
+  %3 = var %0
+  %4 = load %3 : f64
+  [5] ret %4
+}
+
+func pressa @writeDouble : (ptr, f64) -> void {
+^b0(%0: ptr, %1: f64):
+  %2 = var %0
+  [3] store %2, %1
+  [4] ret
+}

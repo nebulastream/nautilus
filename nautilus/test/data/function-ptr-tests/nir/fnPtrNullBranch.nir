@@ -1,0 +1,14 @@
+nir 1.0
+
+func export pressa @execute : (ptr, i32 sext, i32 sext) -> i32 sext {
+^b0(%0: ptr, %1: i32, %2: i32):
+  %3 = ptr.const null
+  %4 = cmp.eq %0, %3
+  [5] condbr %4, ^b1, ^b2 prob 2147483647
+^b1:
+  %6 = var 0:i32
+  [7] ret %6
+^b2:
+  %8 = call.indirect %0(%1, %2) : (i32 sext, i32 sext) -> i32 sext
+  [9] ret %8
+}

@@ -1,0 +1,7 @@
+nir 1.0
+
+func export pressa @execute : (i16 zext) -> i32 sext {
+^b0(%0: i16):
+  %1 = cast.zext %0 : i32
+  [2] ret %1
+}

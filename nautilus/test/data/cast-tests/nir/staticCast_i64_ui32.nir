@@ -1,0 +1,7 @@
+nir 1.0
+
+func export pressa @execute : (i64) -> i32 zext {
+^b0(%0: i64):
+  %1 = cast.trunc %0 : i32
+  [2] ret %1
+}

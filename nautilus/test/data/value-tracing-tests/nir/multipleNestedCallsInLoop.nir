@@ -1,0 +1,61 @@
+nir 1.0
+callee #c0 = internal @sumFields : (ptr) -> i32 sext
+callee #c1 = internal @incrementFieldA : (ptr, i32 sext) -> void
+callee #c2 = internal @readFieldA : (ptr) -> i32 sext
+
+func export pressa @execute : (i32 sext) -> i32 sext {
+  alloca 8 align 4
+^b0(%0: i32):
+  %1 = alloca 0
+  %2 = var 0:i32
+  [3] store %1, %2
+  %4 = var 100:i32
+  %5 = var 4:i64
+  %6 = add %1, %5
+  [7] store %6, %4
+  %8 = var 0:i32
+  [9] br ^b1
+^b1:
+  %10 = cmp.lt.s %8, %0
+  [11] condbr %10, ^b2, ^b3 prob 2147483647
+^b2:
+  %12 = var %1
+  %13 = var %1
+  %14 = call #c0(%13) cleanup []
+  [15] call #c1(%12, %14) cleanup []
+  %16 = var 1:i32
+  %17 = add %8, %16
+  [18] assign %8, %17
+  [19] br ^b1
+^b3:
+  %20 = var %1
+  %21 = call #c2(%20) cleanup []
+  [22] ret %21
+}
+
+func pressa @incrementFieldA : (ptr, i32 sext) -> void {
+^b0(%0: ptr, %1: i32):
+  %2 = var %0
+  %3 = load %2 : i32
+  %4 = add %3, %1
+  [5] store %0, %4
+  [6] ret
+}
+
+func pressa @readFieldA : (ptr) -> i32 sext {
+^b0(%0: ptr):
+  %1 = var %0
+  %2 = load %1 : i32
+  [3] ret %2
+}
+
+func pressa @sumFields : (ptr) -> i32 sext {
+^b0(%0: ptr):
+  %1 = var %0
+  %2 = var 4:i64
+  %3 = add %0, %2
+  %4 = load %1 : i32
+  %5 = load %3 : i32
+  %6 = add %4, %5
+  [7] ret %6
+}

@@ -1,0 +1,21 @@
+nir 1.0
+
+func export pressa @execute : () -> i64 {
+  alloca 16 align 8
+^b0:
+  %0 = alloca 0
+  %1 = var 1000:i64
+  %2 = var 8:i64
+  %3 = add %0, %2
+  [4] store %3, %1
+  %5 = var 1:i8
+  [6] store %0, %5
+  %7 = var 100:i32
+  %8 = var 4:i64
+  %9 = add %0, %8
+  [10] store %9, %7
+  %11 = var 8:i64
+  %12 = add %0, %11
+  %13 = load %12 : i64
+  [14] ret %13
+}

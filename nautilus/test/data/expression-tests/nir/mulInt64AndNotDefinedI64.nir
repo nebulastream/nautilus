@@ -1,0 +1,8 @@
+nir 1.0
+
+func export pressa @execute : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = var 0:i64
+  %2 = mul %0, %1
+  [3] ret %2
+}

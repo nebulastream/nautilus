@@ -1,0 +1,12 @@
+nir 1.0
+
+func export pressa @execute : (bool zext, ptr, ptr) -> i32 sext {
+^b0(%0: bool, %1: ptr, %2: ptr):
+  %3 = var %0
+  %4 = var %1
+  %5 = var %2
+  %6 = select %3, %4, %5
+  %7 = var %6
+  %8 = load %7 : i32
+  [9] ret %8
+}

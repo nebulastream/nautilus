@@ -1,0 +1,15 @@
+nir 1.0
+
+func export pressa @execute : (bool zext, bool zext) -> bool zext {
+^b0(%0: bool, %1: bool):
+  %2 = var %0
+  %3 = var %1
+  %4 = cmp.eq %2, %3
+  [5] condbr %4, ^b1, ^b2 prob 2147483647
+^b1:
+  %6 = var true:bool
+  [7] ret %6
+^b2:
+  %8 = var false:bool
+  [9] ret %8
+}

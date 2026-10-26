@@ -1,0 +1,10 @@
+nir 1.0
+pointer #p0 = address local 0x0 raw
+
+func export pressa @execute : () -> i32 sext {
+^b0:
+  %0 = ptr.const #p0
+  %1 = var %0
+  %2 = load %1 : i32
+  [3] ret %2
+}

@@ -1,0 +1,8 @@
+nir 1.0
+
+func export pressa @execute : (ptr, ptr, i32 sext, i32 sext) -> i32 sext {
+^b0(%0: ptr, %1: ptr, %2: i32, %3: i32):
+  [4] assign %0, %1
+  %5 = call.indirect %0(%2, %3) : (i32 sext, i32 sext) -> i32 sext
+  [6] ret %5
+}

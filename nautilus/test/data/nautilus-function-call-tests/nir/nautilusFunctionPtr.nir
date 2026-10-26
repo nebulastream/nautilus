@@ -1,0 +1,16 @@
+nir 1.0
+callee #c0 = internal @derefAdd : (ptr, i32 sext) -> i32 sext
+
+func export pressa @execute : (ptr, i32 sext) -> i32 sext {
+^b0(%0: ptr, %1: i32):
+  %2 = call #c0(%0, %1) cleanup []
+  [3] ret %2
+}
+
+func pressa @derefAdd : (ptr, i32 sext) -> i32 sext {
+^b0(%0: ptr, %1: i32):
+  %2 = var %0
+  %3 = load %2 : i32
+  %4 = add %3, %1
+  [5] ret %4
+}

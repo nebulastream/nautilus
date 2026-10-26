@@ -1,0 +1,22 @@
+nir 1.0
+
+func export pressa @execute : (i32 sext) -> bool zext {
+^b0(%0: i32):
+  %1 = var true:bool
+  %2 = var 42:i64
+  %3 = cast.sext %0 : i64
+  %4 = cmp.eq %3, %2
+  %5 = and %1, %4
+  [6] assign %1, %5
+  %7 = var 42:i64
+  %8 = cast.sext %0 : i64
+  %9 = cmp.eq %8, %7
+  %10 = and %1, %9
+  [11] assign %1, %10
+  %12 = var 42:i64
+  %13 = cast.sext %0 : i64
+  %14 = cmp.eq %13, %12
+  %15 = and %1, %14
+  [16] assign %1, %15
+  [17] ret %1
+}

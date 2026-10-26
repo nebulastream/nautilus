@@ -1,0 +1,67 @@
+nir 1.0
+
+func export pressa @execute : (i32 sext) -> i32 sext {
+^b0(%0: i32):
+  %1 = var 0:i32
+  %2 = var 0:i32
+  [3] br ^b1
+^b1:
+  %4 = cmp.ne %2, %0
+  [5] condbr %4, ^b2, ^b12 prob 2147483647
+^b2:
+  %6 = var 5:i32
+  %7 = cmp.gt.s %2, %6
+  [8] condbr %7, ^b3, ^b4 prob 2147483647
+^b3:
+  %9 = var 1:i32
+  %10 = add %1, %9
+  [11] assign %1, %10
+  %12 = var 10:i32
+  [13] br ^b5
+^b4:
+  %14 = var 10:i32
+  [15] assign %12, %14
+  [16] br ^b5
+^b5:
+  %17 = add %1, %12
+  [18] assign %1, %17
+  %19 = var 5:i32
+  %20 = cmp.gt.s %2, %19
+  [21] condbr %20, ^b6, ^b7 prob 2147483647
+^b6:
+  %22 = var 1:i32
+  %23 = add %1, %22
+  [24] assign %1, %23
+  %25 = var 10:i32
+  [26] br ^b8
+^b7:
+  %27 = var 10:i32
+  [28] assign %25, %27
+  [29] br ^b8
+^b8:
+  %30 = add %1, %25
+  [31] assign %1, %30
+  %32 = var 5:i32
+  %33 = cmp.gt.s %2, %32
+  [34] condbr %33, ^b9, ^b10 prob 2147483647
+^b9:
+  %35 = var 1:i32
+  %36 = add %1, %35
+  [37] assign %1, %36
+  %38 = var 10:i32
+  [39] br ^b11
+^b10:
+  %40 = var 10:i32
+  [41] assign %38, %40
+  [42] br ^b11
+^b11:
+  %43 = add %1, %38
+  [44] assign %1, %43
+  %45 = var %2
+  %46 = var 1:i32
+  %47 = add %2, %46
+  [48] assign %2, %47
+  [49] br ^b1
+^b12:
+  [50] ret %1
+}

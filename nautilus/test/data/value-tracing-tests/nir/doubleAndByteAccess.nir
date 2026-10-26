@@ -1,0 +1,19 @@
+nir 1.0
+
+func export pressa @execute : (f64, i8 sext) -> f64 {
+  alloca 16 align 8
+^b0(%0: f64, %1: i8):
+  %2 = alloca 0
+  [3] store %2, %0
+  %4 = var 8:i64
+  %5 = add %2, %4
+  [6] store %5, %1
+  %7 = var %2
+  %8 = load %7 : f64
+  %9 = var 8:i64
+  %10 = add %2, %9
+  %11 = load %10 : i8
+  %12 = cast.sitofp %11 : f64
+  %13 = add %8, %12
+  [14] ret %13
+}

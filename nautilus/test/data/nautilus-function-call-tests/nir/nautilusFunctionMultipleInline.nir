@@ -1,0 +1,23 @@
+nir 1.0
+callee #c0 = internal @inlineAdd2 : (i32 sext, i32 sext) -> i32 sext
+callee #c1 = internal @inlineMul2 : (i32 sext, i32 sext) -> i32 sext
+
+func export pressa @execute : (i32 sext, i32 sext) -> i32 sext {
+^b0(%0: i32, %1: i32):
+  %2 = call #c0(%0, %1) cleanup []
+  %3 = call #c1(%0, %1) cleanup []
+  %4 = add %2, %3
+  [5] ret %4
+}
+
+func pressa @inlineAdd2 : (i32 sext, i32 sext) -> i32 sext {
+^b0(%0: i32, %1: i32):
+  %2 = add %0, %1
+  [3] ret %2
+}
+
+func pressa @inlineMul2 : (i32 sext, i32 sext) -> i32 sext {
+^b0(%0: i32, %1: i32):
+  %2 = mul %0, %1
+  [3] ret %2
+}

@@ -1,0 +1,12 @@
+nir 1.0
+
+func export pressa @execute : (ptr, i16 sext) -> i32 sext {
+^b0(%0: ptr, %1: i16):
+  %2 = var 4:i64
+  %3 = cast.sext %1 : i64
+  %4 = mul %3, %2
+  %5 = add %0, %4
+  %6 = var %5
+  %7 = load %6 : i32
+  [8] ret %7
+}

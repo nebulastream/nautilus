@@ -1,0 +1,32 @@
+nir 1.0
+pointer #p0 = callee local 0x0
+callee #c0 = external #p0 : (ptr, ptr, i64) -> ptr attrs(noUnwind)
+
+func export pressa @execute : (i32 sext) -> i32 sext {
+  alloca 8 align 4
+  alloca 8 align 4
+^b0(%0: i32):
+  %1 = alloca 0
+  %2 = var 10:i32
+  [3] store %1, %2
+  %4 = var 0:i32
+  %5 = var 0:i32
+  [6] br ^b1
+^b1:
+  %7 = cmp.lt.s %5, %0
+  [8] condbr %7, ^b2, ^b3 prob 2147483647
+^b2:
+  %9 = alloca 1
+  %10 = var 8:i64
+  %11 = call #c0(%9, %1, %10)
+  %12 = var %9
+  %13 = load %12 : i32
+  %14 = add %4, %13
+  [15] assign %4, %14
+  %16 = var 1:i32
+  %17 = add %5, %16
+  [18] assign %5, %17
+  [19] br ^b1
+^b3:
+  [20] ret %4
+}

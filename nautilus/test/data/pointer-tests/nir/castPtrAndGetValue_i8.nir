@@ -1,0 +1,8 @@
+nir 1.0
+
+func export pressa @execute : (ptr) -> i16 sext {
+^b0(%0: ptr):
+  %1 = var %0
+  %2 = load %1 : i16
+  [3] ret %2
+}

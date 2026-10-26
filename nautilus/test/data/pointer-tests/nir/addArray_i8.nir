@@ -1,0 +1,32 @@
+nir 1.0
+
+func export pressa @execute : (ptr, ptr, i8 sext) -> void {
+^b0(%0: ptr, %1: ptr, %2: i8):
+  %3 = var 0:i8
+  [4] br ^b1
+^b1:
+  %5 = cmp.lt.s %3, %2
+  [6] condbr %5, ^b2, ^b3 prob 2147483647
+^b2:
+  %7 = cast.sext %3 : i64
+  %8 = add %0, %7
+  %9 = load %8 : i8
+  %10 = cast.sext %3 : i64
+  %11 = add %1, %10
+  %12 = load %11 : i8
+  %13 = cast.sext %9 : i32
+  %14 = cast.sext %12 : i32
+  %15 = add %13, %14
+  %16 = cast.sext %3 : i64
+  %17 = add %0, %16
+  %18 = cast.trunc %15 : i8
+  [19] store %17, %18
+  %20 = var 1:i32
+  %21 = cast.sext %3 : i32
+  %22 = add %21, %20
+  %23 = cast.trunc %22 : i8
+  [24] assign %3, %23
+  [25] br ^b1
+^b3:
+  [26] ret
+}

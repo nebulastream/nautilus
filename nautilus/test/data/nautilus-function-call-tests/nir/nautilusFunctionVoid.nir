@@ -1,0 +1,21 @@
+nir 1.0
+callee #c0 = internal @voidHelper : (ptr) -> void
+
+func export pressa @execute : (ptr) -> i32 sext {
+^b0(%0: ptr):
+  [1] call #c0(%0) cleanup []
+  %2 = var %0
+  %3 = load %2 : i32
+  [4] ret %3
+}
+
+func pressa @voidHelper : (ptr) -> void {
+^b0(%0: ptr):
+  %1 = var %0
+  %2 = var 10:i32
+  %3 = load %1 : i32
+  %4 = add %3, %2
+  %5 = var %0
+  [6] store %5, %4
+  [7] ret
+}

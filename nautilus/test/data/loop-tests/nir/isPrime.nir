@@ -1,0 +1,33 @@
+nir 1.0
+
+func export pressa @execute : (i32 sext) -> bool zext {
+^b0(%0: i32):
+  %1 = var false:bool
+  %2 = var true:bool
+  %3 = var 1:i32
+  %4 = cmp.le.s %0, %3
+  [5] condbr %4, ^b1, ^b2 prob 2147483647
+^b1:
+  [6] ret %1
+^b2:
+  %7 = var 2:i32
+  [8] br ^b3
+^b3:
+  %9 = mul %7, %7
+  %10 = cmp.le.s %9, %0
+  [11] condbr %10, ^b4, ^b7 prob 2147483647
+^b4:
+  %12 = rem.s.checked %0, %7 cleanup []
+  %13 = var 0:i32
+  %14 = cmp.eq %12, %13
+  [15] condbr %14, ^b5, ^b6 prob 2147483647
+^b5:
+  [16] ret %1
+^b6:
+  %17 = var 1:i32
+  %18 = add %7, %17
+  [19] assign %7, %18
+  [20] br ^b3
+^b7:
+  [21] ret %2
+}

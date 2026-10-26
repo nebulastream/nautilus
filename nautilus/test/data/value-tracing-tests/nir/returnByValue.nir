@@ -1,0 +1,16 @@
+nir 1.0
+
+func export pressa @execute : (i32 sext) -> i32 sext {
+  alloca 8 align 4
+^b0(%0: i32):
+  %1 = var %0
+  %2 = alloca 0
+  [3] store %2, %1
+  %4 = var 0:i32
+  %5 = var 4:i64
+  %6 = add %2, %5
+  [7] store %6, %4
+  %8 = var %2
+  %9 = load %8 : i32
+  [10] ret %9
+}

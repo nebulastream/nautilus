@@ -1,0 +1,9 @@
+nir 1.0
+pointer #p0 = callee local 0x0
+callee #c0 = external #p0 : (ptr) -> i32 sext attrs(noUnwind)
+
+func export pressa @execute : (ptr) -> i32 sext {
+^b0(%0: ptr):
+  %1 = call #c0(%0)
+  [2] ret %1
+}

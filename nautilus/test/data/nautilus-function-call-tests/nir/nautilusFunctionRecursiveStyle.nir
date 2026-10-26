@@ -1,0 +1,30 @@
+nir 1.0
+callee #c0 = internal @recursiveHelper : (i32 sext, i32 sext) -> i32 sext
+
+func export pressa @execute : (i32 sext) -> i32 sext {
+^b0(%0: i32):
+  %1 = var %0
+  %2 = var 3:i32
+  %3 = call #c0(%1, %2) cleanup []
+  [4] assign %1, %3
+  %5 = var 2:i32
+  %6 = call #c0(%1, %5) cleanup []
+  [7] assign %1, %6
+  %8 = var 1:i32
+  %9 = call #c0(%1, %8) cleanup []
+  [10] assign %1, %9
+  [11] ret %1
+}
+
+func pressa @recursiveHelper : (i32 sext, i32 sext) -> i32 sext {
+^b0(%0: i32, %1: i32):
+  %2 = var 0:i32
+  %3 = cmp.le.s %1, %2
+  [4] condbr %3, ^b1, ^b2 prob 2147483647
+^b1:
+  [5] ret %0
+^b2:
+  %6 = var 1:i32
+  %7 = add %0, %6
+  [8] ret %7
+}
