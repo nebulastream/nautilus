@@ -5,6 +5,7 @@ add_executable(nautilus-nir-tests
         RewriterTest.cpp
         VerifierModuleTest.cpp
         VerifierFunctionTest.cpp
+        VerifierFlowTest.cpp
 )
 
 target_link_libraries(nautilus-nir-tests PRIVATE nautilus-nir Catch2::Catch2WithMain)

@@ -1,6 +1,7 @@
 #include "nautilus/nir/Operands.hpp"
 #include "nautilus/nir/Verifier.hpp"
 #include <algorithm>
+#include <functional>
 #include <string>
 
 namespace nautilus::nir {
@@ -34,6 +35,9 @@ public:
 		}
 		if (level_ == Level::SSA) {
 			ssaLevel();
+		} else if (clean()) {
+			// the analyses read operands and lists, so they run only on a function without structural errors
+			definiteDefinitions();
 		}
 	}
 
@@ -42,6 +46,7 @@ public:
 
 private:
 	void report(DiagCode code, std::string message, uint32_t inst = NONE, uint32_t block = NONE) {
+		reported_++;
 		if (out_.size() < o_.maxDiagnostics) {
 			out_.push_back(Diagnostic {code, f_, inst, block, std::move(message)});
 		}
@@ -152,6 +157,11 @@ private:
 		}
 	}
 
+	/// No diagnostic was reported for this function so far.
+	bool clean() const {
+		return reported_ == 0;
+	}
+
 	bool isPad(uint32_t b) const {
 		return b < blocks_.size() && (blocks_[b].flags & BLOCK_LANDING_PAD) != 0;
 	}
@@ -177,14 +187,14 @@ private:
 		default:
 			break;
 		}
-		return unwind < blocks_.size() ? unwind : NONE;
+		return level_ == Level::SSA && unwind < blocks_.size() ? unwind : NONE;
 	}
 
 	/// Successor blocks of block b: branch targets and unwind edges.
 	void successors(uint32_t b, std::vector<uint32_t>& out) const {
 		auto& blk = blocks_[b];
 		for (uint32_t k = 0; k < blk.count; ++k) {
-			auto& inst = insts_[blk.first + k];
+			auto& inst = insts_[blockInst(b, k)];
 			auto u = unwindBlock(inst);
 			if (u != NONE) {
 				out.push_back(u);
@@ -299,10 +309,343 @@ private:
 				}
 			}
 		}
+		bool allReachable = true;
 		for (uint32_t b = 0; b < blocks_.size(); ++b) {
 			if (!seen[b]) {
 				report(DiagCode::V063, "the block is not reachable from the entry block", NONE, b);
+				allReachable = false;
 			}
+		}
+		if (allReachable && clean()) {
+			dominance();
+			layout();
+		}
+	}
+
+	// ---- control flow graph, dominance, layout (SSA) ---------------------------------------------------------
+
+	void buildCfg() {
+		succ_.assign(blocks_.size(), {});
+		pred_.assign(blocks_.size(), {});
+		for (uint32_t b = 0; b < blocks_.size(); ++b) {
+			successors(b, succ_[b]);
+			for (auto t : succ_[b]) {
+				pred_[t].push_back(b);
+			}
+		}
+	}
+
+	/// Immediate dominators by the iterative algorithm of Cooper, Harvey and Kennedy over reverse post-order.
+	void computeDominators() {
+		buildCfg();
+		auto n = static_cast<uint32_t>(blocks_.size());
+		std::vector<uint32_t> order; // post-order
+		std::vector<uint8_t> state(n, 0);
+		std::vector<std::pair<uint32_t, size_t>> stack {{0, 0}};
+		state[0] = 1;
+		while (!stack.empty()) {
+			auto& [b, k] = stack.back();
+			if (k < succ_[b].size()) {
+				auto t = succ_[b][k++];
+				if (!state[t]) {
+					state[t] = 1;
+					stack.push_back({t, 0});
+				}
+			} else {
+				order.push_back(b);
+				stack.pop_back();
+			}
+		}
+		rpoNumber_.assign(n, NONE);
+		for (uint32_t i = 0; i < order.size(); ++i) {
+			rpoNumber_[order[i]] = static_cast<uint32_t>(order.size()) - 1 - i;
+		}
+		idom_.assign(n, NONE);
+		idom_[0] = 0;
+		auto intersect = [&](uint32_t a, uint32_t b) {
+			while (a != b) {
+				while (rpoNumber_[a] > rpoNumber_[b]) {
+					a = idom_[a];
+				}
+				while (rpoNumber_[b] > rpoNumber_[a]) {
+					b = idom_[b];
+				}
+			}
+			return a;
+		};
+		for (bool changed = true; changed;) {
+			changed = false;
+			for (auto it = order.rbegin(); it != order.rend(); ++it) {
+				auto b = *it;
+				if (b == 0) {
+					continue;
+				}
+				uint32_t d = NONE;
+				for (auto p : pred_[b]) {
+					if (idom_[p] == NONE) {
+						continue;
+					}
+					d = d == NONE ? p : intersect(p, d);
+				}
+				if (d != idom_[b]) {
+					idom_[b] = d;
+					changed = true;
+				}
+			}
+		}
+	}
+
+	bool dominates(uint32_t a, uint32_t b) const {
+		while (true) {
+			if (a == b) {
+				return true;
+			}
+			if (b == 0 || idom_[b] == NONE) {
+				return false;
+			}
+			b = idom_[b];
+		}
+	}
+
+	/// NIR-V061: every use is dominated by its definition, unwind edges included.
+	void dominance() {
+		computeDominators();
+		// unwind edges: instruction id -> pad block
+		std::vector<std::pair<uint32_t, uint32_t>> unwinds;
+		for (uint32_t i = 0; i < insts_.size(); ++i) {
+			auto u = unwindBlock(insts_[i]);
+			if (u != NONE) {
+				unwinds.push_back({i, u});
+			}
+		}
+		for (uint32_t u = 0; u < insts_.size(); ++u) {
+			auto ub = blockOf_[u];
+			forEachRef(insts_[u], m_.extra.data(), level_, [&](const uint32_t& r) {
+				if (!isValueRef(r) || r >= insts_.size()) {
+					return;
+				}
+				auto db = blockOf_[r];
+				if (db == ub) {
+					if (r >= u) {
+						report(DiagCode::V061, "a value is used before its definition", u, ub);
+					}
+				} else if (!dominates(db, ub)) {
+					report(DiagCode::V061, "the definition %" + std::to_string(r) + " does not dominate the use", u,
+					       ub);
+				} else if (isPad(ub)) {
+					// within the block of a throwing instruction, the definition must precede it, and the
+					// throwing instruction's own result is not available in the pad
+					for (auto [t, pad] : unwinds) {
+						if (pad == ub && blockOf_[t] == db && r >= t) {
+							report(DiagCode::V061,
+							       "the definition %" + std::to_string(r) +
+							           " does not precede the instruction that unwinds to this pad",
+							       u, ub);
+							break;
+						}
+					}
+				}
+			});
+		}
+	}
+
+	/// NIR-V062: forward edges go forward, reducible loops are contiguous, pads come last in order of first reference.
+	void layout() {
+		auto n = static_cast<uint32_t>(blocks_.size());
+		// strongly connected components of the non-pad subgraph, to find irreducible regions
+		std::vector<uint32_t> comp(n, NONE);
+		{
+			std::vector<uint32_t> index(n, NONE), low(n, 0), st;
+			std::vector<uint8_t> on(n, 0);
+			uint32_t counter = 0, comps = 0;
+			std::function<void(uint32_t)> visit = [&](uint32_t v) {
+				index[v] = low[v] = counter++;
+				st.push_back(v);
+				on[v] = 1;
+				for (auto w : succ_[v]) {
+					if (isPad(w)) {
+						continue;
+					}
+					if (index[w] == NONE) {
+						visit(w);
+						low[v] = std::min(low[v], low[w]);
+					} else if (on[w]) {
+						low[v] = std::min(low[v], index[w]);
+					}
+				}
+				if (low[v] == index[v]) {
+					while (true) {
+						auto w = st.back();
+						st.pop_back();
+						on[w] = 0;
+						comp[w] = comps;
+						if (w == v) {
+							break;
+						}
+					}
+					comps++;
+				}
+			};
+			for (uint32_t v = 0; v < n; ++v) {
+				if (!isPad(v) && index[v] == NONE) {
+					visit(v);
+				}
+			}
+		}
+		std::vector<uint32_t> entries(n, 0); // per component: number of entry blocks
+		std::vector<uint32_t> compSize(n, 0);
+		for (uint32_t b = 0; b < n; ++b) {
+			if (isPad(b)) {
+				continue;
+			}
+			compSize[comp[b]]++;
+			bool entry = b == 0;
+			for (auto p : pred_[b]) {
+				entry |= comp[p] != comp[b];
+			}
+			entries[comp[b]] += entry;
+		}
+		auto irreducible = [&](uint32_t b) {
+			return compSize[comp[b]] > 1 && entries[comp[b]] > 1;
+		};
+
+		for (uint32_t s = 0; s < n; ++s) {
+			if (isPad(s)) {
+				continue;
+			}
+			for (auto t : succ_[s]) {
+				if (isPad(t) || t > s || dominates(t, s)) {
+					continue;
+				}
+				// an edge to an earlier (or the same) block whose target does not dominate the source
+				if (!(irreducible(s) && comp[s] == comp[t])) {
+					report(DiagCode::V062, "a forward edge goes to an earlier block", NONE, s);
+				}
+			}
+		}
+		// reducible natural loops are contiguous
+		for (uint32_t s = 0; s < n; ++s) {
+			if (isPad(s)) {
+				continue;
+			}
+			for (auto h : succ_[s]) {
+				if (isPad(h) || !dominates(h, s) || irreducible(h)) {
+					continue;
+				}
+				std::vector<uint8_t> in(n, 0);
+				std::vector<uint32_t> work {s};
+				in[h] = 1;
+				in[s] = 1;
+				while (!work.empty()) {
+					auto x = work.back();
+					work.pop_back();
+					if (x == h) {
+						continue;
+					}
+					for (auto p : pred_[x]) {
+						if (!in[p] && !isPad(p)) {
+							in[p] = 1;
+							work.push_back(p);
+						}
+					}
+				}
+				uint32_t lo = n, hi = 0, count = 0;
+				for (uint32_t x = 0; x < n; ++x) {
+					if (in[x]) {
+						lo = std::min(lo, x);
+						hi = std::max(hi, x);
+						count++;
+					}
+				}
+				if (hi - lo + 1 != count) {
+					report(DiagCode::V062, "the blocks of the loop headed by this block are not contiguous", NONE, h);
+				}
+			}
+		}
+		// pads: after all other blocks, in order of first reference
+		uint32_t firstPad = n;
+		for (uint32_t b = 0; b < n; ++b) {
+			if (isPad(b)) {
+				firstPad = std::min(firstPad, b);
+			}
+		}
+		for (uint32_t b = firstPad; b < n; ++b) {
+			if (!isPad(b)) {
+				report(DiagCode::V062, "a landing pad precedes a block that is not a pad", NONE, b);
+				break;
+			}
+		}
+		std::vector<uint32_t> firstRef;
+		std::vector<uint8_t> referenced(n, 0);
+		for (uint32_t i = 0; i < insts_.size(); ++i) {
+			uint32_t target = unwindBlock(insts_[i]);
+			if (target == NONE && insts_[i].op == static_cast<uint16_t>(Op::Br) && isPad(blockOf_[i]) &&
+			    insts_[i].a < n) {
+				target = insts_[i].a;
+			}
+			if (target != NONE && isPad(target) && !referenced[target]) {
+				referenced[target] = 1;
+				firstRef.push_back(target);
+			}
+		}
+		if (!std::is_sorted(firstRef.begin(), firstRef.end())) {
+			report(DiagCode::V062, "landing pads are not in the order of their first reference");
+		}
+	}
+
+	// ---- pre-SSA: definitions reach every use ----------------------------------------------------------------
+
+	/// NIR-V051: a forward must-analysis of the instructions that have executed on every path.
+	void definiteDefinitions() {
+		auto n = static_cast<uint32_t>(blocks_.size());
+		auto words = (insts_.size() + 63) / 64;
+		std::vector<std::vector<uint64_t>> in(n, std::vector<uint64_t>(words, ~0ull)), out = in;
+		in[0].assign(words, 0);
+		buildCfg();
+		auto transfer = [&](uint32_t b, std::vector<uint64_t>& set, bool check) {
+			auto& blk = blocks_[b];
+			for (uint32_t k = 0; k < blk.count; ++k) {
+				auto id = m_.extra[blk.first + k];
+				const Inst& inst = insts_[id];
+				if (check) {
+					forEachRef(inst, m_.extra.data(), level_, [&](const uint32_t& r) {
+						if (isValueRef(r) && r < insts_.size() && r != id && !((set[r / 64] >> (r % 64)) & 1)) {
+							report(DiagCode::V051,
+							       "%" + std::to_string(r) + " is not defined on every path to this use", id, b);
+						}
+					});
+				}
+				if (inst.type != static_cast<uint8_t>(TypeId::Void)) {
+					set[id / 64] |= 1ull << (id % 64);
+				}
+			}
+		};
+		for (bool changed = true; changed;) {
+			changed = false;
+			for (uint32_t b = 0; b < n; ++b) {
+				if (b != 0) {
+					std::vector<uint64_t> meet(words, ~0ull);
+					for (auto p : pred_[b]) {
+						for (size_t w = 0; w < words; ++w) {
+							meet[w] &= out[p][w];
+						}
+					}
+					in[b] = meet;
+				}
+				auto set = in[b];
+				transfer(b, set, false);
+				if (set != out[b]) {
+					out[b] = std::move(set);
+					changed = true;
+				}
+			}
+		}
+		for (uint32_t b = 0; b < n; ++b) {
+			if (pred_[b].empty() && b != 0) {
+				continue; // unreachable
+			}
+			auto set = in[b];
+			transfer(b, set, true);
 		}
 	}
 
@@ -1007,7 +1350,10 @@ private:
 	std::span<const Inst> insts_;
 	std::span<const BlockRecord> blocks_;
 	const SignatureRecord& sig_;
+	size_t reported_ = 0;
 	std::vector<uint32_t> blockOf_;
+	std::vector<std::vector<uint32_t>> succ_, pred_;
+	std::vector<uint32_t> idom_, rpoNumber_;
 };
 
 } // namespace
