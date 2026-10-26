@@ -1,4 +1,5 @@
 #include "nautilus/nir/ImageLoader.hpp"
+#include "nautilus/extensions/ExtensionRegistry.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -29,6 +30,8 @@ T readAt(std::span<const uint8_t> image, uint64_t offset) {
 
 LoadResult loadImage(std::span<const uint8_t> image, const LoadOptions& options) {
 	LoadResult result;
+	// an image load is a first reader: the registry is complete from here on (04 §3.7)
+	ext::ExtensionRegistry::instance().freeze();
 	try {
 		auto& limits = options.limits;
 		if (image.size() < sizeof(ImageHeader) || std::memcmp(image.data(), "NIR\0", 4) != 0) {

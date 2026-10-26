@@ -1,5 +1,6 @@
 #include "nautilus/nir/Parser.hpp"
 #include "nautilus/common/FloatText.hpp"
+#include "nautilus/extensions/ExtensionRegistry.hpp"
 #include "nautilus/nir/Operands.hpp"
 #include "nautilus/nir/Verifier.hpp"
 #include <algorithm>
@@ -1415,6 +1416,8 @@ private:
 
 ParseResult parse(std::string_view text, const ParseOptions& options) {
 	ParseResult result;
+	// a text parse is a first reader: the registry is complete from here on (04 §3.7)
+	ext::ExtensionRegistry::instance().freeze();
 	try {
 		result.module = Parser(text).run();
 	} catch (ParseError& e) {
