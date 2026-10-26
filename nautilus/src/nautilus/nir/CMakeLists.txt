@@ -12,6 +12,7 @@ add_library(nautilus-nir STATIC
         Printer.cpp
         Parser.cpp
         Canonicalize.cpp
+        ExtensionIds.cpp
         Image.cpp
         ImageLoader.cpp
         Inspect.cpp
