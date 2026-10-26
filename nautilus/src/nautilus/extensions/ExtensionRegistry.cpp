@@ -222,8 +222,8 @@ const TypeInfo* ExtensionRegistry::type(uint8_t id) const {
 
 const ExtOpInfo* ExtensionRegistry::op(uint16_t opcode) const {
 	return read([&]() -> const ExtOpInfo* {
-		return opcode >= nir::FIRST_EXTENSION_OP && opcode - nir::FIRST_EXTENSION_OP < ops_.size()
-		           ? &ops_[opcode - nir::FIRST_EXTENSION_OP]
+		return opcode >= nir::FIRST_EXTENSION_OP && size_t(opcode - nir::FIRST_EXTENSION_OP) < ops_.size()
+		           ? &ops_[size_t(opcode - nir::FIRST_EXTENSION_OP)]
 		           : nullptr;
 	});
 }

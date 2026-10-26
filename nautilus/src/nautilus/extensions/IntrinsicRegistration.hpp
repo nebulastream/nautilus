@@ -77,7 +77,7 @@ IntrinsicInfo makeIntrinsic(std::string name, R (*fn)(Args...), uint32_t attrs) 
 template <class R, class... Args>
 uint32_t registerIntrinsicFor(std::string name, R (*fn)(Args...), uint32_t attrs = 0, Owner owner = Owner::Plugin) {
 	auto info = (attrs & AttrNoUnwind) != 0 ? detail::makeIntrinsic<true>(std::move(name), fn, attrs)
-	                                         : detail::makeIntrinsic<false>(std::move(name), fn, attrs);
+	                                        : detail::makeIntrinsic<false>(std::move(name), fn, attrs);
 	return ExtensionRegistry::instance().registerIntrinsic(std::move(info), owner);
 }
 

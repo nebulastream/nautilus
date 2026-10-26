@@ -14,9 +14,10 @@ TEST_CASE("the assume intrinsics are registered without a backend", "[specializa
 		const char* name;
 		size_t params;
 	};
-	for (auto e : {Expected {"specialization.assume", 1}, Expected {"specialization.assume_aligned", 2},
-	               Expected {"specialization.assume_constant", 2}, Expected {"specialization.assume_range", 3},
-	               Expected {"specialization.assume_nonzero", 1}, Expected {"specialization.assume_separate_storage", 2}}) {
+	for (auto e :
+	     {Expected {"specialization.assume", 1}, Expected {"specialization.assume_aligned", 2},
+	      Expected {"specialization.assume_constant", 2}, Expected {"specialization.assume_range", 3},
+	      Expected {"specialization.assume_nonzero", 1}, Expected {"specialization.assume_separate_storage", 2}}) {
 		INFO(e.name);
 		auto id = registry.findIntrinsic(e.name);
 		REQUIRE(id.has_value());

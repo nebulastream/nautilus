@@ -11,9 +11,9 @@ ExtensionRegistry::ExtensionRegistry() {
 	auto add = [this](const char* name, auto fn, uint32_t attrs) {
 		registerIntrinsic(detail::makeIntrinsic<true>(name, fn, attrs), Owner::Core);
 	};
-	add("core.memcpy", static_cast<void* (*)(void*, const void*, size_t)>(&std::memcpy), ARG_MEMORY_ONLY);
-	add("core.memmove", static_cast<void* (*)(void*, const void*, size_t)>(&std::memmove), ARG_MEMORY_ONLY);
-	add("core.memset", static_cast<void* (*)(void*, int, size_t)>(&std::memset), ARG_MEMORY_ONLY);
+	add("core.memcpy", static_cast<void* (*) (void*, const void*, size_t)>(&std::memcpy), ARG_MEMORY_ONLY);
+	add("core.memmove", static_cast<void* (*) (void*, const void*, size_t)>(&std::memmove), ARG_MEMORY_ONLY);
+	add("core.memset", static_cast<void* (*) (void*, int, size_t)>(&std::memset), ARG_MEMORY_ONLY);
 	add("core.memcmp", static_cast<int (*)(const void*, const void*, size_t)>(&std::memcmp),
 	    ARG_MEMORY_ONLY | AttrNoArgWrite);
 }
