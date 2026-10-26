@@ -1,0 +1,68 @@
+nir 1.0
+
+func export pressa @execute : (i32 sext) -> bool zext {
+^b0(%0: i32):
+  %1 = var true:bool
+  [2] condbr %1, ^b1, ^b5 prob 2147483647
+^b1:
+  %3 = var 42:i64
+  %4 = cast.sext %0 : i64
+  %5 = cmp.eq %4, %3
+  [6] condbr %5, ^b2, ^b3 prob 2147483647
+^b2:
+  %7 = var true:bool
+  [8] br ^b4
+^b3:
+  %9 = var false:bool
+  [10] assign %7, %9
+  [11] br ^b4
+^b4:
+  [12] assign %1, %7
+  [13] br ^b6
+^b5:
+  %14 = var false:bool
+  [15] assign %1, %14
+  [16] br ^b6
+^b6:
+  [17] condbr %1, ^b7, ^b11 prob 2147483647
+^b7:
+  %18 = var 42:i64
+  %19 = cast.sext %0 : i64
+  %20 = cmp.eq %19, %18
+  [21] condbr %20, ^b8, ^b9 prob 2147483647
+^b8:
+  %22 = var true:bool
+  [23] br ^b10
+^b9:
+  %24 = var false:bool
+  [25] assign %22, %24
+  [26] br ^b10
+^b10:
+  [27] assign %1, %22
+  [28] br ^b12
+^b11:
+  %29 = var false:bool
+  [30] assign %1, %29
+  [31] br ^b12
+^b12:
+  [32] condbr %1, ^b13, ^b17 prob 2147483647
+^b13:
+  %33 = var 42:i64
+  %34 = cast.sext %0 : i64
+  %35 = cmp.eq %34, %33
+  [36] condbr %35, ^b14, ^b15 prob 2147483647
+^b14:
+  %37 = var true:bool
+  [38] br ^b16
+^b15:
+  %39 = var false:bool
+  [40] assign %37, %39
+  [41] br ^b16
+^b16:
+  [42] assign %1, %37
+  [43] ret %1
+^b17:
+  %44 = var false:bool
+  [45] assign %1, %44
+  [46] ret %1
+}

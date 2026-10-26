@@ -1,0 +1,21 @@
+nir 1.0
+
+func export pressa @execute : (bool zext, bool zext) -> bool zext {
+^b0(%0: bool, %1: bool):
+  %2 = var %0
+  [3] assign %0, %1
+  [4] condbr %2, ^b1, ^b2 prob 2147483647
+^b1:
+  %5 = var true:bool
+  [6] ret %5
+^b2:
+  [7] condbr %1, ^b3, ^b4 prob 2147483647
+^b3:
+  %8 = var true:bool
+  [9] assign %5, %8
+  [10] ret %5
+^b4:
+  %11 = var false:bool
+  [12] assign %5, %11
+  [13] ret %5
+}
