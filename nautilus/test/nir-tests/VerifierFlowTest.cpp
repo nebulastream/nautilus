@@ -27,7 +27,8 @@ Module cfgModule(const std::vector<Blk>& blocks) {
 	g.target = m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::Callee), 0, 0, 0, 0, 0x1000, 0});
 	g.signature = voidSig;
 	auto callee = m.internCallee(g);
-	auto thunk = m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::CaptureThunk), 0, 0, 0, 0, 0x2000, 0});
+	auto thunk =
+	    m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::CaptureThunk), 0, 0, 0, 0, 0x2000, 0});
 	b.beginFunction(m.internName("f"), sig, Visibility::Exported, Level::SSA);
 	for (uint32_t i = 0; i < blocks.size(); ++i) {
 		auto& k = blocks[i];
@@ -145,7 +146,8 @@ Module padUse(bool objectDefinedAfterCall) {
 	d.signature = sig;
 	d.attrs = AttrNoUnwind;
 	auto dtor = m.internCallee(d);
-	auto thunk = m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::CaptureThunk), 0, 0, 0, 0, 0x2000, 0});
+	auto thunk =
+	    m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::CaptureThunk), 0, 0, 0, 0, 0x2000, 0});
 	b.beginFunction(m.internName("f"), sig, Visibility::Exported, Level::SSA);
 	b.beginBlock(1);
 	auto p = b.emit(Op::BlockArg, TypeId::Ptr, 0, 0);
