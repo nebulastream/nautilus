@@ -25,6 +25,7 @@
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/conversion/Conversion.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/nir/Printer.hpp"
 #include "nautilus/nir/Verifier.hpp"
@@ -101,6 +102,18 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 				}
 				INFO(all);
 				REQUIRE(diagnostics.empty());
+				// and so must the SSA NIR the conversion makes of it
+				auto ssa = conversion::convert(nirModule);
+				auto ssaDiagnostics = nir::verify(ssa);
+				std::string ssaAll;
+				for (auto& d : ssaDiagnostics) {
+					ssaAll += d.str() + "\n";
+				}
+				if (!ssaDiagnostics.empty()) {
+					ssaAll += nir::print(ssa);
+				}
+				INFO(ssaAll);
+				REQUIRE(ssaDiagnostics.empty());
 				// host addresses differ from run to run; the dump keeps the shape of the pointers table
 				auto text = std::regex_replace(nir::print(nirModule), std::regex("0x[0-9a-f]+"), "0x0");
 				REQUIRE(checkTestFile(text, category, "nir", name, ".nir"));

@@ -37,6 +37,7 @@
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
 #include "nautilus/compiler/ir/passes/StrengthReductionPass.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
+#include "nautilus/conversion/Conversion.hpp"
 #include "nautilus/nir/Printer.hpp"
 #include "nautilus/nir/Verifier.hpp"
 #include "nautilus/tracing/CopyAttribution.hpp"
@@ -273,8 +274,18 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 					}
 					throw RuntimeException(message + "\n" + nir::print(nirModule));
 				}
+				// and so must its conversion to SSA
+				auto ssa = conversion::convert(nirModule);
+				diagnostics = nir::verify(ssa);
+				if (!diagnostics.empty()) {
+					std::string message = "the SSA NIR converted from the trace does not verify:";
+					for (const auto& d : diagnostics) {
+						message += "\n  " + d.str();
+					}
+					throw RuntimeException(message + "\n" + nir::print(ssa) + "\nfrom\n" + nir::print(nirModule));
+				}
 			}
-		} catch (const RuntimeException&) {
+		} catch (const std::exception&) {
 			// a dump must not fail a compilation; the verification exists to fail it
 			if (verifyNir) {
 				throw;
