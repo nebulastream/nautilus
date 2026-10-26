@@ -1,4 +1,5 @@
 #include "nautilus/nir/Printer.hpp"
+#include "nautilus/extensions/ExtensionRegistry.hpp"
 #include "nautilus/nir/Operands.hpp"
 #include <bit>
 #include <charconv>
@@ -30,6 +31,11 @@ std::string typeName(TypeId t) {
 	case TypeId::Ptr:
 		return "ptr";
 	default:
+		// an extension type prints as `!` and its registered name (13 §9.1); one the registry does not know keeps a
+		// placeholder
+		if (auto* info = ext::ExtensionRegistry::instance().type(static_cast<uint8_t>(t))) {
+			return "!" + info->name;
+		}
 		return "!ext.t" + std::to_string(static_cast<unsigned>(t));
 	}
 }
@@ -105,6 +111,9 @@ public:
 		os_ << "nir 1.0\n";
 		if (m_.module.nameId != NONE) {
 			os_ << "module " << quote(m_.name(m_.module.nameId)) << "\n";
+		}
+		for (auto& e : m_.extensions) {
+			os_ << "extension " << quote(m_.name(e.nameId)) << "\n";
 		}
 		for (uint32_t i = 0; i < m_.imports.size(); ++i) {
 			auto& r = m_.imports[i];
@@ -182,9 +191,12 @@ private:
 		case CalleeKind::Imported:
 			os_ << "imported #i" << c.target;
 			break;
-		case CalleeKind::Intrinsic:
-			os_ << "intrinsic " << m_.name(m_.extensions[c.target].nameId);
-			break;
+		case CalleeKind::Intrinsic: {
+			// the name without its "@version", which the `extension` line carries
+			std::string_view name = m_.name(m_.extensions[c.target].nameId), bare;
+			uint32_t version;
+			os_ << "intrinsic " << (ext::splitNameVersion(name, bare, version) ? bare : name);
+		} break;
 		}
 		os_ << " : " << signature(c.signature) << attrsText(c.attrs) << "\n";
 	}
@@ -240,7 +252,10 @@ private:
 			break;
 		default: {
 			lit = "x\"";
-			for (uint32_t i = 0; i < 16 && c.byteOffset + i < m_.consts.bytes().size(); ++i) {
+			// an extension-type constant has the registered size; a type the registry does not know shows 16 bytes
+			auto* typeInfo = ext::ExtensionRegistry::instance().type(static_cast<uint8_t>(t));
+			const uint32_t size = typeInfo ? typeInfo->size : 16;
+			for (uint32_t i = 0; i < size && c.byteOffset + i < m_.consts.bytes().size(); ++i) {
 				char buf[4];
 				std::snprintf(buf, sizeof buf, "%02x", static_cast<unsigned>(m_.consts.bytes()[c.byteOffset + i]));
 				lit += buf;
@@ -387,6 +402,9 @@ private:
 		} else if (level_ == Level::PreSSA) {
 			lhs = "[" + std::to_string(id) + "] ";
 		}
+		if (inst.op >= FIRST_EXTENSION_OP) {
+			return lhs + extensionInstruction(inst);
+		}
 		auto op = static_cast<Op>(inst.op);
 		auto* info = coreOpInfo(inst.op);
 		std::string name = info ? info->name : "?op" + std::to_string(inst.op);
@@ -522,6 +540,74 @@ private:
 			break;
 		}
 		return lhs + text;
+	}
+
+	/// An extension instruction, generically from its operand shape (13 §5.11, §9.3): `name [flags(F)] f0, f1, ... [:
+	/// T]`.
+	std::string extensionInstruction(const Inst& inst) const {
+		auto* info = ext::ExtensionRegistry::instance().op(inst.op);
+		if (info == nullptr) {
+			return "?op" + std::to_string(inst.op);
+		}
+		std::string text = info->name;
+		if (inst.flags != 0) {
+			text += " flags(" + std::to_string(inst.flags) + ")";
+		}
+		std::string fields;
+		auto field = [&](ext::FieldKind kind, uint32_t value) {
+			if (kind == ext::FieldKind::Unused) {
+				return;
+			}
+			fields += fields.empty() ? " " : ", ";
+			switch (kind) {
+			case ext::FieldKind::Value:
+			case ext::FieldKind::Const:
+				fields += operand(value);
+				break;
+			case ext::FieldKind::Imm:
+				fields += std::to_string(value);
+				break;
+			case ext::FieldKind::List: {
+				const uint32_t* l = m_.extra.data() + value;
+				fields += "[";
+				for (uint32_t k = 0; k < l[0]; ++k) {
+					fields += k ? ", " : "";
+					fields += extensionWord(info->shape, k, l[1 + k]);
+				}
+				fields += "]";
+				break;
+			}
+			case ext::FieldKind::Unused:
+				break;
+			}
+		};
+		field(info->shape.a, inst.a);
+		field(info->shape.b, inst.b);
+		field(info->shape.c, inst.c);
+		text += fields;
+		if (inst.type != static_cast<uint8_t>(TypeId::Void)) {
+			text += " : " + typeName(static_cast<TypeId>(inst.type));
+		}
+		return text;
+	}
+
+	/// Word `k` of an extension payload: the prefix kinds, then the repeated group.
+	std::string extensionWord(const ext::OperandShape& shape, uint32_t k, uint32_t w) const {
+		ext::WordKind kind = k < shape.prefix.size() ? shape.prefix[k]
+		                     : shape.group.empty()   ? ext::WordKind::Imm
+		                                             : shape.group[(k - shape.prefix.size()) % shape.group.size()];
+		switch (kind) {
+		case ext::WordKind::Value:
+		case ext::WordKind::Const:
+			return operand(w);
+		case ext::WordKind::Pointer:
+			return "#p" + std::to_string(w);
+		case ext::WordKind::Type:
+			return typeName(static_cast<TypeId>(w & 0xFF));
+		case ext::WordKind::Imm:
+			break;
+		}
+		return std::to_string(w);
 	}
 
 	TypeId typeOfOperand(std::span<const Inst> insts, Ref r) const {

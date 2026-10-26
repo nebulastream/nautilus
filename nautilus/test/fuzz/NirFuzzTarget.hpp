@@ -53,21 +53,18 @@ inline bool hasPreSSA(const Module& m) {
 /// What a verified module must satisfy.
 inline void checkModule(const Module& m) {
 	auto text = print(m);
-	// print -> parse -> print is the identity on the printer's own output. Extension types and operations are the
-	// business of M1.3a (they print with placeholders that the parser does not read yet), so a module that has any is
-	// not checked this way.
-	if (text.find('!') == std::string::npos) {
-		auto reparsed = parse(text);
-		if (reparsed.error) {
-			std::fprintf(stderr, "%s\n%s\n", reparsed.error->str().c_str(), text.c_str());
-			violated("the printer's output does not parse");
-		}
-		if (!reparsed.verifierDiagnostics.empty()) {
-			violated("the printer's output does not verify");
-		}
-		if (print(*reparsed.module) != text) {
-			violated("print(parse(print(m))) differs from print(m)");
-		}
+
+	// print -> parse -> print is the identity on the printer's own output
+	auto reparsed = parse(text);
+	if (reparsed.error) {
+		std::fprintf(stderr, "%s\n%s\n", reparsed.error->str().c_str(), text.c_str());
+		violated("the printer's output does not parse");
+	}
+	if (!reparsed.verifierDiagnostics.empty()) {
+		violated("the printer's output does not verify");
+	}
+	if (print(*reparsed.module) != text) {
+		violated("print(parse(print(m))) differs from print(m)");
 	}
 	// write -> load gives the module back. A module with imports is not a loadable image until bundling exists
 	// (13 §8.5): an image has no imports (NIR-V038), though the hash input of such a module is written.

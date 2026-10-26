@@ -26,6 +26,7 @@ struct Token {
 	std::string text; // identifier, number, literal of a constant, decoded string, punctuation
 	std::string type; // Const: the type name
 	uint8_t provenance = 0;
+	bool bytes = false;  // Const: the literal is raw bytes (an extension-type constant)
 	uint32_t number = 0; // Value, Block, Table: N
 	char letter = 0;     // Table: c, p, i, b, d, l, r
 	uint32_t line = 1, column = 1;
@@ -165,17 +166,44 @@ private:
 		return std::string(s_.substr(start, pos_ - start));
 	}
 
+	/// `!` and an extname, optionally followed by a balanced `<...>` group, as one token (13 §9.1).
+	std::string extensionTypeText(Token& t) {
+		size_t start = pos_;
+		advance();
+		while (isNameChar(cur())) {
+			advance();
+		}
+		if (cur() == '<') {
+			int depth = 0;
+			do {
+				if (cur() == '<') {
+					++depth;
+				} else if (cur() == '>') {
+					--depth;
+				} else if (cur() == '\0' || cur() == ' ' || cur() == '\n' || cur() == '\t') {
+					error(t, "an unterminated extension type");
+				}
+				advance();
+			} while (depth > 0);
+		}
+		return std::string(s_.substr(start, pos_ - start));
+	}
+
 	void lexOne(Token& t) {
 		char c = cur();
 		auto constantTail = [&](std::string literal) {
 			// a constant is `literal:type[prov]` with no whitespace
-			if (cur() != ':' || !isNameStart(cur(1))) {
+			if (cur() != ':' || !(isNameStart(cur(1)) || cur(1) == '!')) {
 				return false;
 			}
 			advance();
 			size_t start = pos_;
-			while (isNameChar(cur())) {
-				advance();
+			if (cur() == '!') {
+				extensionTypeText(t);
+			} else {
+				while (isNameChar(cur())) {
+					advance();
+				}
 			}
 			t.kind = Tok::Const;
 			t.text = std::move(literal);
@@ -217,6 +245,16 @@ private:
 			}
 			t.kind = Tok::Bytes;
 			t.text = raw;
+			if (cur() == ':' && (isNameStart(cur(1)) || cur(1) == '!')) {
+				// `x"..." : T` with no whitespace is the constant of an extension type
+				constantTail(raw);
+				t.bytes = true;
+			}
+			return;
+		}
+		if (c == '!') {
+			t.kind = Tok::Ident;
+			t.text = extensionTypeText(t);
 			return;
 		}
 		if (c == '%') {
@@ -500,6 +538,14 @@ private:
 		    {"void", TypeId::Void}, {"bool", TypeId::Bool}, {"i8", TypeId::I8},
 		    {"i16", TypeId::I16},   {"i32", TypeId::I32},   {"i64", TypeId::I64},
 		    {"f32", TypeId::F32},   {"f64", TypeId::F64},   {"ptr", TypeId::Ptr}};
+		if (!n.empty() && n[0] == '!') {
+			auto id = ext::ExtensionRegistry::instance().findType(std::string_view(n).substr(1));
+			if (!id) {
+				return false;
+			}
+			t = static_cast<TypeId>(*id);
+			return true;
+		}
 		auto it = names.find(n);
 		if (it == names.end()) {
 			return false;
@@ -572,7 +618,9 @@ private:
 	void declaration() {
 		auto kw = next();
 		const auto& w = kw.text;
-		if (w == "import") {
+		if (w == "extension") {
+			extensionDeclaration(kw);
+		} else if (w == "import") {
 			declId('i', m_.imports.size());
 			expectPunct("=");
 			auto mod = m_.internName(expectString());
@@ -669,9 +717,15 @@ private:
 			} else if (k.kind == Tok::Ident && k.text == "imported") {
 				r.kind = static_cast<uint8_t>(CalleeKind::Imported);
 				r.target = tableRef('i');
+			} else if (k.kind == Tok::Ident && k.text == "intrinsic") {
+				r.kind = static_cast<uint8_t>(CalleeKind::Intrinsic);
+				auto name = next();
+				if (name.kind != Tok::Ident || !ext::ExtensionRegistry::instance().findIntrinsic(name.text)) {
+					fail(DiagCode::P005, name, "an unknown intrinsic '" + name.text + "'");
+				}
+				r.target = intrinsicExtension(name.text);
 			} else {
-				fail(DiagCode::P002, k,
-				     "internal, external or imported is expected (intrinsics come with the extension registry)");
+				fail(DiagCode::P002, k, "internal, external, imported or intrinsic is expected");
 			}
 			expectPunct(":");
 			r.signature = parseSignature();
@@ -943,8 +997,15 @@ private:
 		case TypeId::F64:
 			bits = floatBits(t, type == TypeId::F32);
 			break;
-		default:
-			fail(DiagCode::P002, t, "extension-type constants come with the extension registry");
+		default: {
+			auto* info = ext::ExtensionRegistry::instance().type(static_cast<uint8_t>(type));
+			if (info == nullptr || !t.bytes || t.text.size() != info->size) {
+				bad("a constant of " + t.type + " is bytes of exactly " + (info ? std::to_string(info->size) : "?") +
+				    " bytes");
+			}
+			auto payload = std::as_bytes(std::span<const char>(t.text.data(), t.text.size()));
+			return {m_.consts.internBytes(type, prov, payload, info->align), type};
+		}
 		}
 		return {m_.consts.intern(type, prov, bits), type};
 	}
@@ -1350,7 +1411,154 @@ private:
 			type = a.type;
 			return I(Op::Var, 0, a.ref);
 		}
+		if (n.find('.') != std::string::npos && ext::ExtensionRegistry::instance().findOp(n)) {
+			return extensionOperation(mn, type);
+		}
 		fail(DiagCode::P002, mn, "unknown instruction '" + n + "'");
+	}
+
+	/// The `extensions` index of the intrinsic `name`, adding its record with the registered version if the text had no
+	/// `extension` line for it.
+	uint32_t intrinsicExtension(const std::string& name) {
+		for (uint32_t i = 0; i < m_.extensions.size(); ++i) {
+			std::string_view full = m_.name(m_.extensions[i].nameId), bare;
+			uint32_t version;
+			if (m_.extensions[i].kind == static_cast<uint8_t>(ExtensionKind::Intrinsic) &&
+			    ext::splitNameVersion(full, bare, version) && bare == name) {
+				return i;
+			}
+		}
+		auto& registry = ext::ExtensionRegistry::instance();
+		auto* info = registry.intrinsic(*registry.findIntrinsic(name));
+		m_.extensions.push_back(ExtensionRecord {m_.internName(name + "@" + std::to_string(info->version)),
+		                                         static_cast<uint8_t>(ExtensionKind::Intrinsic),
+		                                         {}});
+		return static_cast<uint32_t>(m_.extensions.size() - 1);
+	}
+
+	/// `extension "name@version"`: the registry must know the name and accept the version (13 §8.4, §9.4).
+	void extensionDeclaration(const Token& kw) {
+		auto strTok = peek();
+		auto text = expectString();
+		std::string_view bare;
+		uint32_t version = 0;
+		if (!ext::splitNameVersion(text, bare, version)) {
+			fail(DiagCode::P005, strTok, "an extension is written \"name@version\"");
+		}
+		auto& registry = ext::ExtensionRegistry::instance();
+		std::string name(bare);
+		uint32_t current = 0, oldest = 0;
+		ExtensionKind kind;
+		if (auto op = registry.findOp(name)) {
+			auto* info = registry.op(*op);
+			current = info->version;
+			oldest = info->minCompatibleVersion;
+			kind = ExtensionKind::Operation;
+		} else if (auto type = registry.findType(name)) {
+			auto* info = registry.type(*type);
+			current = info->version;
+			oldest = info->minCompatibleVersion;
+			kind = ExtensionKind::Type;
+		} else if (auto intrinsic = registry.findIntrinsic(name)) {
+			auto* info = registry.intrinsic(*intrinsic);
+			current = info->version;
+			oldest = info->minCompatibleVersion;
+			kind = ExtensionKind::Intrinsic;
+		} else {
+			fail(DiagCode::P005, strTok, "the registry does not know the extension '" + name + "'");
+		}
+		if (version < oldest || version > current) {
+			fail(DiagCode::P005, strTok,
+			     "the registry accepts versions " + std::to_string(oldest) + " to " + std::to_string(current) +
+			         " of '" + name + "'");
+		}
+		(void) kw;
+		m_.extensions.push_back(ExtensionRecord {m_.internName(text), static_cast<uint8_t>(kind), {}});
+	}
+
+	/// An extension instruction, read generically from its operand shape (13 §5.11, §9.2): `name [flags(F)] f0, f1, ...
+	/// [: T]`.
+	Inst extensionOperation(const Token& mn, TypeId& type) {
+		auto& registry = ext::ExtensionRegistry::instance();
+		auto opcode = registry.findOp(mn.text);
+		if (!opcode) {
+			fail(DiagCode::P005, mn, "unknown instruction '" + mn.text + "'");
+		}
+		auto* info = registry.op(*opcode);
+		Inst inst {*opcode, 0, 0, 0, 0, 0};
+		if (acceptIdent("flags")) {
+			expectPunct("(");
+			auto f = peek();
+			auto value = expectUInt();
+			if (value > 255) {
+				fail(DiagCode::P002, f, "flags are one byte");
+			}
+			inst.flags = static_cast<uint8_t>(value);
+			expectPunct(")");
+		}
+		bool first = true;
+		auto separator = [&] {
+			if (!first) {
+				expectPunct(",");
+			}
+			first = false;
+		};
+		auto field = [&](ext::FieldKind kind) -> uint32_t {
+			switch (kind) {
+			case ext::FieldKind::Unused:
+				return 0;
+			case ext::FieldKind::Value:
+			case ext::FieldKind::Const:
+				separator();
+				return operand().ref;
+			case ext::FieldKind::Imm: {
+				separator();
+				return static_cast<uint32_t>(expectUInt());
+			}
+			case ext::FieldKind::List: {
+				separator();
+				expectPunct("[");
+				std::vector<uint32_t> list {0};
+				if (!isPunct("]")) {
+					do {
+						auto k = list.size() - 1;
+						ext::WordKind wk =
+						    k < info->shape.prefix.size() ? info->shape.prefix[k]
+						    : info->shape.group.empty()
+						        ? ext::WordKind::Imm
+						        : info->shape.group[(k - info->shape.prefix.size()) % info->shape.group.size()];
+						switch (wk) {
+						case ext::WordKind::Value:
+						case ext::WordKind::Const:
+							list.push_back(operand().ref);
+							break;
+						case ext::WordKind::Pointer:
+							list.push_back(tableRef('p'));
+							break;
+						case ext::WordKind::Type:
+							list.push_back(static_cast<uint32_t>(parseType()));
+							break;
+						case ext::WordKind::Imm:
+							list.push_back(static_cast<uint32_t>(expectUInt()));
+							break;
+						}
+						list[0]++;
+					} while (acceptPunct(","));
+				}
+				expectPunct("]");
+				return m_.addExtra(list);
+			}
+			}
+			return 0;
+		};
+		inst.a = field(info->shape.a);
+		inst.b = field(info->shape.b);
+		inst.c = field(info->shape.c);
+		type = TypeId::Void;
+		if (acceptPunct(":")) {
+			type = parseType();
+		}
+		return inst;
 	}
 
 	// ---- end of module ---------------------------------------------------------------------------------------
