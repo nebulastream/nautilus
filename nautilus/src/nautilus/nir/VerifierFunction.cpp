@@ -32,6 +32,9 @@ public:
 		for (uint32_t b = 0; b < blocks_.size(); ++b) {
 			blockArgs(b);
 		}
+		if (level_ == Level::SSA) {
+			ssaLevel();
+		}
 	}
 
 	/// Intervals of `extra` this function's instructions own: [begin, end).
@@ -124,8 +127,10 @@ private:
 		auto& blk = blocks_[b];
 		if (level_ == Level::PreSSA) {
 			if (blk.argCount != 0) {
-				// V052 belongs to the pre-SSA level checks
-				return;
+				report(DiagCode::V052, "a pre-SSA block has no block arguments", NONE, b);
+			}
+			if (blk.flags & BLOCK_LANDING_PAD) {
+				report(DiagCode::V053, "a pre-SSA block is not a landing pad", NONE, b);
 			}
 			return;
 		}
@@ -143,6 +148,160 @@ private:
 				}
 			} else if (isArg) {
 				report(DiagCode::V020, "blockarg outside the leading argCount instructions", blk.first + k, b);
+			}
+		}
+	}
+
+	bool isPad(uint32_t b) const {
+		return b < blocks_.size() && (blocks_[b].flags & BLOCK_LANDING_PAD) != 0;
+	}
+
+	/// The unwind entry of an instruction if it carries a block id, else NONE.
+	uint32_t unwindBlock(const Inst& inst) const {
+		uint32_t unwind = NO_UNWIND;
+		switch (static_cast<Op>(inst.op)) {
+		case Op::Div:
+		case Op::Rem:
+			if (inst.flags & 2) {
+				unwind = inst.c;
+			}
+			break;
+		case Op::Call:
+		case Op::CallIndirect: {
+			uint32_t len = 0;
+			if (listLength(inst, len)) {
+				unwind = m_.extra[inst.c + 1 + m_.extra[inst.c]];
+			}
+			break;
+		}
+		default:
+			break;
+		}
+		return unwind < blocks_.size() ? unwind : NONE;
+	}
+
+	/// Successor blocks of block b: branch targets and unwind edges.
+	void successors(uint32_t b, std::vector<uint32_t>& out) const {
+		auto& blk = blocks_[b];
+		for (uint32_t k = 0; k < blk.count; ++k) {
+			auto& inst = insts_[blk.first + k];
+			auto u = unwindBlock(inst);
+			if (u != NONE) {
+				out.push_back(u);
+			}
+			uint32_t len = 0;
+			if (inst.op == static_cast<uint16_t>(Op::Br) && inst.a < blocks_.size()) {
+				out.push_back(inst.a);
+			} else if (inst.op == static_cast<uint16_t>(Op::CondBr) && listLength(inst, len)) {
+				if (inst.b < blocks_.size()) {
+					out.push_back(inst.b);
+				}
+				uint32_t f = m_.extra[inst.c + 2 + m_.extra[inst.c + 1]];
+				if (f < blocks_.size()) {
+					out.push_back(f);
+				}
+			}
+		}
+	}
+
+	void ssaLevel() {
+		// NIR-V066 entry block
+		if (isPad(0)) {
+			report(DiagCode::V066, "the entry block is not a landing pad", NONE, 0);
+		}
+		if (blocks_[0].argCount != sig_.paramCount) {
+			report(DiagCode::V066, "the entry block's arguments equal the signature's parameters", NONE, 0);
+		} else {
+			for (uint32_t k = 0; k < sig_.paramCount; ++k) {
+				if (static_cast<TypeId>(insts_[blocks_[0].first + k].type) != typeOf(m_.paramType(sig_, k))) {
+					report(DiagCode::V066, "entry argument " + std::to_string(k) + " differs from the parameter type",
+					       blocks_[0].first + k, 0);
+				}
+			}
+		}
+		// NIR-V064 landing pads
+		std::vector<uint32_t> succ;
+		for (uint32_t b = 0; b < blocks_.size(); ++b) {
+			bool pad = isPad(b);
+			if (pad && blocks_[b].argCount != 0) {
+				report(DiagCode::V064, "a landing pad has no arguments", NONE, b);
+			}
+			auto& blk = blocks_[b];
+			for (uint32_t k = 0; k < blk.count; ++k) {
+				auto id = blk.first + k;
+				auto& inst = insts_[id];
+				auto u = unwindBlock(inst);
+				if (u != NONE && !isPad(u)) {
+					report(DiagCode::V064, "an unwind entry names a block that is not a landing pad", id, b);
+				}
+				bool br = inst.op == static_cast<uint16_t>(Op::Br);
+				if (br && inst.a < blocks_.size() && isPad(inst.a) && !pad) {
+					report(DiagCode::V064, "only landing pads branch to landing pads", id, b);
+				}
+				if (inst.op == static_cast<uint16_t>(Op::CondBr)) {
+					if (pad) {
+						report(DiagCode::V064, "condbr does not occur in landing pads", id, b);
+					} else {
+						uint32_t len = 0;
+						if (listLength(inst, len)) {
+							uint32_t f = m_.extra[inst.c + 2 + m_.extra[inst.c + 1]];
+							if (isPad(inst.b) || isPad(f)) {
+								report(DiagCode::V064, "only unwind entries enter landing pads", id, b);
+							}
+						}
+					}
+				}
+				if (pad && inst.op == static_cast<uint16_t>(Op::Ret)) {
+					report(DiagCode::V064, "ret does not occur in landing pads", id, b);
+				}
+				if (pad && br) {
+					if (inst.a >= blocks_.size() || !isPad(inst.a)) {
+						report(DiagCode::V064, "a pad's br targets another pad", id, b);
+					}
+					if (m_.extra[inst.c] != 0) {
+						report(DiagCode::V064, "a pad's br has no arguments", id, b);
+					}
+				}
+			}
+		}
+		// pad br edges form no cycle: every pad has at most one out edge, so follow it
+		for (uint32_t start = 0; start < blocks_.size(); ++start) {
+			uint32_t cur = start;
+			for (size_t steps = 0; isPad(cur) && steps <= blocks_.size(); ++steps) {
+				auto& blk = blocks_[cur];
+				if (blk.count == 0) {
+					break;
+				}
+				const Inst& last = insts_[blk.first + blk.count - 1];
+				if (last.op != static_cast<uint16_t>(Op::Br) || last.a >= blocks_.size()) {
+					break;
+				}
+				cur = last.a;
+				if (cur == start) {
+					report(DiagCode::V064, "the br edges between landing pads form a cycle", NONE, start);
+					break;
+				}
+			}
+		}
+		// NIR-V063 reachability
+		std::vector<uint8_t> seen(blocks_.size(), 0);
+		std::vector<uint32_t> work {0};
+		seen[0] = 1;
+		while (!work.empty()) {
+			auto b = work.back();
+			work.pop_back();
+			succ.clear();
+			successors(b, succ);
+			for (auto s : succ) {
+				if (!seen[s]) {
+					seen[s] = 1;
+					work.push_back(s);
+				}
+			}
+		}
+		for (uint32_t b = 0; b < blocks_.size(); ++b) {
+			if (!seen[b]) {
+				report(DiagCode::V063, "the block is not reachable from the entry block", NONE, b);
 			}
 		}
 	}
@@ -190,7 +349,7 @@ private:
 	}
 
 	void expectType(uint32_t inst, TypeId have, bool ok, const char* what) {
-		(void)have;
+		(void) have;
 		if (!ok) {
 			report(DiagCode::V006, std::string(what), inst);
 		}
@@ -250,6 +409,10 @@ private:
 		}
 		auto op = static_cast<Op>(inst.op);
 		auto type = static_cast<TypeId>(inst.type);
+		if (level_ == Level::SSA && (op == Op::Assign || op == Op::Var)) {
+			report(DiagCode::V060, "assign and var occur only at the pre-SSA level", i);
+			return;
+		}
 
 		// unused fields and reserved flag bits
 		auto unused = [&](OperandKind k, uint32_t v, const char* name) {
@@ -287,9 +450,15 @@ private:
 		}
 
 		TypeId ta = TypeId::Void, tb = TypeId::Void, tc = TypeId::Void;
-		auto A = [&] { return useRef(i, inst.a, ta, "operand a"); };
-		auto B = [&] { return useRef(i, inst.b, tb, "operand b"); };
-		auto C = [&] { return useRef(i, inst.c, tc, "operand c"); };
+		auto A = [&] {
+			return useRef(i, inst.a, ta, "operand a");
+		};
+		auto B = [&] {
+			return useRef(i, inst.b, tb, "operand b");
+		};
+		auto C = [&] {
+			return useRef(i, inst.c, tc, "operand c");
+		};
 		auto resultIs = [&](TypeId t) {
 			if (type != t) {
 				report(DiagCode::V006, "the result type does not match the operation", i);
@@ -431,11 +600,19 @@ private:
 			break;
 		case Op::Resume:
 			resultIs(TypeId::Void);
+			if (level_ == Level::PreSSA || !isPad(blockOf_[i])) {
+				report(DiagCode::V065, "resume occurs only in landing pads", i);
+			}
 			break;
 		case Op::Assign:
 			resultIs(TypeId::Void);
+			if (isConstRef(inst.a)) {
+				report(DiagCode::V050, "assign targets a variable, never a constant", i);
+			} else if (A() && inst.a >= i) {
+				report(DiagCode::V050, "assign targets a variable defined earlier", i);
+			}
 			if (A() && B() && ta != tb) {
-				report(DiagCode::V006, "assign operands differ in type", i);
+				report(DiagCode::V050, "assign operands differ in type", i);
 			}
 			break;
 		case Op::Var:
@@ -466,6 +643,9 @@ private:
 				report(DiagCode::V006, "the result type does not match the operation", i);
 			}
 			bool checked = (inst.flags & 2) != 0;
+			if (level_ == Level::PreSSA && isInteger(ta) && (!checked || inst.c == NO_UNWIND)) {
+				report(DiagCode::V055, "a pre-SSA integer div/rem is checked and has a cleanup list", i);
+			}
 			if (isFloat(ta)) {
 				if (inst.flags != 0 || inst.c != 0) {
 					report(DiagCode::V016, "float div/rem has no flags and c = 0", i);
@@ -521,8 +701,12 @@ private:
 		}
 		auto kind = inst.flags & 0xF;
 		bool ok = false;
-		auto intLike = [](TypeId t) { return isInteger(t) || t == TypeId::Bool; };
-		auto bits = [](TypeId t) { return t == TypeId::Bool ? 1u : sizeOf(t) * 8; };
+		auto intLike = [](TypeId t) {
+			return isInteger(t) || t == TypeId::Bool;
+		};
+		auto bits = [](TypeId t) {
+			return t == TypeId::Bool ? 1u : sizeOf(t) * 8;
+		};
 		switch (kind) {
 		case 0:
 		case 1:
@@ -613,11 +797,20 @@ private:
 	}
 
 	void cleanupEntries(uint32_t i, uint32_t offset) {
-		// V056 belongs to the pre-SSA level checks; here only the references are validated
 		uint32_t n = m_.extra[offset];
 		for (uint32_t k = 0; k < n; ++k) {
 			TypeId t = TypeId::Void;
-			useRef(i, m_.extra[offset + 2 + 2 * k], t, "cleanup object");
+			auto callee = m_.extra[offset + 1 + 2 * k];
+			bool dtor = callee < m_.callees.size() &&
+			            m_.callees[callee].kind == static_cast<uint8_t>(CalleeKind::External) &&
+			            m_.callees[callee].target < m_.pointers.size() &&
+			            m_.pointers[m_.callees[callee].target].kind == static_cast<uint8_t>(PointerKind::Destructor);
+			if (!dtor) {
+				report(DiagCode::V056, "a cleanup entry names a callee that is not a destructor callee", i);
+			}
+			if (useRef(i, m_.extra[offset + 2 + 2 * k], t, "cleanup object") && t != TypeId::Ptr) {
+				report(DiagCode::V056, "a cleanup object must be a ptr", i);
+			}
 		}
 	}
 
@@ -693,12 +886,16 @@ private:
 			for (uint32_t k = 0; k < argc; ++k) {
 				TypeId t = TypeId::Void;
 				if (useRef(i, l[1 + k], t, "call argument") && t != typeOf(m_.paramType(sig, k))) {
-					report(DiagCode::V011, "argument " + std::to_string(k) + " differs in type from the signature's", i);
+					report(DiagCode::V011, "argument " + std::to_string(k) + " differs in type from the signature's",
+					       i);
 				}
 			}
 		}
 		// unwind entry and thunk
 		unwindEntry(i, unwind);
+		if (level_ == Level::SSA && isPad(blockOf_[i]) && unwind != NO_UNWIND && unwind != NO_CLEANUP) {
+			report(DiagCode::V065, "calls in landing pads have NO_UNWIND or NO_CLEANUP", i);
+		}
 		if ((attrs & AttrNoUnwind) && unwind != NO_UNWIND) {
 			report(DiagCode::V013, "a noUnwind call must have NO_UNWIND", i);
 		}
@@ -747,7 +944,10 @@ private:
 				return;
 			}
 			if (level_ == Level::PreSSA) {
-				return; // V052: argument lists are empty
+				if (argc != 0) {
+					report(DiagCode::V052, "pre-SSA branch argument lists are empty", i);
+				}
+				return;
 			}
 			auto& tb = blocks_[target];
 			if (argc != tb.argCount) {

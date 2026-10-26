@@ -78,7 +78,9 @@ inline uint32_t buildAllSSA(Module& m) {
 	auto al = b.emit(Op::Alloca, TypeId::Ptr, 0, 0);
 	b.emit(Op::Store, TypeId::Void, 0, al, ca);
 	auto ld = b.emit(Op::Load, TypeId::F64, 0, p);
-	uint32_t cargs[] = {1, sel, NO_UNWIND, NONE};
+	auto thunk =
+	    m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::CaptureThunk), 0, 0, 0, 0, 0x3000, 0});
+	uint32_t cargs[] = {1, sel, 3, thunk}; // unwinds to the landing pad ^b3
 	auto cl = b.emit(Op::Call, TypeId::I64, 0, callee, 0, m.addExtra(cargs));
 	uint32_t ciargs[] = {1, cl, NO_UNWIND, NONE, 0};
 	auto fa = b.emit(Op::FuncAddr, TypeId::Ptr, 0, callee);
@@ -98,7 +100,7 @@ inline uint32_t buildAllSSA(Module& m) {
 	auto r = b.emit(Op::BlockArg, TypeId::I64, 0, 0);
 	uint32_t brArgs[] = {1, r};
 	b.emit(Op::Br, TypeId::Void, 0, 2, 0, m.addExtra(brArgs));
-	b.beginBlock(1, BLOCK_LANDING_PAD);
+	b.beginBlock(1);
 	auto r2 = b.emit(Op::BlockArg, TypeId::I64, 0, 0);
 	b.emit(Op::Ret, TypeId::Void, 0, r2);
 	b.beginBlock(0, BLOCK_LANDING_PAD);
@@ -159,17 +161,21 @@ void negative(DiagCode c, F corrupt) {
 	auto m = validModule();
 	{
 		auto d = verify(m);
+		std::string all;
 		for (auto& x : d) {
-			INFO(x.str());
+			all += x.str() + "\n";
 		}
+		INFO(all);
 		REQUIRE(d.empty());
 	}
 	corrupt(m);
 	auto d = verify(m);
-	INFO(codeName(c));
+	std::string all(codeName(c));
+	all += " expected; got:\n";
 	for (auto& x : d) {
-		INFO(x.str());
+		all += x.str() + "\n";
 	}
+	INFO(all);
 	REQUIRE(has(d, c));
 }
 
