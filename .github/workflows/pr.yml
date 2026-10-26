@@ -5,10 +5,11 @@ on:
     branches:
       - main
       - nautilus-0.4
+  # Every pull request, whatever its base: a stack of 0.4 pull requests targets the branch below it. The jobs decide
+  # (see `if:`): the light lanes (nir-components, doc-check, format-check) always run; the full matrix runs for pull
+  # requests against main or nautilus-0.4 and for pull requests that carry the `0.4` label. Adding that label runs it.
   pull_request:
-    branches:
-      - main
-      - nautilus-0.4
+    types: [opened, synchronize, reopened, labeled]
 # cancel previous runs of same PR / branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,6 +17,7 @@ concurrency:
 jobs:
   build-test:
     runs-on: ${{matrix.os}}
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: ${{ matrix.os }} ${{ matrix.cc }} ${{ matrix.flags }}
     # A leg marked `experimental` reports but does not fail the PR (see the UBSan leg).
     continue-on-error: ${{ matrix.experimental == true }}
@@ -181,6 +183,7 @@ jobs:
           ctest --test-dir build/plugins/gpu/test --output-on-failure --timeout 300
   format-check:
     runs-on: ubuntu-24.04
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}
     name: Format Check (clang-format-22)
     steps:
       - name: Check out repository code
@@ -196,6 +199,7 @@ jobs:
         run: ./format.sh
   example-demos:
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: Example demos (clang-18)
     env:
       CC: clang-18
@@ -308,6 +312,7 @@ jobs:
           echo "$out" | grep -q "conditionalSumHinted = 7"
   doc-check:
     runs-on: ubuntu-24.04
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}
     name: Agent documents name real paths, targets, options and skills
     steps:
       - name: Check out repository code
@@ -318,6 +323,7 @@ jobs:
         run: python3 tools/doc-check/doc-check.py
   nir-components:
     runs-on: ubuntu-24.04
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}
     name: NIR components (clang-21)
     env:
       CC: clang-21
@@ -360,6 +366,7 @@ jobs:
           ./build/nautilus/test/fuzz/nautilus-nir-fuzz-replay nautilus/test/fuzz/corpus-nir
   fuzz-replay-smoke:
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: Fuzzer replay smoke corpus (clang-21)
     env:
       CC: clang-21
@@ -414,6 +421,7 @@ jobs:
           ./build/nautilus/test/fuzz/nautilus-fuzz-replay
   fuzz-libfuzzer-smoke:
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: libFuzzer build + crash-pipeline canary (clang-21)
     env:
       CC: clang-21
@@ -470,6 +478,7 @@ jobs:
           ./build/nautilus/test/fuzz/nautilus-nir-fuzz -runs=0 -print_funcs=0 fuzz-work/nir-seeds
   llvm-ir-test:
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: LLVM IR Test (clang-22)
     env:
       CC: clang-22
