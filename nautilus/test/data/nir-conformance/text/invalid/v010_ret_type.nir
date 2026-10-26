@@ -1,0 +1,6 @@
+; expect: NIR-V010
+nir 1.0
+func @f : () -> i64 {
+^b0:
+  ret
+}

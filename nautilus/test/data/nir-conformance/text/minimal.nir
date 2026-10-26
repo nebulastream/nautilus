@@ -1,0 +1,6 @@
+nir 1.0
+
+func export @f : () -> void {
+^b0:
+  ret
+}

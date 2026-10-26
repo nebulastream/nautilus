@@ -1,0 +1,7 @@
+; expect: NIR-P004
+nir 1.0
+func @f : () -> void {
+^b0:
+  %3 = add 1:i64, 1:i64
+  ret
+}

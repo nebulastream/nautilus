@@ -1,0 +1,22 @@
+nir 1.0
+pointer #p0 = callee symbol "may_throw"
+pointer #p1 = thunk symbol "may_throw$thunk"
+pointer #p2 = destructor symbol "Guard::~Guard"
+callee #c0 = external #p0 : (ptr) -> void
+callee #c1 = external #p2 : (ptr) -> void attrs(noUnwind)
+
+func export @guarded : (ptr) -> void {
+  alloca 8 align 8
+^b0(%0: ptr):
+  %1 = alloca 0
+  call #c0(%1) unwind ^b1 thunk #p1
+  call #c1(%1)
+  call #c0(%0) unwind ^b2 thunk #p1
+  call #c1(%1)
+  ret
+^b1 pad:
+  call #c1(%1)
+  resume
+^b2 pad:
+  br ^b1
+}

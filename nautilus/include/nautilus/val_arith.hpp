@@ -263,8 +263,45 @@ val<LHS> neg(const val<LHS>& val) {
 template <typename LHS, typename RHS>
 using ArithmeticResultType = std::common_type_t<decltype(+std::declval<LHS>()), decltype(+std::declval<RHS>())>;
 
+/// Signed integer addition, subtraction and multiplication wrap in traced code (two's complement). The interpreter
+/// computes them in the unsigned type, since signed overflow is undefined behavior in C++.
+template <typename T>
+constexpr T wrappingAdd(T a, T b) {
+	if constexpr (std::is_integral_v<T> && std::is_signed_v<T>) {
+		using U = std::make_unsigned_t<T>;
+		return static_cast<T>(static_cast<U>(a) + static_cast<U>(b));
+	} else {
+		return a + b;
+	}
+}
+template <typename T>
+constexpr T wrappingSub(T a, T b) {
+	if constexpr (std::is_integral_v<T> && std::is_signed_v<T>) {
+		using U = std::make_unsigned_t<T>;
+		return static_cast<T>(static_cast<U>(a) - static_cast<U>(b));
+	} else {
+		return a - b;
+	}
+}
+template <typename T>
+constexpr T wrappingMul(T a, T b) {
+	if constexpr (std::is_integral_v<T> && std::is_signed_v<T>) {
+		using U = std::make_unsigned_t<T>;
+		return static_cast<T>(static_cast<U>(a) * static_cast<U>(b));
+	} else {
+		return a * b;
+	}
+}
+#define NAUTILUS_EVAL_ADD(a, b) wrappingAdd<resultType>(a, b)
+#define NAUTILUS_EVAL_SUB(a, b) wrappingSub<resultType>(a, b)
+#define NAUTILUS_EVAL_MUL(a, b) wrappingMul<resultType>(a, b)
+#define NAUTILUS_EVAL_DIV(a, b) ((a) / (b))
+#define NAUTILUS_EVAL_MOD(a, b) ((a) % (b))
+#define NAUTILUS_EVAL_SHR(a, b) ((a) >> (b))
+#define NAUTILUS_EVAL_SHL(a, b) ((a) << (b))
+
 /// Binary operator helper for arithmetic operations with integer promotion
-#define DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(OP, OP_NAME, OP_TRACE)                                            \
+#define DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(OP, OP_NAME, OP_TRACE, EVAL)                                      \
 	template <typename LHS, typename RHS>                                                                              \
 	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
 		using LHSVal = std::remove_cvref_t<LHS>;                                                                       \
@@ -284,26 +321,27 @@ using ArithmeticResultType = std::common_type_t<decltype(+std::declval<LHS>()), 
 			return val<resultType>(tc);                                                                                \
 		}                                                                                                              \
                                                                                                                        \
-		return val<resultType>(RawValueResolver<resultType>::getRawValue(std::forward<decltype(lValue)>(               \
-		    lValue)) OP RawValueResolver<resultType>::getRawValue(std::forward<decltype(rValue)>(rValue)));            \
+		return val<resultType>(                                                                                        \
+		    EVAL(RawValueResolver<resultType>::getRawValue(std::forward<decltype(lValue)>(lValue)),                    \
+		         RawValueResolver<resultType>::getRawValue(std::forward<decltype(rValue)>(rValue))));                  \
 	}                                                                                                                  \
 	/* The type OP_NAME converts both operands to. */                                                                  \
 	template <typename LBase, typename RBase>                                                                          \
 	using OP_NAME##_operand_t = ArithmeticResultType<LBase, RBase>;
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(+, add, ADD)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(+, add, ADD, NAUTILUS_EVAL_ADD)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(-, sub, SUB)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(-, sub, SUB, NAUTILUS_EVAL_SUB)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(*, mul, MUL)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(*, mul, MUL, NAUTILUS_EVAL_MUL)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(/, div, DIV)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(/, div, DIV, NAUTILUS_EVAL_DIV)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(%, mod, MOD)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(%, mod, MOD, NAUTILUS_EVAL_MOD)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(>>, shr, RSH)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(>>, shr, RSH, NAUTILUS_EVAL_SHR)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH, NAUTILUS_EVAL_SHL)
 
 /// Binary operator helper for comparison operations (no promotion)
 #define DEFINE_BINARY_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE, RES_TYPE)                                                 \

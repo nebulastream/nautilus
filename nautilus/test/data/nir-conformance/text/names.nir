@@ -1,0 +1,17 @@
+nir 1.0
+module "nes.query42.pipeline3"
+
+func export @"lib.math::hash" : () -> void {
+^b0:
+  ret
+}
+
+func export @plain_name.x$ : () -> void {
+^b0:
+  ret
+}
+
+func export @"with \"quotes\" and \\ and \x07" : () -> void {
+^b0:
+  ret
+}

@@ -1,0 +1,7 @@
+; expect: NIR-V018
+nir 1.0
+func @f : (i64) -> void {
+^b0(%0: i64):
+  %1 = cast.trunc %0 : f64
+  ret
+}

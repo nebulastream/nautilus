@@ -1,0 +1,7 @@
+; expect: NIR-V017
+nir 1.0
+func @f : (f64) -> void {
+^b0(%0: f64):
+  %1 = cmp.lt.u %0, %0
+  ret
+}

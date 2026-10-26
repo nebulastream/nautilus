@@ -1,0 +1,20 @@
+nir 1.0
+
+func export @cmps : (i32, i32, f64, f64, ptr, ptr) -> i32 {
+^b0(%0: i32, %1: i32, %2: f64, %3: f64, %4: ptr, %5: ptr):
+  %6 = cmp.eq %0, %1
+  %7 = cmp.ne %0, %1
+  %8 = cmp.lt.s %0, %1
+  %9 = cmp.le.u %0, %1
+  %10 = cmp.gt.s %0, 0:i32
+  %11 = cmp.ge.u %0, 0:i32
+  %12 = cmp.lt %2, %3
+  %13 = cmp.ne %2, %3
+  %14 = cmp.eq %4, %5
+  %15 = and %6, %7
+  %16 = and %15, %8
+  %17 = select %16, %0, %1
+  %18 = select %12, 1:f64, %3
+  %19 = select %14, %4, %5
+  ret %17
+}

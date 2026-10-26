@@ -540,6 +540,19 @@ void selectOp(const OpCode& c, RegisterFile& regs) {
 	writeReg(regs, c.output, condition ? trueValue : falseValue);
 }
 
+/// Integer addition, subtraction and multiplication wrap (two's complement) like the code the other backends
+/// generate. They are computed in the unsigned type, since signed overflow is undefined behavior in C++.
+template <class T, class Op>
+T wrappingArithmetic(T l, T r, Op op) {
+	if constexpr (std::is_integral_v<T>) {
+		// narrower types promote to int, whose multiplication can overflow too
+		using U = std::make_unsigned_t<std::common_type_t<T, unsigned>>;
+		return static_cast<T>(op(static_cast<U>(l), static_cast<U>(r)));
+	} else {
+		return static_cast<T>(op(l, r));
+	}
+}
+
 /**
  * @brief Defines an add in the bytecode interpreter
  * @tparam RegisterType
@@ -550,7 +563,7 @@ template <class RegisterType>
 void add(const OpCode& c, RegisterFile& regs) {
 	auto l = readReg<RegisterType>(regs, c.reg1);
 	auto r = readReg<RegisterType>(regs, c.reg2);
-	writeReg(regs, c.output, l + r);
+	writeReg(regs, c.output, wrappingArithmetic(l, r, [](auto a, auto b) { return a + b; }));
 }
 
 /**
@@ -563,7 +576,7 @@ template <class RegisterType>
 void sub(const OpCode& c, RegisterFile& regs) {
 	auto l = readReg<RegisterType>(regs, c.reg1);
 	auto r = readReg<RegisterType>(regs, c.reg2);
-	writeReg(regs, c.output, l - r);
+	writeReg(regs, c.output, wrappingArithmetic(l, r, [](auto a, auto b) { return a - b; }));
 }
 
 /**
@@ -576,7 +589,7 @@ template <class RegisterType>
 void mul(const OpCode& c, RegisterFile& regs) {
 	auto l = readReg<RegisterType>(regs, c.reg1);
 	auto r = readReg<RegisterType>(regs, c.reg2);
-	writeReg(regs, c.output, l * r);
+	writeReg(regs, c.output, wrappingArithmetic(l, r, [](auto a, auto b) { return a * b; }));
 }
 
 /**

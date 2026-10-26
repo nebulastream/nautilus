@@ -1,0 +1,3 @@
+; expect: NIR-P001
+nir 1.0
+module "oops

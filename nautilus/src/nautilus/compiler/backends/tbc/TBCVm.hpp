@@ -49,7 +49,9 @@ inline uint64_t* pushFrame(VMContext* ctx, const TBCFunction& fn, uint64_t* call
 	base[1] = reinterpret_cast<uint64_t>(returnIp);
 	base[2] = dstReg == kNoReg ? ~uint64_t {0} : dstReg;
 	uint64_t* fp = base + 3;
-	std::memcpy(fp, fn.initImage.data(), fn.initImage.size() * sizeof(uint64_t));
+	if (!fn.initImage.empty()) {
+		std::memcpy(fp, fn.initImage.data(), fn.initImage.size() * sizeof(uint64_t));
+	}
 	if (!fn.allocaRegs.empty()) {
 		auto area = reinterpret_cast<uintptr_t>(fp + fn.regSlots);
 		area = (area + 15u) & ~uintptr_t {15};

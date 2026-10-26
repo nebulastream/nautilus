@@ -1,0 +1,33 @@
+nir 1.0
+module "tables"
+import #i0 = "lib.math" :: "hash" : (i64) -> i64 attrs(noArgRead, noArgWrite, willReturn)
+pointer #p0 = callee symbol "puts"
+pointer #p1 = address local 0x1000 raw
+pointer #p2 = address symbol "global_state" audited
+pointer #p3 = address image "0123456789abcdef" + 0x2f40
+binding #b0 = "state" : void size 64 align 16
+binding #b1 = "counter" : i64 size 8 align 8
+data #d0 align 1 = x"68656c6c6f00"
+data #d1 align 8 = x"0102030405060708"
+callee #c0 = external #p0 : (ptr) -> i32 sext
+callee #c1 = imported #i0 : (i64) -> i64 attrs(noArgRead, noArgWrite, willReturn)
+callee #c2 = internal @helper : (i64) -> i64 attrs(noUnwind)
+
+func export @tables : () -> ptr {
+^b0:
+  %0 = ptr.const #p1
+  %1 = ptr.const #p2
+  %2 = ptr.const #p3
+  %3 = ptr.const null
+  %4 = bind.addr #b0
+  %5 = bind.addr #b1
+  %6 = data.addr #d0
+  %7 = data.addr #d1
+  %8 = funcaddr #c2
+  ret %6
+}
+
+func @helper : (i64) -> i64 attrs(noUnwind) {
+^b0(%0: i64):
+  ret %0
+}

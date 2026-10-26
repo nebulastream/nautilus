@@ -53,6 +53,7 @@ Test binaries (Catch2) under `build/<preset>/`:
 | `nautilus/test/ir-pass-tests/nautilus-ir-pass-tests` | each IR pass in isolation |
 | `nautilus/test/val-tests/nautilus-value-tests` | `val<T>` semantics |
 | `nautilus/test/common/nautilus-common-tests` | arenas, exception transport, utilities |
+| `nautilus/test/nir-tests/nautilus-nir-tests` | NIR (0.4): data structures, verifier, text form, canonical form and hash, images, option registry, conformance corpus |
 | `plugins/<name>/test/nautilus-<name>-tests` | each plugin (`std`, `simd`, `builtin`, `profiling`, `inlining`, …) |
 
 ```bash
@@ -96,11 +97,13 @@ ctest --test-dir build/dev/plugins/std/test --output-on-failure                #
 | `nautilus/src/nautilus/compiler/` | `CompilationPipeline`, `TieredCompiler` (tier 0 / tier 1 promotion), `Engine.cpp`, dumps and statistics |
 | `nautilus/src/nautilus/compiler/ir/` | the IR (`IRGraph`, `operations/`, `blocks/`) and its passes (`passes/`, run by `IRPassManager`) |
 | `nautilus/src/nautilus/compiler/backends/` | `asmjit` (x86-64, AArch64), `tbc` (threaded bytecode, optional copy-and-patch JIT), `bc` (bytecode), `mlir` (MLIR → LLVM), `cpp` (C++ source + system compiler) |
+| `nautilus/src/nautilus/nir/` | NIR, the 0.4 IR: built next to the 0.3 pipeline, not yet called by the engine (see its `AGENTS.md`) |
 | `third_party/asmjit/` | vendored AsmJit with Nautilus patches, marked `[Nautilus]` |
+| `third_party/xxhash/` | vendored xxHash (XXH3-128 for the NIR structural hash) |
 | `plugins/` | `std`, `simd`, `builtin`, `specialization`, `inlining`, `gpu`, `profiling`, each with its own tests |
 | `nautilus/test/` | tests (§3), `data/` reference dumps, `benchmark/`, `fuzz/` |
 | `docs/` | user documentation; `docs/options.md` lists every option |
-| `tools/` | playground, stencil generator for `tbc`, perf helpers |
+| `tools/` | playground, stencil generator for `tbc`, perf helpers, `nir-opt` (`nautilus-nir-opt`: read, verify, print, hash NIR) |
 
 ## 6. Debugging and measuring
 
@@ -143,7 +146,7 @@ Project skills in `.claude/skills/`:
 | `regenerate-dumps` | update `nautilus/test/data` reference dumps correctly |
 | `nautilus-review` | review user code written with `val<T>` for tracing and codegen quality |
 
-Subsystem notes: `nautilus/src/nautilus/tracing/AGENTS.md`,
+Subsystem notes: `nautilus/src/nautilus/nir/AGENTS.md`, `nautilus/src/nautilus/tracing/AGENTS.md`,
 `nautilus/src/nautilus/compiler/AGENTS.md`,
 `nautilus/src/nautilus/compiler/backends/AGENTS.md`, `plugins/AGENTS.md`.
 

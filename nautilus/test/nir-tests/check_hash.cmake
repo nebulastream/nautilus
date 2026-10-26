@@ -1,0 +1,13 @@
+# Hashes INPUT in two separate nautilus-nir-opt processes; the keys must be equal and look like 32 hex digits.
+execute_process(COMMAND ${OPT} --hash ${INPUT} OUTPUT_VARIABLE first RESULT_VARIABLE rc1)
+execute_process(COMMAND ${OPT} --hash ${INPUT} OUTPUT_VARIABLE second RESULT_VARIABLE rc2)
+if (NOT rc1 EQUAL 0 OR NOT rc2 EQUAL 0)
+    message(FATAL_ERROR "nautilus-nir-opt --hash failed")
+endif ()
+if (NOT first MATCHES "^[0-9a-f][0-9a-f]+\n$" OR NOT first STREQUAL second)
+    message(FATAL_ERROR "the hash differs between processes: ${first} and ${second}")
+endif ()
+string(LENGTH "${first}" length)
+if (NOT length EQUAL 33)
+    message(FATAL_ERROR "expected 32 hex digits, got ${first}")
+endif ()

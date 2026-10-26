@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - nautilus-0.4
   pull_request:
     branches:
       - main
+      - nautilus-0.4
 # cancel previous runs of same PR / branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -294,6 +296,48 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "conditionalSumPlain  = 7"
           echo "$out" | grep -q "conditionalSumHinted = 7"
+  nir-components:
+    runs-on: ubuntu-24.04
+    name: NIR components (clang-21)
+    env:
+      CC: clang-21
+      CXX: clang++-21
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Force apt to use IPv4
+        run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-nir-components
+      - name: Install clang + LLVM 21
+        uses: ./.github/actions/install-llvm
+        with:
+          llvm-version: "21"
+      - name: cmake
+        shell: bash
+        run: |
+          # NIR is built next to the 0.3 pipeline and does not need a backend, so no MLIR.
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_MLIR_BACKEND=OFF -DENABLE_FUZZER_REPLAY=ON -G Ninja -S . -B build
+      - name: build
+        shell: bash
+        run: |
+          cmake --build build --target nautilus-nir-tests nautilus-nir-opt nautilus-nir-fuzz-replay
+      - name: unit tests
+        shell: bash
+        run: |
+          ./build/nautilus/test/nir-tests/nautilus-nir-tests
+      - name: .nir text tests and golden images (ctest)
+        shell: bash
+        run: |
+          ctest --test-dir build -R '^nir-' --output-on-failure
+      - name: replay the NIR fuzz seeds
+        shell: bash
+        run: |
+          ./build/nautilus/test/fuzz/nautilus-nir-fuzz-replay nautilus/test/fuzz/corpus-nir
   fuzz-replay-smoke:
     runs-on: ubuntu-24.04
     name: Fuzzer replay smoke corpus (clang-21)
@@ -381,7 +425,7 @@ jobs:
       - name: build
         shell: bash
         run: |
-          cmake --build build --target nautilus-fuzz
+          cmake --build build --target nautilus-fuzz nautilus-nir-fuzz
       - name: crash-pipeline canary
         shell: bash
         run: |
@@ -398,6 +442,12 @@ jobs:
           cp -r nautilus/test/fuzz/corpus fuzz-work/seeds
           ./build/nautilus/test/fuzz/nautilus-fuzz -runs=0 -print_funcs=0 \
             -dict=nautilus/test/fuzz/dictionary fuzz-work/seeds
+      - name: run the NIR seed corpus through libFuzzer
+        shell: bash
+        run: |
+          # Same idea for the NIR image loader, verifier and parser: only the seeds run.
+          cp -r nautilus/test/fuzz/corpus-nir fuzz-work/nir-seeds
+          ./build/nautilus/test/fuzz/nautilus-nir-fuzz -runs=0 -print_funcs=0 fuzz-work/nir-seeds
   llvm-ir-test:
     runs-on: ubuntu-24.04
     name: LLVM IR Test (clang-22)

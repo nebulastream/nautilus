@@ -1,0 +1,53 @@
+// The one opcode table of NIR (13-nir-spec.md §5). Verifier rules, the printer, the parser, the C API enum and
+// backend dispatch tables are generated from it.
+//
+// NIR_OP(Name, code, "text", A, B, C, FLAGS)
+//   A, B, C: operand kind of the fields a, b and c (enum OperandKind).
+//   FLAGS:   OpFlags, or-ed together.
+#ifndef NIR_OP
+#error "define NIR_OP before including Opcodes.def"
+#endif
+
+// 5.1 Arithmetic
+NIR_OP(Add, 1, "add", Value, Value, Unused, OpPure)
+NIR_OP(Sub, 2, "sub", Value, Value, Unused, OpPure)
+NIR_OP(Mul, 3, "mul", Value, Value, Unused, OpPure)
+NIR_OP(Div, 4, "div", Value, Value, Unwind, OpMayThrow)
+NIR_OP(Rem, 5, "rem", Value, Value, Unwind, OpMayThrow)
+NIR_OP(FNeg, 6, "fneg", Value, Unused, Unused, OpPure)
+// 5.2 Logical
+NIR_OP(And, 8, "and", Value, Value, Unused, OpPure)
+NIR_OP(Or, 9, "or", Value, Value, Unused, OpPure)
+NIR_OP(Not, 10, "not", Value, Unused, Unused, OpPure)
+// 5.3 Bitwise
+NIR_OP(BAnd, 12, "band", Value, Value, Unused, OpPure)
+NIR_OP(BOr, 13, "bor", Value, Value, Unused, OpPure)
+NIR_OP(BXor, 14, "bxor", Value, Value, Unused, OpPure)
+NIR_OP(BNot, 15, "bnot", Value, Unused, Unused, OpPure)
+NIR_OP(Shl, 16, "shl", Value, Value, Unused, OpPure)
+NIR_OP(Shr, 17, "shr", Value, Value, Unused, OpPure)
+// 5.4 Compare and select
+NIR_OP(Cmp, 20, "cmp", Value, Value, Unused, OpPure)
+NIR_OP(Select, 21, "select", Value, Value, Value, OpPure)
+// 5.5 Casts
+NIR_OP(Cast, 24, "cast", Value, Unused, Unused, OpPure)
+// 5.6 Memory
+NIR_OP(Load, 28, "load", Value, Unused, Unused, OpEffect)
+NIR_OP(Store, 29, "store", Value, Value, Unused, OpEffect)
+NIR_OP(Alloca, 30, "alloca", Alloca, Unused, Unused, OpNone)
+// 5.7 Calls
+NIR_OP(Call, 32, "call", Callee, Unused, Extra, OpEffect | OpMayThrow)
+NIR_OP(CallIndirect, 33, "call.indirect", Value, Signature, Extra, OpEffect | OpMayThrow)
+NIR_OP(FuncAddr, 34, "funcaddr", Callee, Unused, Unused, OpPure)
+// 5.8 Runtime state, data and traced addresses
+NIR_OP(BindAddr, 36, "bind.addr", Binding, Unused, Unused, OpPure)
+NIR_OP(DataAddr, 37, "data.addr", Data, Unused, Unused, OpPure)
+NIR_OP(PtrConst, 38, "ptr.const", PointerOpt, Unused, Unused, OpPure)
+// 5.9 Values and control flow
+NIR_OP(BlockArg, 40, "blockarg", Imm, Unused, Unused, OpNone)
+NIR_OP(Br, 48, "br", Block, Unused, Extra, OpTerminator)
+NIR_OP(CondBr, 49, "condbr", Value, Block, Extra, OpTerminator)
+NIR_OP(Ret, 50, "ret", ValueOpt, Unused, Unused, OpTerminator)
+NIR_OP(Resume, 51, "resume", Unused, Unused, Unused, OpTerminator)
+NIR_OP(Assign, 56, "assign", Value, Value, Unused, OpEffect | OpPreSSAOnly)
+NIR_OP(Var, 57, "var", Value, Unused, Unused, OpPreSSAOnly)

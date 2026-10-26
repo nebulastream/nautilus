@@ -1,0 +1,7 @@
+; expect: NIR-V055
+nir 1.0
+func pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = div.s %0, %0
+  [2] ret %1
+}

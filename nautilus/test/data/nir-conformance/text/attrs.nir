@@ -1,0 +1,8 @@
+nir 1.0
+
+func export @kernel : (ptr) -> void attrs(noUnwind, willReturn, declared) {
+  attr "gpu.kernel" = "1"
+  attr "gpu.threads" = "256"
+^b0(%0: ptr):
+  ret
+}
