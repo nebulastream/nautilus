@@ -372,6 +372,10 @@ void verifyModuleTables(const Module& m, const VerifyOptions& options, std::vect
 std::vector<Diagnostic> verify(const Module& m, const VerifyOptions& options) {
 	std::vector<Diagnostic> out;
 	verifyModuleTables(m, options, out);
+	if (out.empty()) {
+		// function bodies refer to the tables, so they are read only once the tables are sound
+		verifyFunctions(m, options, out);
+	}
 	return out;
 }
 

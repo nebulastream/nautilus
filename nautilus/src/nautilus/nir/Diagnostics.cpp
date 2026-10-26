@@ -30,7 +30,8 @@ std::string Diagnostic::str(std::string_view functionName) const {
 		loc += loc.empty() ? part : ", " + part;
 	};
 	if (function != NONE) {
-		add("function " + (functionName.empty() ? "#" + std::to_string(function) : "'" + std::string(functionName) + "'"));
+		add("function " +
+		    (functionName.empty() ? "#" + std::to_string(function) : "'" + std::string(functionName) + "'"));
 	}
 	if (inst != NONE) {
 		add("%" + std::to_string(inst));

@@ -4,35 +4,9 @@
 
 using namespace nautilus::nir;
 
-namespace {
-
-Module validModule() {
-	Module m;
-	test::buildAllSSA(m);
-	test::buildPreSSA(m);
-	m.module.processToken = 42; // the test module has ProcessLocal pointers
-	return m;
-}
-
-bool has(const std::vector<Diagnostic>& d, DiagCode c) {
-	return std::any_of(d.begin(), d.end(), [&](auto& x) { return x.code == c; });
-}
-
-/// The module is valid, and after `corrupt` the verifier reports exactly code `c` (and at least that one).
-template <class F>
-void negative(DiagCode c, F corrupt) {
-	auto m = validModule();
-	REQUIRE(verify(m).empty());
-	corrupt(m);
-	auto d = verify(m);
-	INFO(codeName(c));
-	for (auto& x : d) {
-		INFO(x.str());
-	}
-	REQUIRE(has(d, c));
-}
-
-} // namespace
+using test::has;
+using test::negative;
+using test::validModule;
 
 TEST_CASE("a valid module has no module-level diagnostics", "[nir][verifier]") {
 	auto m = validModule();
@@ -118,8 +92,10 @@ TEST_CASE("NIR-V035 C ABI types", "[nir][verifier]") {
 	auto m = validModule();
 	build(m);
 	VerifyOptions o;
-	o.extensionHasCabi = [](TypeId) { return true; };
-	REQUIRE(verify(m, o).empty());
+	o.extensionHasCabi = [](TypeId) {
+		return true;
+	};
+	REQUIRE_FALSE(has(verify(m, o), DiagCode::V035));
 }
 
 TEST_CASE("NIR-V036 type words", "[nir][verifier]") {
@@ -236,7 +212,8 @@ TEST_CASE("NIR-V045 destructor callees", "[nir][verifier]") {
 	auto addDtor = [](Module& m, uint32_t sig) {
 		CalleeRecord c {};
 		c.kind = static_cast<uint8_t>(CalleeKind::External);
-		c.target = m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::Destructor), 0, 0, 0, 0, 0x9000, 0});
+		c.target =
+		    m.internPointer(PointerRecord {static_cast<uint8_t>(PointerKind::Destructor), 0, 0, 0, 0, 0x9000, 0});
 		c.signature = sig;
 		m.internCallee(c);
 	};

@@ -148,7 +148,7 @@ TEST_CASE("pre-SSA rewrite keeps block lists and cleanup lists", "[nir][rewriter
 	});
 	REQUIRE(out.functions[0].blockCount == 3);
 	auto blocks = out.functionBlocks(0);
-	REQUIRE(blocks[0].count == 4);
+	REQUIRE(blocks[0].count == 5);
 	REQUIRE(blocks[1].count == 1);
 	REQUIRE(out.extra[blocks[0].first + 3] == 3);
 }

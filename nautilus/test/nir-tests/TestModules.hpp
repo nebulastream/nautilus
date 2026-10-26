@@ -1,6 +1,8 @@
 #pragma once
 
 #include "nautilus/nir/Builder.hpp"
+#include "nautilus/nir/Verifier.hpp"
+#include <catch2/catch_all.hpp>
 #include <set>
 
 namespace nautilus::nir::test {
@@ -119,12 +121,56 @@ inline uint32_t buildPreSSA(Module& m) {
 	auto dv = b.emit(Op::Div, TypeId::I64, 0b11, v, c1, m.addExtra(cleanup));
 	b.emit(Op::Assign, TypeId::Void, 0, v, dv);
 	uint32_t brArgs[] = {0};
-	b.beginBlock();
 	b.emit(Op::Br, TypeId::Void, 0, 1, 0, m.addExtra(brArgs));
+	b.beginBlock();
+	uint32_t brArgs2[] = {0};
+	b.emit(Op::Br, TypeId::Void, 0, 2, 0, m.addExtra(brArgs2));
 	b.beginBlock();
 	b.emit(Op::Ret, TypeId::Void, 0, v);
 	b.endFunction();
 	return f;
+}
+
+inline Module validModule() {
+	Module m;
+	buildAllSSA(m);
+	buildPreSSA(m);
+	m.module.processToken = 42; // the test module has ProcessLocal pointers
+	return m;
+}
+
+inline bool has(const std::vector<Diagnostic>& d, DiagCode c) {
+	return std::any_of(d.begin(), d.end(), [&](auto& x) { return x.code == c; });
+}
+
+/// The first instruction of function `f` with opcode `op`.
+inline Inst& inst(Module& m, Op op, uint32_t f = 0) {
+	for (auto& i : m.functionInsts(f)) {
+		if (i.op == static_cast<uint16_t>(op)) {
+			return i;
+		}
+	}
+	throw std::logic_error("no such instruction");
+}
+
+/// The module is valid, and after `corrupt` the verifier reports code `c`.
+template <class F>
+void negative(DiagCode c, F corrupt) {
+	auto m = validModule();
+	{
+		auto d = verify(m);
+		for (auto& x : d) {
+			INFO(x.str());
+		}
+		REQUIRE(d.empty());
+	}
+	corrupt(m);
+	auto d = verify(m);
+	INFO(codeName(c));
+	for (auto& x : d) {
+		INFO(x.str());
+	}
+	REQUIRE(has(d, c));
 }
 
 } // namespace nautilus::nir::test
