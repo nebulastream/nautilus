@@ -61,8 +61,15 @@ Committed on the 0.4 branch, so it reaches `main` with the release:
   expected output after a pass or a backend (FileCheck style), instead of C++
   that must trace something first. This is the largest single gain for agents
   writing tests. Round trip: print → parse → print is byte-identical.
-- **Verifier and loader errors carry stable codes** (`NIR-V012: block ^b3 has
-  no terminator`), listed in the spec.
+- **Verifier, loader and parser errors carry stable codes**
+  (`NIR-V<nnn>: block ^b3 has no terminator` for verifier rules,
+  `NIR-L<nnn>` for loader rejections, `NIR-P<nnn>` for text-parser errors).
+  The codes are the ones in the diagnostic-code table of
+  [13 §6.6](13-nir-spec.md), one per atomic verifier rule of §6, per loader
+  rejection of §8 and per parser error of §9, never renumbered within a
+  NIR major version; `Diagnostics.def` is
+  generated from or checked against that table, and skills cite the codes
+  rather than restating the rules.
 - **The latency corpus and the probes write JSON** ([10](10-observability.md)),
   so before/after comparisons are a diff of two files.
 - **`tools/agent/affected-tests`:** maps changed files to the test targets and
@@ -78,7 +85,8 @@ Committed on the 0.4 branch, so it reaches `main` with the release:
   depend on a val; use a val loop variable, or static_val to unroll`.
 - **A catalog** of codes in `docs/diagnostics.md`, one entry per code with a
   minimal example and the fix. Each code has a test that triggers it.
-- **`engine.diagnostics=json`** writes diagnostics as JSON lines for tools.
+- **`engine.diagnostics=json`** writes diagnostics as JSON lines for tools
+  (built with the tracing diagnostics, M2.4).
 - **Source locations** come from the debug section ([13 §4.9](13-nir-spec.md))
   and the tag's frame walk; tracing diagnostics (path explosion, replay
   share, R5 in [01 §4.2](01-tracing-frontend.md)) use the same format.
@@ -122,8 +130,9 @@ sandbox for untrusted code.
 
 ### 4.5 A user plugin with skills
 
-A Claude Code plugin shipped from the repository (`plugins/agent/` or a
-separate marketplace entry) with skills for users:
+A Claude Code plugin shipped from the repository (`tools/claude-plugin/`,
+kept out of `plugins/`, which holds the Nautilus C++ plugins, or a separate
+marketplace entry) with skills for users:
 
 | Skill | Content |
 |---|---|
@@ -144,8 +153,8 @@ separate marketplace entry) with skills for users:
 
 | Milestone | Agent-experience work |
 |---|---|
-| M1 | doc check in CI; NIR text parser and FileCheck-style tests; verifier error codes; `ir-change` rewritten for NIR |
-| M2 | tracing diagnostics with codes, locations and hints; `debug-trace` skill |
+| M1 | doc check in CI; NIR text parser and FileCheck-style tests; verifier, loader and parser error codes; `ir-change` rewritten for NIR; `fuzz-triage` and `steward` skills |
+| M2 | tracing diagnostics with codes, locations and hints; `engine.diagnostics=json`; `debug-trace` skill |
 | M3 | compile-fail suite for the public headers |
 | M4 | `explain()`; `affected-tests`; `asm-diff` and `memory-check` skills |
 | M5 | playground MCP server |

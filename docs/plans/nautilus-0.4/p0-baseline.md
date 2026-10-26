@@ -5,8 +5,10 @@ the [Nautilus 0.4 design](README.md) · Feeds decision D1.
 
 ## 1. Setup
 
-- **Driver:** `nautilus-latency-corpus` (`nautilus/test/benchmark/LatencyCorpus.cpp`; written for the design study in the now-closed #562 and added to `nautilus-0.4` in M1,
-  built with `ENABLE_BENCHMARKS=ON`). For each (function, size, backend) it
+- **Driver:** `nautilus-latency-corpus`, written for the design study in
+  the now-closed #562 as `nautilus/test/benchmark/LatencyCorpus.cpp`. 0.4
+  adds it in M1.10 at `nautilus/test/benchmark/latency-corpus/`
+  ([10 §2](10-observability.md)), built with `ENABLE_BENCHMARKS=ON`. For each (function, size, backend) it
   compiles through the public engine API with `engine.backend` set
   (single-tier) and reports:
   - the medians of 5 repetitions of the per-stage timings the engine
@@ -36,7 +38,11 @@ the [Nautilus 0.4 design](README.md) · Feeds decision D1.
   MLIR/LLVM state reuse, open-addressing pass tables, one `FunctionRewriter`
   shared per pass group, and the new tracing counters.
 - **Profiles:** `valgrind --tool=callgrind` (instruction counts) on `main`
-  for three cases.
+  for three cases, plus `calls` (§2).
+- **Use as a reference, not as gates.** These numbers come from a shared
+  VM. The 0.4 gates use instruction counts recorded in the pinned CI
+  container and wall clock on the reference machine
+  ([10 §2](10-observability.md)); M1 reproduces this report there.
 
 ## 2. Where the time goes
 
@@ -172,7 +178,7 @@ representation and passes, T = tracing, B = backends.
    folding and CSE inside the conversion come right after the foundations
    (milestone M3 in [README.md](README.md); everything ships in one
    release, so there is no interim quick-win step on today's IR).
-2. **Replay dominates branchy code** (70–78%). Three changes follow:
+2. **Replay dominates branchy code** (69–78%). Three changes follow:
    - the explicit control-flow API (#300) moves from "deferred" into 0.4;
    - the replay cursor gets a dedicated fix (index-based walk; no
      reconciliation loop calling `getCurrentBlock`);
@@ -183,7 +189,8 @@ representation and passes, T = tracing, B = backends.
 4. **AsmJit's call handling is superlinear:** 70–76% of compile time on
    call-heavy code, caused by a quadratic loop in Nautilus's AsmJit liveness
    patch. Fixed on `main`; `asmjit` keeps AsmJit's allocator.
-5. **The backend share is 11–30%.** AsmJit's allocator itself is ~40% of
+5. **The backend share is 11–30%** on linear code and regions (6–7% on
+   `chainedIf`; 70–76% on `calls` before #565). AsmJit's allocator itself is ~40% of
    that on linear code. It stays, because it guarantees 0.3's code quality;
    the lowering around it gets cheaper with NIR. For small
    functions on MLIR, the fixed cost (#561) matters most.

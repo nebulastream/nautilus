@@ -21,38 +21,70 @@ that exist as PRs:
 Artifact
 ├─ header: magic, format version, feature bits, CRC-32C, total size
 ├─ compatibility descriptor
-│    core + provider build identities, LLVM / target / data layout,
-│    extensions used (name@version), effective typed options,
-│    exports + signatures
+│    core + provider build identities, code-affecting options;
+│    per payload: LLVM version, target triple, data layout,
+│    target CPU name and feature string (§2.2)
 ├─ NIR image                      (always present; portable recompilation path)
-├─ runtime-binding schema         (§4)
-└─ native payloads (0..n)         one per (backend, target): object + import table
+├─ runtime-binding schema         (§4; the image's `bindings` section, not a copy)
+└─ native payloads (0..n)         one per (backend, target, CPU): object + import table
 ```
 
 - **The NIR image is mandatory.** A receiver that cannot use a native
   payload recompiles from it without tracing. That happens with another
-  target, another backend, a stale build identity, or a missing or corrupt
-  payload. This merges #527's bytecode-repair path and #532's cross-backend
-  loading into one rule. NIR replaces MLIR bytecode as the portable payload;
+  target, another target CPU or feature set, another backend, a stale build
+  identity, or a missing or corrupt payload. A payload whose descriptor
+  does not match is never executed. This merges #527's bytecode-repair
+  path and #532's cross-backend loading into one rule. NIR replaces MLIR bytecode as the portable payload;
   MLIR is regenerated from NIR.
-- **Native payloads come from MLIR/LLVM in 0.4.** The `asmjit` and
-  bytecode backends embed process addresses in their output, so their
+- **Native payloads come from MLIR/LLVM in 0.4.** The `asmjit`, `tbc` and
+  `cpp` backends embed process addresses in their output, so their
   artifacts use the NIR image. Recompiling from it skips tracing and costs
   at most the conversion-free part of a compile (legalization and
-  codegen).
+  codegen). GPU device code (PTX, Metal libraries) is not a payload in 0.4
+  either: it is recompiled at load and cached in process only
+  ([17 §4.8](17-gpu.md)).
 - **Native payloads keep #527's contract:**
   - exactly one relocatable object;
-  - imports identified by ELF build ID and load-bias-relative offset,
-    resolved before JIT initialization;
+  - native imports identified by ELF build ID and load-bias-relative
+    offset, resolved before JIT initialization (in 0.4 these are
+    `pointers` entries of mode 2, §3);
   - exception-personality and unwind-resume bridges;
   - no second ORC implementation.
+
+  0.4 extends the import contract to every address a payload needs
+  (§2.1).
+- **Native payloads are CPU-specific.** The MLIR backend today builds its
+  target machine with `JITTargetMachineBuilder::detectHost()` and stamps
+  `target-cpu` and `target-features` from the host on every function, so a
+  payload built on an AVX-512 host faults on an AVX2 host. The target CPU
+  name and the feature string passed to LLVM are therefore part of each
+  payload's compatibility descriptor (§2.2), of the L1 identity and of the
+  L2 key ([08 §2](08-caching.md)). The option `engine.mlir.targetCpu`
+  (`host` by default, `generic`, or an LLVM CPU name) selects them; it is
+  code-affecting (M1.4a). `host` gives the best code for in-process and
+  same-machine caches; `generic` gives payloads that ship to any x86-64
+  host. A mismatch recompiles from the NIR image.
+- **The `inlining` plugin's LLVM hooks** rename external calls to process
+  addresses (`callNameOverride` → `ptrToHex`) and splice registered bitcode
+  into the module. A payload compiled with those hooks active is
+  non-persistable unless every renamed symbol goes through the import table
+  as a `Portable` pointer name (§2.1); the XXH3-128 hash of the spliced
+  bitcode then joins the payload's descriptor and the L2 key, and L1
+  checks it at a hit ([08 §2](08-caching.md)). Otherwise the artifact carries only the NIR
+  image, and the statistics record `artifact.ineligibleReason=inlining`.
 - **The NIR image follows the canonical-section rules** of
   [02-nir.md §3.6](02-nir.md): deterministic bytes, per-section strides,
   feature bits, CRC-32C, framing via the total size.
 - **`inspect(image)`** reads names, signatures, options and extensions
-  without materializing anything (#532's `inspectModule`).
-- **Loading checks** root signatures against the requested C++ signature,
-  including width and signedness (#532).
+  from the descriptor and the image's tables without materializing
+  anything (#532's `inspectModule`).
+- **Loading checks** root signatures against the requested C++ signature:
+  each parameter's and the result's width, and the extension kind
+  (`none`/`zext`/`sext`) that the signature record carries per parameter
+  and result ([13 §4.5.1](13-nir-spec.md)): requesting a `uint8_t` where
+  the record says `sext` is rejected. NIR records no other
+  signedness, so `int64_t` and `uint64_t` are not distinguished; #532
+  checked full signedness on its typed manifest, which 0.4 drops.
 - **Images are self-contained.** Saving a module bundles the transitive
   closure of its imports as internal functions
   ([13 §8.5](13-nir-spec.md)), so loading an image never needs another
@@ -62,22 +94,209 @@ Artifact
 API, carried over from #532 and #527:
 
 ```cpp
-auto image  = nautilus::saveModule(compiled);            // NIR image + native payloads
+engine.setSymbolNamer(namer);                            // before the first compile; applied as pointer entries are created (§3)
+engine.setSymbolResolver(resolver);
+auto image  = nautilus::saveModule(compiled);            // NIR image + native payloads; NIR image only if compiled with embedded addresses (§2.1)
+auto image2 = nautilus::saveModule(compiled, saveNamer); // optional: names the entries still in mode 0 (§3)
 auto info   = nautilus::inspectModule(image);
-auto loaded = nautilus::loadModule(engine, image, bindings);
+auto loaded = nautilus::loadModule(engine, image, bindings);           // the engine's resolver
+auto other  = nautilus::loadModule(engine, image, bindings, resolver); // or this one
 auto sum    = loaded.getFunction<int64_t(int64_t*, int64_t)>("sum");
 ```
 
 `engine.retainIR` from #532 becomes unnecessary: a compiled module always
 keeps its canonical NIR, which is small and flat.
 
+### 2.1 Native payload linkage
+
+The object of a native payload contains no absolute host address. Every
+address it needs is an undefined symbol, resolved by the existing ORC/JITLink
+instance at load from the image's tables and the load environment:
+
+| Symbol | Refers to | Resolved from |
+|---|---|---|
+| `__nautilus_ptr_<i>` | `pointers` entry *i* ([13 §4.7](13-nir-spec.md)): callees, thunks, destructors, traced addresses | mode 1 by the `SymbolResolver`, mode 2 by build ID + offset (§3); mode 0 entries never appear in a payload |
+| `__nautilus_bind_<i>` | `bindings` entry *i* | the binding environment of this load (§4) |
+| `__nautilus_data_<i>` | data object *i* ([13 §4.10](13-nir-spec.md)) | the address where the engine placed it; the same for every tier of the module |
+| `__nautilus_stub_<i>` | the `funcaddr` forwarding stub of callee *i* ([13 §5.7](13-nir-spec.md)) | the stub the engine creates for the loaded module |
+| `__nautilus_intr_<i>` | the native fallback of the intrinsic whose `extensions` entry is *i* ([13 §4.6.1, §8.4](13-nir-spec.md)), where the backend did not lower it inline ([04](04-extensions.md), [05 §5.2](05-backends.md)) | by `name@version` through the `ExtensionRegistry` of the loading process; a name the registry lacks rejects the payload |
+| `__nautilus_intr_thunk_<i>` | the capture thunk registered with the intrinsic whose `extensions` entry is *i* ([13 §4.6.1, §5.7](13-nir-spec.md)), for a may-throw call that the payload makes through a thunk | like `__nautilus_intr_<i>`; an intrinsic registered without a thunk (`noUnwind`) rejects the payload |
+| `nautilus_rt_*` | runtime helpers: the capture-thunk entry, `nautilus_rt_throw_arith` for checked division ([06 §4](06-semantics.md)), the personality bridge (`nautilus_rt_personality`, the function's personality and the target of the `DW.ref` slot in `.eh_frame`) | by name from `libnautilus`; each name is listed in the payload's import table |
+| system symbols | the libcalls LLVM emits by name: `memcpy`, `memmove`, `memset`, `_Unwind_Resume` (bound to #527's unwind-resume bridge), `__stack_chk_fail`, the libm functions of float `rem` and the compiler-rt builtins of wide or half-precision arithmetic (`__divti3`, `__udivti3`, `__extendhfsf2`, …) | by name from the process, but only names on a fixed allowlist compiled into `libnautilus`; any other name rejects the payload |
+
+- **The 0.4 MLIR lowering emits these references as external symbols** for
+  modules that may be persisted. 0.3's lowering embeds callee addresses as
+  immediates; that form is kept only for in-process compiles whose result is
+  never stored (ProcessLocal, L0). The L0 key therefore covers the binding
+  addresses, and an L0 entry owns the data objects and stubs its code
+  refers to ([08 §2](08-caching.md)).
+- **Code model:** position-independent code (`llvm::Reloc::PIC_`) with the
+  small code model; external symbols are reached through the GOT and PLT
+  stubs that JITLink creates, so a payload loads anywhere in the address
+  space.
+- **Accepted relocations** (ELF x86-64): `R_X86_64_PC32`,
+  `R_X86_64_PLT32`, `R_X86_64_GOTPCREL`, `R_X86_64_GOTPCRELX`,
+  `R_X86_64_REX_GOTPCRELX`, and `R_X86_64_64` in non-executable sections.
+  This is everything LLVM emits for PIC with the small code model:
+  - calls are `PLT32`, addresses of external symbols `GOTPCREL[X]`;
+  - constant pools (`.rodata.cst*`), and jump tables, whose PIC entries are
+    32-bit differences against the table, are `PC32`;
+  - `.eh_frame` and `.gcc_except_table` use `pcrel|sdata4` encodings
+    (`PC32`), and the personality goes through a `DW.ref` slot in a
+    writable COMDAT section, filled by an `R_X86_64_64`.
+
+  The 64-bit PC-relative and GOT-offset forms (`R_X86_64_PC64`,
+  `GOTPC32`, `GOTPC64`, `GOTOFF64`, `GOT64`, `PLTOFF64`) come only from the
+  medium and large code models, and the absolute 32-bit forms (`32`, `32S`)
+  only from non-PIC code and DWARF sections; all are rejected. **TLS** is
+  rejected too (`TLSGD`, `TLSLD`, `DTPOFF*`, `GOTTPOFF`, `TPOFF*`, and any
+  `SHF_TLS` section): NIR has no thread-local state, and the stack
+  protector reads `%fs:0x28` without a relocation. A payload has no
+  `.debug_*` sections (they are dropped before the payload is stored, so a
+  loaded payload is not registered with GDB), and no writable section
+  other than `.data.rel.ro*` and the `DW.ref` slots: mutable state is a
+  runtime binding (§4). The loader checks every relocation and section
+  before linking. Any other type or section, or an undefined symbol that
+  is not in the import table, rejects the payload, and the module is
+  recompiled from the NIR image.
+- **Other targets.** 0.4 accepts payloads for x86-64 ELF only. An AArch64
+  ELF payload loader, if it lands in 0.4 (README §1), adds its own list
+  (`R_AARCH64_CALL26`, `JUMP26`, `ADR_PREL_PG_HI21`, `ADD_ABS_LO12_NC`,
+  `LDST{8,16,32,64,128}_ABS_LO12_NC`, `ADR_GOT_PAGE`, `LD64_GOT_LO12_NC`,
+  `PREL32`, and `ABS64` in non-executable sections) with the same section
+  rules; until then, and on macOS, artifacts carry only the NIR image.
+- **The import table** lists every undefined symbol with its class
+  (pointer, binding, data, stub, intrinsic, intrinsic thunk, runtime
+  helper, system symbol) and index,
+  so the loader resolves them without parsing symbol names and rejects
+  payloads that reference an entry the image does not have.
+
+### 2.2 Container encoding
+
+The artifact container reuses the image framing of
+[13 §8.1](13-nir-spec.md): the same 48-byte header layout and the same
+24-byte section table, with its own magic and section kinds.
+
+```c
+struct ArtifactHeader {       // 48 bytes; same layout as ImageHeader (13 §8.1)
+	char     magic[4];        // "NART"
+	uint16_t major, minor;    // artifact format version; 0.4.0 writes 1.0
+	uint32_t compatFeatures;  // bits a reader may ignore
+	uint32_t incompatFeatures;// bits a reader must understand
+	uint64_t totalSize;       // bytes, including the header
+	uint32_t sectionCount;
+	uint32_t crc32c;          // CRC-32C of bytes [48, totalSize)
+	uint8_t  reserved[16];    // 0
+};
+```
+
+| Kind | Section | Record |
+|---|---|---|
+| 1 | `descriptor` | `DescriptorRecord`, 16 B, sorted by key, each key at most once |
+| 2 | `strings` | `{u32 offset, u32 length}` into `stringBytes`, 8 B |
+| 3 | `stringBytes` | UTF-8 or binary bytes |
+| 4 | `image` | the NIR image, verbatim, with its own header and checksum (13 §8) |
+| 5 | `payloads` | `PayloadRecord`, 56 B |
+| 6 | `payloadImports` | `PayloadImport`, 16 B |
+| 7 | `payloadBytes` | the payload objects, each at an offset that is a multiple of 16 from the artifact start |
+
+- **Canonical artifacts** follow the canonical-image rules of 13 §8.1:
+  every section kind 1–7 is listed, including empty ones, in kind order;
+  section data follows the table without gaps except zero padding, which
+  is to 8 bytes and, before `payloadBytes` and between payloads, to 16
+  bytes; reserved fields and padding are 0; `descriptor` is sorted by key,
+  `strings` is in first-use order (descriptor, then payload records, then
+  imports), and payloads are sorted by `(backend, triple, cpu, features)`
+  bytes. Re-saving the same module therefore gives the same bytes (§6),
+  given that LLVM's object output is deterministic for equal input.
+
+```c
+struct DescriptorRecord {     // 16 bytes
+	uint16_t key;             // see below
+	uint16_t kind;            // 0 u64 in value; 1 string: value = index in strings; 2 bytes: likewise
+	uint32_t reserved;        // 0
+	uint64_t value;
+};
+
+struct PayloadRecord {        // 56 bytes; strings are indices in strings
+	uint32_t backend;         // "mlir"
+	uint32_t tier;            // 0 or 1; informational
+	uint32_t llvmVersion;     // "22.1.8"
+	uint32_t triple;          // "x86_64-unknown-linux-gnu"
+	uint32_t dataLayout;      // as LLVM prints it
+	uint32_t cpu;             // target CPU name passed to LLVM, or "generic"
+	uint32_t features;        // complete target feature string passed to LLVM ("+avx2,+fma,-avx512f,...")
+	uint32_t inlinedBitcode;  // bytes: XXH3-128 of the spliced bitcode (§2), or NONE (0xFFFFFFFF)
+	uint32_t firstImport, importCount; // range in payloadImports
+	uint64_t offset, size;    // the object in payloadBytes
+};
+
+struct PayloadImport {        // 16 bytes
+	uint32_t symbol;          // string: the undefined symbol (§2.1)
+	uint8_t  cls;             // 0 pointer, 1 binding, 2 data, 3 stub, 4 runtime helper, 5 system symbol, 6 intrinsic,
+	                          // 7 intrinsic thunk
+	uint8_t  pad[3];          // 0
+	uint32_t index;           // 0: pointers, 1: bindings, 2: data, 3: callees (the funcaddr callee),
+	                          // 6, 7: extensions index in the embedded image; 4, 5: 0
+	uint32_t reserved;        // 0
+};
+```
+
+Descriptor keys (1.0): 1 core version string, 2 core build identity (ELF
+build ID of `libnautilus`, bytes), 3 cache-provider build identity, 4 NIR
+format version of the embedded image (`major << 16 | minor`), 5 the
+code-affecting options block, encoded exactly as item 2 of the structural
+hash ([13 §7.2](13-nir-spec.md)), 6 the structural hash of the embedded
+image (16 bytes, 13 §7.2; the L2 key adds backend and target, [08 §2](08-caching.md)),
+7 the caller's semantic key `engine.cache.key` (bytes; L1 entries only),
+8 the L1 key (16 bytes; L1 entries only, [08 §2](08-caching.md)). Keys 1,
+2, 4, 5 and 6 are required, and 7 and 8 come together. Unknown keys are ignored; a later key that readers must not
+ignore comes with an `incompatFeatures` bit.
+
+- **Nothing is duplicated.** Exports, signatures, extensions and the
+  binding schema are read from the embedded image; `inspect` reads them
+  without materializing the module.
+- **Using a payload** requires, in this order: a valid header and checksum,
+  the required descriptor keys, an equal core build identity (and, for
+  cache entries, an equal cache-provider build identity, key 3), an image that
+  loads ([13 §8.1](13-nir-spec.md)), and a payload record whose backend,
+  LLVM version, triple and data layout are equal to the receiver's, whose
+  `cpu` is `generic` or equal to the host CPU name, and every feature
+  enabled in `features` is present on the host, whose `inlinedBitcode`
+  equals the hash of the bitcode the loading process registers (or both
+  are `NONE`), and whose relocations, sections and imports pass §2.1.
+  Any failure falls back to the image, and the statistics record which
+  check failed (`cache.payloadRejected`, [10 §3](10-observability.md)).
+- **Versioning** follows [13 §8.2](13-nir-spec.md): within 0.4.x the
+  container gains only sections, keys and appended fields (D12); an older
+  build's payload is stale but its image stays loadable.
+
 ## 3. Pointers
 
 Native addresses never appear in the instruction stream. They live in the
 `pointers` section, referenced by index:
 
-- **Kinds:** callees, exception-capture thunks, destructors, `ConstPtr`
-  values, and addresses inside extension payloads.
+- **Kinds:** callees, exception-capture thunks, destructors, traced
+  addresses, and addresses inside extension payloads where an extension
+  declares them ([04](04-extensions.md)).
+- **One encoding for traced pointers** ([13 §4.2, §4.7, §5.8](13-nir-spec.md)).
+  There are no `ptr` constants in the `ConstPool`. A `val<T*>` built from a
+  host address is a `pointers` entry of kind 3 (*traced address*), read by
+  `ptr.const #pN`; the null pointer is `ptr.const null` and has no entry.
+  A kind-3 entry carries its provenance class (§5), which follows from its
+  mode: an entry that no `SymbolNamer` names stays mode 0 (`ProcessLocal`)
+  and is `RawProcessValue`, and an audit does not make it portable; an
+  entry resolved by name or build ID (mode 1 or 2) is `Literal`, or
+  `AuditedInvariant` if the user audited it
+  (`cacheLiteral`/`cacheInvariant`).
+  Addresses inside extension payloads are kind-4 entries, used by operand
+  words of kind `pointer` ([13 §5.11.1](13-nir-spec.md)).
+- **Process-local modules.** A mode-0 entry, or a `RawProcessValue`
+  constant, makes the module process-local: the writer sets
+  `ModuleRecord.processToken` to the producing process's token
+  ([13 §4.4](13-nir-spec.md)) and the image's `PROCESS_LOCAL` feature bit
+  ([13 §8.3](13-nir-spec.md)). The loader rejects the image in any other
+  process (`NIR-L014`, fail closed).
 - **Two modes (#532):**
   - `ProcessLocal`: raw addresses guarded by a per-process token, valid
     only for in-process reuse (the L0 cache, [08](08-caching.md));
@@ -85,6 +304,24 @@ Native addresses never appear in the instruction stream. They live in the
     `SymbolResolver` (with `SymbolTable` and `dladdr`/`dlsym`
     implementations), or ELF build ID + offset for native imports (#527).
 - **Runtime state is never a pointer entry.** It is a runtime binding (§4).
+- **Where naming happens.** The `SymbolNamer` and the `SymbolResolver` are
+  engine-level: `NautilusEngine::setSymbolNamer` and `setSymbolResolver`,
+  called before the first compile (later calls are an error), and in the
+  C API `nautilus_engine_set_namer` and `nautilus_engine_set_resolver`
+  ([09](09-c-api.md)). The tracer applies the namer as it creates each
+  `pointers` entry ([01 §6](01-tracing-frontend.md)), and so does the C API
+  builder of an engine when it adds an entry by address; an entry the C
+  API adds by name is mode 1 directly. Where the namer returns no name and
+  the address lies in a loaded ELF object with a build ID, the entry is
+  mode 2 (#527); otherwise it stays mode 0. Mode and provenance are
+  therefore final before the eligibility scan (§5) and before every cache
+  key ([08 §2](08-caching.md)). A save-time namer (`saveModule(compiled,
+  namer)`, `nautilus_ir_save`'s namer argument) names only the entries of
+  the saved copy that are still mode 0; the eligibility check then reruns
+  at the SSA level on that copy, and a copy it changed is written as the
+  NIR image only, since the module's code was compiled with those entries
+  process-local. `loadModule` and `nautilus_ir_load` resolve mode-1
+  entries with the engine's resolver unless one is passed.
 
 ## 4. Runtime bindings (#529)
 
@@ -121,21 +358,46 @@ pass**:
   pointers to host arrays.
 - **Constants:** each `ConstPool` entry carries a provenance class:
   `Literal`, `AuditedInvariant` (from `cacheLiteral`/`cacheInvariant`) or
-  `RawProcessValue` (a native scalar traced without an audit).
+  `RawProcessValue` ([13 §4.2](13-nir-spec.md)). Each kind-3 `pointers`
+  entry carries one too: `RawProcessValue` exactly in mode 0, `Literal` or
+  `AuditedInvariant` in modes 1 and 2; other pointer kinds carry none
+  ([13 §4.7](13-nir-spec.md)).
+  - **Audit markers** (from #527/#528), the only way a user raises
+    evidence: `cacheLiteral(v)` asserts that the value is the same in every
+    process (a run-time value that is really a literal);
+    `cacheInvariant(v)` asserts that it is fixed for everything the
+    caller's cache key covers ([08 §2](08-caching.md)). Both give
+    `AuditedInvariant`. Neither makes a mode-0 pointer portable, and a
+    wrong audit is the caller's error, like an incomplete cache key.
+  - The tracer gives integer, float and bool constants `Literal` unless the
+    user marks them. This is what keeps ordinary traced modules eligible
+    (#529's 1500/1500 native hits).
+  - Traced pointers are kind-3 `pointers` entries read by `ptr.const` (§3):
+    `RawProcessValue` unless a `SymbolNamer` names them, whether or not
+    they are audited.
+  - An integer derived from a traced pointer inside the traced code
+    (pointer-to-integer cast, arithmetic on the address) inherits the
+    pointer's class through the dataflow pass; `ptrtoint` of a `ptr.const`
+    is never folded to a constant ([13 §4.2](13-nir-spec.md)), so the pass
+    always sees it. An address the host casts to an integer before tracing is caught only by #527's encoded-address
+    rejection, which keeps running on pointer-width `Literal` constants.
 - **Allocations:** `nautilus_alloca<T>()` records typed size and alignment
   evidence. Raw allocation tables stay uncertified.
 - **Pointers:** each `pointers` entry carries its kind and whether it can be
   resolved portably. Extensions declare whether their payloads are portable
   ([04](04-extensions.md)).
 - **Eligibility:** a native payload or a `Portable` image is produced only
-  if no reachable instruction depends on a `RawProcessValue` constant, an
-  unresolvable pointer or a non-portable extension payload. `ProcessLocal`
+  if no reachable instruction depends on a `RawProcessValue` constant or
+  pointer, an unresolvable pointer, a non-portable extension payload, or
+  code spliced by the `inlining` plugin's hooks without portable names
+  (§2). `ProcessLocal`
   images (the L0 cache) need no eligibility check: they are only valid in
   the process that produced them.
   The check runs **on the pre-SSA level, before the conversion folds
   anything** ([03](03-conversion-and-passes.md) folds while it emits), and
-  folding gives every folded constant the strongest provenance of its
-  inputs, so folding cannot hide a raw value. Modules built through the C
+  folding gives every folded constant the **least trusted class among its
+  inputs** (`RawProcessValue` > `AuditedInvariant` > `Literal`), so folding
+  cannot hide a raw value. Modules built through the C
   API have no pre-SSA level and are checked at the SSA level. Replay
   disagreement never upgrades evidence (#527).
 - **Failure:** fail closed. The module still compiles normally; the
@@ -157,6 +419,23 @@ pass**:
   - encoded addresses, laundering, callback-only and destructor-only
     values.
 - Runtime bindings resolve per load across concurrent modules.
+- A payload built with `engine.mlir.targetCpu` set to a CPU whose features
+  the host lacks is rejected and the module recompiled from the image; a
+  `generic` payload loads on every x86-64 runner.
+- A payload with an unaccepted relocation type, or an undefined symbol
+  missing from its import table, is rejected before linking (§2.1).
+- With a namer set on the engine, a traced module with external callees
+  is eligible (pre-SSA scan) and its image and payload reload in a fresh
+  process; without one, `saveModule(compiled, namer)` names the remaining
+  mode-0 entries and writes a `Portable` NIR image without a payload (§3).
+- A payload with a may-throw intrinsic call loads in a fresh process, and
+  an exception thrown by the fallback reaches the caller's landing pad;
+  where the lowering calls through the thunk, `__nautilus_intr_thunk_<i>`
+  resolves through the registry by `name@version`.
+- A module compiled with `NAUTILUS_INLINE` functions is either reported
+  ineligible or reloads correctly in a fresh process.
+- The D12 fixtures (M5.9) include artifacts with a payload: after a build
+  change the payload is rejected and the image is used.
 
 ## 7. Risks
 

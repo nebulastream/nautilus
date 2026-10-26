@@ -67,6 +67,16 @@ executables stay resident for as long as the handles that resolved them
   flight (F1).
 - **Long-lived workers make #561's per-thread MLIR state reuse effective**
   for every promotion after the first one on each worker.
+- **Worker contexts own no thread pool.** `mlir.enableMultithreading`
+  defaults to `true` today, so every `MLIRContext` creates an LLVM thread
+  pool of `hardware_concurrency` threads; with one long-lived context per
+  worker the process would hold `promotionThreads × hardware_concurrency`
+  threads. Worker contexts are therefore created with multithreading
+  disabled, or share one engine-owned `llvm::ThreadPool` through
+  `MLIRContext::setThreadPool`, sized by `engine.tiered.promotionThreads`
+  ([05 §5](05-backends.md)). The pool belongs to the `PromotionService`
+  and is destroyed after its workers have joined; contexts on caller
+  threads, which outlive engines, never use it.
 - **Admission:** `engine.tiered.maxQueuedPromotions` (default unbounded). A
   job beyond the cap is not queued; its module stays on tier 0 with the
   status `skipped` (§4.3).
@@ -83,7 +93,9 @@ executables stay resident for as long as the handles that resolved them
   - a job whose module is gone is dropped when dequeued;
   - while running, the backend checks a cancellation token at stage
     boundaries (MLIR: after MLIR generation and after LLVM optimization).
-    That costs one relaxed load per stage.
+    That costs one relaxed load per stage. The backend interface gains the
+    token: `CompilationBackend::compile` takes a
+    `const CancellationToken*`, null for synchronous compiles (M4.0).
 - **Shutdown:** the engine cancels queued jobs and waits only for running
   ones, at most one compile per worker. No mutex is held while waiting, so
   compiles on other threads never block on a wait.
@@ -114,6 +126,7 @@ executables stay resident for as long as the handles that resolved them
 |---|---|
 | `eager` (default) | As in 0.3: queued right after conversion (§4.5) |
 | `manual` | Only on `CompiledModule::promote()` |
+| `none` | Not documented as a policy: the internal target of the deprecated alias `engine.tiered.backgroundPromotion=false` (§4.7), a single-tier compile with the tier-1 backend; set directly, it is rejected with a message naming `engine.backend` |
 
 - **The default stays `eager`,** so behavior is unchanged unless a caller
   opts in.
@@ -134,19 +147,52 @@ With `eager`, the job is queued right after conversion, *before* tier-0 code
 generation. SSA-level NIR is immutable after conversion
 ([02](02-nir.md)), so the worker and the caller's tier-0 backend read it
 concurrently without copying. A tier 1 that finishes first is installed,
-and the tier-0 executable is then discarded unused.
+and the tier-0 executable is then discarded unused:
+- the caller installs tier 0 only if `ModuleState::version` is still 0,
+  checked and written under the module's exclusive lock; otherwise it drops
+  its tier-0 executable. Installing tier 0 does not bump the version, as
+  in 0.3 (`TieredCompiler.cpp` assigns `state->executable` directly): no
+  handle exists before `compileModule` returns, and new handles start
+  unresolved;
+- the worker installs tier 1 under the same lock and bumps the version,
+  whether or not tier 0 is installed yet. The two never overwrite each
+  other in the wrong order.
 
 ### 4.6 Caches and tiers ([08](08-caching.md))
 
-- **A cache hit for the tier-1 backend skips tier 0 entirely.** Before
-  tier-0 code generation, the engine looks up L0, L1 or L2 for the tier-1
-  backend. On a hit it installs the tier-1 executable synchronously, with no
-  tier-0 compile and no promotion. This is what makes warm NebulaStream
-  queries start on optimized code.
-- **Promotion results feed the caches:** a finished tier 1 is stored in L0
-  and, with a persisted native payload, in L1/L2.
-- **Tier-0 executables are cached only in L0.** They are cheap to rebuild
-  from NIR.
+- **Lookup points.** L1 is looked up **before tracing**, with the semantic
+  key of [08 §2](08-caching.md): XXH3-128 over the caller's
+  `engine.cache.key`, the code-affecting options block, the application
+  options, the declared exports and the declared imports with each
+  exporter's structural hash. Extension versions, the core and
+  provider builds, and per payload the target CPU and features
+  ([05 §5.1](05-backends.md)) are not in the key; they are checked on the
+  stored entry at a hit. L0 and L2 are looked up after conversion.
+  L1 and L2 ask for the tier-1 backend's payload first; L0 is keyed by the
+  configured backends ([08 §2](08-caching.md)).
+- **A hit with a usable tier-1 native payload skips tier 0 entirely.** The
+  engine installs the tier-1 executable synchronously, with no tier-0
+  compile and no promotion. This is what makes warm NebulaStream queries
+  start on optimized code.
+- **An L1 hit without a usable payload** (no payload for this backend, or
+  a CPU or build mismatch) still skips tracing and conversion: the module
+  is compiled from the stored NIR image, with tier 0 and promotion as
+  usual. A mismatched payload is never executed.
+- **What L1 stores:** the canonical NIR image of **every** compiled module,
+  whatever tier ran, plus optional native payloads per backend, of tier 1
+  only (below). On
+  an L1 miss the image is stored right after conversion, so a later hit
+  skips tracing even if only tier 0 ever ran (`manual` policy,
+  `engine.backend=asmjit`, a promotion that failed or was cancelled).
+- **Promotion results feed the caches:** a finished tier 1 is installed in the
+  module's L0 entry (one entry for all tiers; its tier state is shared by every module that hit it, so it
+  is promoted once, [08 §2](08-caching.md)) and, with a persisted native payload, its payload is added to the L1
+  entry and stored in L2.
+- **Tier-0 executables are cached only in L0.** They embed process
+  addresses and are cheap to rebuild from the NIR image, so L1 holds no
+  tier-0 payload in 0.4.
+- This is the same rule as [08](08-caching.md); the two documents must
+  agree.
 
 ### 4.7 Configuration (F7)
 
@@ -157,6 +203,14 @@ and the tier-0 executable is then discarded unused.
 - The tier-0 fallback order is `asmjit` → `tbc` → interpreter, since `bc`
   is removed ([05 §6.1](05-backends.md)).
 - `engine.backend=<x>` keeps pinning single-tier compilation.
+- **`engine.tiered.backgroundPromotion`** (0.3, `docs/options.md`) is a
+  deprecated alias handled by the typed option registry (M1.4a):
+  `false` keeps its 0.3 meaning, a single-tier compile with the tier-1
+  backend and no promotion, and maps to `engine.tiered.promotion=none`;
+  `true` maps to the default. When both are set, the alias wins and a
+  warning is logged once. `none` is accepted as a value of
+  `engine.tiered.promotion` only for this alias; `engine.backend` remains
+  the documented way to pin a backend.
 
 ### 4.8 One compile path (F6)
 
@@ -181,7 +235,8 @@ and the tier-0 executable is then discarded unused.
 ## 6. Tests
 
 - **Long-running engine:** 40,000 short-lived modules on one engine. It
-  completes, the thread count stays at most `promotionThreads + 1`, and the
+  completes, the thread count stays at most `promotionThreads + 1` plus the
+  shared LLVM pool of §4.1 (at most `promotionThreads` threads), and the
   virtual memory stays flat.
 - **Cancellation:** dropping a module while its job is queued or running
   ends that job without installing anything. A running job ends at the next
@@ -195,9 +250,21 @@ and the tier-0 executable is then discarded unused.
 - **Policy:**
   - `manual` never promotes without `promote()`, and `promote()` from
     several threads at once queues one job;
-  - `eager` queues exactly one job per module.
-- **Caches:** a warm L1/L2 hit runs tier 1 from the first call, with no tier-0
-  compile recorded in the statistics.
+  - `eager` queues exactly one job per L0 entry (per module when L0 is
+    off); a module that hits an entry that is promoted or promoting queues
+    none.
+- **Caches:**
+  - a warm L1/L2 hit with a matching payload runs tier 1 from the first
+    call, with no tier-0 compile recorded in the statistics;
+  - an L1 hit with `manual` policy and no promotion, and one with
+    `engine.backend=asmjit`, skip tracing;
+  - a payload whose target CPU does not match the host is not executed;
+    the module is recompiled from the NIR image.
+- **Early start:** a tier 1 that finishes before tier 0 is never
+  overwritten by the tier-0 result.
+- **Alias:** `engine.tiered.backgroundPromotion=false` compiles single-tier
+  with the tier-1 backend, and warns when combined with
+  `engine.tiered.promotion`.
 - **The differential fuzzer** runs with promotion forced (`eager`, one
   worker) and checks results across the swap.
 
