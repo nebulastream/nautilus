@@ -1,0 +1,7 @@
+; expect: NIR-P004
+nir 1.0
+func pressa @f : () -> void {
+^b0:
+  [0] ret
+  [0] ret
+}

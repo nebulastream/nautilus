@@ -78,7 +78,7 @@ jobs:
       - name: build
         shell: bash
         run: |
-          cmake --build build --target nautilus-fuzz
+          cmake --build build --target nautilus-fuzz nautilus-nir-fuzz
       - name: Fuzz, then triage findings
         id: fuzz
         shell: bash
@@ -100,6 +100,24 @@ jobs:
           # 2 = the session itself could not run (setup error or a failed
           # crash-pipeline canary): fail here, nothing downstream is valid.
           [[ "${status}" -ne 2 ]]
+      - name: Fuzz the NIR image loader, verifier and parser
+        shell: bash
+        run: |
+          # A bounded libFuzzer session on the format readers (docs/plans/nautilus-0.4, M1.6), seeded with the
+          # golden images and the .nir corpus. It does not use the differential fuzzer's triage pipeline: a crash
+          # fails the job and leaves its input in fuzz-work/nir-findings.
+          mkdir -p fuzz-work/nir-corpus fuzz-work/nir-findings
+          cp nautilus/test/fuzz/corpus-nir/* fuzz-work/nir-corpus/
+          ./build/nautilus/test/fuzz/nautilus-nir-fuzz -max_total_time=900 -print_final_stats=1 \
+            -artifact_prefix=fuzz-work/nir-findings/ fuzz-work/nir-corpus
+      - name: Upload NIR fuzz findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-weekly-nir-findings-${{ matrix.variant }}-${{ github.run_id }}
+          path: fuzz-work/nir-findings
+          if-no-files-found: ignore
+          retention-days: 90
       - name: Prepare corpus for caching
         if: steps.fuzz.outputs.status == '0' || steps.fuzz.outputs.status == '1'
         shell: bash

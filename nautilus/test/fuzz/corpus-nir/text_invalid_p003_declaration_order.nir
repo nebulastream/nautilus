@@ -1,0 +1,3 @@
+; expect: NIR-P003
+nir 1.0
+pointer #p1 = callee symbol "f"

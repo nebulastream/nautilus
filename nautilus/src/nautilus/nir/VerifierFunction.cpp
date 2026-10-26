@@ -268,7 +268,8 @@ private:
 					if (inst.a >= blocks_.size() || !isPad(inst.a)) {
 						report(DiagCode::V064, "a pad's br targets another pad", id, b);
 					}
-					if (m_.extra[inst.c] != 0) {
+					uint32_t len = 0;
+					if (listLength(inst, len) && m_.extra[inst.c] != 0) {
 						report(DiagCode::V064, "a pad's br has no arguments", id, b);
 					}
 				}

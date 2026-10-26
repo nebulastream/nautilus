@@ -61,3 +61,15 @@ if (ENABLE_FUZZING OR ENABLE_FUZZER_REPLAY)
 	# layout), that regenerates corpus/ from Ast.hpp's own Kind/TypeId tables.
 	add_executable(nautilus-fuzz-seedgen SeedGen.cpp)
 endif ()
+
+# NIR format fuzzers (M1.6): the binary image loader, the verifier and the text parser. They link only nautilus-nir.
+if (ENABLE_FUZZING)
+	add_executable(nautilus-nir-fuzz NirImageFuzz.cpp)
+	target_link_libraries(nautilus-nir-fuzz PRIVATE nautilus-nir)
+	target_compile_options(nautilus-nir-fuzz PRIVATE -fsanitize=fuzzer)
+	target_link_options(nautilus-nir-fuzz PRIVATE -fsanitize=fuzzer)
+endif ()
+if (ENABLE_FUZZING OR ENABLE_FUZZER_REPLAY)
+	add_executable(nautilus-nir-fuzz-replay NirReplayMain.cpp)
+	target_link_libraries(nautilus-nir-fuzz-replay PRIVATE nautilus-nir)
+endif ()

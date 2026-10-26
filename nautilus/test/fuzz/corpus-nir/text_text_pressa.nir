@@ -1,0 +1,16 @@
+nir 1.0
+pointer #p0 = destructor symbol "~T"
+callee #c0 = external #p0 : (ptr) -> void attrs(noUnwind)
+
+func export pressa @pre : (i64, ptr) -> i64 {
+^b0(%0: i64, %1: ptr):
+  %2 = var %0
+  %3 = cmp.ne %2, 0:i64
+  [4] condbr %3, ^b1, ^b2
+^b1:
+  %5 = div.s.checked %0, %2 cleanup [(#c0, %1), (#c0, %1)]
+  [6] assign %2, %5
+  [7] br ^b2
+^b2:
+  [8] ret %2
+}

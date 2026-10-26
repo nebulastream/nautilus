@@ -89,7 +89,7 @@ std::vector<std::pair<std::string, std::vector<uint8_t>>> validImages(std::vecto
 			image = writeImage(canonicalize(m));
 			hash = structuralHash(m, nautilus::effectiveOptions({})).hex();
 		}
-		out.push_back({f.stem().string() + ".nirimg", std::move(image)});
+		out.push_back({f.stem().string() + ".bin", std::move(image)});
 		if (hashes) {
 			hashes->push_back(hash);
 		}
@@ -111,7 +111,9 @@ func export @f : (i64) -> i64 {
 )");
 		return writeImage(canonicalize(*m.module));
 	};
-	auto raw = [&] { return RawImage::decode(base()); };
+	auto raw = [&] {
+		return RawImage::decode(base());
+	};
 	std::vector<std::tuple<std::string, std::string, std::vector<uint8_t>>> out;
 	auto add = [&](const char* name, const char* code, std::vector<uint8_t> image) {
 		out.push_back({name, code, std::move(image)});
@@ -211,7 +213,8 @@ func export @f : (i64) -> i64 {
   %1 = add %0, 1:i64
   ret %1
 }
-)").module);
+)")
+		                           .module);
 		m.insts[1].a = 77; // a value reference out of range
 		add("l017_verifier_rejects", "NIR-L017", writeImage(m));
 	}
@@ -271,8 +274,8 @@ TEST_CASE("golden images are up to date (NIR_UPDATE_GOLDEN=1 regenerates them)",
 		spit(imagesDir() / "valid.txt", list);
 		std::string bad;
 		for (auto& [name, code, image] : invalid) {
-			spitBytes(imagesDir() / "invalid" / (name + ".nirimg"), image);
-			bad += name + ".nirimg " + code + "\n";
+			spitBytes(imagesDir() / "invalid" / (name + ".bin"), image);
+			bad += name + ".bin " + code + "\n";
 		}
 		spit(imagesDir() / "invalid.txt", bad);
 		spit(imagesDir() / "example2.hexdump.txt", exampleDump());
@@ -287,27 +290,28 @@ TEST_CASE("golden images are up to date (NIR_UPDATE_GOLDEN=1 regenerates them)",
 	REQUIRE(list == expected);
 	std::string bad;
 	for (auto& [name, code, image] : invalid) {
-		bad += name + ".nirimg " + code + "\n";
+		bad += name + ".bin " + code + "\n";
 		INFO(name);
-		REQUIRE(slurpBytes(imagesDir() / "invalid" / (name + ".nirimg")) == image);
+		REQUIRE(slurpBytes(imagesDir() / "invalid" / (name + ".bin")) == image);
 	}
 	REQUIRE(slurp(imagesDir() / "invalid.txt") == bad);
 	// no stale files
 	size_t files = 0;
 	for (auto& e : fs::directory_iterator(imagesDir() / "valid")) {
-		(void)e;
+		(void) e;
 		files++;
 	}
 	REQUIRE(files == valid.size());
 	files = 0;
 	for (auto& e : fs::directory_iterator(imagesDir() / "invalid")) {
-		(void)e;
+		(void) e;
 		files++;
 	}
 	REQUIRE(files == invalid.size());
 }
 
-TEST_CASE("every valid golden image loads, re-serializes identically and matches its text", "[nir][image][conformance]") {
+TEST_CASE("every valid golden image loads, re-serializes identically and matches its text",
+          "[nir][image][conformance]") {
 	std::istringstream list(slurp(imagesDir() / "valid.txt"));
 	std::string file, hash;
 	int n = 0;
