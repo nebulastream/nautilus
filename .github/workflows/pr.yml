@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - nautilus-0.4
   pull_request:
     branches:
       - main
+      - nautilus-0.4
 # cancel previous runs of same PR / branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
