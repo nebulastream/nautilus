@@ -1,0 +1,15 @@
+# Runs nautilus-nir-opt on an invalid .nir file whose first line is `; expect: NIR-XNNN` and requires exit status 1 and
+# that code in the diagnostics.
+file(STRINGS ${INPUT} first LIMIT_COUNT 1)
+string(REGEX MATCH "NIR-[VLP][0-9][0-9][0-9]" code "${first}")
+if (code STREQUAL "")
+    message(FATAL_ERROR "${INPUT} has no `; expect: NIR-XNNN` first line")
+endif ()
+execute_process(COMMAND ${OPT} ${INPUT} OUTPUT_VARIABLE out ERROR_VARIABLE err RESULT_VARIABLE rc)
+if (NOT rc EQUAL 1)
+    message(FATAL_ERROR "expected exit status 1 for ${INPUT}, got ${rc}")
+endif ()
+string(FIND "${err}" "${code}" pos)
+if (pos EQUAL -1)
+    message(FATAL_ERROR "expected ${code} for ${INPUT}, got: ${err}")
+endif ()

@@ -1,0 +1,11 @@
+; expect: NIR-V031
+nir 1.0
+func @f : () -> void {
+^b0:
+  ret
+}
+
+func @f : () -> void {
+^b0:
+  ret
+}

@@ -155,9 +155,9 @@ private:
 			advance();
 		}
 		bool hex = cur() == '0' && (cur(1) == 'x' || cur(1) == 'X');
-		while (isNameChar(cur()) || ((cur() == '+' || cur() == '-') &&
-		                             (hex ? (s_[pos_ - 1] == 'p' || s_[pos_ - 1] == 'P')
-		                                  : (s_[pos_ - 1] == 'e' || s_[pos_ - 1] == 'E')))) {
+		while (isNameChar(cur()) ||
+		       ((cur() == '+' || cur() == '-') &&
+		        (hex ? (s_[pos_ - 1] == 'p' || s_[pos_ - 1] == 'P') : (s_[pos_ - 1] == 'e' || s_[pos_ - 1] == 'E')))) {
 			advance();
 		}
 		return std::string(s_.substr(start, pos_ - start));
@@ -358,8 +358,8 @@ public:
 	Module run() {
 		expectIdent("nir");
 		auto v = next();
-		if (v.kind != Tok::Number || v.text.rfind("1.", 0) != 0 || v.text.find_first_not_of("0123456789", 2) != std::string::npos ||
-		    v.text.size() < 3) {
+		if (v.kind != Tok::Number || v.text.rfind("1.", 0) != 0 ||
+		    v.text.find_first_not_of("0123456789", 2) != std::string::npos || v.text.size() < 3) {
 			fail(DiagCode::P002, v, "the version must be 1.x");
 		}
 		if (std::stoi(v.text.substr(2)) > 0) {
@@ -459,7 +459,8 @@ private:
 			fail(DiagCode::P002, t, std::string("a #") + letter + "N reference is expected");
 		}
 		if (t.number != expected) {
-			fail(DiagCode::P003, t, "declaration " + std::to_string(t.number) + " is out of order, expected " + std::to_string(expected));
+			fail(DiagCode::P003, t,
+			     "declaration " + std::to_string(t.number) + " is out of order, expected " + std::to_string(expected));
 		}
 		return t.number;
 	}
@@ -492,8 +493,9 @@ private:
 
 	static bool typeByName(const std::string& n, TypeId& t) {
 		static const std::map<std::string, TypeId> names = {
-		    {"void", TypeId::Void}, {"bool", TypeId::Bool}, {"i8", TypeId::I8},   {"i16", TypeId::I16}, {"i32", TypeId::I32},
-		    {"i64", TypeId::I64},   {"f32", TypeId::F32},   {"f64", TypeId::F64}, {"ptr", TypeId::Ptr}};
+		    {"void", TypeId::Void}, {"bool", TypeId::Bool}, {"i8", TypeId::I8},
+		    {"i16", TypeId::I16},   {"i32", TypeId::I32},   {"i64", TypeId::I64},
+		    {"f32", TypeId::F32},   {"f64", TypeId::F64},   {"ptr", TypeId::Ptr}};
 		auto it = names.find(n);
 		if (it == names.end()) {
 			return false;
@@ -641,7 +643,8 @@ private:
 			for (char c : bytes.text) {
 				m_.dataBytes.push_back(static_cast<std::byte>(c));
 			}
-			m_.data.push_back(DataRecord {static_cast<uint32_t>(bytes.text.size()), align, static_cast<uint32_t>(offset), 0});
+			m_.data.push_back(
+			    DataRecord {static_cast<uint32_t>(bytes.text.size()), align, static_cast<uint32_t>(offset), 0});
 		} else if (w == "callee") {
 			declId('c', m_.callees.size());
 			expectPunct("=");
@@ -663,7 +666,8 @@ private:
 				r.kind = static_cast<uint8_t>(CalleeKind::Imported);
 				r.target = tableRef('i');
 			} else {
-				fail(DiagCode::P002, k, "internal, external or imported is expected (intrinsics come with the extension registry)");
+				fail(DiagCode::P002, k,
+				     "internal, external or imported is expected (intrinsics come with the extension registry)");
 			}
 			expectPunct(":");
 			r.signature = parseSignature();
@@ -742,14 +746,15 @@ private:
 		auto& fn = m_.functions[fnIndex_];
 		uint32_t blocks = static_cast<uint32_t>(fn.blockCount);
 		if (maxBlock_.set && maxBlock_.token.number >= blocks) {
-			fail(DiagCode::P003, maxBlock_.token, "block ^b" + std::to_string(maxBlock_.token.number) + " is not defined");
+			fail(DiagCode::P003, maxBlock_.token,
+			     "block ^b" + std::to_string(maxBlock_.token.number) + " is not defined");
 		}
 		if (level_ == Level::PreSSA) {
 			std::vector<const PendingInst*> byId(pending_.size(), nullptr);
 			for (auto& p : pending_) {
 				if (p.id >= pending_.size() || byId[p.id] != nullptr) {
-					fail(DiagCode::P004, peek(), "instruction ids must be 0 ... count-1, each exactly once (id " +
-					                                 std::to_string(p.id) + ")");
+					fail(DiagCode::P004, peek(),
+					     "instruction ids must be 0 ... count-1, each exactly once (id " + std::to_string(p.id) + ")");
 				}
 				byId[p.id] = &p;
 			}
@@ -772,7 +777,8 @@ private:
 		auto label = next();
 		auto& fn = m_.functions[fnIndex_];
 		if (label.number != fn.blockCount) {
-			fail(DiagCode::P003, label, "blocks must be ^b0, ^b1, ... in order; expected ^b" + std::to_string(fn.blockCount));
+			fail(DiagCode::P003, label,
+			     "blocks must be ^b0, ^b1, ... in order; expected ^b" + std::to_string(fn.blockCount));
 		}
 		BlockRecord blk {};
 		uint32_t blockIndex = fn.blockCount++;
@@ -823,7 +829,8 @@ private:
 		uint32_t id = instCount_;
 		if (hasId) {
 			if (level_ == Level::SSA && idTok.number != id) {
-				fail(DiagCode::P004, idTok, "%" + std::to_string(idTok.number) + " is the instruction at position " + std::to_string(id));
+				fail(DiagCode::P004, idTok,
+				     "%" + std::to_string(idTok.number) + " is the instruction at position " + std::to_string(id));
 			}
 			id = idTok.number;
 		} else if (level_ == Level::PreSSA) {
@@ -886,7 +893,9 @@ private:
 			processLocal_ = true;
 		}
 		const auto& lit = t.text;
-		auto bad = [&](const std::string& why) { fail(DiagCode::P006, t, why); };
+		auto bad = [&](const std::string& why) {
+			fail(DiagCode::P006, t, why);
+		};
 		uint64_t bits = 0;
 		switch (type) {
 		case TypeId::Ptr:
@@ -1086,17 +1095,28 @@ private:
 			type = a.type;
 			return I(o, 0, a.ref);
 		};
-		if (n == "add") return binary(Op::Add, false);
-		if (n == "sub") return binary(Op::Sub, false);
-		if (n == "mul") return binary(Op::Mul, false);
-		if (n == "and") return binary(Op::And, true);
-		if (n == "or") return binary(Op::Or, true);
-		if (n == "band") return binary(Op::BAnd, false);
-		if (n == "bor") return binary(Op::BOr, false);
-		if (n == "bxor") return binary(Op::BXor, false);
-		if (n == "shl") return binary(Op::Shl, false);
-		if (n == "fneg") return unary(Op::FNeg);
-		if (n == "bnot") return unary(Op::BNot);
+		if (n == "add")
+			return binary(Op::Add, false);
+		if (n == "sub")
+			return binary(Op::Sub, false);
+		if (n == "mul")
+			return binary(Op::Mul, false);
+		if (n == "and")
+			return binary(Op::And, true);
+		if (n == "or")
+			return binary(Op::Or, true);
+		if (n == "band")
+			return binary(Op::BAnd, false);
+		if (n == "bor")
+			return binary(Op::BOr, false);
+		if (n == "bxor")
+			return binary(Op::BXor, false);
+		if (n == "shl")
+			return binary(Op::Shl, false);
+		if (n == "fneg")
+			return unary(Op::FNeg);
+		if (n == "bnot")
+			return unary(Op::BNot);
 		if (n == "not") {
 			auto a = operand();
 			type = TypeId::Bool;
@@ -1167,8 +1187,8 @@ private:
 			return I(Op::Select, 0, a.ref, b.ref, c.ref);
 		}
 		if (n.rfind("cast.", 0) == 0) {
-			static const char* const kinds[] = {"sext",  "zext",    "trunc",    "sitofp",   "uitofp",  "fptosi",
-			                                    "fptoui", "fpext",  "fptrunc",  "bitcast",  "ptrtoint", "inttoptr"};
+			static const char* const kinds[] = {"sext",   "zext",  "trunc",   "sitofp",  "uitofp",   "fptosi",
+			                                    "fptoui", "fpext", "fptrunc", "bitcast", "ptrtoint", "inttoptr"};
 			uint8_t flags = 0;
 			bool found = false;
 			for (uint8_t i = 0; i < 12; ++i) {
@@ -1360,8 +1380,9 @@ private:
 		for (auto& l : limits) {
 			auto it = maxRef_.find(l.letter);
 			if (it != maxRef_.end() && it->second.token.number >= l.size) {
-				fail(DiagCode::P003, it->second.token, std::string("the ") + l.name + " #" + l.letter +
-				                                           std::to_string(it->second.token.number) + " is not declared");
+				fail(DiagCode::P003, it->second.token,
+				     std::string("the ") + l.name + " #" + l.letter + std::to_string(it->second.token.number) +
+				         " is not declared");
 			}
 		}
 		if (processLocal_) {

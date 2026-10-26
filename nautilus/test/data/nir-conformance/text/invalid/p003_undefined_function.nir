@@ -1,0 +1,3 @@
+; expect: NIR-P003
+nir 1.0
+callee #c0 = internal @missing : () -> void

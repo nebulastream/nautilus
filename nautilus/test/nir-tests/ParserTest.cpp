@@ -147,7 +147,9 @@ func @f : () -> void {
 }
 )");
 	auto& m = *r.module;
-	auto bits = [&](Ref ref) { return m.consts.record(ref).bits; };
+	auto bits = [&](Ref ref) {
+		return m.consts.record(ref).bits;
+	};
 	REQUIRE(bits(m.insts[0].a) == 0xFF);
 	REQUIRE(bits(m.insts[1].a) == 0x80);
 	REQUIRE(bits(m.insts[2].b) == std::bit_cast<uint64_t>(3.0));
@@ -166,7 +168,8 @@ TEST_CASE("NIR-P001 lexical errors", "[nir][parser]") {
 	REQUIRE(errorOf("nir 1.0\nmodule \"a\\q\"") == DiagCode::P001);
 	REQUIRE(errorOf("nir 1.0\nfunc @f : () -> void {\n^b0:\n %0 = add 1:i64, 1:i64 \n  ret\n}\n^") == DiagCode::P001);
 	REQUIRE(errorOf("nir 1.0\ndata #d0 align 1 = x\"0\"") == DiagCode::P001);
-	REQUIRE(errorOf("nir 1.0\nfunc @f : () -> void {\n^b0:\n  %0 = add 1:i64[bogus], 1:i64\n  ret\n}\n") == DiagCode::P001);
+	REQUIRE(errorOf("nir 1.0\nfunc @f : () -> void {\n^b0:\n  %0 = add 1:i64[bogus], 1:i64\n  ret\n}\n") ==
+	        DiagCode::P001);
 }
 
 TEST_CASE("NIR-P002 syntax errors", "[nir][parser]") {

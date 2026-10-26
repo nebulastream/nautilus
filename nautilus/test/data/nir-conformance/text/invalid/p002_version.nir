@@ -1,0 +1,2 @@
+; expect: NIR-P002
+nir 2.0

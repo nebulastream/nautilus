@@ -1,0 +1,20 @@
+nir 1.0
+
+func export @casts : (i8 sext, i64, f64, f32, ptr) -> i64 {
+^b0(%0: i8, %1: i64, %2: f64, %3: f32, %4: ptr):
+  %5 = cast.sext %0 : i64
+  %6 = cast.zext %0 : i32
+  %7 = cast.trunc %1 : i16
+  %8 = cast.sitofp %1 : f64
+  %9 = cast.uitofp %1 : f32
+  %10 = cast.fptosi %2 : i32
+  %11 = cast.fptoui %2 : i64
+  %12 = cast.fpext %3 : f64
+  %13 = cast.fptrunc %2 : f32
+  %14 = cast.bitcast %2 : i64
+  %15 = cast.bitcast %3 : i32
+  %16 = cast.ptrtoint %4 : i64
+  %17 = cast.inttoptr %16 : ptr
+  %18 = cast.zext true:bool : i8
+  ret %5
+}

@@ -12,6 +12,7 @@ set(NAUTILUS_FFI_CLOSURES ${ENABLE_FFI_CLOSURES})
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/nautilus/common/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/nautilus/config.hpp)
 
 add_subdirectory(src)
+add_subdirectory(${PROJECT_SOURCE_DIR}/tools/nir-opt ${CMAKE_CURRENT_BINARY_DIR}/tools/nir-opt)
 
 get_source(nautilus NAUTILUS_SOURCE_FILES)
 

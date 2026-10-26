@@ -1,0 +1,6 @@
+; expect: NIR-P003
+nir 1.0
+func @f : () -> void {
+^b0:
+  br ^b5
+}

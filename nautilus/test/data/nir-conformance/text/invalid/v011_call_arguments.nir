@@ -1,0 +1,13 @@
+; expect: NIR-V011
+nir 1.0
+callee #c0 = internal @g : (i64) -> void
+func @f : () -> void {
+^b0:
+  call #c0(1.5:f64)
+  ret
+}
+
+func @g : (i64) -> void {
+^b0(%0: i64):
+  ret
+}

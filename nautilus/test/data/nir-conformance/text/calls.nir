@@ -1,0 +1,24 @@
+nir 1.0
+pointer #p0 = callee symbol "process"
+pointer #p1 = thunk symbol "process$thunk"
+pointer #p2 = thunk symbol "indirect$thunk"
+callee #c0 = external #p0 : (ptr, i64) -> i64
+callee #c1 = external #p0 : (ptr, i64) -> i64 attrs(noUnwind)
+callee #c2 = internal @inner : (i64) -> i64
+
+func export @calls : (ptr, i64, ptr) -> i64 {
+^b0(%0: ptr, %1: i64, %2: ptr):
+  %3 = call #c0(%0, %1) unwind caller thunk #p1
+  %4 = call #c1(%0, %3)
+  %5 = call #c2(%4)
+  %6 = call.indirect %2(%5) : (i64) -> i64 attrs(noArgWrite, willReturn) unwind ^b1 thunk #p2
+  %7 = call.indirect %2(%6) : (i64) -> i64
+  ret %7
+^b1 pad:
+  resume
+}
+
+func @inner : (i64) -> i64 {
+^b0(%0: i64):
+  ret %0
+}
