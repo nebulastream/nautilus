@@ -292,9 +292,9 @@ constexpr T wrappingMul(T a, T b) {
 		return a * b;
 	}
 }
-#define NAUTILUS_EVAL_ADD(a, b) ::nautilus::wrappingAdd<resultType>(a, b)
-#define NAUTILUS_EVAL_SUB(a, b) ::nautilus::wrappingSub<resultType>(a, b)
-#define NAUTILUS_EVAL_MUL(a, b) ::nautilus::wrappingMul<resultType>(a, b)
+#define NAUTILUS_EVAL_ADD(a, b) wrappingAdd<resultType>(a, b)
+#define NAUTILUS_EVAL_SUB(a, b) wrappingSub<resultType>(a, b)
+#define NAUTILUS_EVAL_MUL(a, b) wrappingMul<resultType>(a, b)
 #define NAUTILUS_EVAL_DIV(a, b) ((a) / (b))
 #define NAUTILUS_EVAL_MOD(a, b) ((a) % (b))
 #define NAUTILUS_EVAL_SHR(a, b) ((a) >> (b))
