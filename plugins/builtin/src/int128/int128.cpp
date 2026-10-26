@@ -1,3 +1,4 @@
+#include "nautilus/extensions/IntrinsicRegistration.hpp"
 #include <cstring>
 #include <nautilus/builtin/int128/int128.hpp>
 
@@ -73,3 +74,38 @@ void int128_store_impl(void* ptr, int128_data* value) {
 	std::memcpy(ptr, value, sizeof(*value));
 }
 } // namespace nautilus::builtin::detail
+
+// The backend-neutral registration (04 §3.5). The operations pass values as pointers into a thread-local ring, so they
+// read and write memory the optimizer cannot see; only "does not throw" holds for all of them.
+namespace {
+
+struct Int128IntrinsicRegistrar {
+	Int128IntrinsicRegistrar() {
+		using namespace nautilus::ext;
+		using namespace nautilus::builtin::detail;
+#define NAUTILUS_REGISTER_INT128(name) registerIntrinsicFor("builtin." #name, &name##_impl, AttrNoUnwind)
+		NAUTILUS_REGISTER_INT128(int128_make);
+		NAUTILUS_REGISTER_INT128(int128_add);
+		NAUTILUS_REGISTER_INT128(int128_sub);
+		NAUTILUS_REGISTER_INT128(int128_mul);
+		NAUTILUS_REGISTER_INT128(int128_div);
+		NAUTILUS_REGISTER_INT128(int128_rem);
+		NAUTILUS_REGISTER_INT128(int128_and);
+		NAUTILUS_REGISTER_INT128(int128_or);
+		NAUTILUS_REGISTER_INT128(int128_xor);
+		NAUTILUS_REGISTER_INT128(int128_neg);
+		NAUTILUS_REGISTER_INT128(int128_not);
+		NAUTILUS_REGISTER_INT128(int128_shl);
+		NAUTILUS_REGISTER_INT128(int128_shr);
+		NAUTILUS_REGISTER_INT128(int128_eq);
+		NAUTILUS_REGISTER_INT128(int128_lt);
+		NAUTILUS_REGISTER_INT128(int128_low);
+		NAUTILUS_REGISTER_INT128(int128_high);
+		NAUTILUS_REGISTER_INT128(int128_load);
+		NAUTILUS_REGISTER_INT128(int128_store);
+#undef NAUTILUS_REGISTER_INT128
+	}
+};
+const Int128IntrinsicRegistrar int128Registrar_;
+
+} // namespace
