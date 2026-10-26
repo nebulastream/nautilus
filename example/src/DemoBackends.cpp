@@ -5,7 +5,7 @@
 // Backends selected via options.setOption("engine.backend", "<name>"):
 //   "mlir"   — MLIR → LLVM → native (primary, usually fastest)
 //   "cpp"    — C++ source generation + system compiler
-//   "bc"     — in-process bytecode interpreter
+//   "tbc"    — in-process threaded bytecode interpreter
 //   "asmjit" — direct x86-64 / ARM64 assembly via asmjit (experimental)
 //
 // The baseline DemoJit.cpp leaves this option unset, which picks up the
@@ -73,8 +73,8 @@ int main(int, char*[]) {
 #ifdef ENABLE_C_BACKEND
 	runWith("cpp", N);
 #endif
-#ifdef ENABLE_BC_BACKEND
-	runWith("bc", N);
+#ifdef ENABLE_TBC_BACKEND
+	runWith("tbc", N);
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	runWith("asmjit", N);

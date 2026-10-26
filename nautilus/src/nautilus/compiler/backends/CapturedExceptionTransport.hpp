@@ -17,7 +17,7 @@ namespace nautilus::compiler {
  * @brief Read-only helper that answers captured-exception-transport queries
  *        over a function's `FunctionExceptionRegion` side table.
  *
- * The fallback backends (CPP, BC, TBC, AsmJit) use this to decide, for a
+ * The fallback backends (CPP, TBC, AsmJit) use this to decide, for a
  * given potentially-throwing call, whether it needs a pending-exception check
  * plus a branch to a landing pad, and which pad to branch to. It holds a
  * non-owning pointer to the region (or nullptr when the function has none).

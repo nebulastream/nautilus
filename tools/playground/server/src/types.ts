@@ -1,4 +1,4 @@
-export const BACKENDS = ['mlir', 'cpp', 'bc', 'tbc', 'asmjit', 'cuda', 'metal'] as const;
+export const BACKENDS = ['mlir', 'cpp', 'tbc', 'asmjit', 'cuda', 'metal'] as const;
 export type Backend = (typeof BACKENDS)[number];
 
 export interface CompileOptions {

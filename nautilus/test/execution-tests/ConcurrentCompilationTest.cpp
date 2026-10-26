@@ -111,10 +111,10 @@ std::string threadSafeBackend() {
 
 /// A (tier0, tier1) backend pair for tiered compilation, or empty strings.
 std::pair<std::string, std::string> tieredBackends() {
-#if defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-	return {"bc", "mlir"};
-#elif defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND) && defined(ENABLE_C_BACKEND)
-	return {"bc", "cpp"};
+#if defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
+	return {"tbc", "mlir"};
+#elif defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND) && defined(ENABLE_C_BACKEND)
+	return {"tbc", "cpp"};
 #else
 	return {"", ""};
 #endif
@@ -147,7 +147,7 @@ TEST_CASE("Concurrent Compilation - Shared Engine, Explicit Backend") {
 TEST_CASE("Concurrent Compilation - Shared Engine, Default Tiered") {
 	const auto [tier0, tier1] = tieredBackends();
 	if (tier0.empty()) {
-		SKIP("Need bc + a high-tier backend for tiered compilation");
+		SKIP("Need tbc + a high-tier backend for tiered compilation");
 	}
 
 	// No explicit "engine.backend" → the engine selects the tiered compiler;

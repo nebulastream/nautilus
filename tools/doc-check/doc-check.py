@@ -21,7 +21,7 @@ import sys
 import tempfile
 
 TOKEN = re.compile(r"`([^`\n]+)`")
-OPTION_PREFIXES = ("engine.", "dump.", "ir.", "mlir.", "bc.", "tbc.", "asmjit.", "perf.", "gpu.")
+OPTION_PREFIXES = ("engine.", "dump.", "ir.", "mlir.", "tbc.", "asmjit.", "perf.", "gpu.")
 IGNORE_MARK = "doc-check: ignore"
 # paths that are produced by a build or a run, or are examples inside the text
 IGNORED_PREFIXES = ("build/", "/", "~", "http", "docs/plans/", "autoresearch/")
@@ -85,7 +85,7 @@ def exists_anywhere(tok, files, dirs):
 def source_options(root):
     """Option names that appear as string literals in the sources (some are not in docs/options.md yet)."""
     found = set()
-    pattern = re.compile(r'"((?:engine|dump|ir|mlir|bc|tbc|asmjit|perf|gpu)\.[A-Za-z0-9_.]+)"')
+    pattern = re.compile(r'"((?:engine|dump|ir|mlir|tbc|asmjit|perf|gpu)\.[A-Za-z0-9_.]+)"')
     for dirpath, dirs, fs in os.walk(root):
         dirs[:] = [d for d in dirs if d not in (".git", "build", "third_party", "node_modules")]
         for f in fs:

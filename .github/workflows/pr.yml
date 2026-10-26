@@ -68,7 +68,7 @@ jobs:
             cc: 'clang-21'
             cxx: 'clang++-21'
             flags: '-DENABLE_GPU_PLUGIN=ON'
-          # The iOS-safe closure path: bc and tbc hand out native function
+          # The iOS-safe closure path: tbc hands out native function
           # pointers via libffi static trampolines instead of dyncall callbacks,
           # so no runtime-executable memory is allocated. Built nowhere else, so
           # without this leg the configuration silently rots.

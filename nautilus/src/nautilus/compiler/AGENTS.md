@@ -6,7 +6,7 @@
   `irOptimizationLevel` lets a backend ask for fewer passes (MLIR takes only
   block-argument pruning).
 - **Tiered compilation** (`TieredCompiler.cpp`): `engine.backend=<x>` pins one
-  backend. Otherwise tier 0 (`asmjit`, else `bc`, else the interpreter) is
+  backend. Otherwise tier 0 (`asmjit`, else `tbc`, else the interpreter) is
   compiled synchronously and tier 1 (MLIR) on a background thread, which swaps
   the module's executable. Finished promotion threads are reaped when the next
   promotion starts (#566).

@@ -133,8 +133,6 @@ std::string getAnyBackend() {
 	return "mlir";
 #elif defined(ENABLE_TRACING) && defined(ENABLE_C_BACKEND)
 	return "cpp";
-#elif defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND)
-	return "bc";
 #elif defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND)
 	return "tbc";
 #else
@@ -340,7 +338,7 @@ TEST_CASE("Module Concurrent Swap Test") {
 	auto sumFn = compiled.getFunction<int64_t(int64_t, int64_t)>("sum");
 
 	// Compile an executable we can swap in and out.
-	// Use a thread-safe backend (MLIR produces native code, BC interpreter has shared register file).
+	// Use a thread-safe backend (MLIR produces native code, the tbc interpreter has a shared register file).
 	engine::Options compileOptions;
 	compileOptions.setOption("engine.backend", backend);
 	auto compileEngine = engine::NautilusEngine(compileOptions);

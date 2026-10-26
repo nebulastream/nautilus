@@ -157,7 +157,7 @@ void addOptimizationPasses(ir::IRPassManager& passManager, const engine::ModuleO
 		group.push_back(std::make_unique<ir::LocalCSEPass>());
 	}
 	// Opt-in (default off), unlike the two passes above: correct, but
-	// measured to regress the BC interpreter's dispatch-bound cost model
+	// measured to regress the bytecode interpreter's dispatch-bound cost model
 	// (see StrengthReductionPass.hpp) -- may still be worth enabling for
 	// an ALU-bound backend.
 	if (moduleOptions.getOptionOrDefault("ir.enableStrengthReduction", false)) {

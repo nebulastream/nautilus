@@ -30,7 +30,7 @@ export const PHASE_LABELS = {
 	other: 'Other',
 };
 
-const BACKENDS = new Set(['mlir', 'cpp', 'bc', 'tbc', 'asmjit', 'interpreted']);
+const BACKENDS = new Set(['mlir', 'cpp', 'tbc', 'asmjit', 'interpreted']);
 
 function mk(name, phase, backend, workload, variant) {
 	let seriesKey;

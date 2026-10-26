@@ -26,11 +26,7 @@ val<int32_t> tieredMultiply(val<int32_t> a, val<int32_t> b) {
 /// Returns a pair of backend names suitable for tiered compilation (tier0, tier1).
 /// Returns empty strings if not enough backends available.
 std::pair<std::string, std::string> getTieredBackends() {
-#if defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-	return {"bc", "mlir"};
-#elif defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND) && defined(ENABLE_C_BACKEND)
-	return {"bc", "cpp"};
-#elif defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
+#if defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
 	return {"tbc", "mlir"};
 #elif defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND) && defined(ENABLE_C_BACKEND)
 	return {"tbc", "cpp"};
@@ -189,12 +185,6 @@ TEST_CASE("Tiered Compilation - Custom Backend Per Tier") {
 	std::vector<std::pair<std::string, std::string>> combos;
 
 #if defined(ENABLE_TRACING)
-#if defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-	combos.emplace_back("bc", "mlir");
-#endif
-#if defined(ENABLE_BC_BACKEND) && defined(ENABLE_C_BACKEND)
-	combos.emplace_back("bc", "cpp");
-#endif
 #if defined(ENABLE_TBC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
 	combos.emplace_back("tbc", "mlir");
 #endif
@@ -434,7 +424,7 @@ TEST_CASE("Tiered Compilation - Interpreter Tier 0 Via Option") {
 
 TEST_CASE("Tiered Compilation - Default Tier 0 Selection Order") {
 	// With no backend or tier options set, tier 0 is selected by
-	// availability: asmjit, then bc, then the interpreter.
+	// availability: asmjit, then tbc, then the interpreter.
 	auto engine = NautilusEngine(Options());
 	auto module = engine.createModule();
 	module.registerFunction("add_one", tieredAddOne);
@@ -449,13 +439,13 @@ TEST_CASE("Tiered Compilation - Default Tier 0 Selection Order") {
 	if (std::get<std::string>(*stats->find("tier")) == "tier0") {
 		REQUIRE(std::get<std::string>(*stats->find("backend.name")) == "asmjit");
 	}
-#elif defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND)
+#elif defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND)
 	REQUIRE(stats != nullptr);
 	if (std::get<std::string>(*stats->find("tier")) == "tier0") {
-		REQUIRE(std::get<std::string>(*stats->find("backend.name")) == "bc");
+		REQUIRE(std::get<std::string>(*stats->find("backend.name")) == "tbc");
 	}
 #else
-	// Neither asmjit nor bc: the module runs interpreted (no stats) until
+	// Neither asmjit nor tbc: the module runs interpreted (no stats) until
 	// the background promotion completes.
 	(void) stats;
 #endif
@@ -469,9 +459,6 @@ TEST_CASE("Tiered Compilation - Explicit Backend Runs Single-Tier") {
 #ifdef ENABLE_TRACING
 #ifdef ENABLE_MLIR_BACKEND
 	backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
 #endif
 #ifdef ENABLE_TBC_BACKEND
 	backends.emplace_back("tbc");

@@ -1,7 +1,7 @@
 # Locate libffi for the interpreting backends' iOS-safe closure path and expose it
 # as the imported target `nautilus::ffi`.
 #
-# The bc and tbc backends use libffi closures (built with static trampolines) to
+# The tbc backend uses libffi closures (built with static trampolines) to
 # hand out a real C function pointer without allocating runtime-executable (RWX)
 # memory, which is required on iOS. libffi >= 3.4 enables static trampolines by
 # default on Apple and Linux targets.

@@ -12,7 +12,7 @@ namespace nautilus::compiler::tbc {
 //
 // Register slots are untyped 64 bits. Writers normalize: bools are stored as
 // 0/1, narrow integers are zero-extended, floats/pointers keep their bit
-// pattern (same invariant as the bc backend's writeReg). Readers use the exact
+// pattern (registers always hold the full zero-extended slot). Readers use the exact
 // IR-typed width, so the low bytes are always authoritative.
 
 template <class T>

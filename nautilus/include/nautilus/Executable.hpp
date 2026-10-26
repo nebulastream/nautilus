@@ -350,7 +350,7 @@ public:
 	/**
 	 * @brief Per-function refinement of getExceptionPropagationMode().
 	 *
-	 * A captured-host-rethrow backend (CPP/BC/TBC/AsmJit) still compiles most
+	 * A captured-host-rethrow backend (CPP/TBC/AsmJit) still compiles most
 	 * functions with no exceptional call sites at all -- the common case, since
 	 * only a function that transitively invokes a non-noexcept call needs one.
 	 * Such a function never touches the ExceptionFrame machinery at runtime, so

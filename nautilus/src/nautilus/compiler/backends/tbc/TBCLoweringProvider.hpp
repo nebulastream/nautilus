@@ -8,7 +8,7 @@ namespace nautilus::compiler::tbc {
 /**
  * @brief Configuration for the TBC lowering.
  *
- * Unlike the bc backend, every optimization defaults to ON — the flags exist
+ * Every optimization defaults to ON — the flags exist
  * for A/B benchmarking and debugging, not for backwards compatibility.
  *
  * enableRegisterAllocator: linear register allocation with a free list; when

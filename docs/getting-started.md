@@ -36,7 +36,7 @@ cmake --build . --target nautilus
 | `ENABLE_BENCHMARKS` | OFF | Build performance benchmarks |
 | `ENABLE_MLIR_BACKEND` | ON | Enable the MLIR code generation backend |
 | `ENABLE_C_BACKEND` | ON | Enable the C++ code generation backend |
-| `ENABLE_BC_BACKEND` | ON | Enable the bytecode interpreter backend |
+| `ENABLE_TBC_BACKEND` | ON | Enable the threaded bytecode interpreter backend |
 
 For example, to build with benchmarks enabled:
 
@@ -101,7 +101,7 @@ When you register a function with the Nautilus engine, the following steps occur
 
 4. **The trace is converted to IR and optimized.** The execution trace is transformed into a control flow graph in Static Single Assignment (SSA) form. Optimization phases run over this IR, including constant propagation, dead code elimination, loop analysis, and control flow simplification.
 
-5. **A backend compiles the IR to executable code.** Depending on the configured backend, the optimized IR is lowered to native machine code (MLIR), C++ source (cpp), or bytecode (bc).
+5. **A backend compiles the IR to executable code.** Depending on the configured backend, the optimized IR is lowered to native machine code (MLIR), C++ source (cpp), or bytecode (tbc).
 
 6. **Call the compiled function with raw C++ values.** The returned callable wraps the compiled code. You invoke it with ordinary C++ arguments, and it returns ordinary C++ results.
 

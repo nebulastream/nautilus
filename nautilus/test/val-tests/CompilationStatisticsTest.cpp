@@ -74,12 +74,12 @@ TEST_CASE("CompilationStatistics: merge namespaces nested entries") {
 	inner.set("codeSize.bytes", int64_t {1024});
 
 	CompilationStatistics outer;
-	outer.merge("bc", inner);
+	outer.merge("tbc", inner);
 
-	REQUIRE(outer.contains("bc.ms"));
-	REQUIRE(outer.contains("bc.codeSize.bytes"));
-	REQUIRE(std::get<double>(*outer.find("bc.ms")) == Catch::Approx(2.5));
-	REQUIRE(std::get<int64_t>(*outer.find("bc.codeSize.bytes")) == 1024);
+	REQUIRE(outer.contains("tbc.ms"));
+	REQUIRE(outer.contains("tbc.codeSize.bytes"));
+	REQUIRE(std::get<double>(*outer.find("tbc.ms")) == Catch::Approx(2.5));
+	REQUIRE(std::get<int64_t>(*outer.find("tbc.codeSize.bytes")) == 1024);
 }
 
 TEST_CASE("CompilationStatistics: formatValue renders units") {
@@ -89,7 +89,7 @@ TEST_CASE("CompilationStatistics: formatValue renders units") {
 	REQUIRE(CompilationStatistics::formatValue("irPasses.totalMs", 7.0) == "7.00 ms");
 
 	// Byte keys render with human-friendly units.
-	REQUIRE(CompilationStatistics::formatValue("bc.codeSize.bytes", int64_t {512}) == "512 B");
+	REQUIRE(CompilationStatistics::formatValue("tbc.codeSize.bytes", int64_t {512}) == "512 B");
 	const auto kib = CompilationStatistics::formatValue("asmjit.codeSize.bytes", int64_t {2048});
 	REQUIRE(kib == "2.00 KiB");
 
