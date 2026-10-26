@@ -169,11 +169,13 @@ TEST_CASE("NIR-L002 and NIR-L003 version and features", "[nir][image]") {
 	REQUIRE(rejection(raw.encode()).code == DiagCode::L002);
 	raw.header.major = 1;
 	raw.header.minor = 7; // a later minor version is accepted
-	REQUIRE(loadImage(raw.encode(), [] {
-		        LoadOptions o;
-		        o.ignoreProcessToken = true;
-		        return o;
-	        }()).ok());
+	REQUIRE(loadImage(raw.encode(),
+	                  [] {
+		                  LoadOptions o;
+		                  o.ignoreProcessToken = true;
+		                  return o;
+	                  }())
+	            .ok());
 	raw.header.incompatFeatures |= 0x80;
 	REQUIRE(rejection(raw.encode()).code == DiagCode::L003);
 	raw.header.incompatFeatures &= ~0x80u;
@@ -220,54 +222,54 @@ TEST_CASE("NIR-L006 section table", "[nir][image]") {
 	};
 	// order
 	REQUIRE(edit([&](auto& im) {
-		auto a = entryAt(im, 3), b = entryAt(im, 4);
-		setEntry(im, 3, b);
-		setEntry(im, 4, a);
-	}) == DiagCode::L006);
+		        auto a = entryAt(im, 3), b = entryAt(im, 4);
+		        setEntry(im, 3, b);
+		        setEntry(im, 4, a);
+	        }) == DiagCode::L006);
 	// duplicate kind
 	REQUIRE(edit([&](auto& im) {
-		auto a = entryAt(im, 3);
-		auto b = entryAt(im, 4);
-		b.kind = a.kind;
-		setEntry(im, 4, b);
-	}) == DiagCode::L006);
+		        auto a = entryAt(im, 3);
+		        auto b = entryAt(im, 4);
+		        b.kind = a.kind;
+		        setEntry(im, 4, b);
+	        }) == DiagCode::L006);
 	// alignment
 	REQUIRE(edit([&](auto& im) {
-		auto a = entryAt(im, 0);
-		a.offset += 4;
-		setEntry(im, 0, a);
-	}) == DiagCode::L006);
+		        auto a = entryAt(im, 0);
+		        a.offset += 4;
+		        setEntry(im, 0, a);
+	        }) == DiagCode::L006);
 	// bounds
 	REQUIRE(edit([&](auto& im) {
-		auto a = entryAt(im, 0);
-		a.count = 1u << 20;
-		setEntry(im, 0, a);
-	}) == DiagCode::L006);
+		        auto a = entryAt(im, 0);
+		        a.count = 1u << 20;
+		        setEntry(im, 0, a);
+	        }) == DiagCode::L006);
 	REQUIRE(edit([&](auto& im) {
-		auto a = entryAt(im, 0);
-		a.offset = 1ull << 40;
-		setEntry(im, 0, a);
-	}) == DiagCode::L006);
+		        auto a = entryAt(im, 0);
+		        a.offset = 1ull << 40;
+		        setEntry(im, 0, a);
+	        }) == DiagCode::L006);
 	// overlap: the second section points into the first
 	REQUIRE(edit([&](auto& im) {
-		auto a = entryAt(im, 0);
-		auto b = entryAt(im, 1);
-		b.offset = a.offset;
-		setEntry(im, 1, b);
-	}) == DiagCode::L006);
+		        auto a = entryAt(im, 0);
+		        auto b = entryAt(im, 1);
+		        b.offset = a.offset;
+		        setEntry(im, 1, b);
+	        }) == DiagCode::L006);
 	// into the table itself
 	REQUIRE(edit([&](auto& im) {
-		auto a = entryAt(im, 0);
-		a.offset = 48;
-		setEntry(im, 0, a);
-	}) == DiagCode::L006);
+		        auto a = entryAt(im, 0);
+		        a.offset = 48;
+		        setEntry(im, 0, a);
+	        }) == DiagCode::L006);
 	// a table that does not fit
 	REQUIRE(edit([&](auto& im) {
-		ImageHeader h;
-		std::memcpy(&h, im.data(), sizeof h);
-		h.sectionCount = 1u << 24;
-		std::memcpy(im.data(), &h, sizeof h);
-	}) == DiagCode::L006);
+		        ImageHeader h;
+		        std::memcpy(&h, im.data(), sizeof h);
+		        h.sectionCount = 1u << 24;
+		        std::memcpy(im.data(), &h, sizeof h);
+	        }) == DiagCode::L006);
 }
 
 TEST_CASE("NIR-L007 strides", "[nir][image]") {
@@ -318,8 +320,9 @@ TEST_CASE("NIR-L009 module section", "[nir][image]") {
 	raw.section(SecModule).bytes.clear();
 	REQUIRE(rejection(raw.encode()).code == DiagCode::L009);
 	auto none = RawImage::decode(imageOf(small));
-	none.sections.erase(std::remove_if(none.sections.begin(), none.sections.end(), [](auto& s) { return s.kind == SecModule; }),
-	                    none.sections.end());
+	none.sections.erase(
+	    std::remove_if(none.sections.begin(), none.sections.end(), [](auto& s) { return s.kind == SecModule; }),
+	    none.sections.end());
 	REQUIRE(rejection(none.encode()).code == DiagCode::L009);
 }
 
@@ -343,7 +346,7 @@ func export @f : () -> ptr {
 	o = {};
 	o.ignoreProcessToken = true;
 	REQUIRE(loadImage(local, o).ok());
-	(void)image;
+	(void) image;
 }
 
 TEST_CASE("NIR-L016 and NIR-L017", "[nir][image]") {

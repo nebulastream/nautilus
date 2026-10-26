@@ -15,7 +15,10 @@ add_library(nautilus-nir STATIC
         Image.cpp
         ImageLoader.cpp
         Inspect.cpp
+        Hash.cpp
         ../common/OptionRegistry.cpp)
 target_include_directories(nautilus-nir PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 target_compile_features(nautilus-nir PUBLIC cxx_std_20)
 set_target_properties(nautilus-nir PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# the vendored xxHash is used header-only; it is a system include so that its code is not built with our warnings
+target_include_directories(nautilus-nir SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/third_party/xxhash)

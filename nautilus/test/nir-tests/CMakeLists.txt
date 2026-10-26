@@ -12,6 +12,7 @@ add_executable(nautilus-nir-tests
         OptionRegistryTest.cpp
         CanonicalizeTest.cpp
         ImageTest.cpp
+        HashTest.cpp
 )
 
 target_link_libraries(nautilus-nir-tests PRIVATE nautilus-nir Catch2::Catch2WithMain)
@@ -34,3 +35,8 @@ foreach (file ${NIR_INVALID_TESTS})
     add_test(NAME nir-invalid-${name}
             COMMAND ${CMAKE_COMMAND} -DOPT=$<TARGET_FILE:nautilus-nir-opt> -DINPUT=${file} -P ${CMAKE_CURRENT_SOURCE_DIR}/check_invalid.cmake)
 endforeach ()
+
+# two separate processes hash the same module to the same key (13 §7.2; 12-validation.md row 07)
+add_test(NAME nir-hash-two-processes
+        COMMAND ${CMAKE_COMMAND} -DOPT=$<TARGET_FILE:nautilus-nir-opt> -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/../data/nir-conformance/text/calls.nir
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hash.cmake)

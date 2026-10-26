@@ -2,9 +2,9 @@
 
 #include "nautilus/nir/Image.hpp"
 #include "nautilus/nir/ImageLoader.hpp"
+#include <cstring>
 #include <stdexcept>
 #include <string>
-#include <cstring>
 #include <vector>
 
 namespace nautilus::nir::test {

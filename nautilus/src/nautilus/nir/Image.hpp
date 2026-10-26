@@ -17,9 +17,9 @@ constexpr uint16_t IMAGE_MAJOR = 1;
 constexpr uint16_t IMAGE_MINOR = 0;
 
 /// Feature bits (§8.3).
-constexpr uint32_t FEATURE_DEBUG_V1 = 1u << 0;        // compat
-constexpr uint32_t FEATURE_EXTENSIONS = 1u << 1;      // incompat
-constexpr uint32_t FEATURE_PROCESS_LOCAL = 1u << 2;   // incompat
+constexpr uint32_t FEATURE_DEBUG_V1 = 1u << 0;      // compat
+constexpr uint32_t FEATURE_EXTENSIONS = 1u << 1;    // incompat
+constexpr uint32_t FEATURE_PROCESS_LOCAL = 1u << 2; // incompat
 constexpr uint32_t KNOWN_INCOMPAT_FEATURES = FEATURE_EXTENSIONS | FEATURE_PROCESS_LOCAL;
 
 struct ImageHeader {

@@ -37,17 +37,17 @@ LoadResult loadImage(std::span<const uint8_t> image, const LoadOptions& options)
 		auto header = readAt<ImageHeader>(image, 0);
 		result.header = header;
 		if (header.major > IMAGE_MAJOR) {
-			reject(DiagCode::L002, "format version " + std::to_string(header.major) + "." + std::to_string(header.minor) +
-			                           " is newer than this reader's " + std::to_string(IMAGE_MAJOR) + "." +
-			                           std::to_string(IMAGE_MINOR));
+			reject(DiagCode::L002, "format version " + std::to_string(header.major) + "." +
+			                           std::to_string(header.minor) + " is newer than this reader's " +
+			                           std::to_string(IMAGE_MAJOR) + "." + std::to_string(IMAGE_MINOR));
 		}
 		if ((header.incompatFeatures & ~KNOWN_INCOMPAT_FEATURES) != 0) {
 			reject(DiagCode::L003, "unknown incompatible feature bits " +
 			                           std::to_string(header.incompatFeatures & ~KNOWN_INCOMPAT_FEATURES));
 		}
 		if (header.totalSize != image.size()) {
-			reject(DiagCode::L004, "totalSize " + std::to_string(header.totalSize) + " differs from the buffer length " +
-			                           std::to_string(image.size()));
+			reject(DiagCode::L004, "totalSize " + std::to_string(header.totalSize) +
+			                           " differs from the buffer length " + std::to_string(image.size()));
 		}
 		if (crc32c(image.subspan(sizeof(ImageHeader))) != header.crc32c) {
 			reject(DiagCode::L005, "checksum mismatch");
@@ -93,8 +93,8 @@ LoadResult loadImage(std::span<const uint8_t> image, const LoadOptions& options)
 		std::vector<Range> ranges;
 		for (auto& e : entries) {
 			if (e.kind <= previousKind) {
-				reject(DiagCode::L006, "section entries are not in increasing kind order (kind " +
-				                           std::to_string(e.kind) + ")");
+				reject(DiagCode::L006,
+				       "section entries are not in increasing kind order (kind " + std::to_string(e.kind) + ")");
 			}
 			previousKind = e.kind;
 			if (e.offset % 8 != 0) {
@@ -102,7 +102,8 @@ LoadResult loadImage(std::span<const uint8_t> image, const LoadOptions& options)
 			}
 			auto* info = sectionInfo(e.kind);
 			if (info != nullptr) {
-				if (e.stride < info->recordSize || ((info->recordSize == 1 || info->recordSize == 4) && e.stride != info->recordSize)) {
+				if (e.stride < info->recordSize ||
+				    ((info->recordSize == 1 || info->recordSize == 4) && e.stride != info->recordSize)) {
 					reject(DiagCode::L007, std::string("section ") + info->name + " has an invalid stride");
 				}
 			} else if (e.stride == 0) {

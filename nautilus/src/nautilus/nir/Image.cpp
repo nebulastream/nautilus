@@ -21,14 +21,17 @@ void copyInto(std::vector<T>& v, std::span<const std::byte> bytes, uint64_t coun
 
 // the sections are exactly the arrays of Module; each entry maps a kind to its array
 #define SECTION_FIELD(KIND, NAME, FIELD, TYPE, DEBUG)                                                                  \
-	{KIND, NAME, sizeof(TYPE), DEBUG, [](const Module& m) { return asBytes(m.FIELD); },                                \
+	{KIND,                                                                                                             \
+	 NAME,                                                                                                             \
+	 sizeof(TYPE),                                                                                                     \
+	 DEBUG,                                                                                                            \
+	 [](const Module& m) { return asBytes(m.FIELD); },                                                                 \
 	 [](Module& m, std::span<const std::byte> b, uint64_t n) { copyInto(m.FIELD, b, n); }}
 
 const SectionInfo infos[] = {
     SECTION_FIELD(SecInsts, "insts", insts, Inst, false),
     SECTION_FIELD(SecExtra, "extra", extra, uint32_t, false),
-    {SecConsts, "consts", sizeof(ConstRecord), false,
-     [](const Module& m) { return std::as_bytes(m.consts.records()); },
+    {SecConsts, "consts", sizeof(ConstRecord), false, [](const Module& m) { return std::as_bytes(m.consts.records()); },
      [](Module& m, std::span<const std::byte> b, uint64_t n) {
 	     std::vector<ConstRecord> records(n);
 	     if (n != 0) {
