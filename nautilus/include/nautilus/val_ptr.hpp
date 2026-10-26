@@ -587,10 +587,13 @@ val<ValueType> inline ptrAdd(const val<ValueType>& left, const IndexType& offset
 		return val<ValueType>(tc);
 	}
 #endif
-	auto newPtr =
-	    (ValueType) (((uint8_t*) left.value) +
-	                 details::RawValueResolver<
-	                     typename std::remove_cvref_t<decltype((offsetBytes))>::raw_type>::getRawValue(offsetBytes));
+	// the offset is an unsigned byte count that wraps for a negative element count: add it as an integer, since
+	// advancing a pointer by an unsigned value that wraps is undefined behavior
+	auto newPtr = (ValueType) (reinterpret_cast<uint8_t*>(
+	    reinterpret_cast<uintptr_t>(left.value) +
+	    static_cast<uintptr_t>(
+	        details::RawValueResolver<typename std::remove_cvref_t<decltype((offsetBytes))>::raw_type>::getRawValue(
+	            offsetBytes))));
 	return val<ValueType>(newPtr);
 }
 
@@ -615,7 +618,9 @@ val<ValueType> inline ptrAddStatic(const val<ValueType>& left, size_t count) {
 		return val<ValueType>(tc);
 	}
 #endif
-	return val<ValueType>((ValueType) (((uint8_t*) left.value) + offsetBytes));
+	// offsetBytes wraps for a negative count; see ptrAdd
+	return val<ValueType>(
+	    (ValueType) reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(left.value) + offsetBytes));
 }
 
 /// Element count of an offset C++ already knows, converted to size_t like the built-in pointer operators convert it
