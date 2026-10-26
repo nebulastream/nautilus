@@ -88,7 +88,11 @@ inline void checkModule(const Module& m) {
 		return;
 	}
 	auto canonical = canonicalize(m);
-	if (!verify(canonical).empty()) {
+	if (auto diagnostics = verify(canonical); !diagnostics.empty()) {
+		for (auto& d : diagnostics) {
+			std::fprintf(stderr, "%s\n", d.str().c_str());
+		}
+		std::fprintf(stderr, "the module:\n%s\nits canonical form:\n%s\n", text.c_str(), print(canonical).c_str());
 		violated("a canonical module does not verify");
 	}
 	if (!sectionsEqual(canonical, canonicalize(canonical))) {
