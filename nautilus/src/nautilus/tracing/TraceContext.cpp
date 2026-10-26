@@ -573,9 +573,21 @@ bool TraceContext::traceBool(const TypedValueRef& value, const double probabilit
 	return result;
 }
 
+// The tag of an operation is the chain of return addresses between the scope's root and the operation, so it includes
+// the address in this function the body is called from. If the optimizer peels the first iteration of the loop below,
+// the body has two call sites and the first pass tags every operation differently from the later ones: a control-flow
+// merge is not recognized, and a region reports that its exit state differs between the paths. Peeling is therefore
+// switched off for this function (it happened at -O3 once the loop body had grown, for builds without logging).
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize("no-peel-loops")
+#endif
 void TraceContext::runScope(std::function<void()>& body) {
 	auto& symbolicExecutionContext = state->symbolicExecutionContext;
 	auto traceIteration = 0;
+#if defined(__clang__)
+#pragma clang loop unroll(disable)
+#endif
 	while (symbolicExecutionContext.shouldContinue()) {
 		traceIteration = traceIteration + 1;
 		log::trace("Trace Iteration {}", traceIteration);
@@ -611,6 +623,9 @@ void TraceContext::runScope(std::function<void()>& body) {
 	++session_->stats_.scopes;
 	session_->stats_.maxScopeIterations = std::max<uint64_t>(session_->stats_.maxScopeIterations, traceIteration);
 }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#endif
 
 void TraceContext::beginPass(bool rerun) {
 	rerunPass_ = rerun;
