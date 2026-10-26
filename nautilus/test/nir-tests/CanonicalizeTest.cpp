@@ -235,3 +235,23 @@ func export @f : () -> void {
 	REQUIRE(c.name(c.functionAttrs[1].keyNameId) == "b.key");
 	REQUIRE(verify(c).empty());
 }
+
+// found by the fuzzer: the only process-local entry is unreferenced, so the canonical form is not process-local and
+// must not keep the processToken (V040)
+TEST_CASE("the canonical form of a module whose process-local pointers are unused has no processToken",
+          "[nir][canonical]") {
+	auto m = parseOrDie(R"(nir 1.0
+module "local"
+pointer #p0 = address local 0x1000 raw
+
+func export @f : () -> i64 {
+^b0:
+  ret 7:i64
+}
+)");
+	REQUIRE(m.module.processToken != 0);
+	auto c = canonicalize(m, anonymous());
+	CHECK(c.pointers.empty());
+	CHECK(c.module.processToken == 0);
+	CHECK(verify(c).empty());
+}

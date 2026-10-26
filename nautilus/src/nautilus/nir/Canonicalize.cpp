@@ -36,7 +36,15 @@ public:
 		writeLists();
 		d_.module.nameId = (o_.anonymous || s_.module.nameId == NONE) ? NONE : name(s_.module.nameId);
 		d_.module.flags = 0;
-		d_.module.processToken = s_.module.processToken;
+		// only the pointers and constants that survive decide whether the result is process-local (V040)
+		bool processLocal = false;
+		for (auto& p : d_.pointers) {
+			processLocal |= p.mode == 0;
+		}
+		for (auto& c : d_.consts.records()) {
+			processLocal |= c.provenance == 2;
+		}
+		d_.module.processToken = processLocal ? s_.module.processToken : 0;
 		d_.rebuildIndexes();
 		return std::move(d_);
 	}

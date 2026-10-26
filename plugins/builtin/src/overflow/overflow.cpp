@@ -1,3 +1,4 @@
+#include "nautilus/extensions/IntrinsicRegistration.hpp"
 #include <cstring>
 #include <nautilus/builtin/overflow/overflow.hpp>
 #include <nautilus/function.hpp>
@@ -83,3 +84,31 @@ val<bool> mul_overflow_i128(val<const void*> a, val<const void*> b, val<void*> o
 	return invoke(detail::mul_overflow_i128_impl, a, b, out);
 }
 } // namespace nautilus::builtin
+
+// The backend-neutral registration (04 §3.5). The scalar forms only write through `out`; the 128-bit forms also read
+// their operands through pointers. None throws, and each returns.
+namespace {
+
+struct OverflowIntrinsicRegistrar {
+	OverflowIntrinsicRegistrar() {
+		using namespace nautilus::ext;
+		using namespace nautilus::builtin::detail;
+		constexpr uint32_t scalar = AttrNoArgRead | AttrNoOtherRead | AttrNoOtherWrite | AttrNoUnwind | AttrWillReturn;
+		constexpr uint32_t wide = AttrNoOtherRead | AttrNoOtherWrite | AttrNoUnwind | AttrWillReturn;
+#define NAUTILUS_REGISTER_OVERFLOW(op, width, attrs)                                                                   \
+	registerIntrinsicFor("builtin." #op "_overflow_" #width, &op##_overflow_##width##_impl, attrs)
+		NAUTILUS_REGISTER_OVERFLOW(add, i32, scalar);
+		NAUTILUS_REGISTER_OVERFLOW(sub, i32, scalar);
+		NAUTILUS_REGISTER_OVERFLOW(mul, i32, scalar);
+		NAUTILUS_REGISTER_OVERFLOW(add, i64, scalar);
+		NAUTILUS_REGISTER_OVERFLOW(sub, i64, scalar);
+		NAUTILUS_REGISTER_OVERFLOW(mul, i64, scalar);
+		NAUTILUS_REGISTER_OVERFLOW(add, i128, wide);
+		NAUTILUS_REGISTER_OVERFLOW(sub, i128, wide);
+		NAUTILUS_REGISTER_OVERFLOW(mul, i128, wide);
+#undef NAUTILUS_REGISTER_OVERFLOW
+	}
+};
+const OverflowIntrinsicRegistrar overflowRegistrar_;
+
+} // namespace

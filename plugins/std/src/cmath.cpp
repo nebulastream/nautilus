@@ -1,3 +1,4 @@
+#include "nautilus/extensions/IntrinsicRegistration.hpp"
 #include <cmath>
 #include <cstdint>
 #include <nautilus/function.hpp>
@@ -755,3 +756,63 @@ val<bool> isunordered(val<double> x, val<double> y) noexcept {
 }
 
 } // namespace nautilus
+
+// The backend-neutral registration (04 §3.5): the floating-point functions are pure functions of their arguments
+// (errno is not modelled), so the optimizer may fold and hoist them and a backend may lower them natively.
+namespace {
+
+struct MathIntrinsicRegistrar {
+	MathIntrinsicRegistrar() {
+		using namespace nautilus::ext;
+		constexpr uint32_t pure =
+		    AttrNoArgRead | AttrNoArgWrite | AttrNoOtherRead | AttrNoOtherWrite | AttrNoUnwind | AttrWillReturn;
+#define NAUTILUS_REGISTER_MATH1(fn)                                                                                    \
+	registerIntrinsicFor("std." #fn "_f32", static_cast<float (*)(float)>(&std::fn), pure);                            \
+	registerIntrinsicFor("std." #fn "_f64", static_cast<double (*)(double)>(&std::fn), pure)
+#define NAUTILUS_REGISTER_MATH2(fn)                                                                                    \
+	registerIntrinsicFor("std." #fn "_f32", static_cast<float (*)(float, float)>(&std::fn), pure);                     \
+	registerIntrinsicFor("std." #fn "_f64", static_cast<double (*)(double, double)>(&std::fn), pure)
+#define NAUTILUS_REGISTER_MATH_INT(fn, R)                                                                              \
+	registerIntrinsicFor("std." #fn "_f32", static_cast<R (*)(float)>(&std::fn), pure);                                \
+	registerIntrinsicFor("std." #fn "_f64", static_cast<R (*)(double)>(&std::fn), pure)
+		NAUTILUS_REGISTER_MATH1(fabs);
+		NAUTILUS_REGISTER_MATH1(sin);
+		NAUTILUS_REGISTER_MATH1(cos);
+		NAUTILUS_REGISTER_MATH1(tan);
+		NAUTILUS_REGISTER_MATH1(asin);
+		NAUTILUS_REGISTER_MATH1(acos);
+		NAUTILUS_REGISTER_MATH1(atan);
+		NAUTILUS_REGISTER_MATH1(sinh);
+		NAUTILUS_REGISTER_MATH1(cosh);
+		NAUTILUS_REGISTER_MATH1(tanh);
+		NAUTILUS_REGISTER_MATH1(exp);
+		NAUTILUS_REGISTER_MATH1(exp2);
+		NAUTILUS_REGISTER_MATH1(log);
+		NAUTILUS_REGISTER_MATH1(log2);
+		NAUTILUS_REGISTER_MATH1(log10);
+		NAUTILUS_REGISTER_MATH1(sqrt);
+		NAUTILUS_REGISTER_MATH1(ceil);
+		NAUTILUS_REGISTER_MATH1(floor);
+		NAUTILUS_REGISTER_MATH1(trunc);
+		NAUTILUS_REGISTER_MATH1(round);
+		NAUTILUS_REGISTER_MATH1(rint);
+		NAUTILUS_REGISTER_MATH1(nearbyint);
+		NAUTILUS_REGISTER_MATH2(atan2);
+		NAUTILUS_REGISTER_MATH2(pow);
+		NAUTILUS_REGISTER_MATH2(copysign);
+		registerIntrinsicFor("std.fma_f32", static_cast<float (*)(float, float, float)>(&std::fma), pure);
+		registerIntrinsicFor("std.fma_f64", static_cast<double (*)(double, double, double)>(&std::fma), pure);
+		NAUTILUS_REGISTER_MATH_INT(lround, long);
+		NAUTILUS_REGISTER_MATH_INT(llround, long long);
+		NAUTILUS_REGISTER_MATH_INT(lrint, long);
+		NAUTILUS_REGISTER_MATH_INT(llrint, long long);
+		registerIntrinsicFor("std.abs_i32", static_cast<int32_t (*)(int32_t)>(&std::abs), pure);
+		registerIntrinsicFor("std.abs_i64", static_cast<int64_t (*)(int64_t)>(&std::abs), pure);
+#undef NAUTILUS_REGISTER_MATH_INT
+#undef NAUTILUS_REGISTER_MATH2
+#undef NAUTILUS_REGISTER_MATH1
+	}
+};
+const MathIntrinsicRegistrar mathRegistrar_;
+
+} // namespace
