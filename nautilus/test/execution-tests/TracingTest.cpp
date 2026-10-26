@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <regex>
 #include <stdexcept>
 
 namespace nautilus::log::options {
@@ -99,6 +100,9 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 				}
 				INFO(all);
 				REQUIRE(diagnostics.empty());
+				// host addresses differ from run to run; the dump keeps the shape of the pointers table
+				auto text = std::regex_replace(nir::print(nirModule), std::regex("0x[0-9a-f]+"), "0x0");
+				REQUIRE(checkTestFile(text, category, "nir", name, ".nir"));
 			}
 			DYNAMIC_SECTION("ir") {
 				auto ir = tracing::TraceToIRConversionPhase().apply(
