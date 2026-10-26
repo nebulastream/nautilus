@@ -122,7 +122,7 @@ unchanged from the cut-over on, on every enabled backend.
    | `pr.yml` matrix, benchmark bot | PR 2 | the existing `main` matrix and `benchmark.yml`, retargeted to also run on `nautilus-0.4` (M1.11) | always |
    | `ubsan` | PR 2 | the test suite with `ENABLE_UB_SANITIZER`, a leg of its own beside ASan and TSan (they are mutually exclusive in `CMakeLists.txt`) | always |
    | `nir-components` | PR 1 | `nautilus-nir-tests`: unit tests, `.nir` text tests, golden images | always |
-   | `nir-chain` | PR 4 | execution-test functions through `NirChain` | until the cut-over, then replaced by the normal matrix |
+   | `nir-chain` | PR 4 | execution-test functions through `NirChain`, plus the fuzzer replay and corpus op-count `NirChain` modes (M3.1) | until the cut-over, then replaced by the normal matrix |
    | `api-compat` | PR 6 | `test/api-compat/` on every enabled backend (GPU tests from PR 18) | from the cut-over |
    | `latency-corpus` | PR 2 | corpus under callgrind in the pinned container (single-tier, ASLR off, CPU dispatch pinned, [10 §2](10-observability.md)), as instruction-count ratios against the recorded 0.3 baselines (gated); wall clock (reported) | from the cut-over (before: reports the 0.3 pipeline) |
    | `baselines-0.3` | PR 2 | on `nautilus-0.4`: checks out `main`, builds it in the same container with the corpus driver and refreshes `test/baselines/0.3/` | — |
@@ -1224,8 +1224,9 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   data-object placement, `funcaddr` stubs and import slots, shared by
   reference by every module that hits it and freed when the last of them
   is released and the entry is evicted ([08 §2](08-caching.md),
-  [13 §4.4.1](13-nir-spec.md)); L0 tier state (installed executable and
-  promotion) per entry, so promotion runs once for all sharing modules
+  [13 §4.4.1](13-nir-spec.md)); one L0 entry for all tiers, keyed by the
+  configured backend(s) and never re-keyed on promotion; L0 tier state
+  (installed executable and promotion) per entry, so promotion runs once for all sharing modules
   ([11 §4.6](11-tiered-compilation.md)); L0 entries pin their exporters
   like importers, and registering a module under a name pinned only by
   L0 entries evicts those entries first; the L1 key of [08 §2](08-caching.md),
@@ -1255,7 +1256,9 @@ criteria: [07 §6](07-serialization.md), [08 §5](08-caching.md),
   harness of [08 §5.1](08-caching.md): the `nebulastream-cache` workflow
   (cold, then warm, `ENABLE_CACHE_PLUGIN=ON`) and the NebulaStream patch
   that sets `engine.cache.key` per query (port of the #529 branch).
-- **Done when:** [08 §5](08-caching.md) holds; the Caches tests of
+- **Done when:** [08 §5](08-caching.md) holds; a module that hits an L0
+  entry after promotion keeps running after every earlier sharer is
+  released (ASan clean); the Caches tests of
   [11 §6](11-tiered-compilation.md) pass (a warm L1/L2 hit with a matching
   payload runs tier 1 from the first call with no tier-0 compile; an L1
   hit with the `manual` policy and no promotion, and one with
@@ -1546,12 +1549,12 @@ sizes of §1:
 | to the cut-over | M1.1 → M1.2 → M1.7 → M2.1 → M3.1 → M3.2/M3.6 → M3.4/M3.5 → M4.2 | 19–40 |
 | to the M4 exit | M4.5 → M4.7 → M4.9 → M4.10 | 7.5–16 |
 | to the release | M6.1 → M7.1 → M7.2 → M7.3 → M7.4 → M7.5 → M7.7 → M8.2 → M8.3 | 19–39 |
-| **End to end** | | **≈ 45–95** |
+| **End to end** | | **45.5–95** |
 
 With mid-range sizes (S 0.75, M 2, L 4.5, XL 8 weeks) the chain is about
 70 weeks; that is the planning value. The bound holds only if every WP on
 the chain is staffed when its dependencies are done; the tracks of §6 need
-about 2.5 engineers on average (111.5–251 engineer-weeks over 45–95 weeks).
+about 2.5 engineers on average (111.5–251 engineer-weeks over 45.5–95 weeks).
 The upper bound shrinks only by splitting the XL WPs on the chain (M2.1,
 M7.2) across engineers or by starting the GPU chain earlier. The `tbc`
 path to the cut-over (M1.3 → M4.0 → M4.1) is 1–2 weeks shorter than the

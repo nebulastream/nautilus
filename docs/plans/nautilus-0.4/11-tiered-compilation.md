@@ -168,7 +168,8 @@ and the tier-0 executable is then discarded unused:
   provider builds, and per payload the target CPU and features
   ([05 §5.1](05-backends.md)) are not in the key; they are checked on the
   stored entry at a hit. L0 and L2 are looked up after conversion.
-  Each lookup asks for the tier-1 backend first.
+  L1 and L2 ask for the tier-1 backend's payload first; L0 is keyed by the
+  configured backends ([08 §2](08-caching.md)).
 - **A hit with a usable tier-1 native payload skips tier 0 entirely.** The
   engine installs the tier-1 executable synchronously, with no tier-0
   compile and no promotion. This is what makes warm NebulaStream queries
@@ -183,8 +184,8 @@ and the tier-0 executable is then discarded unused:
   an L1 miss the image is stored right after conversion, so a later hit
   skips tracing even if only tier 0 ever ran (`manual` policy,
   `engine.backend=asmjit`, a promotion that failed or was cancelled).
-- **Promotion results feed the caches:** a finished tier 1 is stored in L0
-  (an L0 entry's tier state is shared by every module that hit it, so it
+- **Promotion results feed the caches:** a finished tier 1 is installed in the
+  module's L0 entry (one entry for all tiers; its tier state is shared by every module that hit it, so it
   is promoted once, [08 §2](08-caching.md)) and, with a persisted native payload, its payload is added to the L1
   entry and stored in L2.
 - **Tier-0 executables are cached only in L0.** They embed process
@@ -249,7 +250,9 @@ and the tier-0 executable is then discarded unused:
 - **Policy:**
   - `manual` never promotes without `promote()`, and `promote()` from
     several threads at once queues one job;
-  - `eager` queues exactly one job per module.
+  - `eager` queues exactly one job per L0 entry (per module when L0 is
+    off); a module that hits an entry that is promoted or promoting queues
+    none.
 - **Caches:**
   - a warm L1/L2 hit with a matching payload runs tier 1 from the first
     call, with no tier-0 compile recorded in the statistics;

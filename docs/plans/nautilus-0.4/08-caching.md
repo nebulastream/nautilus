@@ -17,8 +17,9 @@ produce and consume the artifacts of [07-serialization.md](07-serialization.md).
 | **L1 semantic** | the L1 key (below): caller-supplied `engine.cache.key`, options, declared exports and declared imports (with each exporter's structural hash); the rest of the compatibility identity is checked on the stored entry | **before tracing** | tracing and conversion; code generation too when a native payload matches (otherwise recompiled from the NIR image) | persistent directory |
 | **L2 structural** | structural hash of the canonical NIR image ([13 §7.2](13-nir-spec.md); names, not ids; portable pointers; code-affecting options; extension versions) + backend + LLVM target triple, data layout, target CPU and feature string (+ the spliced-bitcode hash for `inlining` payloads) | after conversion | code generation, via a matching native payload; a hit's payload is used only if its compatibility descriptor matches ([07 §2.2](07-serialization.md)), otherwise the entry's NIR image is recompiled | persistent directory |
 
-- **Lookup order.** L1 is looked up before tracing; L0 and then L2 after
-  conversion; each for the tier-1 backend first
+- **Lookup order.** L1 is looked up before tracing; L0 (by the
+  configured backend, §2 "One entry for all tiers") and then L2 after
+  conversion; L1 and L2 look for the tier-1 backend's payload first
   ([11 §4.6](11-tiered-compilation.md)).
 - **What L1 stores.** An L1 entry holds the canonical NIR image of every
   compiled module, whatever tier and backend compiled it, plus optional
@@ -138,7 +139,14 @@ produce and consume the artifacts of [07-serialization.md](07-serialization.md).
   module that shares the entry sees it. The entry's code, data and stubs
   are freed when the last such module is released *and* the entry is
   evicted. Evicting an entry that modules still share only removes it from
-  the lookup table.
+  the lookup table. `CompiledModule::promote()` on any sharing module
+  promotes the entry for all of them.
+- **One entry for all tiers.** The backend in the L0 key is the module's
+  configured backend (`engine.backend`, or under tiering the pair
+  `engine.tier0.backend`/`engine.tier1.backend`), never the tier currently
+  installed. Promotion installs tier 1 into the entry's tier state and
+  never creates a second entry, so the data placement, stubs and import
+  slots that every tier's code refers to belong to exactly one entry.
 - **An L0 entry pins its exporters** like an importer
   ([13 §4.4.2](13-nir-spec.md)), so an import name in its key always
   refers to the module its slots are bound to. Registering a module under

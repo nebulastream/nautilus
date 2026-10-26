@@ -1399,7 +1399,10 @@ concatenation of:
    value**: the registry default overlaid with the value set by the user,
    then mapped by the option's `resolve` hook if its `OptionSpec` has one
    (M1.4a), so setting an option to its default does not change the hash.
-   A `resolve` hook runs once, at engine construction, and turns a
+   A `resolve` hook runs when effective options are formed: once at
+   engine construction, and for a compile whose per-compile overrides
+   ([09 §2](09-c-api.md)) set that option, on the overridden value, with
+   the probe result cached per engine. It turns a
    host-dependent value into the concrete one (`gpu.device=auto` into
    `cuda`, `metal` or `none`, [17 §4.1](17-gpu.md)); the engine keeps the
    resolved value, so every hash and every reader see the same one. Entries

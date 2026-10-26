@@ -66,7 +66,9 @@ Goals, in priority order:
   image.
 - **Concurrency:** concurrent compiles stay safe, as in 0.3. Each compile
   owns its trace and NIR arenas, and a finished NIR module is immutable.
-  The extension registry is frozen at the first engine construction, and caches
+  The extension registry is frozen by its first reader (engine
+  construction, or an earlier image load, text parse or C API module
+  creation, [13 §6.5](13-nir-spec.md)), and caches
   lock per key ([02 §3.4](02-nir.md), [08](08-caching.md)).
 - **Not in 0.4:**
   - per-tier IR levels, more than two tiers, on-stack replacement
@@ -236,7 +238,7 @@ releases and no temporary formats.
 - **Critical path and elapsed time** ([16 §6, §15](16-implementation-plan.md)):
   NIR core → extension registry → NIR tracer → conversion → cut-over →
   MLIR → promotion service → M4 exit → M6.1 → GPU → release. Summed from
-  the work-package sizes it is about 45–95 weeks elapsed (about 70 with
+  the work-package sizes it is about 45.5–95 weeks elapsed (about 70 with
   mid-range sizes), for 111.5–251 engineer-weeks of work in 72 work
   packages.
 
