@@ -1,0 +1,122 @@
+; Calls: external with and without a capture thunk, internal (including recursion), through funcaddr and indirect,
+; with narrow integers that are extended as their extension kind says.
+nir 1.0
+pointer #p0 = callee symbol "rt_add"
+pointer #p1 = callee symbol "rt_mulf"
+pointer #p2 = callee symbol "rt_callback"
+pointer #p3 = callee symbol "rt_double"
+pointer #p4 = callee symbol "rt_narrow"
+pointer #p5 = callee symbol "rt_log"
+pointer #p6 = thunk symbol "rt_add$thunk"
+callee #c0 = external #p0 : (i64, i64) -> i64 attrs(noUnwind)
+callee #c1 = internal @inc : (i64) -> i64
+callee #c2 = internal @fact : (i64) -> i64
+callee #c3 = external #p1 : (f64, f64) -> f64 attrs(noUnwind)
+callee #c4 = external #p2 : (ptr, i64) -> i64 attrs(noUnwind)
+callee #c5 = internal @dbl : (i64) -> i64
+callee #c6 = external #p3 : (i64) -> i64 attrs(noUnwind)
+callee #c7 = external #p4 : (i8 zext) -> i8 zext attrs(noUnwind)
+callee #c8 = external #p5 : (i64) -> void attrs(noUnwind)
+callee #c9 = external #p0 : (i64, i64) -> i64
+
+func export @viaExt : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = call #c0(%0, %1)
+  ret %2
+}
+; run @viaExt(40, 2) = 42
+
+; the same call through a capture thunk, as a call that may throw is made
+func export @viaThunk : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = call #c9(%0, %1) unwind caller thunk #p6
+  ret %2
+}
+; run @viaThunk(40, 2) = 42
+
+func export @viaInternal : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = call #c1(%0)
+  %2 = call #c1(%1)
+  ret %2
+}
+; run @viaInternal(5) = 7
+
+func @inc : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = add %0, 1:i64
+  ret %1
+}
+
+func export @fact : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = cmp.le.s %0, 1:i64
+  condbr %1, ^b1, ^b2
+^b1:
+  ret 1:i64
+^b2:
+  %4 = sub %0, 1:i64
+  %5 = call #c2(%4)
+  %6 = mul %0, %5
+  ret %6
+}
+; run @fact(1) = 1
+; run @fact(10) = 3628800
+; run @fact(20) = 2432902008176640000
+
+func export @floatCall : (f64) -> f64 {
+^b0(%0: f64):
+  %1 = call #c3(%0, 4:f64)
+  ret %1
+}
+; run @floatCall(2.5) = 10.0
+
+; an internal function handed to native code: the callback enters the interpreter again
+func export @callback : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = funcaddr #c5
+  %2 = call #c4(%1, %0)
+  ret %2
+}
+; run @callback(21) = 42
+
+func @dbl : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = add %0, %0
+  ret %1
+}
+
+func export @indirect : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = funcaddr #c6
+  %2 = call.indirect %1(%0) : (i64) -> i64
+  ret %2
+}
+; run @indirect(8) = 16
+
+func export @narrow : (i8 zext) -> i8 zext {
+^b0(%0: i8):
+  %1 = call #c7(%0)
+  ret %1
+}
+; run @narrow(41) = 42
+; run @narrow(255) = 0
+
+func export @voids : (i64) -> void {
+^b0(%0: i64):
+  call #c8(%0)
+  %2 = add %0, 1:i64
+  call #c8(%2)
+  ret
+}
+; run @voids(5) = 0
+; log 5, 6
+
+func export @ret3 : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = call #c1(%0)
+  %2 = call #c0(%1, %0)
+  %3 = call #c2(%2)
+  ret %3
+}
+; run @ret3(2) = 120

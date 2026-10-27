@@ -1,0 +1,160 @@
+; Memory: loads and stores of every type, allocas, pointer arithmetic, runtime bindings and data objects.
+nir 1.0
+binding #b0 = "counter" : i64 size 8 align 8
+data #d0 align 8 = x"0102030405060708090a0b0c0d0e0f10"
+data #d1 align 1 = x"68656c6c6f00"
+callee #c0 = internal @recursiveAlloca : (i64) -> i64
+
+func export @roundtrip : (i64) -> i64 {
+  alloca 8 align 8
+^b0(%0: i64):
+  %1 = alloca 0
+  store %1, %0
+  %3 = load %1 : i64
+  ret %3
+}
+; run @roundtrip(-12345) = -12345
+
+func export @narrow : (i64) -> i64 {
+  alloca 8 align 8
+^b0(%0: i64):
+  %1 = alloca 0
+  store %1, 0:i64
+  %3 = cast.trunc %0 : i8
+  store %1, %3
+  %5 = load %1 : i8
+  %6 = cast.zext %5 : i64
+  %7 = load %1 : i64
+  %8 = add %6, %7
+  ret %8
+}
+; run @narrow(7) = 14
+; run @narrow(257) = 2
+
+func export @types : (f64, f32, bool zext, i16 sext, i32) -> f64 {
+  alloca 32 align 8
+^b0(%0: f64, %1: f32, %2: bool, %3: i16, %4: i32):
+  %5 = alloca 0
+  store %5, %0
+  %7 = add %5, 8:i64
+  store %7, %1
+  %9 = add %5, 12:i64
+  store %9, %2
+  %11 = add %5, 14:i64
+  store %11, %3
+  %13 = add %5, 16:i64
+  store %13, %4
+  %15 = load %5 : f64
+  %16 = load %7 : f32
+  %17 = cast.fpext %16 : f64
+  %18 = add %15, %17
+  %19 = load %9 : bool
+  %20 = select %19, 100:f64, 0:f64
+  %21 = add %18, %20
+  %22 = load %11 : i16
+  %23 = cast.sext %22 : i64
+  %24 = cast.sitofp %23 : f64
+  %25 = add %21, %24
+  %26 = load %13 : i32
+  %27 = cast.sext %26 : i64
+  %28 = cast.sitofp %27 : f64
+  %29 = add %25, %28
+  ret %29
+}
+; run @types(1.5, 2.5, true, -3, 1000) = 1101.0
+
+func export @buffer : (ptr, i64) -> i64 {
+^b0(%0: ptr, %1: i64):
+  %2 = add %0, 8:i64
+  store %2, %1
+  %4 = load %2 : i64
+  %5 = load %0 : i64
+  %6 = add %4, %5
+  ret %6
+}
+; run @buffer(buf, 21) = 21
+
+func export @counter : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = bind.addr #b0
+  %2 = load %1 : i64
+  %3 = add %2, %0
+  store %1, %3
+  ret %3
+}
+; run @counter(5) = 5
+
+func export @data : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = data.addr #d0
+  %2 = add %1, %0
+  %3 = load %2 : i8
+  %4 = cast.zext %3 : i64
+  ret %4
+}
+; run @data(0) = 1
+; run @data(7) = 8
+; run @data(15) = 16
+
+func export @data64 : () -> i64 {
+^b0:
+  %0 = data.addr #d0
+  %1 = load %0 : i64
+  ret %1
+}
+; run @data64() = 578437695752307201
+
+func export @string : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = data.addr #d1
+  %2 = add %1, %0
+  %3 = load %2 : i8
+  %4 = cast.zext %3 : i64
+  ret %4
+}
+; run @string(1) = 101
+; run @string(5) = 0
+
+func export @nullptr : () -> bool zext {
+^b0:
+  %0 = ptr.const null
+  %1 = cmp.eq %0, %0
+  ret %1
+}
+; run @nullptr() = true
+
+func export @allocas : (i64, i64) -> i64 {
+  alloca 8 align 8
+  alloca 8 align 16
+^b0(%0: i64, %1: i64):
+  %2 = alloca 0
+  %3 = alloca 1
+  store %2, %0
+  store %3, %1
+  %6 = load %2 : i64
+  %7 = load %3 : i64
+  %8 = cast.ptrtoint %3 : i64
+  %9 = band %8, 15:i64
+  %10 = add %6, %7
+  %11 = add %10, %9
+  ret %11
+}
+; run @allocas(30, 12) = 42
+
+func export @recursiveAlloca : (i64) -> i64 {
+  alloca 8 align 8
+^b0(%0: i64):
+  %1 = alloca 0
+  store %1, %0
+  %3 = cmp.le.s %0, 0:i64
+  condbr %3, ^b1, ^b2
+^b1:
+  ret 0:i64
+^b2:
+  %6 = sub %0, 1:i64
+  %7 = call #c0(%6)
+  %8 = load %1 : i64
+  %9 = add %7, %8
+  ret %9
+}
+; run @recursiveAlloca(10) = 55
