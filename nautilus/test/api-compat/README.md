@@ -21,7 +21,11 @@ of M1.10.
 `common/ExecutionTest.hpp` is 0.3's harness without the `tbc-jit` pseudo-backend (which reaches into the library): it runs
 a body on the interpreter and on every enabled backend. The ctest names carry the prefix `api-compat: `.
 
-## Not copied yet
+## ExecutionTest.cpp and the examples
 
-`example/` (an example is copied if it pins no backend, or if this directory's CMake records the backend it pins), the
-GPU tests (copied disabled until M7.7) and the split of `ExecutionTest.cpp`.
+`ExecutionTest.cpp`, the largest suite, is copied with three cuts that the rule requires and nothing else: the "Ref"
+check no longer names the backend that removes the duplicate calls (it accepts both counts), and the two compiled cases
+set neither a dump option nor a backend-specific option. The examples are in `examples/`, copied unchanged; the CMake file
+records which backend each one pins (`DemoJit` and `DemoRegions` pin `cpp`, the SIMD, specialization and profiling
+demos pin `mlir`) and builds it only when that backend is enabled. `DemoBackends` (compares every backend),
+`DemoInliningPlugin` (needs the Clang pass plugin) and `DemoGPU` (disabled until M7.7) are not copied.
