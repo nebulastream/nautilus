@@ -85,6 +85,16 @@ public:
 		return false;
 	}
 
+	/**
+	 * @brief Whether this backend needs the 0.3 front end (`TraceContext`, `ExecutionTrace`, the IR passes) instead of
+	 * the NIR front end, because it reads what only the 0.3 trace carries (the GPU backends: the `kernel` attribute of
+	 * a function). The engine uses the 0.3 pipeline when it is pinned to such a backend (`engine.backend`), until the
+	 * backend's NIR port lands.
+	 */
+	[[nodiscard]] virtual bool needs03Frontend() const {
+		return false;
+	}
+
 	virtual ~CompilationBackend();
 };
 

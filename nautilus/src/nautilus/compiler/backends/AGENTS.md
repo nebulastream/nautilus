@@ -7,6 +7,8 @@ NIR: a backend that returns true from `compilesNir()` reads the module the graph
 carries (`tbc`), the others get the 0.3 IR built from it first (`compiler/NirToIR.cpp`)
 until their NIR port lands. Built-in backends are registered
 in `CompilationBackend.cpp`; plugins call `CompilationBackendRegistry::registerBackend`.
+A backend that reads what only the 0.3 trace carries returns true from `needs03Frontend()` (the GPU backends: the `kernel`
+attribute of a function); the engine then uses the 0.3 pipeline when `engine.backend` pins it.
 
 | Backend | Directory | Notes |
 |---|---|---|

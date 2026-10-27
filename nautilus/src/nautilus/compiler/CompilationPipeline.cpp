@@ -375,9 +375,14 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	// pipeline below, kept as a fallback for one release, and so do the options below.
 	// Debug information and perf need the source tags and region tables of the 0.3 trace, which NIR gets with the debug
 	// producers of M4.9, so `debug`, `perf` and `perf.sample` select it as well.
-	const bool needs03Trace =
-	    moduleOptions.getOptionOrDefault("dump.copySites", false) || moduleOptions.getOptionOrDefault("debug", false) ||
-	    moduleOptions.getOptionOrDefault("perf", false) || moduleOptions.getOptionOrDefault("perf.sample", false);
+	// A backend pinned with `engine.backend` can ask for it too (`CompilationBackend::needs03Frontend`).
+	const auto pinnedBackend = moduleOptions.getOptionOrDefault<std::string>("engine.backend", "");
+	const bool backendNeeds03 = !pinnedBackend.empty() && backends->hasBackend(pinnedBackend) &&
+	                            backends->getBackend(pinnedBackend)->needs03Frontend();
+	const bool needs03Trace = backendNeeds03 || moduleOptions.getOptionOrDefault("dump.copySites", false) ||
+	                          moduleOptions.getOptionOrDefault("debug", false) ||
+	                          moduleOptions.getOptionOrDefault("perf", false) ||
+	                          moduleOptions.getOptionOrDefault("perf.sample", false);
 	if (moduleOptions.getOptionOrDefault("tracing.nirTracer", true) && !needs03Trace) {
 		return traceToNir(functions, moduleOptions, statistics, compilationId, dumpHandler);
 	}
