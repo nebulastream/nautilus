@@ -1,0 +1,1803 @@
+// Copied from nautilus/test/execution-tests/ExecutionTest.cpp of 0.3 with three cuts that the selection rule requires
+// (README.md): the branch on the backend name in the "Ref" check accepts both call counts, and the compiled cases set
+// no dump option and no backend-specific option.
+#include "ExecutionTest.hpp"
+#include "ControlFlowFunctions.hpp"
+#include "EnumFunction.hpp"
+#include "ExpressionFunctions.hpp"
+#include "LoopFunctions.hpp"
+#include "NautilusFunction.hpp"
+#include "NestedIfBenchmarks.hpp"
+#include "PointerFunctions.hpp"
+#include "RunctimeCallFunctions.hpp"
+#include "StaticLoopFunctions.hpp"
+#include "ValueTypeFunctions.hpp"
+#include "catch2/catch_test_macros.hpp"
+#include "nautilus/Engine.hpp"
+#include "nautilus/val_concepts.hpp"
+#include <catch2/catch_all.hpp>
+#include <cmath>
+#include <limits>
+namespace nautilus::engine {
+
+val<bool> makeConstantOfTracingValue(val<int> ref) {
+	auto r = ref == 42;
+	bool concreteValue = r;
+	val<bool> res = concreteValue && r;
+	return res;
+}
+
+void expressionTests(engine::NautilusEngine& engine) {
+
+	SECTION("constructComplexReturnObject") {
+		auto f = engine.registerFunction(constructComplexReturnObject);
+		REQUIRE(f(0, 2) == 2);
+		REQUIRE(f(3, 1) == 6);
+	}
+
+	SECTION("constructComplexReturnObject2") {
+		auto f = engine.registerFunction(constructComplexReturnObject2);
+		REQUIRE(f(0, 2) == 44);
+		REQUIRE(f(3, 1) == 48);
+	}
+
+	SECTION("intBitwiseNegate") {
+		auto f = engine.registerFunction(negate<int32_t>);
+		REQUIRE(f(0) == -1);
+		REQUIRE(f(1) == -2);
+		REQUIRE(f(INT_MAX) == INT_MIN);
+		REQUIRE(f(INT_MIN) == INT_MAX);
+	}
+
+	SECTION("floatUnaryMinus") {
+		auto f = engine.registerFunction(negate<float>);
+		REQUIRE(f(42.5f) == -42.5f);
+		REQUIRE(f(-42.5f) == 42.5f);
+		// IEEE-754 sign-flip must be exact for zero, not just numerically equal
+		// (0.0f == -0.0f, so the value alone can't distinguish them).
+		REQUIRE(std::signbit(f(0.0f)));
+		REQUIRE_FALSE(std::signbit(f(-0.0f)));
+	}
+
+	SECTION("doubleUnaryMinus") {
+		auto f = engine.registerFunction(negate<double>);
+		REQUIRE(f(42.5) == -42.5);
+		REQUIRE(f(-42.5) == 42.5);
+		REQUIRE(std::signbit(f(0.0)));
+		REQUIRE_FALSE(std::signbit(f(-0.0)));
+	}
+
+	SECTION("uintBitwiseNegate") {
+		auto f = engine.registerFunction(negate<uint32_t>);
+		REQUIRE(f((uint32_t) 0) == UINT_MAX);
+		REQUIRE(f((uint32_t) 1) == UINT_MAX - 1);
+		REQUIRE(f((uint32_t) INT_MAX) == (uint32_t) INT_MIN);
+		REQUIRE(f((uint32_t) INT_MIN) == (uint32_t) INT_MAX);
+		REQUIRE(f(UINT_MAX) == 0);
+	}
+
+	SECTION("charBitwiseNegate") {
+		auto f = engine.registerFunction(negate<char>);
+		REQUIRE(f((char) 0) == (char) -1);
+		REQUIRE(f((char) 1) == (char) -2);
+		REQUIRE(f((char) CHAR_MAX) == (char) CHAR_MIN);
+		REQUIRE(f((char) CHAR_MIN) == (char) CHAR_MAX);
+	}
+
+	SECTION("logicalNot") {
+		auto f = engine.registerFunction(logicalNot<bool>);
+		REQUIRE(f(true) == false);
+		REQUIRE(f(false) == true);
+	}
+
+	SECTION("intBitwiseNegate") {
+		auto f = engine.registerFunction(negate<int32_t>);
+		REQUIRE(f(0) == -1);
+		REQUIRE(f(1) == -2);
+		REQUIRE(f(INT_MAX) == INT_MIN);
+		REQUIRE(f(INT_MIN) == INT_MAX);
+	}
+
+	SECTION("uintBitwiseNegate") {
+		auto f = engine.registerFunction(negate<uint32_t>);
+		REQUIRE(f((uint32_t) 0) == UINT_MAX);
+		REQUIRE(f((uint32_t) 1) == UINT_MAX - 1);
+		REQUIRE(f((uint32_t) INT_MAX) == (uint32_t) INT_MIN);
+		REQUIRE(f((uint32_t) INT_MIN) == (uint32_t) INT_MAX);
+		REQUIRE(f(UINT_MAX) == 0);
+	}
+
+	SECTION("charBitwiseNegate") {
+		auto f = engine.registerFunction(negate<char>);
+		REQUIRE(f((char) 0) == (char) -1);
+		REQUIRE(f((char) 1) == (char) -2);
+		REQUIRE(f((char) CHAR_MAX) == (char) CHAR_MIN);
+		REQUIRE(f((char) CHAR_MIN) == (char) CHAR_MAX);
+	}
+
+	SECTION("callEnumClassFunction") {
+		auto f = engine.registerFunction(callEnumClassFunction);
+		REQUIRE(f(LogLevel::LOG_DEBUG) == 6);
+		REQUIRE(f(LogLevel::LOG_NONE) == 1);
+	}
+
+	SECTION("handleEnumLogLevel") {
+		auto f = engine.registerFunction(handleEnumLogLevel);
+		REQUIRE(f(LogLevel::LOG_INFO));
+		REQUIRE(f(LogLevel::LOG_DEBUG));
+		REQUIRE(!f(LogLevel::LOG_NONE));
+	}
+
+	SECTION("callEnumFunction") {
+		auto f = engine.registerFunction(callEnumFunction);
+		REQUIRE(f(Color::BLUE) == 42);
+		REQUIRE(f(Color::GREEN) == 1);
+	}
+
+	SECTION("handleEnum") {
+		auto f = engine.registerFunction(handleEnum);
+		REQUIRE(f(Color::BLUE) == 1);
+		REQUIRE(f(Color::GREEN) == 0);
+	}
+
+	SECTION("handleEnumNotEqual") {
+		auto f = engine.registerFunction(handleEnumNotEqual);
+		REQUIRE(f(Color::BLUE) == 0);
+		REQUIRE(f(Color::GREEN) == 1);
+	}
+
+	SECTION("handleEnumLogLevelNotEqual") {
+		auto f = engine.registerFunction(handleEnumLogLevelNotEqual);
+		REQUIRE(!f(LogLevel::LOG_INFO));
+		REQUIRE(!f(LogLevel::LOG_DEBUG));
+		REQUIRE(f(LogLevel::LOG_NONE));
+	}
+
+	SECTION("compareConstEnums") {
+		auto f = engine.registerFunction(compareConstEnums);
+		REQUIRE(f(Color::BLUE, Color::BLUE));
+		REQUIRE(f(Color::BLUE, Color::GREEN));
+	}
+
+	SECTION("incrementPost") {
+		auto f = engine.registerFunction(incrementPost);
+		REQUIRE(f(1) == 3);
+		REQUIRE(f(0) == 1);
+	}
+	SECTION("incrementPre") {
+		auto f = engine.registerFunction(incrementPre);
+		REQUIRE(f(1) == 4);
+		REQUIRE(f(0) == 2);
+	}
+	SECTION("decrementPost") {
+		auto f = engine.registerFunction(decrementPost);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(0) == -1);
+	}
+	SECTION("decrementPre") {
+		auto f = engine.registerFunction(decrementPre);
+		REQUIRE(f(1) == 0);
+		REQUIRE(f(0) == -2);
+	}
+	SECTION("assignAdd") {
+		auto f = engine.registerFunction(assignAdd);
+		REQUIRE(f(1) == 6);
+		REQUIRE(f(0) == 5);
+	}
+	SECTION("assignSub") {
+		auto f = engine.registerFunction(assignSub);
+		REQUIRE(f(5) == 0);
+		REQUIRE(f(1) == -4);
+	}
+	SECTION("assignMul") {
+		auto f = engine.registerFunction(assignMul);
+		REQUIRE(f(2) == 10);
+		REQUIRE(f(10) == 50);
+	}
+	SECTION("assignDiv") {
+		auto f = engine.registerFunction(assignDiv);
+		REQUIRE(f(5) == 1);
+		REQUIRE(f(10) == 2);
+	}
+	SECTION("assignMod") {
+		auto f = engine.registerFunction(assignMod);
+		REQUIRE(f(7) == 2);
+		REQUIRE(f(5) == 0);
+	}
+	SECTION("assignAnd") {
+		auto f = engine.registerFunction(assignAnd);
+		REQUIRE(f(7) == 5);
+		REQUIRE(f(5) == 5);
+	}
+	SECTION("assignOr") {
+		auto f = engine.registerFunction(assignOr);
+		REQUIRE(f(7) == 7);
+		REQUIRE(f(5) == 5);
+	}
+	SECTION("assignXor") {
+		auto f = engine.registerFunction(assignXor);
+		REQUIRE(f(7) == 2);
+		REQUIRE(f(5) == 0);
+	}
+	SECTION("assignShl") {
+		auto f = engine.registerFunction(assignShl);
+		REQUIRE(f(7) == 224);
+		REQUIRE(f(5) == 160);
+	}
+	SECTION("assignShr") {
+		auto f = engine.registerFunction(assignShr);
+		REQUIRE(f(7) == 0);
+		REQUIRE(f(5) == 0);
+	}
+	SECTION("assignXor") {
+		auto f = engine.registerFunction(assignXor);
+		REQUIRE(f(7) == 2);
+		REQUIRE(f(5) == 0);
+	}
+	SECTION("assignShl") {
+		auto f = engine.registerFunction(assignShl);
+		REQUIRE(f(7) == 224);
+		REQUIRE(f(5) == 160);
+	}
+	SECTION("assignShr") {
+		auto f = engine.registerFunction(assignShr);
+		REQUIRE(f(7) == 0);
+		REQUIRE(f(5) == 0);
+	}
+	SECTION("shiftRight_int8_highbit") {
+		auto f = engine.registerFunction(shiftRight<int8_t>);
+		REQUIRE(f((int8_t) -128, (int8_t) 1) == (int8_t) (-128 >> 1));
+		REQUIRE(f((int8_t) -1, (int8_t) 1) == (int8_t) (-1 >> 1));
+		REQUIRE(f((int8_t) -128, (int8_t) 7) == (int8_t) (-128 >> 7));
+	}
+	SECTION("shiftRight_uint8_highbit") {
+		auto f = engine.registerFunction(shiftRight<uint8_t>);
+		REQUIRE(f((uint8_t) 0x80, (uint8_t) 1) == (uint8_t) (0x80 >> 1));
+		REQUIRE(f((uint8_t) 0xFF, (uint8_t) 1) == (uint8_t) (0xFF >> 1));
+		REQUIRE(f((uint8_t) 0x80, (uint8_t) 7) == (uint8_t) (0x80 >> 7));
+	}
+	SECTION("shiftRight_int32_highbit") {
+		auto f = engine.registerFunction(shiftRight<int32_t>);
+		REQUIRE(f(INT32_MIN, (int32_t) 1) == (INT32_MIN >> 1));
+		REQUIRE(f((int32_t) -1, (int32_t) 1) == ((int32_t) -1 >> 1));
+		REQUIRE(f(INT32_MIN, (int32_t) 31) == (INT32_MIN >> 31));
+	}
+	SECTION("shiftRight_uint32_highbit") {
+		auto f = engine.registerFunction(shiftRight<uint32_t>);
+		REQUIRE(f((uint32_t) 0x80000000, (uint32_t) 1) == (uint32_t) (0x80000000u >> 1));
+		REQUIRE(f((uint32_t) 0xFFFFFFFF, (uint32_t) 1) == (uint32_t) (0xFFFFFFFFu >> 1));
+		REQUIRE(f((uint32_t) 0x80000000, (uint32_t) 31) == (uint32_t) (0x80000000u >> 31));
+	}
+	SECTION("shiftRight_int64_highbit") {
+		auto f = engine.registerFunction(shiftRight<int64_t>);
+		REQUIRE(f(INT64_MIN, (int64_t) 1) == (INT64_MIN >> 1));
+		REQUIRE(f((int64_t) -1, (int64_t) 1) == ((int64_t) -1 >> 1));
+		REQUIRE(f(INT64_MIN, (int64_t) 63) == (INT64_MIN >> 63));
+	}
+	SECTION("shiftRight_uint64_highbit") {
+		auto f = engine.registerFunction(shiftRight<uint64_t>);
+		REQUIRE(f((uint64_t) 0x8000000000000000ULL, (uint64_t) 1) == (uint64_t) (0x8000000000000000ULL >> 1));
+		REQUIRE(f((uint64_t) 0xFFFFFFFFFFFFFFFFULL, (uint64_t) 1) == (uint64_t) (0xFFFFFFFFFFFFFFFFULL >> 1));
+		REQUIRE(f((uint64_t) 0x8000000000000000ULL, (uint64_t) 63) == (uint64_t) (0x8000000000000000ULL >> 63));
+	}
+	SECTION("assignment1") {
+		auto f = engine.registerFunction(assignment1);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(42) == 42);
+	}
+	SECTION("assignment2") {
+		auto f = engine.registerFunction(assignment2);
+		REQUIRE(f(1) == 2);
+		REQUIRE(f(42) == 43);
+	}
+	SECTION("assignment3") {
+		auto f = engine.registerFunction(assignment3);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(42) == 42);
+	}
+	SECTION("assignment4") {
+		auto f = engine.registerFunction(assignment4);
+		REQUIRE(f(1) == 2);
+		REQUIRE(f(42) == 43);
+	}
+	SECTION("assignment4") {
+		auto f = engine.registerFunction(assignment5);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(42) == 42);
+	}
+	SECTION("int8AddExpression") {
+		auto f = engine.registerFunction(int8AddExpression);
+		REQUIRE(f((int8_t) 1) == 3);
+	}
+	SECTION("int16AddExpression") {
+		auto f = engine.registerFunction(int16AddExpression);
+		REQUIRE(f((int16_t) 8) == 13);
+	}
+	SECTION("int32AddExpression") {
+		auto f = engine.registerFunction(int32AddExpression);
+		REQUIRE(f((int32_t) 8) == 13);
+	}
+	SECTION("int64AddExpression") {
+		auto f = engine.registerFunction(int64AddExpression);
+		REQUIRE(f((int64_t) 7) == 14);
+		REQUIRE(f((int64_t) -7) == 0);
+		REQUIRE(f((int64_t) -14) == -7);
+	}
+	SECTION("literalOperands") {
+		auto addInt64 = engine.registerFunction(addInt64AndLiteral);
+		REQUIRE(addInt64((int64_t) -1) == 0);
+		REQUIRE(addInt64(INT64_MAX - 1) == INT64_MAX);
+		auto minusInt64 = engine.registerFunction(literalMinusInt64);
+		REQUIRE(minusInt64((int64_t) 20) == -10);
+		auto compareUInt64 = engine.registerFunction(compareUInt64AndLiteral);
+		REQUIRE(compareUInt64((uint64_t) 7) == true);
+		REQUIRE(compareUInt64((uint64_t) 7 + (uint64_t {1} << 32)) == false);
+		auto mulDouble = engine.registerFunction(mulDoubleAndLiteral);
+		REQUIRE(mulDouble(1.25) == 2.5);
+		auto addFloat = engine.registerFunction(addFloatAndInt64Literal);
+		REQUIRE(addFloat(0.5f) == 3.5f);
+	}
+	SECTION("floatAddExpression") {
+		auto f = engine.registerFunction(floatAddExpression);
+		REQUIRE(f((float) 7.0) == 14);
+		REQUIRE(f((float) -7) == 0);
+		REQUIRE(f((float) -14) == -7);
+	}
+	SECTION("doubleAddExpression") {
+		auto f = engine.registerFunction(doubleAddExpression);
+		REQUIRE(f((double) 7.0) == 14);
+		REQUIRE(f((double) -7) == 0);
+		REQUIRE(f((double) -14) == -7);
+	}
+
+	SECTION("mulInt64AndNotDefinedI64") {
+		auto f = engine.registerFunction(mulInt64AndNotDefinedI64);
+		REQUIRE(f((int64_t) 1) == 0);
+		REQUIRE(f((int64_t) -1) == 0);
+		REQUIRE(f((int64_t) 0) == 0);
+		REQUIRE(f((int64_t) 0) == 0);
+	}
+
+	SECTION("subInt8AndInt8") {
+		auto f = engine.registerFunction(subInt8AndInt8);
+		REQUIRE(f((int8_t) 1, (int8_t) 2) == -1);
+		REQUIRE(f((int8_t) 123, (int8_t) 123) == 0);
+		REQUIRE(f((int8_t) 78, (int8_t) 70) == 8);
+		REQUIRE(f((int8_t) -128, (int8_t) 1) == -129);
+	}
+
+	SECTION("subInt8AndInt8TruncateResult") {
+		auto f = engine.registerFunction(subInt8AndInt8TruncateResult);
+		REQUIRE(f((int8_t) 1, (int8_t) 2) == -1);
+		REQUIRE(f((int8_t) 123, (int8_t) 123) == 0);
+		REQUIRE(f((int8_t) 78, (int8_t) 70) == 8);
+		REQUIRE(f((int8_t) -128, (int8_t) 1) == 127);
+	}
+
+	SECTION("addInt8AndInt32") {
+		auto f = engine.registerFunction(addInt8AndInt32);
+		REQUIRE(f((int8_t) 1, (int32_t) 2) == 3);
+		REQUIRE(f((int8_t) 123, (int32_t) 123) == 246);
+		REQUIRE(f((int8_t) 78, (int32_t) 70) == 148);
+		REQUIRE(f((int8_t) -128, (int32_t) -1) == -129);
+	}
+
+	// C++ Semantic Equivalence Tests
+	SECTION("chainedPrefixIncrement") {
+		auto f = engine.registerFunction(chainedPrefixIncrement);
+		// ++(++x) should add 2 to x
+		REQUIRE(f(0) == 2);
+		REQUIRE(f(5) == 7);
+		REQUIRE(f(-3) == -1);
+	}
+	SECTION("chainedPrefixDecrement") {
+		auto f = engine.registerFunction(chainedPrefixDecrement);
+		// --(--x) should subtract 2 from x
+		REQUIRE(f(5) == 3);
+		REQUIRE(f(2) == 0);
+		REQUIRE(f(0) == -2);
+	}
+	SECTION("unaryPlus") {
+		auto f = engine.registerFunction(unaryPlus);
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(-42) == -42);
+		REQUIRE(f(0) == 0);
+	}
+	SECTION("unaryMinus") {
+		auto f = engine.registerFunction(unaryMinus);
+		REQUIRE(f(42) == -42);
+		REQUIRE(f(-42) == 42);
+		REQUIRE(f(0) == 0);
+	}
+	SECTION("moveAssignment") {
+		auto f = engine.registerFunction(moveAssignment);
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(-123) == -123);
+	}
+	SECTION("prefixIncrementReturnValue") {
+		auto f = engine.registerFunction(prefixIncrementReturnValue);
+		// (++x) + 1 = x + 2
+		REQUIRE(f(0) == 2);
+		REQUIRE(f(5) == 7);
+	}
+	SECTION("prefixDecrementReturnValue") {
+		auto f = engine.registerFunction(prefixDecrementReturnValue);
+		// (--x) + 1 = x
+		REQUIRE(f(5) == 5);
+		REQUIRE(f(0) == 0);
+	}
+	// Regression (differential fuzzer): wrapped u32 subtraction feeding an
+	// unsigned compare; see u32WrapSubThenCompare in ExpressionFunctions.hpp.
+	SECTION("u32WrapSubThenCompare") {
+		auto f = engine.registerFunction(u32WrapSubThenCompare);
+		// Wrapped: 159212978 - 4279714710 = 174465564 (mod 2^32) <= 882064733.
+		REQUIRE(f(159212978u, 882064733u) == 1u);
+		// Not wrapped: 4279714711 - 4279714710 = 1.
+		REQUIRE(f(4279714711u, 0u) == 0u);
+		REQUIRE(f(4279714711u, 1u) == 1u);
+		// Wrapped from zero: 0 - 4279714710 = 15252586 (mod 2^32).
+		REQUIRE(f(0u, 15252585u) == 0u);
+		REQUIRE(f(0u, 15252586u) == 1u);
+	}
+	// Regression (differential fuzzer, issue #542): f32 constant folding must
+	// round to float; see f32ConstProductUnderflowIsNonZero in ExpressionFunctions.hpp.
+	SECTION("f32ConstProductUnderflowIsNonZero") {
+		auto f = engine.registerFunction(f32ConstProductUnderflowIsNonZero);
+		REQUIRE(f() == false);
+	}
+	SECTION("f32ConstQuotientUnderflowIsNonZero") {
+		auto f = engine.registerFunction(f32ConstQuotientUnderflowIsNonZero);
+		REQUIRE(f() == false);
+	}
+	SECTION("f32ConstProductOverflowThenScale") {
+		auto f = engine.registerFunction(f32ConstProductOverflowThenScale);
+		REQUIRE(f() == -std::numeric_limits<float>::infinity());
+	}
+}
+
+void controlFlowTest(engine::NautilusEngine& engine) {
+
+	// Regression (differential fuzzer): see zeroTripLoopMergeThenAddConstant
+	// in ControlFlowFunctions.hpp.
+	SECTION("zeroTripLoopMergeThenAddConstant") {
+		auto f = engine.registerFunction(zeroTripLoopMergeThenAddConstant);
+		REQUIRE(f(uint64_t(0), uint64_t(0)) == 119);
+		REQUIRE(f(uint64_t(0), uint64_t(23)) == 142);
+		REQUIRE(f(uint64_t(1), uint64_t(23)) == 119); // then-arm: zero-trip loop leaves acc == 0
+	}
+
+	// Regression (differential fuzzer, issue #384): see
+	// issue384_traceFollowDesync in ControlFlowFunctions.hpp.
+	SECTION("issue384_traceFollowDesync") {
+		float buffer[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+		auto f = engine.registerFunction(issue384_traceFollowDesync);
+		REQUIRE(f(buffer, 1.0f) == 2.0f);
+		REQUIRE(f(buffer, -1.0f) == 1.0f);
+	}
+
+	// Regression (differential fuzzer, issue #382): see
+	// issue382_siblingArgAssignCollision in ControlFlowFunctions.hpp.
+	SECTION("issue382_siblingArgAssignCollision") {
+		uint32_t buffer[1] = {0};
+		auto f = engine.registerFunction(issue382_siblingArgAssignCollision);
+		REQUIRE(f(buffer, 0u) == 0);
+		REQUIRE(f(buffer, 7u) == 0);
+	}
+
+	SECTION("chainedIf100") {
+		auto f = engine.registerFunction(chainedIf100);
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(200) == 100);
+	}
+	SECTION("chainedIf500") {
+		auto f = engine.registerFunction(chainedIf500);
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(200) == 200);
+		REQUIRE(f(600) == 500);
+	}
+	SECTION("nestedIf100") {
+		auto f = engine.registerFunction(nestedIf100);
+		REQUIRE(f(42) == 42);
+	}
+	SECTION("ifConditionTest") {
+		auto f = engine.registerFunction(ifThenCondition);
+		REQUIRE(f(42) == 44);
+		REQUIRE(f(1) == 43);
+	}
+	SECTION("conditionalReturn") {
+		auto f = engine.registerFunction(conditionalReturn);
+		REQUIRE(f(42) == 1);
+		REQUIRE(f(43) == 120);
+	}
+	SECTION("multipleReturns") {
+		auto f = engine.registerFunction(multipleReturns);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(2) == 42);
+		REQUIRE(f(9) == 42);
+		REQUIRE(f(10) == 21);
+	}
+	SECTION("ifThenElseCondition") {
+		auto f = engine.registerFunction(ifThenElseCondition);
+		REQUIRE(f(1) == 85);
+		REQUIRE(f(42) == 44);
+	}
+	SECTION("nestedIfThenElseCondition") {
+		auto f = engine.registerFunction(nestedIfThenElseCondition);
+		REQUIRE(f(1, 1) == 5);
+		REQUIRE(f(42, 1) == 3);
+		REQUIRE(f(1, 8) == 10);
+	}
+	SECTION("nestedIfNoElseCondition") {
+		auto f = engine.registerFunction(nestedIfNoElseCondition);
+		REQUIRE(f(1, 1) == 12);
+		REQUIRE(f(42, 1) == 7);
+		REQUIRE(f(42, 10) == 16);
+		REQUIRE(f(1, -1) == 10);
+	}
+	SECTION("deeplyNestedIfElseIfCondition") {
+		auto f = engine.registerFunction(deeplyNestedIfElseIfCondition);
+		REQUIRE(f() == 17);
+	}
+	SECTION("deeplyNestedIfElseCondition") {
+		auto f = engine.registerFunction(deeplyNestedIfElseCondition);
+		REQUIRE(f() == 12);
+	}
+	SECTION("andFunction") {
+		auto f = engine.registerFunction(andFunction);
+		REQUIRE(f(42) == true);
+		REQUIRE(f(1) == false);
+	}
+	SECTION("andCondition") {
+		auto f = engine.registerFunction(andCondition);
+		REQUIRE(f(42, 42) == 1);
+		REQUIRE(f(8, 42) == 1);
+		REQUIRE(f(42, 1) == 1);
+		REQUIRE(f(8, 1) == 15);
+	}
+	SECTION("orCondition") {
+		auto f = engine.registerFunction(orCondition);
+		REQUIRE(f(42) == 1);
+		REQUIRE(f(8) == 15);
+		REQUIRE(f(1) == 15);
+	}
+	SECTION("ifElseIfCondition") {
+		auto f = engine.registerFunction(ifElseIfCondition);
+		REQUIRE(f() == 23);
+	}
+	SECTION("doubleIfCondition") {
+		auto f = engine.registerFunction(doubleIfCondition);
+		REQUIRE(f() == 23);
+	}
+	SECTION("nestedIf") {
+		auto f = engine.registerFunction(nestedIf);
+		REQUIRE(f(25) == 1);
+		REQUIRE(f(15) == 2);
+		REQUIRE(f(5) == 3);
+	}
+	SECTION("ifElseIfElse") {
+		auto f = engine.registerFunction(ifElseIfElse);
+		REQUIRE(f(0) == 10);
+		REQUIRE(f(1) == 20);
+		REQUIRE(f(5) == 30);
+		REQUIRE(f(7) == 30);
+	}
+	SECTION("logicalAnd") {
+		auto f = engine.registerFunction(logicalAnd);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(5) == 0);
+		REQUIRE(f(6) == 1);
+		REQUIRE(f(14) == 1);
+		REQUIRE(f(15) == 0);
+	}
+	SECTION("logicalOr") {
+		auto f = engine.registerFunction(logicalOr);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(5) == 0);
+		REQUIRE(f(10) == 1);
+		REQUIRE(f(20) == 1);
+		REQUIRE(f(15) == 0);
+	}
+	SECTION("ifNotEqual") {
+		auto f = engine.registerFunction(ifNotEqual);
+		REQUIRE(f(0) == 2);
+		REQUIRE(f(5) == 1);
+		REQUIRE(f(10) == 2);
+	}
+	SECTION("multipleConditions") {
+		auto f = engine.registerFunction(multipleConditions);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(5) == 1);
+		REQUIRE(f(9) == 1);
+		REQUIRE(f(10) == 0);
+		REQUIRE(f(11) == 0);
+		REQUIRE(f(20) == 1);
+	}
+	SECTION("ifWithTernary") {
+		auto f = engine.registerFunction(ifWithTernary);
+		REQUIRE(f(1) == 5);
+		REQUIRE(f(5) == 5);
+		REQUIRE(f(6) == 10);
+		REQUIRE(f(10) == 10);
+	}
+	SECTION("complexLogicalExpressions") {
+		auto f = engine.registerFunction(complexLogicalExpressions);
+		REQUIRE(f(1) == 0);
+		REQUIRE(f(5) == 0);
+		REQUIRE(f(6) == 1);
+		REQUIRE(f(9) == 1);
+		REQUIRE(f(10) == 0);
+		REQUIRE(f(16) == 1);
+		REQUIRE(f(19) == 1);
+		REQUIRE(f(20) == 0);
+	}
+#ifdef ENABLE_SHORT_CIRCUIT_BOOL
+	// Re-enabled under short-circuit semantics: the (10 / value) divide is
+	// only emitted on the `value != 0` branch, so f(0) returns 0 instead of
+	// faulting on integer divide-by-zero.
+	SECTION("shortCircuitEvaluation") {
+		auto f = engine.registerFunction(shortCircuitEvaluation);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(10) == 0);
+		REQUIRE(f(5) == 1);
+		REQUIRE(f(4) == 1);
+	}
+#endif
+	SECTION("ifWithFunctionCall") {
+		auto f = engine.registerFunction(ifWithFunctionCall);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(2) == 0);
+		REQUIRE(f(4) == 0);
+		REQUIRE(f(5) == 0);
+		REQUIRE(f(6) == 1);
+		REQUIRE(f(10) == 1);
+	}
+	SECTION("compoundStatements") {
+		auto f = engine.registerFunction(compoundStatements);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(5) == 0);
+		REQUIRE(f(6) == 2);
+		REQUIRE(f(10) == 2);
+	}
+	SECTION("varyingComplexity") {
+		auto f = engine.registerFunction(varyingComplexity);
+		REQUIRE(f(0) == 1);
+		REQUIRE(f(4) == 1);
+		REQUIRE(f(5) == 2);
+		REQUIRE(f(7) == 3);
+		REQUIRE(f(8) == 2);
+		REQUIRE(f(10) == 2);
+		REQUIRE(f(11) == 3);
+	}
+	SECTION("logicalXOR") {
+		auto f = engine.registerFunction(logicalXOR);
+		REQUIRE(f(0) == 1);
+		REQUIRE(f(6) == 0);
+		REQUIRE(f(7) == 0);
+		REQUIRE(f(11) == 1);
+	}
+	SECTION("nestedIfElseDifferentLevels") {
+		auto f = engine.registerFunction(nestedIfElseDifferentLevels);
+		REQUIRE(f(0) == -1);
+		REQUIRE(f(-42) == -1);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(5) == 2);
+		REQUIRE(f(6) == 3);
+		REQUIRE(f(7) == 2);
+	}
+
+	SECTION("withBranchProbability") {
+		auto f = engine.registerFunction(withBranchProbability);
+		REQUIRE(f(1) == 42);
+		REQUIRE(f(4) == 4);
+	}
+}
+
+void loopExecutionTest(engine::NautilusEngine& engine) {
+	SECTION("sumLoop") {
+		auto f = engine.registerFunction(sumLoop);
+		REQUIRE(f(10) == 101);
+		REQUIRE(f(0) == 1);
+	}
+	SECTION("forBreak") {
+		auto f = engine.registerFunction(forBreak);
+		REQUIRE(f(10) == 100);
+		REQUIRE(f(1) == 10);
+		REQUIRE(f(2) == 20);
+		REQUIRE(f(0) == 0);
+	}
+	SECTION("whileBreak") {
+		auto f = engine.registerFunction(whileBreak);
+		REQUIRE(f(42) == 100);
+		REQUIRE(f(40) == 40);
+		REQUIRE(f(20) == 20);
+		REQUIRE(f(0) == 0);
+	}
+	SECTION("whileContinue") {
+		auto f = engine.registerFunction(whileContinue);
+		REQUIRE(f(20) == 30);
+		REQUIRE(f(22) == 30);
+		REQUIRE(f(50) == 60);
+		REQUIRE(f(1000) == 100);
+	}
+	SECTION("nestedSumLoop") {
+		auto f = engine.registerFunction(nestedSumLoop);
+		REQUIRE(f(10) == 1001);
+		REQUIRE(f(0) == 1);
+	}
+	SECTION("ifSumLoop") {
+		auto f = engine.registerFunction(ifSumLoop);
+		REQUIRE(f() == 51);
+	}
+	SECTION("ifElseSumLoop") {
+		auto f = engine.registerFunction(ifElseSumLoop);
+		REQUIRE(f() == 56);
+	}
+	SECTION("elseOnlySumLoop") {
+		auto f = engine.registerFunction(elseOnlySumLoop);
+		REQUIRE(f() == 1);
+	}
+	SECTION("nestedIfSumLoop") {
+		auto f = engine.registerFunction(nestedIfSumLoop);
+		REQUIRE(f() == 41);
+	}
+	SECTION("nestedIfElseSumLoop") {
+		auto f = engine.registerFunction(nestedIfElseSumLoop);
+		REQUIRE(f() == 146);
+	}
+	SECTION("nestedIfElseSumLoop") {
+		auto f = engine.registerFunction(nestedIfElseSumLoop);
+		REQUIRE(f() == 146);
+	}
+	SECTION("nestedElseOnlySumLoop") {
+		auto f = engine.registerFunction(nestedElseOnlySumLoop);
+		REQUIRE(f() == 1);
+	}
+	SECTION("ifInsideLoop") {
+		auto f = engine.registerFunction(ifInsideLoop);
+		REQUIRE(f(10) == 5);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(-5) == 0);
+	}
+	SECTION("sumOfNumbers") {
+		auto f = engine.registerFunction(sumOfNumbers);
+		REQUIRE(f(10) == 55);
+	}
+	SECTION("factorial") {
+		auto f = engine.registerFunction(factorial);
+		REQUIRE(f(10) == 3628800);
+	}
+	SECTION("factorial") {
+		auto f = engine.registerFunction(reverseNumber);
+		REQUIRE(f(10) == 1);
+		REQUIRE(f(100) == 1);
+	}
+	SECTION("fibonacci") {
+		auto f = engine.registerFunction(fibonacci);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(0) == 1);
+		REQUIRE(f(5) == 5);
+		REQUIRE(f(4) == 3);
+		REQUIRE(f(6) == 8);
+	}
+	SECTION("gcd") {
+		auto f = engine.registerFunction(gcd);
+		REQUIRE(f(10, 0) == 10);
+		REQUIRE(f(10, 2) == 2);
+		REQUIRE(f(21, 3) == 3);
+		REQUIRE(f(8, 512) == 8);
+	}
+	SECTION("decimalToBinary") {
+		auto f = engine.registerFunction(decimalToBinary);
+		REQUIRE(f(10) == 1010);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(0) == 0);
+	}
+	SECTION("isPrime") {
+		auto f = engine.registerFunction(isPrime);
+		REQUIRE(f(0) == false);
+		REQUIRE(f(1) == false);
+		REQUIRE(f(2) == true);
+		REQUIRE(f(3) == true);
+		REQUIRE(f(15) == false);
+		REQUIRE(f(17) == true);
+	}
+	SECTION("collatz") {
+		auto f = engine.registerFunction(collatz);
+		REQUIRE(f(1) == 0);
+		REQUIRE(f(2) == 1);
+		REQUIRE(f(20) == 7);
+	}
+	SECTION("digitSum") {
+		auto f = engine.registerFunction(digitSum);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(2) == 2);
+		REQUIRE(f(20) == 2);
+		REQUIRE(f(25) == 7);
+		REQUIRE(f(64) == 10);
+	}
+	SECTION("sumOfSquares") {
+		auto f = engine.registerFunction(sumOfSquares);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(2) == 5);
+		REQUIRE(f(20) == 2870);
+		REQUIRE(f(25) == 5525);
+	}
+	SECTION("countDigits") {
+		auto f = engine.registerFunction(countDigits);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(2) == 1);
+		REQUIRE(f(2870) == 4);
+		REQUIRE(f(-1) == 1);
+		REQUIRE(f(-2) == 1);
+		REQUIRE(f(-2870) == 4);
+	}
+}
+
+void staticLoopExecutionTest(engine::NautilusEngine& engine) {
+	SECTION("staticLoop") {
+		auto f = engine.registerFunction(staticLoop);
+		REQUIRE(f() == 101);
+	}
+	SECTION("staticSquareSum4000") {
+		auto function = engine.registerFunction(staticSquareSum<4000>);
+		REQUIRE(function() == 21325334000LL);
+	}
+	SECTION("staticLoopWithIf") {
+		auto f = engine.registerFunction(staticLoopWithIf);
+		REQUIRE(f(-100) == 0); // always <= 5: pure +10 each iter
+		REQUIRE(f(0) == 109);  // first iter no bonus, then 9x +11
+		REQUIRE(f(5) == 114);  // 5 not > 5: first iter +10, then 9x +11
+		REQUIRE(f(6) == 116);  // always > 5: 10x +11
+		REQUIRE(f(10) == 120); // always > 5: 10 + 10*11
+	}
+	SECTION("staticLoopWithDynamicLoop") {
+		auto f = engine.registerFunction(staticLoopWithDynamicLoop);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 90);
+		REQUIRE(f(10) == 312);
+	}
+	SECTION("staticLoopWithDynamicLoopPostIncrement") {
+		auto f = engine.registerFunction(staticLoopWithDynamicLoopPostIncrement);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 90);
+		REQUIRE(f(10) == 312);
+	}
+	SECTION("staticLoopWithDynamicLoopPreIncrement") {
+		auto f = engine.registerFunction(staticLoopWithDynamicLoopPreIncrement);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 90);
+		REQUIRE(f(10) == 312);
+	}
+	SECTION("staticLoopWithDynamicLoopNotEqual") {
+		auto f = engine.registerFunction(staticLoopWithDynamicLoopNotEqual);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 90);
+		REQUIRE(f(10) == 312);
+	}
+	SECTION("staticIterator") {
+		auto f = engine.registerFunction(staticIterator);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 2);
+		REQUIRE(f(6) == 5);
+	}
+	SECTION("staticConstIterator") {
+		auto f = engine.registerFunction(staticConstIterator);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 2);
+		REQUIRE(f(6) == 5);
+	}
+	SECTION("staticLoopIncrement") {
+		auto f = engine.registerFunction(staticLoopIncrement);
+		REQUIRE(f() == 101);
+	}
+	SECTION("staticWhileLoopDecrement") {
+		auto f = engine.registerFunction(staticWhileLoopDecrement);
+		REQUIRE(f() == 56);
+	}
+	SECTION("staticPreIncrement") {
+		auto f = engine.registerFunction(staticPreIncrement);
+		REQUIRE(f() == 101);
+	}
+	SECTION("staticPreDecrement") {
+		auto f = engine.registerFunction(staticPreDecrement);
+		REQUIRE(f() == 56);
+	}
+	SECTION("staticNestedLoop") {
+		auto f = engine.registerFunction(staticNestedLoop);
+		REQUIRE(f() == 12);
+	}
+	SECTION("staticLoopMultipleAccumulators") {
+		auto f = engine.registerFunction(staticLoopMultipleAccumulators);
+		REQUIRE(f() == 82);
+	}
+	SECTION("staticLoopSingleIteration") {
+		auto f = engine.registerFunction(staticLoopSingleIteration);
+		REQUIRE(f() == 42);
+	}
+	SECTION("staticCountdown") {
+		auto f = engine.registerFunction(staticCountdown);
+		REQUIRE(f() == 15);
+	}
+	SECTION("staticLoopWithArg") {
+		auto f = engine.registerFunction(staticLoopWithArg);
+		REQUIRE(f(0) == 5);
+		REQUIRE(f(10) == 15);
+	}
+	SECTION("staticSequentialLoops") {
+		auto f = engine.registerFunction(staticSequentialLoops);
+		REQUIRE(f() == 230);
+	}
+	SECTION("staticLoopAccumulateCounter") {
+		auto f = engine.registerFunction(staticLoopAccumulateCounter);
+		REQUIRE(f() == 15);
+	}
+	SECTION("staticIteratorSum") {
+		auto f = engine.registerFunction(staticIteratorSum);
+		REQUIRE(f(0) == 360);
+		REQUIRE(f(10) == 370);
+	}
+	// C-style array: rawArray = {2, 4, 6, 8, 10}
+	SECTION("staticRawArrayIterator") {
+		auto f = engine.registerFunction(staticRawArrayIterator);
+		REQUIRE(f(0) == 5);  // all 5 elements > 0
+		REQUIRE(f(5) == 3);  // {6, 8, 10} > 5
+		REQUIRE(f(10) == 0); // none > 10
+	}
+	// std::array: stdArray = {3, 6, 9, 12, 15}
+	SECTION("staticStdArrayIterator") {
+		auto f = engine.registerFunction(staticStdArrayIterator);
+		REQUIRE(f(0) == 5);  // all 5 elements > 0
+		REQUIRE(f(9) == 2);  // {12, 15} > 9
+		REQUIRE(f(15) == 0); // none > 15
+	}
+	// enumerate: enumVec = {10, 20, 30}, weighted sum = 10*0 + 20*1 + 30*2 = 80
+	SECTION("staticEnumerateWeightedSum") {
+		auto f = engine.registerFunction(staticEnumerateWeightedSum);
+		REQUIRE(f() == 80);
+	}
+	// enumerate: element + index: (10+0) + (20+1) + (30+2) = 63
+	SECTION("staticEnumerateSum") {
+		auto f = engine.registerFunction(staticEnumerateSum);
+		REQUIRE(f() == 63);
+	}
+}
+
+Derived d;
+void functionCallExecutionTest(engine::NautilusEngine& engine) {
+	SECTION("simpleDirectCall") {
+		auto f = engine.registerFunction(simpleDirectCall);
+		REQUIRE(f(10, 10) == 20);
+		REQUIRE(f(0, 1) == 1);
+	}
+
+	SECTION("dynCastCall") {
+		auto f = engine.registerFunction(dynCastCall);
+		REQUIRE(f(&d) == 0);
+	}
+
+	SECTION("directCallWithNestedCalls") {
+		auto f = engine.registerFunction(directCallWithNestedCalls);
+		REQUIRE(f(10, 10) == 20);
+		REQUIRE(f(0, 1) == 0);
+	}
+
+	SECTION("directCallComplexFunction") {
+		auto f = engine.registerFunction(directCallComplexFunction);
+		REQUIRE(f(10, 10) == 0);
+		REQUIRE(f(100, 100) == 1);
+	}
+
+	SECTION("twoDistinctFunctionCalls") {
+		auto f = engine.registerFunction(callTwoFunctions);
+		REQUIRE(f(10, 10) == 20); // 10 + 10 + (10 - 10)
+		REQUIRE(f(0, 1) == 0);    // (0 + 1) + (0 - 1)
+	}
+
+	SECTION("loopDirectCall") {
+		auto f = engine.registerFunction(loopDirectCall);
+		REQUIRE(f(10, 10) == 100);
+		REQUIRE(f(1, 1) == 1);
+		REQUIRE(f(0, 1) == 0);
+	}
+	SECTION("loopDirectCall2") {
+		auto f = engine.registerFunction(loopDirectCall2);
+		REQUIRE(f(10) == 420);
+		REQUIRE(f(1) == 42);
+		REQUIRE(f(0) == 0);
+	}
+	SECTION("voidCall") {
+		auto f = engine.registerFunction(voidFuncCall);
+		REQUIRE_NOTHROW(f(10, 10));
+	}
+	SECTION("callMemberFunction") {
+		auto f = engine.registerFunction(callMemberFunction);
+		auto c = Clazz();
+		auto res = f(&c);
+		REQUIRE(res == 42);
+	}
+	SECTION("countFuncCall") {
+		auto f = engine.registerFunction(callCountFuncCall);
+		REQUIRE(f(true) == 1);
+		REQUIRE(f(false) == 2);
+	}
+	SECTION("checkModRefAttribute") {
+		/// Checks that backends do not remove proxy function calls if the function has the ModRef attribute, which
+		/// tells the backend that the function modifies state and therefore may have side effects
+		auto f = engine.registerFunction(incrementFuncCallFiveTimesWithModRef);
+		REQUIRE(f(true) == 5);
+	}
+	SECTION("checkRefAttribute") {
+		/// Checks if backends can handle the 'Ref' attribute, which tells the backend that a proxy function does not
+		/// modify memory, allowing the backend to remove duplicate function calls that it otherwise could not remove
+		/// because of side effects
+		auto f = engine.registerFunction(incrementFuncCallFiveTimesWithRef);
+		/// Backends that optimize 'Ref' functions should reduce the number of function calls to 'countFuncCall' to 2,
+		/// one function call with 'true' and one with 'false' as input argument
+		// (the original names the backend that removes the duplicate calls: 2 calls there, 5 elsewhere)
+		const auto calls = f(true);
+		REQUIRE((calls == 2 || calls == 5));
+	}
+	// Regression (differential fuzzer): narrow i16 return value of a proxy
+	// call feeding a signed comparison; see i16NarrowCallReturnCompare in
+	// RunctimeCallFunctions.hpp.
+	SECTION("i16NarrowCallReturnCompare") {
+		auto f = engine.registerFunction(i16NarrowCallReturnCompare);
+		// 25158 * 3 - 24951 = 50523 -> wraps to -15013 < 0.
+		REQUIRE(f(int16_t(25158), int16_t(-24951)) == 1);
+		// 100 * 3 + 5 = 305, no wrap, not negative.
+		REQUIRE(f(int16_t(100), int16_t(5)) == 0);
+		// -100 * 3 + 5 = -295, negative without wrapping.
+		REQUIRE(f(int16_t(-100), int16_t(5)) == 1);
+	}
+	// Regression (differential fuzzer): narrow i16 *argument* of a proxy call
+	// truncated from a wider value with live upper bits; see
+	// i16NarrowCallArgCompare in RunctimeCallFunctions.hpp.
+	SECTION("i16NarrowCallArgCompare") {
+		auto f = engine.registerFunction(i16NarrowCallArgCompare);
+		// 65537 truncates to 1; a caller that skips the extension hands the
+		// callee 65537, which is no longer < 5.
+		REQUIRE(f(int64_t(65537), int16_t(5)) == 1);
+		// 0xFFFE0003 truncates to 3.
+		REQUIRE(f(int64_t(0xFFFE0003), int16_t(7)) == 3);
+		// Negative wide value truncating to a negative narrow one.
+		REQUIRE(f(int64_t(-65538), int16_t(5)) == -2);
+	}
+	// Regression (differential fuzzer): if-merged values as proxy-call
+	// arguments; see ifMergedValueAsCallArg in RunctimeCallFunctions.hpp.
+	SECTION("ifMergedValueAsCallArg") {
+		auto f = engine.registerFunction(ifMergedValueAsCallArg);
+		REQUIRE(f(1, 2, 3) == 4); // sum3(2, 2 ^ 3, 1)
+		REQUIRE(f(0, 2, 3) == 3); // outer branch not taken
+		REQUIRE(f(1, 0, 3) == 1); // sum3(0, 3 ^ 3, 1)
+		REQUIRE(f(5, 0, 0) == 5); // sum3(0, 0 ^ 0, 5)
+		auto g = engine.registerFunction(twoIfMergedValuesAsCallArgs);
+		REQUIRE(g(1, 2, 3) == 6);  // a = 2, b = 3: sum3(2, 3, 1)
+		REQUIRE(g(0, 2, 3) == 3);  // outer branch not taken
+		REQUIRE(g(1, 0, 3) == 6);  // a = 3, b = 3: sum3(3, 3, 0)
+		REQUIRE(g(5, 0, 0) == 10); // a = 0, b = 5: sum3(0, 5, 5)
+	}
+	// Regression (#525): see invokeWithElementRef in RunctimeCallFunctions.hpp.
+	SECTION("invokeWithElementRef") {
+		int64_t data[3] = {11, 42, 100};
+		auto f = engine.registerFunction(invokeWithElementRef);
+		REQUIRE(f(data) == 42);
+		auto g = engine.registerFunction(invokeWithElementRefs);
+		REQUIRE(g(data) == 89);
+		auto h = engine.registerFunction(invokeWithDereferencedPtr);
+		REQUIRE(h(data) == 11);
+	}
+}
+
+void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
+	SECTION("nautilusFunction") {
+		auto f = engine.registerFunction(nautilusFunction);
+		REQUIRE(f(3, 4) == 7);
+		REQUIRE(f(0, 0) == 0);
+		REQUIRE(f(-5, 5) == 0);
+	}
+	SECTION("nautilusFunctionInline") {
+		auto f = engine.registerFunction(nautilusFunctionInline);
+		REQUIRE(f(3, 4) == 7);
+		REQUIRE(f(0, 0) == 0);
+		REQUIRE(f(-5, 5) == 0);
+	}
+	SECTION("nautilusFunctionInlineLambda") {
+		auto f = engine.registerFunction(nautilusFunctionInlineLambda);
+		REQUIRE(f(3, 4) == 12);
+		REQUIRE(f(0, 5) == 0);
+		REQUIRE(f(-2, 3) == -6);
+	}
+	SECTION("nautilusFunctionInlineMember") {
+		auto f = engine.registerFunction(nautilusFunctionInlineMember);
+		REQUIRE(f(10, 3) == 7);
+		REQUIRE(f(5, 5) == 0);
+		REQUIRE(f(0, 1) == -1);
+	}
+	SECTION("nautilusFunctionMultipleInline") {
+		auto f = engine.registerFunction(nautilusFunctionMultipleInline);
+		// result = (a + b) + (a * b)
+		REQUIRE(f(3, 4) == 19); // 7 + 12
+		REQUIRE(f(0, 5) == 5);  // 5 + 0
+		REQUIRE(f(2, 3) == 11); // 5 + 6
+	}
+
+	SECTION("nautilusFunctionGetFuncPtr") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtr);
+		REQUIRE(f(3, 4) == 7);
+		REQUIRE(f(0, 0) == 0);
+		REQUIRE(f(-5, 5) == 0);
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrFloat") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrFloat);
+		REQUIRE(f(3.0F, 4.5F) == Catch::Approx(7.5F));
+		REQUIRE(f(-1.25F, 1.25F) == Catch::Approx(0.0F));
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrDouble") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrDouble);
+		REQUIRE(f(2.5, 4.0) == Catch::Approx(10.0));
+		REQUIRE(f(-3.0, 0.5) == Catch::Approx(-1.5));
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrMixed") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrMixed);
+		REQUIRE(f(1, 2.5, 0.5F, int64_t(10)) == Catch::Approx(14.0));
+		REQUIRE(f(-2, 0.25, 1.75F, int64_t(0)) == Catch::Approx(0.0));
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrFloatReturn") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrFloatReturn);
+		REQUIRE(f(3, 5) == Catch::Approx(4.0F));
+		REQUIRE(f(1, 0) == Catch::Approx(0.5F));
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrFloatArgs") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrFloatArgs);
+		REQUIRE(f(2.5F, 4.0F) == 10);
+		REQUIRE(f(-1.5F, 2.0F) == -3);
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrTenArgs") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrTenArgs);
+		// base .. base+9, i.e. 10*base + 45.
+		REQUIRE(f(int64_t(1)) == int64_t(55));
+		REQUIRE(f(int64_t(0)) == int64_t(45));
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrVoid") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrVoid);
+		int32_t slot = 5;
+		REQUIRE(f(&slot) == 15);
+		REQUIRE(slot == 15);
+	}
+
+	SECTION("nautilusFunctionInt8") {
+		auto f = engine.registerFunction(nautilusFunctionInt8);
+		REQUIRE(f(int8_t(3), int8_t(4)) == int8_t(7));
+		REQUIRE(f(int8_t(-100), int8_t(-27)) == int8_t(-127));
+		REQUIRE(f(int8_t(0), int8_t(0)) == int8_t(0));
+		// Two's-complement wraparound at the int8_t boundaries.
+		REQUIRE(f(std::numeric_limits<int8_t>::max(), int8_t(1)) == std::numeric_limits<int8_t>::min());
+		REQUIRE(f(std::numeric_limits<int8_t>::min(), int8_t(-1)) == std::numeric_limits<int8_t>::max());
+		REQUIRE(f(std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::min()) == int8_t(0));
+	}
+	SECTION("nautilusFunctionUInt8") {
+		auto f = engine.registerFunction(nautilusFunctionUInt8);
+		REQUIRE(f(uint8_t(3), uint8_t(4)) == uint8_t(12));
+		REQUIRE(f(uint8_t(0), uint8_t(200)) == uint8_t(0));
+		// Unsigned wraparound (mod 256) at and beyond the uint8_t max.
+		REQUIRE(f(std::numeric_limits<uint8_t>::max(), uint8_t(1)) == std::numeric_limits<uint8_t>::max());
+		REQUIRE(f(std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()) == uint8_t(1));
+		REQUIRE(f(uint8_t(128), uint8_t(2)) == uint8_t(0));
+	}
+	SECTION("nautilusFunctionInt16") {
+		auto f = engine.registerFunction(nautilusFunctionInt16);
+		REQUIRE(f(int16_t(10), int16_t(4)) == int16_t(6));
+		REQUIRE(f(int16_t(-1000), int16_t(500)) == int16_t(-1500));
+		REQUIRE(f(int16_t(0), int16_t(0)) == int16_t(0));
+		// Two's-complement wraparound at the int16_t boundaries.
+		REQUIRE(f(std::numeric_limits<int16_t>::min(), int16_t(1)) == std::numeric_limits<int16_t>::max());
+		REQUIRE(f(std::numeric_limits<int16_t>::max(), int16_t(-1)) == std::numeric_limits<int16_t>::min());
+	}
+	SECTION("nautilusFunctionUInt16") {
+		auto f = engine.registerFunction(nautilusFunctionUInt16);
+		REQUIRE(f(uint16_t(3), uint16_t(4)) == uint16_t(7));
+		REQUIRE(f(uint16_t(60000), uint16_t(5000)) == uint16_t(65000));
+		// Unsigned wraparound (mod 65536) at and beyond the uint16_t max.
+		REQUIRE(f(std::numeric_limits<uint16_t>::max(), uint16_t(1)) == uint16_t(0));
+		REQUIRE(f(std::numeric_limits<uint16_t>::max(), std::numeric_limits<uint16_t>::max()) == uint16_t(65534));
+	}
+	SECTION("nautilusFunctionUInt32") {
+		auto f = engine.registerFunction(nautilusFunctionUInt32);
+		REQUIRE(f(uint32_t(6), uint32_t(7)) == uint32_t(42));
+		REQUIRE(f(uint32_t(0), uint32_t(123456)) == uint32_t(0));
+		// Unsigned wraparound (mod 2^32) at and beyond the uint32_t max.
+		REQUIRE(f(std::numeric_limits<uint32_t>::max(), uint32_t(1)) == std::numeric_limits<uint32_t>::max());
+		REQUIRE(f(uint32_t(1) << 16, uint32_t(1) << 16) == uint32_t(0));
+	}
+	SECTION("nautilusFunctionInt64") {
+		auto f = engine.registerFunction(nautilusFunctionInt64);
+		REQUIRE(f(int64_t(3), int64_t(4)) == int64_t(7));
+		REQUIRE(f(int64_t(-9000000000LL), int64_t(1000000000LL)) == int64_t(-8000000000LL));
+		REQUIRE(f(int64_t(0), int64_t(0)) == int64_t(0));
+		// Two's-complement wraparound at the int64_t boundaries.
+		REQUIRE(f(std::numeric_limits<int64_t>::max(), int64_t(1)) == std::numeric_limits<int64_t>::min());
+		REQUIRE(f(std::numeric_limits<int64_t>::min(), int64_t(-1)) == std::numeric_limits<int64_t>::max());
+	}
+	SECTION("nautilusFunctionUInt64") {
+		auto f = engine.registerFunction(nautilusFunctionUInt64);
+		REQUIRE(f(uint64_t(6), uint64_t(7)) == uint64_t(42));
+		REQUIRE(f(uint64_t(0), uint64_t(123456789ULL)) == uint64_t(0));
+		// Unsigned wraparound (mod 2^64) at and beyond the uint64_t max.
+		REQUIRE(f(std::numeric_limits<uint64_t>::max(), uint64_t(1)) == std::numeric_limits<uint64_t>::max());
+		REQUIRE(f(uint64_t(1) << 32, uint64_t(1) << 32) == uint64_t(0));
+	}
+	SECTION("nautilusFunctionFloat") {
+		auto f = engine.registerFunction(nautilusFunctionFloat);
+		REQUIRE(f(3.5f, 4.25f) == 7.75f);
+		REQUIRE(f(0.0f, 0.0f) == 0.0f);
+		REQUIRE(f(-3.5f, -4.25f) == -7.75f);
+		REQUIRE(f(1.0f, std::numeric_limits<float>::epsilon()) == 1.0f + std::numeric_limits<float>::epsilon());
+		// Overflow to +/-infinity beyond the finite float range.
+		REQUIRE(std::isinf(f(std::numeric_limits<float>::max(), std::numeric_limits<float>::max())));
+		REQUIRE(std::isinf(f(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max())));
+	}
+	SECTION("nautilusFunctionDouble") {
+		auto f = engine.registerFunction(nautilusFunctionDouble);
+		REQUIRE(f(3.5, 2.0) == 7.0);
+		REQUIRE(f(0.0, 123.456) == 0.0);
+		REQUIRE(f(-3.5, 2.0) == -7.0);
+		// Underflow to zero for a product below the smallest representable magnitude.
+		REQUIRE(f(std::numeric_limits<double>::min(), std::numeric_limits<double>::min()) == 0.0);
+		// Overflow to +infinity beyond the finite double range.
+		REQUIRE(std::isinf(f(std::numeric_limits<double>::max(), 2.0)));
+		// Sign of a negative-zero product is preserved.
+		REQUIRE(std::signbit(f(-0.0, 5.0)));
+	}
+	SECTION("nautilusFunctionBool") {
+		auto f = engine.registerFunction(nautilusFunctionBool);
+		REQUIRE(f(true, true) == true);
+		REQUIRE(f(true, false) == false);
+		REQUIRE(f(false, true) == false);
+		REQUIRE(f(false, false) == false);
+	}
+	SECTION("nautilusFunctionPtr") {
+		auto f = engine.registerFunction(nautilusFunctionPtr);
+		int32_t value = 10;
+		REQUIRE(f(&value, 5) == 15);
+		value = -3;
+		REQUIRE(f(&value, 3) == 0);
+		value = 0;
+		REQUIRE(f(&value, 0) == 0);
+		// Two's-complement wraparound of the addition through the pointer load.
+		value = std::numeric_limits<int32_t>::max();
+		REQUIRE(f(&value, 1) == std::numeric_limits<int32_t>::min());
+		value = std::numeric_limits<int32_t>::min();
+		REQUIRE(f(&value, -1) == std::numeric_limits<int32_t>::max());
+	}
+	SECTION("nautilusFunctionPtrWrite") {
+		auto f = engine.registerFunction(nautilusFunctionPtrWrite);
+		double value = 0.0;
+		REQUIRE(f(&value, 42.5) == 42.5);
+		REQUIRE(value == 42.5);
+		REQUIRE(f(&value, -123.456) == -123.456);
+		REQUIRE(value == -123.456);
+		REQUIRE(f(&value, std::numeric_limits<double>::max()) == std::numeric_limits<double>::max());
+		REQUIRE(value == std::numeric_limits<double>::max());
+		// Overwriting a non-zero value with zero exercises the store path, not just its initial value.
+		REQUIRE(f(&value, 0.0) == 0.0);
+		REQUIRE(value == 0.0);
+	}
+	SECTION("nautilusFunctionEnum") {
+		auto f = engine.registerFunction(nautilusFunctionEnum);
+		// Exhaustive over the whole enum domain.
+		REQUIRE(f(NautilusFunctionColor::RED) == 1);
+		REQUIRE(f(NautilusFunctionColor::GREEN) == 2);
+		REQUIRE(f(NautilusFunctionColor::BLUE) == 3);
+	}
+}
+
+void valueExecutionTest(engine::NautilusEngine& engine) {
+	SECTION("constructAndAccess") {
+		auto f = engine.registerFunction(constructAndAccess);
+		REQUIRE(f() == 42);
+	}
+	SECTION("constructSetBothFields") {
+		auto f = engine.registerFunction(constructSetBothFields);
+		REQUIRE(f() == 42);
+	}
+	SECTION("constructNonTrivialDefault") {
+		auto f = engine.registerFunction(constructNonTrivialDefault);
+		REQUIRE(f() == 7);
+	}
+	SECTION("constructAndCall") {
+		auto f = engine.registerFunction(constructAndCall);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 5) == 10);
+		REQUIRE(f((int32_t) 21) == 42);
+		// edge cases: negative and INT_MAX/2
+		REQUIRE(f((int32_t) -3) == -6);
+	}
+	SECTION("constructWithArgs") {
+		auto f = engine.registerFunction(constructWithArgs);
+		REQUIRE(f((int32_t) 0, (int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 10, (int32_t) 32) == 42);
+		REQUIRE(f((int32_t) -5, (int32_t) 5) == 0);
+		REQUIRE(f((int32_t) -10, (int32_t) -10) == -20);
+		REQUIRE(f((int32_t) 1, (int32_t) 0) == 1);
+	}
+	SECTION("copyConstruct") {
+		auto f = engine.registerFunction(copyConstruct);
+		REQUIRE(f() == 52);
+	}
+	SECTION("copyAssign") {
+		auto f = engine.registerFunction(copyAssign);
+		REQUIRE(f() == 42);
+	}
+	SECTION("copyConstructNonTrivial") {
+		auto f = engine.registerFunction(copyConstructNonTrivial);
+		REQUIRE(f() == 99);
+	}
+	SECTION("moveConstructTrivial") {
+		auto f = engine.registerFunction(moveConstructTrivial);
+		REQUIRE(f() == 52);
+	}
+	SECTION("moveConstructNonTrivial") {
+		auto f = engine.registerFunction(moveConstructNonTrivial);
+		REQUIRE(f() == 99);
+	}
+	SECTION("moveAssign") {
+		auto f = engine.registerFunction(moveAssign);
+		REQUIRE(f() == 1);
+	}
+	SECTION("moveAssignSelf") {
+		auto f = engine.registerFunction(moveAssignSelf);
+		REQUIRE(f() == 5);
+	}
+	SECTION("moveDtorBalance") {
+		CountedDtor::ctor_count = 0;
+		CountedDtor::dtor_count = 0;
+		auto f = engine.registerFunction(moveDtorBalance);
+		REQUIRE(f() == 7);
+		REQUIRE(CountedDtor::ctor_count >= 1);
+		REQUIRE(CountedDtor::ctor_count == CountedDtor::dtor_count);
+	}
+	SECTION("returnByValue") {
+		auto f = engine.registerFunction(returnByValue);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 42) == 42);
+		REQUIRE(f((int32_t) -7) == -7);
+	}
+	SECTION("returnByValueCond") {
+		auto f = engine.registerFunction(returnByValueCond);
+		REQUIRE(f((int32_t) 1) == 1);
+		REQUIRE(f((int32_t) 0) == 2);
+		REQUIRE(f((int32_t) -3) == 2);
+	}
+	SECTION("staticLoopAssignStructToOuter") {
+		auto f = engine.registerFunction(staticLoopAssignStructToOuter);
+		// Final iteration writes inner.a=3, inner.b=30 into outer; sum is 33.
+		REQUIRE(f() == 33);
+	}
+	SECTION("nonTrivialDestructor") {
+		auto f = engine.registerFunction(nonTrivialDestructor);
+		REQUIRE(f() == 42);
+	}
+	SECTION("modifyInLoop") {
+		auto f = engine.registerFunction(modifyInLoop);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 1) == 1);
+		REQUIRE(f((int32_t) 5) == 5);
+		REQUIRE(f((int32_t) 10) == 10);
+		REQUIRE(f((int32_t) 100) == 100);
+	}
+	SECTION("copyInLoop") {
+		auto f = engine.registerFunction(copyInLoop);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 1) == 10);
+		REQUIRE(f((int32_t) 3) == 30);
+		REQUIRE(f((int32_t) 10) == 100);
+	}
+	SECTION("mixedAlignSetAll") {
+		auto f = engine.registerFunction(mixedAlignSetAll);
+		// 1 + 10 + 100
+		REQUIRE(f((int8_t) 1, (int32_t) 10, (int64_t) 100) == 111);
+		// -1 + 0 + 0
+		REQUIRE(f((int8_t) -1, (int32_t) 0, (int64_t) 0) == -1);
+		REQUIRE(f((int8_t) 0, (int32_t) 0, (int64_t) 0) == 0);
+		REQUIRE(f((int8_t) 127, (int32_t) 1000, (int64_t) 100000) == 101127);
+	}
+	SECTION("mixedAlignNoClobber") {
+		auto f = engine.registerFunction(mixedAlignNoClobber);
+		// large=1000 must survive writes to small and medium
+		REQUIRE(f() == 1000);
+	}
+	SECTION("reversePaddingAccess") {
+		auto f = engine.registerFunction(reversePaddingAccess);
+		// 100 + 10 + 5
+		REQUIRE(f((int64_t) 100, (int8_t) 10, (int16_t) 5) == 115);
+		REQUIRE(f((int64_t) 0, (int8_t) 0, (int16_t) 0) == 0);
+		REQUIRE(f((int64_t) -50, (int8_t) -1, (int16_t) -2) == -53);
+	}
+	SECTION("doubleAndByteAccess") {
+		auto f = engine.registerFunction(doubleAndByteAccess);
+		REQUIRE(f(3.5, (int8_t) 2) == Catch::Approx(5.5));
+		REQUIRE(f(0.0, (int8_t) 0) == Catch::Approx(0.0));
+		REQUIRE(f(-1.5, (int8_t) 1) == Catch::Approx(-0.5));
+	}
+	SECTION("mixedAlignModifyInLoop") {
+		auto f = engine.registerFunction(mixedAlignModifyInLoop);
+		REQUIRE(f((int32_t) 0) == 0);
+		// 1 + 10 + 100
+		REQUIRE(f((int32_t) 1) == 111);
+		// 5 + 50 + 500
+		REQUIRE(f((int32_t) 5) == 555);
+	}
+	SECTION("mixedAlignConditionalReturn") {
+		auto f = engine.registerFunction(mixedAlignConditionalReturn);
+		// x > 0: 1 + 2 + x
+		REQUIRE(f((int64_t) 10) == 13);
+		REQUIRE(f((int64_t) 1) == 4);
+		// x <= 0: returns x
+		REQUIRE(f((int64_t) 0) == 0);
+		REQUIRE(f((int64_t) -5) == -5);
+	}
+	SECTION("multiStructMultiLoop") {
+		auto f = engine.registerFunction(multiStructMultiLoop);
+		// count=0: no iterations
+		REQUIRE(f((int32_t) 0) == 0);
+		// count=1: 100 + 200 + 33
+		REQUIRE(f((int32_t) 1) == 333);
+		// count=3: 3*100 + 3*200 + 3*33
+		REQUIRE(f((int32_t) 3) == 999);
+	}
+	SECTION("twoStructsSameLoop") {
+		auto f = engine.registerFunction(twoStructsSameLoop);
+		REQUIRE(f((int32_t) 0) == 0);
+		// each iteration: 10 + 20 = 30
+		REQUIRE(f((int32_t) 1) == 30);
+		REQUIRE(f((int32_t) 5) == 150);
+	}
+	SECTION("outerAndInnerStructLoop") {
+		auto f = engine.registerFunction(outerAndInnerStructLoop);
+		REQUIRE(f((int32_t) 0) == 0);
+		// each iteration adds 5
+		REQUIRE(f((int32_t) 1) == 5);
+		REQUIRE(f((int32_t) 10) == 50);
+	}
+	SECTION("multiStructConditionalLoop") {
+		auto f = engine.registerFunction(multiStructConditionalLoop);
+		// selector <= 0: returns selector
+		REQUIRE(f((int32_t) 5, (int64_t) 0) == 0);
+		REQUIRE(f((int32_t) 5, (int64_t) -3) == -3);
+		// selector > 0: each iteration 7 + 3 = 10
+		REQUIRE(f((int32_t) 0, (int64_t) 1) == 0);
+		REQUIRE(f((int32_t) 1, (int64_t) 1) == 10);
+		REQUIRE(f((int32_t) 4, (int64_t) 1) == 40);
+	}
+	SECTION("modifyStructInLoopWithNestedCall") {
+		auto f = engine.registerFunction(modifyStructInLoopWithNestedCall);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 1) == 1);
+		REQUIRE(f((int32_t) 5) == 5);
+		REQUIRE(f((int32_t) 10) == 10);
+	}
+	SECTION("constructStructInLoopWithNestedCall") {
+		auto f = engine.registerFunction(constructStructInLoopWithNestedCall);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 1) == 0);  // sum of i for i in [0..1) = 0
+		REQUIRE(f((int32_t) 4) == 6);  // 0+1+2+3 = 6
+		REQUIRE(f((int32_t) 5) == 10); // 0+1+2+3+4 = 10
+	}
+	SECTION("multipleNestedCallsInLoop") {
+		auto f = engine.registerFunction(multipleNestedCallsInLoop);
+		// iter 0: a=0, b=100, sumFields=100, a becomes 0+100=100
+		// iter 1: a=100, b=100, sumFields=200, a becomes 100+200=300
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 1) == 100);
+		REQUIRE(f((int32_t) 2) == 300);
+	}
+	SECTION("allocaMergeBug") {
+		auto f = engine.registerFunction(allocaMergeBug);
+		// fillSmall: a=42, fillLarge: sum(1..8)=36, result = 36 + 42 = 78
+		REQUIRE(f() == 78);
+	}
+	SECTION("allocaMergeInLoop") {
+		auto f = engine.registerFunction(allocaMergeInLoop);
+		REQUIRE(f((int32_t) 0) == 0);
+		// each iteration: 36 + 42 = 78
+		REQUIRE(f((int32_t) 1) == 78);
+		REQUIRE(f((int32_t) 3) == 234);
+	}
+}
+
+class Clazz {
+public:
+	val<int32_t> function(val<int32_t> arg) {
+		return arg + 20;
+	}
+
+	val<int32_t> functionWithStateAccess(val<int32_t> arg) {
+		return arg + state;
+	}
+
+	int state;
+};
+
+void registerFunctionTest(engine::NautilusEngine& engine) {
+
+	SECTION("multipleVoidReturnsFunction") {
+		auto f = engine.registerFunction(multipleVoidReturnsFunction);
+		int32_t x = 11;
+		f(&x);
+		REQUIRE(x == 1);
+		f(&x);
+		REQUIRE(x == 42);
+	}
+
+	SECTION("useFirstArg") {
+		auto f = engine.registerFunction(useFirstArg);
+		REQUIRE(f(42, 1) == 42);
+		REQUIRE(f(1, 42) == 1);
+	}
+
+	SECTION("useSecondArg") {
+		auto f = engine.registerFunction(useSecondArg);
+		REQUIRE(f(42, 1) == 1);
+		REQUIRE(f(1, 42) == 42);
+	}
+
+	SECTION("useNoArg") {
+		auto f = engine.registerFunction(useNoArg);
+		REQUIRE(f(43, 1) == 42);
+		REQUIRE(f(1, 43) == 42);
+	}
+
+	SECTION("pureFunction") {
+		auto f = engine.registerFunction(std::function([](val<int32_t> arg) { return arg; }));
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(1) == 1);
+	}
+
+	SECTION("pureFunctionWithPtr") {
+		auto f = engine.registerFunction(std::function([](val<int8_t*> arg) -> val<int8_t> { return *arg; }));
+		int8_t val = 42;
+		REQUIRE(f(&val) == 42);
+	}
+
+	SECTION("pureFunctionWithPtr2") {
+		auto f = engine.registerFunction(std::function([](val<int8_t**> arg) -> val<int8_t> {
+			val<int8_t*> deref1 = *arg;
+			return *deref1;
+		}));
+		int8_t val = 42;
+		int8_t* valPtr = &val;
+		int8_t** valPtrToPtr = &valPtr;
+		REQUIRE(f(valPtrToPtr) == 42);
+	}
+
+	SECTION("pureVoidFunctionWithPtr") {
+		auto f = engine.registerFunction(std::function([](val<int8_t*> arg) -> void { *arg = 42; }));
+		int8_t val = 1;
+		REQUIRE(val == 1);
+		f(&val);
+		REQUIRE(val == 42);
+	}
+
+	SECTION("functionWithClosure") {
+		auto closure = 42;
+		auto f = engine.registerFunction(std::function([closure](val<int32_t> arg) { return arg + closure; }));
+		REQUIRE(f(42) == 84);
+		REQUIRE(f(1) == 43);
+	}
+
+	SECTION("functionBindMember") {
+		auto clazz = Clazz();
+		std::function<val<int32_t>(val<int32_t>)> bound = std::bind(&Clazz::function, &clazz, std::placeholders::_1);
+		auto f = engine.registerFunction(bound);
+		REQUIRE(f(42) == 62);
+		REQUIRE(f(1) == 21);
+	}
+
+	SECTION("functionBindMember2") {
+		auto clazz = Clazz();
+		clazz.state = 100;
+		std::function<val<int32_t>(val<int32_t>)> bound =
+		    std::bind(&Clazz::functionWithStateAccess, &clazz, std::placeholders::_1);
+		auto f = engine.registerFunction(bound);
+		REQUIRE(f(42) == 142);
+		REQUIRE(f(1) == 101);
+	}
+}
+
+void runAllTests(engine::NautilusEngine& engine) {
+	SECTION("registerFunctionTest") {
+		registerFunctionTest(engine);
+	}
+	SECTION("expressionTest") {
+		expressionTests(engine);
+	}
+	SECTION("controlFlowTest") {
+		controlFlowTest(engine);
+	}
+	SECTION("loopExecutionTest") {
+		loopExecutionTest(engine);
+	}
+	SECTION("staticLoopExecutionTest") {
+		staticLoopExecutionTest(engine);
+	}
+	SECTION("functionCallExecutionTest") {
+		functionCallExecutionTest(engine);
+	}
+	SECTION("valueExecutionTest") {
+		valueExecutionTest(engine);
+	}
+
+	SECTION("sameAsAboveButPassArgumentsByValueContiguousResult") {
+		auto f = engine.registerFunction(+[](val<int8_t> i8, val<int16_t> i16, val<int32_t> i32, val<int64_t> i64,
+		                                     val<float> f32, val<float*> results) {
+			*(results + 0) = f32 / i8;
+			*(results + 1) = f32 / (i8 + nautilus::val<int8_t>(1));
+			*(results + 2) = f32 / i16;
+			*(results + 3) = f32 / (i16 + nautilus::val<int16_t>(1));
+			*(results + 4) = f32 / i32;
+			*(results + 5) = f32 / (i32 + nautilus::val<int32_t>(1));
+			*(results + 6) = f32 / i64;
+			*(results + 7) = f32 / (i64 + nautilus::val<int64_t>(1));
+		});
+
+		float results[8] = {0.0f};
+
+		f(1, 1, 1, 1, 2.0f, results);
+
+		REQUIRE(results[0] == Catch::Approx(2.0f)); // f32 / i8
+		REQUIRE(results[1] == Catch::Approx(1.0f)); // f32 / (i8 + 1)
+		REQUIRE(results[2] == Catch::Approx(2.0f)); // f32 / i16
+		REQUIRE(results[3] == Catch::Approx(1.0f)); // f32 / (i16 + 1)
+		REQUIRE(results[4] == Catch::Approx(2.0f)); // f32 / i32
+		REQUIRE(results[5] == Catch::Approx(1.0f)); // f32 / (i32 + 1)
+		REQUIRE(results[6] == Catch::Approx(2.0f)); // f32 / i64
+		REQUIRE(results[7] == Catch::Approx(1.0f)); // f32 / (i64 + 1)
+	}
+
+	SECTION("Multiplication Testcases") {
+		int8_t i8 = -42;
+		int16_t i16 = -129;
+		int32_t i32 = -32769;
+		int64_t i64 = -2147483649;
+		uint8_t u8 = 42;
+		uint16_t u16 = 256;
+		uint32_t u32 = 65536;
+		uint64_t u64 = 4294967296;
+		float f32 = 23.0;
+		double f64 = 23.0;
+
+		/// Division nautilus functions
+		auto fu64_u8 = engine.registerFunction(mulAWithB<uint64_t, uint8_t, decltype(u64 * u8)>);
+		auto fi16_i8 = engine.registerFunction(mulAWithB<int16_t, int8_t, decltype(i16 * i8)>);
+		auto fu64_i8 = engine.registerFunction(mulAWithB<uint64_t, int8_t, decltype(u64 * i8)>);
+		auto fi16_u8 = engine.registerFunction(mulAWithB<int16_t, uint8_t, decltype(i16 * u8)>);
+		auto fi32_f32 = engine.registerFunction(mulAWithB<float, float, decltype(f32 * f32)>);
+		auto fi64_f64 = engine.registerFunction(mulAWithB<int64_t, double, decltype(i64 * f64)>);
+		auto fu16_u8 = engine.registerFunction(mulAWithB<uint16_t, uint8_t, decltype(u16 * u8)>);
+		auto fu32_u8 = engine.registerFunction(mulAWithB<uint32_t, uint8_t, decltype(u32 * u8)>);
+		auto ff32_u8 = engine.registerFunction(mulAWithB<float, uint8_t, decltype(f32 * u8)>);
+		auto ff64_u8 = engine.registerFunction(mulAWithB<double, uint8_t, decltype(f64 * u8)>);
+		auto fi16_i32 = engine.registerFunction(mulAWithB<int16_t, int32_t, decltype(i16 * i32)>);
+
+		/// Division testcases
+		REQUIRE(fu64_u8(u64, u8) == static_cast<decltype(u64 * u8)>(u64 * u8));
+		REQUIRE(fi16_i8(i16, i8) == static_cast<decltype(i16 * i8)>(i16 * i8));
+		REQUIRE(fu64_i8(u64, i8) == static_cast<decltype(u64 * i8)>(u64 * i8));
+		REQUIRE(fi16_u8(i16, u8) == static_cast<decltype(i16 * u8)>(i16 * u8));
+		REQUIRE(fi32_f32(i32, f32) == static_cast<decltype(i32 * f32)>(i32 * f32));
+		REQUIRE(fi64_f64(i64, f64) == static_cast<decltype(i64 * f64)>(i64 * f64));
+		REQUIRE(fu16_u8(u16, u8) == static_cast<decltype(u16 * u8)>(u16 * u8));
+		REQUIRE(fu32_u8(u32, u8) == static_cast<decltype(u32 * u8)>(u32 * u8));
+		REQUIRE(ff32_u8(f32, u8) == static_cast<decltype(f32 * u8)>(f32 * u8));
+		REQUIRE(fi16_i32(i16, i32) == static_cast<decltype(i16 * i32)>(i16 * i32));
+	}
+
+	SECTION("Addition Testcases") {
+		int8_t i8 = -42;
+		int16_t i16 = -129;
+		int32_t i32 = -32769;
+		int64_t i64 = -2147483649;
+		uint8_t u8 = 42;
+		uint16_t u16 = 256;
+		uint32_t u32 = 65536;
+		uint64_t u64 = 4294967296;
+		float f32 = 23.0;
+		double f64 = 23.0;
+
+		/// Division nautilus functions
+		auto fu64_u8 = engine.registerFunction(addAWithB<uint64_t, uint8_t, decltype(u64 + u8)>);
+		auto fi16_i8 = engine.registerFunction(addAWithB<int16_t, int8_t, decltype(i16 + i8)>);
+		auto fu64_i8 = engine.registerFunction(addAWithB<uint64_t, int8_t, decltype(u64 + i8)>);
+		auto fi16_u8 = engine.registerFunction(addAWithB<int16_t, uint8_t, decltype(i16 + u8)>);
+		auto fi32_f32 = engine.registerFunction(addAWithB<float, float, decltype(f32 + f32)>);
+		auto fi64_f64 = engine.registerFunction(addAWithB<int64_t, double, decltype(i64 + f64)>);
+		auto fu16_u8 = engine.registerFunction(addAWithB<uint16_t, uint8_t, decltype(u16 + u8)>);
+		auto fu32_u8 = engine.registerFunction(addAWithB<uint32_t, uint8_t, decltype(u32 + u8)>);
+		auto ff32_u8 = engine.registerFunction(addAWithB<float, uint8_t, decltype(f32 + u8)>);
+		auto ff64_u8 = engine.registerFunction(addAWithB<double, uint8_t, decltype(f64 + u8)>);
+		auto fi16_i32 = engine.registerFunction(addAWithB<int16_t, int32_t, decltype(i16 + i32)>);
+
+		/// Division testcases
+		REQUIRE(fu64_u8(u64, u8) == static_cast<decltype(u64 + u8)>(u64 + u8));
+		REQUIRE(fi16_i8(i16, i8) == static_cast<decltype(i16 + i8)>(i16 + i8));
+		REQUIRE(fu64_i8(u64, i8) == static_cast<decltype(u64 + i8)>(u64 + i8));
+		REQUIRE(fi16_u8(i16, u8) == static_cast<decltype(i16 + u8)>(i16 + u8));
+		REQUIRE(fi32_f32(i32, f32) == static_cast<decltype(i32 + f32)>(i32 + f32));
+		REQUIRE(fi64_f64(i64, f64) == static_cast<decltype(i64 + f64)>(i64 + f64));
+		REQUIRE(fu16_u8(u16, u8) == static_cast<decltype(u16 + u8)>(u16 + u8));
+		REQUIRE(fu32_u8(u32, u8) == static_cast<decltype(u32 + u8)>(u32 + u8));
+		REQUIRE(ff32_u8(f32, u8) == static_cast<decltype(f32 + u8)>(f32 + u8));
+		REQUIRE(fi16_i32(i16, i32) == static_cast<decltype(i16 + i32)>(i16 + i32));
+	}
+
+	SECTION("Subtraction Testcases") {
+		int8_t i8 = -42;
+		int16_t i16 = -129;
+		int32_t i32 = -32769;
+		int64_t i64 = -2147483649;
+		uint8_t u8 = 42;
+		uint16_t u16 = 256;
+		uint32_t u32 = 65536;
+		uint64_t u64 = 4294967296;
+		float f32 = 23.0;
+		double f64 = 23.0;
+
+		/// Division nautilus functions
+		auto fu64_u8 = engine.registerFunction(subAWithB<uint64_t, uint8_t, decltype(u64 - u8)>);
+		auto fi16_i8 = engine.registerFunction(subAWithB<int16_t, int8_t, decltype(i16 - i8)>);
+		auto fu64_i8 = engine.registerFunction(subAWithB<uint64_t, int8_t, decltype(u64 - i8)>);
+		auto fi16_u8 = engine.registerFunction(subAWithB<int16_t, uint8_t, decltype(i16 - u8)>);
+		auto fi32_f32 = engine.registerFunction(subAWithB<float, float, decltype(f32 - f32)>);
+		auto fi64_f64 = engine.registerFunction(subAWithB<int64_t, double, decltype(i64 - f64)>);
+		auto fu16_u8 = engine.registerFunction(subAWithB<uint16_t, uint8_t, decltype(u16 - u8)>);
+		auto fu32_u8 = engine.registerFunction(subAWithB<uint32_t, uint8_t, decltype(u32 - u8)>);
+		auto ff32_u8 = engine.registerFunction(subAWithB<float, uint8_t, decltype(f32 - u8)>);
+		auto ff64_u8 = engine.registerFunction(subAWithB<double, uint8_t, decltype(f64 - u8)>);
+		auto fi16_i32 = engine.registerFunction(subAWithB<int16_t, int32_t, decltype(i16 - i32)>);
+
+		/// Division testcases
+		REQUIRE(fu64_u8(u64, u8) == static_cast<decltype(u64 - u8)>(u64 - u8));
+		REQUIRE(fi16_i8(i16, i8) == static_cast<decltype(i16 - i8)>(i16 - i8));
+		REQUIRE(fu64_i8(u64, i8) == static_cast<decltype(u64 - i8)>(u64 - i8));
+		REQUIRE(fi16_u8(i16, u8) == static_cast<decltype(i16 - u8)>(i16 - u8));
+		REQUIRE(fi32_f32(i32, f32) == static_cast<decltype(i32 - f32)>(i32 - f32));
+		REQUIRE(fi64_f64(i64, f64) == static_cast<decltype(i64 - f64)>(i64 - f64));
+		REQUIRE(fu16_u8(u16, u8) == static_cast<decltype(u16 - u8)>(u16 - u8));
+		REQUIRE(fu32_u8(u32, u8) == static_cast<decltype(u32 - u8)>(u32 - u8));
+		REQUIRE(ff32_u8(f32, u8) == static_cast<decltype(f32 - u8)>(f32 - u8));
+		REQUIRE(fi16_i32(i16, i32) == static_cast<decltype(i16 - i32)>(i16 - i32));
+	}
+}
+
+TEST_CASE("Engine Interpreter Test") {
+	auto engine = nautilus::testing::makeEngine("interpreter");
+	runAllTests(engine);
+}
+
+#ifdef ENABLE_TRACING
+TEST_CASE("Engine Compiler Test") {
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { runAllTests(engine); }, false);
+}
+#endif
+
+TEST_CASE("NautilusFunction Interpretation Test") {
+	auto engine = nautilus::testing::makeEngine("interpreter");
+	nautilusFunctionExecutionTest(engine);
+}
+
+#ifdef ENABLE_TRACING
+TEST_CASE("NautilusFunction Compiled Execution Test") {
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { nautilusFunctionExecutionTest(engine); },
+	                                  false);
+}
+#endif
+
+} // namespace nautilus::engine
