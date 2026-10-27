@@ -156,6 +156,30 @@ TEST_CASE("CompilationStatistics: per-pass IR counts are opt-in via ir.passStati
 	}
 }
 
+TEST_CASE("CompilationStatistics: the NIR conversion reports its counters when the NIR is built") {
+	auto backend = getAnyBackend();
+	if (backend.empty()) {
+		SKIP("No compilation backend available");
+	}
+	Options options;
+	options.setOption("engine.backend", backend);
+	options.setOption("tracing.verifyNir", true);
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(statsAddOne);
+	REQUIRE(fn(41) == 42);
+	auto stats = fn.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(std::holds_alternative<double>(*stats->find("conversion.ms")));
+	for (const auto* key :
+	     {"conversion.instructions", "conversion.phis", "conversion.removedPhis", "conversion.folded", "conversion.cse",
+	      "conversion.deadBlocks", "conversion.deadValues", "conversion.foldedBranches", "conversion.loops"}) {
+		INFO("missing key: " << key);
+		const auto* value = stats->find(key);
+		REQUIRE(value != nullptr);
+		REQUIRE(std::holds_alternative<int64_t>(*value));
+	}
+}
+
 #if defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND)
 namespace {
 

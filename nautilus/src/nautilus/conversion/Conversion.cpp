@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nautilus::conversion {
@@ -149,6 +150,7 @@ private:
 	};
 	using AvailMap = std::unordered_map<AvailKey, Ref, AvailHash>;
 	static constexpr uint32_t MaxAvailDepth = 32;
+	static constexpr uint32_t MaxRefoldSweeps = 3;
 	void enterBlockForCse(uint32_t b);
 	Ref findAvailable(const AvailKey& key, uint32_t b) const;
 	/// Whether `ni` may be shared, and the key that says so; calls are keyed on their argument list.
@@ -190,6 +192,10 @@ private:
 	std::vector<std::vector<uint32_t>> succEdgesStatic_; // per block: the successors, in terminator order
 	std::vector<std::vector<uint32_t>> predsStatic_;
 	std::vector<uint32_t> rpo_, rpoIndex_;
+	/// Per loop header: the variables assigned in the loop and the only block outside it that jumps to the header
+	/// (NONE if there are several, or the function has an irreducible region).
+	std::vector<std::unordered_set<uint32_t>> loopAssigned_;
+	std::vector<uint32_t> loopEntry_;
 	std::vector<uint32_t> layout_, layoutIndex_;
 
 	std::vector<Temp> temps_;
@@ -411,6 +417,8 @@ void FunctionConverter::orderBlocks() {
 			}
 		}
 	}
+	loopAssigned_.assign(n_, {});
+	loopEntry_.assign(n_, NONE);
 	std::vector<std::vector<uint32_t>> loopBody(n_); // per header: the other blocks of the loop, in reverse postorder
 	for (uint32_t h = 0; h < n_; ++h) {
 		if (latches[h].empty()) {
@@ -441,6 +449,33 @@ void FunctionConverter::orderBlocks() {
 				loopBody[h].push_back(b);
 			}
 		}
+		// the variables assigned in the loop, and the one block that enters it: a variable nobody assigns in the loop
+		// has the value it has on entry and needs no phi in the header
+		auto& assigned = loopAssigned_[h];
+		auto note = [&](uint32_t b) {
+			for (auto id : blockIds(b)) {
+				const auto& inst = insts_[id];
+				if (inst.op == static_cast<uint16_t>(Op::Assign)) {
+					assigned.insert(inst.a);
+				} else if (inst.op == static_cast<uint16_t>(Op::Var) && isVariable_[id]) {
+					assigned.insert(id);
+				}
+			}
+		};
+		note(h);
+		for (auto b : loopBody[h]) {
+			note(b);
+		}
+		uint32_t entry = NONE;
+		bool unique = true;
+		for (auto p : predsStatic_[h]) {
+			if (inLoop[p] || rpoIndex_[p] == NONE) {
+				continue;
+			}
+			unique = unique && entry == NONE;
+			entry = p;
+		}
+		loopEntry_[h] = unique ? entry : NONE;
 	}
 
 	// layout: reverse postorder, with each natural loop placed contiguously where its header is
@@ -498,6 +533,21 @@ Ref FunctionConverter::startRead(uint32_t variable, uint32_t block, std::vector<
 		if (auto d = getDef(variable, block); d != NONE) {
 			value = d;
 			break;
+		}
+		if (!sealed_[block] && irreducibleHere_ == 0 && loopEntry_[block] != NONE &&
+		    !loopAssigned_[block].contains(variable)) {
+			// a loop header that nothing in the loop assigns the variable of: read it where the loop is entered
+			const uint32_t entry = loopEntry_[block];
+			bool live = false;
+			for (auto e : incoming_[block]) {
+				live = live || dynEdges_[e].from == entry;
+			}
+			if (live) {
+				++stats_.invariantHeaderReads;
+				chain.push_back(block);
+				block = entry;
+				continue;
+			}
 		}
 		if (!sealed_[block]) {
 			auto phi = newPhi(variable, block);
@@ -1036,6 +1086,47 @@ void FunctionConverter::emit() {
 	}
 	for (uint32_t i = 0; i < emitOrder_.size(); ++i) {
 		layoutIndex_[emitOrder_[i]] = i;
+	}
+
+	// ---- the refold sweep: phis that became trivial when their loop was sealed leave instructions behind that now
+	// have constant or equal operands; a few sweeps over the emitted blocks fold them
+	if (optimize_) {
+		for (uint32_t sweep = 0; sweep < MaxRefoldSweeps; ++sweep) {
+			uint32_t changed = 0;
+			for (auto b : emitOrder_) {
+				for (auto t : body_[b]) {
+					auto& temp = temps_[t];
+					if (fwd_[t] != NONE || temp.kind != Kind::Inst) {
+						continue;
+					}
+					const auto* info = coreOpInfo(temp.inst.op);
+					if (!(info->flags & OpPure)) {
+						continue;
+					}
+					Inst ni = temp.inst;
+					if (info->a == OperandKind::Value || info->a == OperandKind::ValueOpt) {
+						ni.a = resolve(ni.a);
+					}
+					if (info->b == OperandKind::Value) {
+						ni.b = resolve(ni.b);
+					}
+					if (info->c == OperandKind::Value) {
+						ni.c = resolve(ni.c);
+					}
+					if (Ref folded = simplify(ni); folded != NONE && folded != t) {
+						fwd_[t] = folded;
+						++changed;
+						++stats_.refoldedInsts;
+					} else {
+						temp.inst = ni;
+					}
+				}
+			}
+			++stats_.refoldSweeps;
+			if (changed == 0) {
+				break;
+			}
+		}
 	}
 
 	// ---- the dead-value sweep (§3.3): mark from the roots, drop what is not reached --------------------------------

@@ -857,6 +857,18 @@ criteria: [03 §6](03-conversion-and-passes.md).
   returns the right result on `tbc` through `NirChain` (exceptions excepted
   until M3.5); the `conversion.*` keys are reported and unit-tested.
 
+- **Status (PR 4):** built: Braun construction with the loop-aware
+  layout, loop-assigned variable sets (a header reads a variable the loop
+  never assigns from its single entry block, `invariantHeaderReads`), the
+  refold sweep (at most three sweeps over the emitted blocks,
+  `refoldSweeps`/`refoldedInsts`), the dead-value sweep and the
+  `conversion.*` keys (`.ms`, `.instructions`, `.phis`, `.removedPhis`,
+  `.folded`, `.cse`, `.refoldSweeps`, `.refoldedInsts`, `.deadBlocks`,
+  `.deadValues`, `.foldedBranches`, `.loops`; reported when the pipeline
+  builds the NIR, checked in `CompilationStatisticsTest`). Not built:
+  `useCount` during emission (nothing consumes it before M3.8), and the
+  `NirChain` fixture, which needs the `tbc` backend on NIR (PR 5).
+
 #### M3.2 Folding and simplification rules · M · deps: M3.1
 - **Builds:** the rules of `ConstantFoldingAndCopyPropagationPass` and
   `AlgebraicSimplificationPass` as builder rules, IEEE-strict (D11: no
@@ -900,6 +912,13 @@ criteria: [03 §6](03-conversion-and-passes.md).
   store in one arm; a load in a loop header with a store in the body.
 - **Done when:** `.nir` tests for each CSE case pass; the fuzzer is clean
   through the `NirChain` mode (M3.1) with block-local CSE on.
+
+- **Status (PR 4):** extended-basic-block CSE for pure values, loads and
+  calls of readonly-or-pure, `willReturn`, `noUnwind` callees, keyed on a
+  memory epoch that stores and possibly-writing calls renew and that every
+  block with several predecessors starts anew (`.nir` tests for the
+  if/else join and the loop header included). Dominator-scoped CSE is not
+  built; it waits for fuzzing through `NirChain`.
 
 #### M3.5 Landing pads · M · deps: M3.1, M3.6
 - **Builds:** cleanup lists → shared landing pads keyed by ordered

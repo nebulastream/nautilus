@@ -28,6 +28,12 @@ struct ConversionStatistics {
 	uint32_t foldedBranches = 0;
 	/// Instructions replaced by an equal value computed earlier in the same extended basic block.
 	uint32_t cse = 0;
+	/// Reads at a loop header of a variable the loop never assigns, answered from the entry block without a phi.
+	uint32_t invariantHeaderReads = 0;
+	/// Sweeps over the emitted instructions that fold what trivial phis left foldable, and the instructions they
+	/// folded.
+	uint32_t refoldSweeps = 0;
+	uint32_t refoldedInsts = 0;
 	/// Instructions and block parameters the dead-value sweep removed.
 	uint32_t deadValues = 0;
 	/// The attribute pre-pass: internal functions it derived attributes for, those in a cycle of the call graph, and

@@ -277,23 +277,42 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 					throw RuntimeException(message + "\n" + nir::print(nirModule));
 				}
 				// and so must its conversion to SSA
-				auto ssa = conversion::convert(nirModule);
-				diagnostics = nir::verify(ssa);
-				if (!diagnostics.empty()) {
-					std::string message = "the SSA NIR converted from the trace does not verify:";
-					for (const auto& d : diagnostics) {
-						message += "\n  " + d.str();
-					}
-					throw RuntimeException(message + "\n" + nir::print(ssa) + "\nfrom\n" + nir::print(nirModule));
-				}
 			}
-			if (!nirAttributesFile.empty()) {
-				// the guarantee bits the attribute pre-pass derived, one line per internal function: name, bits
-				auto ssa = conversion::convert(nirModule);
-				std::ofstream out(nirAttributesFile, std::ios::app);
-				for (const auto& f : ssa.functions) {
-					if (f.visibility == static_cast<uint8_t>(nir::Visibility::Internal)) {
-						out << ssa.name(f.nameId) << '\t' << (f.attrs & nir::GUARANTEE_MASK) << '\n';
+			if (verifyNir || !nirAttributesFile.empty() || statistics != nullptr) {
+				conversion::ConversionStatistics conversionStats;
+				const auto conversionStart = std::chrono::steady_clock::now();
+				auto ssa = conversion::convert(nirModule, {}, &conversionStats);
+				if (statistics != nullptr) {
+					statistics->recordTimingMs("conversion.ms", conversionStart);
+					statistics->set("conversion.instructions", static_cast<int64_t>(conversionStats.instructions));
+					statistics->set("conversion.phis", static_cast<int64_t>(conversionStats.phis));
+					statistics->set("conversion.removedPhis", static_cast<int64_t>(conversionStats.removedPhis));
+					statistics->set("conversion.folded", static_cast<int64_t>(conversionStats.folded));
+					statistics->set("conversion.cse", static_cast<int64_t>(conversionStats.cse));
+					statistics->set("conversion.refoldSweeps", static_cast<int64_t>(conversionStats.refoldSweeps));
+					statistics->set("conversion.refoldedInsts", static_cast<int64_t>(conversionStats.refoldedInsts));
+					statistics->set("conversion.deadBlocks", static_cast<int64_t>(conversionStats.deadBlocks));
+					statistics->set("conversion.deadValues", static_cast<int64_t>(conversionStats.deadValues));
+					statistics->set("conversion.foldedBranches", static_cast<int64_t>(conversionStats.foldedBranches));
+					statistics->set("conversion.loops", static_cast<int64_t>(conversionStats.loops));
+				}
+				if (verifyNir) {
+					auto diagnostics = nir::verify(ssa);
+					if (!diagnostics.empty()) {
+						std::string message = "the SSA NIR converted from the trace does not verify:";
+						for (const auto& d : diagnostics) {
+							message += "\n  " + d.str();
+						}
+						throw RuntimeException(message + "\n" + nir::print(ssa) + "\nfrom\n" + nir::print(nirModule));
+					}
+				}
+				if (!nirAttributesFile.empty()) {
+					// the guarantee bits the attribute pre-pass derived, one line per internal function: name, bits
+					std::ofstream out(nirAttributesFile, std::ios::app);
+					for (const auto& f : ssa.functions) {
+						if (f.visibility == static_cast<uint8_t>(nir::Visibility::Internal)) {
+							out << ssa.name(f.nameId) << '\t' << (f.attrs & nir::GUARANTEE_MASK) << '\n';
+						}
 					}
 				}
 			}

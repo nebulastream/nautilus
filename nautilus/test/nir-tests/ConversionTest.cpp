@@ -747,3 +747,62 @@ func export pressa @f : (ptr) -> i64 {
 	}
 	CHECK(peeks == 2);
 }
+
+TEST_CASE("a loop header gets no phi for a variable the loop never assigns", "[nir][conversion][loops]") {
+	ConversionStatistics stats;
+	auto ssa = convertedModule(R"(nir 1.0
+func export pressa @f : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = var 0:i64
+  %3 = var 0:i64
+  %4 = var 0:i64
+  [5] assign %4, %1
+  [6] assign %4, %0
+  [7] br ^b1
+^b1:
+  %8 = cmp.lt.s %2, %0
+  [9] condbr %8, ^b2, ^b3
+^b2:
+  %10 = add %3, %4
+  [11] assign %3, %10
+  %12 = add %2, 1:i64
+  [13] assign %2, %12
+  [14] br ^b1
+^b3:
+  [15] ret %3
+}
+)",
+	                           &stats);
+	// %2 and %3 are assigned in the loop; %4 is not
+	CHECK(stats.invariantHeaderReads >= 1);
+	uint32_t blockArgs = 0;
+	for (auto& inst : ssa.insts) {
+		blockArgs += inst.op == static_cast<uint16_t>(Op::BlockArg);
+	}
+	CHECK(blockArgs == 2 /* function parameters */ + 2 /* the two loop-carried variables */);
+}
+
+TEST_CASE("an instruction that a phi removed at the loop's sealing made foldable is folded afterwards",
+          "[nir][conversion][loops]") {
+	ConversionStatistics stats;
+	auto ssa = convertedModule(R"(nir 1.0
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = var 0:i64
+  [2] br ^b1
+^b1:
+  %3 = add %1, 1:i64
+  %4 = cmp.lt.s %3, %0
+  [5] condbr %4, ^b2, ^b3
+^b2:
+  [6] assign %1, %1
+  [7] br ^b1
+^b3:
+  [8] ret %3
+}
+)",
+	                           &stats);
+	// %1 only ever holds 0, so %3 is 1 and the compare is against the parameter
+	CHECK(stats.refoldedInsts >= 1);
+	CHECK(countOps(ssa, Op::Add) == 0);
+}
