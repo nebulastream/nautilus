@@ -24,7 +24,6 @@ interface ToolbarProps {
 const BACKEND_LABELS: Record<Backend, string> = {
 	mlir: 'MLIR (LLVM JIT)',
 	cpp: 'C++ source',
-	bc: 'Bytecode',
 	tbc: 'Tiered bytecode',
 	asmjit: 'AsmJit',
 	cuda: 'CUDA (codegen)',

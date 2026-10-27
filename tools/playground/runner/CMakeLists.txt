@@ -12,7 +12,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 # All five backends selectable in the playground. AsmJit is OFF by default in
-# the top-level nautilus build; MLIR/C/BC/TBC default ON.
+# the top-level nautilus build; MLIR/C/TBC default ON.
 set(ENABLE_ASMJIT_BACKEND ON CACHE BOOL "" FORCE)
 set(ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)

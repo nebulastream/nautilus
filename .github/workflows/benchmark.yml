@@ -3,9 +3,10 @@ on:
   push:
     branches:
       - main
+      - nautilus-0.4
+  # Pull requests against main or nautilus-0.4, and any pull request with the `0.4` label (a stacked 0.4 PR).
   pull_request:
-    branches:
-      - main
+    types: [opened, synchronize, reopened, labeled]
 
 # cancel previous runs of same PR / branch.
 concurrency:
@@ -21,6 +22,7 @@ jobs:
   benchmark:
     name: Run tracing benchmark
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     env:
       # clang >= 19 so the tbc copy-and-patch JIT benchmarks
       # (exec_tbc_*_{interp,jit}) are runnable; they are skipped on builds
@@ -73,8 +75,11 @@ jobs:
           tool: 'catch2'
           output-file-path: benchmark_result.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # nautilus-0.4 keeps its own history, so its ratios are never taken against main's numbers (and main keeps
+          # the default path with its existing history).
+          benchmark-data-dir-path: ${{ (github.base_ref == 'nautilus-0.4' || github.ref == 'refs/heads/nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4')) && 'dev/bench-0.4' || 'dev/bench' }}
+          auto-push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/nautilus-0.4') }}
           comment-always: true
-          save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-data-file: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/nautilus-0.4') }}
           gh-pages-branch: 'pages'
           max-items-in-chart: 200

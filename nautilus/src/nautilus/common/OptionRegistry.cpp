@@ -11,7 +11,7 @@ const std::vector<OptionSpec>& optionRegistry() {
 	// Generated from the table of docs/options.md; the doc-check test keeps the two in step.
 	static const std::vector<OptionSpec> registry = {
 	    {"engine.compilation", OptionType::Bool, "true", false, {}},
-	    {"engine.backend", OptionType::String, "", false, {"mlir", "cpp", "bc", "tbc", "asmjit"}},
+	    {"engine.backend", OptionType::String, "", false, {"mlir", "cpp", "tbc", "asmjit"}},
 	    {"engine.tier0.backend", OptionType::String, "", false, {}},
 	    {"engine.tier1.backend", OptionType::String, "", false, {}},
 	    {"engine.tiered.promotion", OptionType::String, "eager", false, {"eager", "manual", "none"}},
@@ -20,6 +20,7 @@ const std::vector<OptionSpec>& optionRegistry() {
 	    {"engine.demangleFunctionNames", OptionType::Bool, "true", false, {}},
 	    {"engine.resolveFunctionNames", OptionType::Bool, "", false, {}},
 	    {"engine.logStatistics", OptionType::Bool, "false", false, {}},
+	    {"engine.arena.retainedBytes", OptionType::Int, "8388608", false, {}},
 	    {"dump.all", OptionType::Bool, "false", false, {}},
 	    {"dump.copySites", OptionType::Bool, "false", false, {}},
 	    {"dump.after_tracing", OptionType::Bool, "false", false, {}},
@@ -27,7 +28,9 @@ const std::vector<OptionSpec>& optionRegistry() {
 	    {"dump.after_mlir_generation", OptionType::Bool, "false", false, {}},
 	    {"dump.after_llvm_generation", OptionType::Bool, "false", false, {}},
 	    {"dump.after_cpp_generation", OptionType::Bool, "false", false, {}},
-	    {"dump.after_bc_generation", OptionType::Bool, "false", false, {}},
+	    {"dump.after_tbc_generation", OptionType::Bool, "false", false, {}},
+	    {"dump.after_asmjit_generation", OptionType::Bool, "false", false, {}},
+	    {"dump.after_asmjit_assembly", OptionType::Bool, "false", false, {}},
 	    {"dump.console", OptionType::Bool, "false", false, {}},
 	    {"dump.file", OptionType::Bool, "true", false, {}},
 	    {"dump.graph", OptionType::Bool, "false", false, {}},
@@ -50,7 +53,6 @@ const std::vector<OptionSpec>& optionRegistry() {
 	    {"mlir.enableIntrinsics", OptionType::Bool, "true", true, {}},
 	    {"mlir.inline_invoke_calls", OptionType::Bool, "false", true, {}},
 	    {"mlir.eager_compilation", OptionType::Bool, "false", false, {}},
-	    {"bc.registerAllocator", OptionType::Bool, "true", true, {}},
 	    {"tbc.mode", OptionType::String, "interp", true, {"interp", "jit", "auto"}},
 	    {"tbc.dispatch", OptionType::String, "auto", false, {"auto", "tailcall", "goto", "switch"}},
 	    {"tbc.stackSizeKb", OptionType::Int, "1024", false, {}},
@@ -120,7 +122,8 @@ OptionValue coerce(const OptionSpec& spec, const OptionValue& v) {
 			return bad();
 		}
 		if (!spec.allowed.empty() && std::find(spec.allowed.begin(), spec.allowed.end(), *s) == spec.allowed.end()) {
-			throw std::invalid_argument("option " + std::string(spec.name) + " does not accept '" + *s + "'");
+			throw std::invalid_argument("option " + std::string(spec.name) + " does not accept '" + *s + "'" +
+			                            (*s == "bc" ? "; the bc backend was removed in 0.4, use tbc" : ""));
 		}
 		return v;
 	}

@@ -154,20 +154,6 @@ TEST_CASE("Execution Benchmark") {
 		configs.emplace_back("cpp", op);
 	}
 #endif
-#ifdef ENABLE_BC_BACKEND
-	{
-		Options op;
-		op.setOption("engine.backend", std::string("bc"));
-		op.setOption("ir.enableLICM", true);
-		op.setOption("ir.enableLocalCSE", true);
-		op.setOption("bc.registerAllocator", true);
-		op.setOption("bc.dispatch", std::string("threaded"));
-		op.setOption("bc.regfileReuse", true);
-		op.setOption("bc.superinstructions", true);
-		op.setOption("bc.immediates", true);
-		configs.emplace_back("bc", op);
-	}
-#endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	{
 		Options op;

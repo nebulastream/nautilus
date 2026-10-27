@@ -36,6 +36,12 @@
 			"cacheVariables": { "ENABLE_ADDRESS_SANITIZER": "ON" }
 		},
 		{
+			"name": "ubsan",
+			"inherits": "base",
+			"displayName": "UndefinedBehaviorSanitizer (a leg of its own, mutually exclusive with ASan and TSan), MLIR included",
+			"cacheVariables": { "ENABLE_UB_SANITIZER": "ON" }
+		},
+		{
 			"name": "tsan",
 			"inherits": "base",
 			"displayName": "ThreadSanitizer, MLIR included",
@@ -59,6 +65,7 @@
 		{ "name": "full", "configurePreset": "full" },
 		{ "name": "debug", "configurePreset": "debug" },
 		{ "name": "asan", "configurePreset": "asan" },
+		{ "name": "ubsan", "configurePreset": "ubsan" },
 		{ "name": "tsan", "configurePreset": "tsan" },
 		{ "name": "nocompiler", "configurePreset": "nocompiler" },
 		{ "name": "bench", "configurePreset": "bench" }
@@ -74,6 +81,7 @@
 		{ "name": "full", "inherits": "base", "configurePreset": "full" },
 		{ "name": "debug", "inherits": "base", "configurePreset": "debug" },
 		{ "name": "asan", "inherits": "base", "configurePreset": "asan" },
+		{ "name": "ubsan", "inherits": "base", "configurePreset": "ubsan" },
 		{ "name": "tsan", "inherits": "base", "configurePreset": "tsan" },
 		{ "name": "nocompiler", "inherits": "base", "configurePreset": "nocompiler" }
 	]

@@ -1,3 +1,4 @@
+#include "nautilus/extensions/IntrinsicRegistration.hpp"
 #include <atomic>
 #include <cstdint>
 #include <nautilus/function.hpp>
@@ -6,7 +7,7 @@
 // =====================================================================================
 // Named extern "C" thunks. The MLIR backend intrinsic registry (see
 // MLIRAtomicIntrinsics.cpp) keys on the addresses of these thunks to lower the matching
-// runtime call to a real LLVM atomic instruction. Outside of the MLIR backend (cpp/bc/
+// runtime call to a real LLVM atomic instruction. Outside of the MLIR backend (cpp/tbc/
 // asmjit/interpreter) the calls fall through to the standard library implementations.
 // =====================================================================================
 
@@ -299,3 +300,45 @@ void atomic_thread_fence_relaxed() noexcept {
 }
 
 } // namespace nautilus
+
+// The backend-neutral registration (04 §3.5). Atomics access memory through their pointer argument and must not be
+// reordered or merged by the optimizer, so they only state that they do not throw.
+namespace {
+
+struct AtomicIntrinsicRegistrar {
+	AtomicIntrinsicRegistrar() {
+		using namespace nautilus::ext;
+#define NAUTILUS_REGISTER_ATOMIC(op, T, order)                                                                         \
+	registerIntrinsicFor("std.atomic_" #op "_" #T "_" #order, &nautilus_atomic_##op##_##T##_##order, AttrNoUnwind)
+#define NAUTILUS_REGISTER_ATOMIC_PER_TYPE(T)                                                                           \
+	NAUTILUS_REGISTER_ATOMIC(load, T, seqcst);                                                                         \
+	NAUTILUS_REGISTER_ATOMIC(load, T, acquire);                                                                        \
+	NAUTILUS_REGISTER_ATOMIC(load, T, relaxed);                                                                        \
+	NAUTILUS_REGISTER_ATOMIC(store, T, seqcst);                                                                        \
+	NAUTILUS_REGISTER_ATOMIC(store, T, release);                                                                       \
+	NAUTILUS_REGISTER_ATOMIC(store, T, relaxed);                                                                       \
+	NAUTILUS_REGISTER_ATOMIC(exchange, T, seqcst);                                                                     \
+	NAUTILUS_REGISTER_ATOMIC(exchange, T, relaxed);                                                                    \
+	NAUTILUS_REGISTER_ATOMIC(fetch_add, T, seqcst);                                                                    \
+	NAUTILUS_REGISTER_ATOMIC(fetch_add, T, relaxed);                                                                   \
+	NAUTILUS_REGISTER_ATOMIC(fetch_sub, T, seqcst);                                                                    \
+	NAUTILUS_REGISTER_ATOMIC(fetch_sub, T, relaxed);                                                                   \
+	NAUTILUS_REGISTER_ATOMIC(fetch_and, T, seqcst);                                                                    \
+	NAUTILUS_REGISTER_ATOMIC(fetch_and, T, relaxed);                                                                   \
+	NAUTILUS_REGISTER_ATOMIC(fetch_or, T, seqcst);                                                                     \
+	NAUTILUS_REGISTER_ATOMIC(fetch_or, T, relaxed);                                                                    \
+	NAUTILUS_REGISTER_ATOMIC(fetch_xor, T, seqcst);                                                                    \
+	NAUTILUS_REGISTER_ATOMIC(fetch_xor, T, relaxed);                                                                   \
+	registerIntrinsicFor("std.atomic_cmpxchg_strong_" #T "_seqcst", &nautilus_atomic_cmpxchg_strong_##T##_seqcst,      \
+	                     AttrNoUnwind)
+		NAUTILUS_REGISTER_ATOMIC_PER_TYPE(int32_t);
+		NAUTILUS_REGISTER_ATOMIC_PER_TYPE(int64_t);
+		NAUTILUS_REGISTER_ATOMIC_PER_TYPE(uint32_t);
+		NAUTILUS_REGISTER_ATOMIC_PER_TYPE(uint64_t);
+#undef NAUTILUS_REGISTER_ATOMIC_PER_TYPE
+#undef NAUTILUS_REGISTER_ATOMIC
+	}
+};
+const AtomicIntrinsicRegistrar atomicRegistrar_;
+
+} // namespace

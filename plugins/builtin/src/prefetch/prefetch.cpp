@@ -1,3 +1,4 @@
+#include "nautilus/extensions/IntrinsicRegistration.hpp"
 #include "prefetch_impl.hpp"
 #include <nautilus/builtin/prefetch/prefetch.hpp>
 #include <nautilus/function.hpp>
@@ -67,3 +68,28 @@ void prefetch(val<const void*> address, PrefetchRW rw, PrefetchLocality locality
 }
 
 } // namespace nautilus::builtin
+
+// The backend-neutral registration (04 §3.5): the intrinsics exist in every build, whether or not a backend lowers
+// them. It lives in this file because the registrar is linked whenever `prefetch` is.
+namespace {
+
+struct PrefetchIntrinsicRegistrar {
+	PrefetchIntrinsicRegistrar() {
+		using namespace nautilus::ext;
+		// a prefetch hint reads and writes no program-visible memory and cannot throw
+		constexpr uint32_t attrs =
+		    AttrNoArgRead | AttrNoArgWrite | AttrNoOtherRead | AttrNoOtherWrite | AttrNoUnwind | AttrWillReturn;
+		using namespace nautilus::builtin::detail;
+		registerIntrinsicFor("builtin.prefetch_read_none", &nautilus_prefetch_read_none, attrs);
+		registerIntrinsicFor("builtin.prefetch_read_low", &nautilus_prefetch_read_low, attrs);
+		registerIntrinsicFor("builtin.prefetch_read_moderate", &nautilus_prefetch_read_moderate, attrs);
+		registerIntrinsicFor("builtin.prefetch_read_high", &nautilus_prefetch_read_high, attrs);
+		registerIntrinsicFor("builtin.prefetch_write_none", &nautilus_prefetch_write_none, attrs);
+		registerIntrinsicFor("builtin.prefetch_write_low", &nautilus_prefetch_write_low, attrs);
+		registerIntrinsicFor("builtin.prefetch_write_moderate", &nautilus_prefetch_write_moderate, attrs);
+		registerIntrinsicFor("builtin.prefetch_write_high", &nautilus_prefetch_write_high, attrs);
+	}
+};
+const PrefetchIntrinsicRegistrar prefetchRegistrar_;
+
+} // namespace

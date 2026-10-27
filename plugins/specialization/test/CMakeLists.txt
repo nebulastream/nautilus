@@ -3,6 +3,7 @@ include(Catch)
 
 add_executable(nautilus-specialization-tests
         AssumeExecutionTest.cpp
+        AssumeIntrinsicTest.cpp
 )
 
 nautilus_inline(nautilus-specialization-tests)

@@ -5,10 +5,11 @@ on:
     branches:
       - main
       - nautilus-0.4
+  # Every pull request, whatever its base: a stack of 0.4 pull requests targets the branch below it. The jobs decide
+  # (see `if:`): the light lanes (nir-components, doc-check, format-check) always run; the full matrix runs for pull
+  # requests against main or nautilus-0.4 and for pull requests that carry the `0.4` label. Adding that label runs it.
   pull_request:
-    branches:
-      - main
-      - nautilus-0.4
+    types: [opened, synchronize, reopened, labeled]
 # cancel previous runs of same PR / branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,7 +17,10 @@ concurrency:
 jobs:
   build-test:
     runs-on: ${{matrix.os}}
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: ${{ matrix.os }} ${{ matrix.cc }} ${{ matrix.flags }}
+    # A leg marked `experimental` reports but does not fail the PR.
+    continue-on-error: ${{ matrix.experimental == true }}
     # Backstop against a hung test: a single ctest case hanging on macos-26
     # once ran for ~6h before hitting GitHub's default 360m job timeout. The
     # per-test `ctest --timeout` below should catch this first; this is the
@@ -64,7 +68,7 @@ jobs:
             cc: 'clang-21'
             cxx: 'clang++-21'
             flags: '-DENABLE_GPU_PLUGIN=ON'
-          # The iOS-safe closure path: bc and tbc hand out native function
+          # The iOS-safe closure path: tbc hands out native function
           # pointers via libffi static trampolines instead of dyncall callbacks,
           # so no runtime-executable memory is allocated. Built nowhere else, so
           # without this leg the configuration silently rots.
@@ -84,6 +88,11 @@ jobs:
             cc: 'clang-21'
             cxx: 'clang++-21'
             flags: '-DENABLE_ADDRESS_SANITIZER=ON'
+          # UBSan is a leg of its own: it is mutually exclusive with ASan and TSan in CMakeLists.txt.
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_UB_SANITIZER=ON'
           # Concurrent compilation/execution, tiered promotion threads and the
           # profiling sampler all share state across threads; only TSan catches
           # the data races there.
@@ -171,6 +180,7 @@ jobs:
           ctest --test-dir build/plugins/gpu/test --output-on-failure --timeout 300
   format-check:
     runs-on: ubuntu-24.04
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}
     name: Format Check (clang-format-22)
     steps:
       - name: Check out repository code
@@ -186,6 +196,7 @@ jobs:
         run: ./format.sh
   example-demos:
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: Example demos (clang-18)
     env:
       CC: clang-18
@@ -296,8 +307,20 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "conditionalSumPlain  = 7"
           echo "$out" | grep -q "conditionalSumHinted = 7"
+  doc-check:
+    runs-on: ubuntu-24.04
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}
+    name: Agent documents name real paths, targets, options and skills
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: the check fails on a planted stale path
+        run: python3 tools/doc-check/doc-check.py --self-test
+      - name: doc-check
+        run: python3 tools/doc-check/doc-check.py
   nir-components:
     runs-on: ubuntu-24.04
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}
     name: NIR components (clang-21)
     env:
       CC: clang-21
@@ -338,8 +361,51 @@ jobs:
         shell: bash
         run: |
           ./build/nautilus/test/fuzz/nautilus-nir-fuzz-replay nautilus/test/fuzz/corpus-nir
+  latency-corpus:
+    runs-on: ubuntu-24.04
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}
+    name: Latency corpus (clang-21, reporting only)
+    # Reports until the cut-over (plan §3 rule 5): the numbers are a record, not a gate.
+    continue-on-error: true
+    env:
+      CC: clang-21
+      CXX: clang++-21
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Force apt to use IPv4
+        run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-latency-corpus
+      - name: Install clang + LLVM 21
+        uses: ./.github/actions/install-llvm
+        with:
+          llvm-version: "21"
+      - name: cmake
+        shell: bash
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_MLIR_BACKEND=OFF -DENABLE_BENCHMARKS=ON -G Ninja -S . -B build
+      - name: build
+        shell: bash
+        run: |
+          cmake --build build --target nautilus-latency-corpus
+      - name: run the corpus
+        shell: bash
+        run: |
+          ./build/nautilus/test/benchmark/nautilus-latency-corpus 3 > corpus.jsonl
+          wc -l corpus.jsonl
+      - name: upload the results
+        uses: actions/upload-artifact@v4
+        with:
+          name: latency-corpus-${{ github.sha }}
+          path: corpus.jsonl
   fuzz-replay-smoke:
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: Fuzzer replay smoke corpus (clang-21)
     env:
       CC: clang-21
@@ -394,6 +460,7 @@ jobs:
           ./build/nautilus/test/fuzz/nautilus-fuzz-replay
   fuzz-libfuzzer-smoke:
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: libFuzzer build + crash-pipeline canary (clang-21)
     env:
       CC: clang-21
@@ -450,6 +517,7 @@ jobs:
           ./build/nautilus/test/fuzz/nautilus-nir-fuzz -runs=0 -print_funcs=0 fuzz-work/nir-seeds
   llvm-ir-test:
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
     name: LLVM IR Test (clang-22)
     env:
       CC: clang-22

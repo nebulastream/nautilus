@@ -56,7 +56,6 @@ run_fixture() {
 		case "$backend" in
 		mlir) backend_key="after_mlir_generation" ;;
 		cpp) backend_key="after_c_generation" ;;
-		bc) backend_key="after_bc_generation" ;;
 		tbc) backend_key="after_tbc_generation" ;;
 		asmjit) backend_key="after_asmjit_generation" ;;
 		cuda) backend_key="after_cuda_generation" ;;
@@ -71,7 +70,7 @@ run_fixture() {
 	echo "ok   $fixture [$backend]"
 }
 
-for backend in mlir cpp bc tbc asmjit; do
+for backend in mlir cpp tbc asmjit; do
 	for fixture in basic.cpp loops.cpp branch_folding.cpp std_plugin.cpp exceptions.cpp; do
 		run_fixture "$fixture" "$backend" 0
 	done

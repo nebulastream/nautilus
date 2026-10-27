@@ -3,6 +3,7 @@ include(Catch)
 
 add_executable(nautilus-simd-tests
         VectorExecutionTest.cpp
+        VectorIntrinsicRegistrationTest.cpp
 )
 
 nautilus_inline(nautilus-simd-tests)

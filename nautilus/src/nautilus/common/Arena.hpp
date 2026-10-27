@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/common/ChunkPool.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -76,6 +77,13 @@ public:
 	static constexpr std::size_t MAX_CHUNK_SIZE = 256 * 1024;
 
 	Arena() noexcept {
+		current = inlineBuffer;
+		currentEnd = inlineBuffer + INLINE_BUFFER_SIZE;
+	}
+
+	/// An arena that takes its heap chunks from `pool` (64 KiB growing to 1 MiB; a request above half a chunk gets a
+	/// dedicated allocation) and gives them back when it is reset or destroyed (02 §4.1).
+	explicit Arena(ChunkPool pool) noexcept : pool_(std::move(pool)), nextChunkSize(ChunkPool::MIN_CHUNK) {
 		current = inlineBuffer;
 		currentEnd = inlineBuffer + INLINE_BUFFER_SIZE;
 	}
@@ -179,7 +187,7 @@ public:
 		current = inlineBuffer;
 		currentEnd = inlineBuffer + INLINE_BUFFER_SIZE;
 		currentChunkIndex = INLINE_REGION_INDEX;
-		nextChunkSize = INITIAL_CHUNK_SIZE;
+		nextChunkSize = pool_.valid() ? ChunkPool::MIN_CHUNK : INITIAL_CHUNK_SIZE;
 	}
 
 	/**
@@ -224,6 +232,7 @@ private:
 	struct Chunk {
 		std::byte* data;
 		std::size_t size;
+		bool dedicated = false;
 	};
 
 	struct DtorEntry {
@@ -266,6 +275,17 @@ private:
 			++nextIdx;
 		}
 
+		if (pool_.valid()) {
+			// A chunk of the pool: the next size class, or a dedicated allocation for a large request.
+			auto chunk = pool_.acquire(needed, nextChunkSize);
+			chunks.push_back({chunk.data, chunk.size, chunk.dedicated});
+			currentChunkIndex = chunks.size() - 1;
+			current = chunk.data;
+			currentEnd = chunk.data + chunk.size;
+			nextChunkSize = std::min(nextChunkSize * 2, ChunkPool::MAX_CHUNK);
+			return;
+		}
+
 		// No existing chunk could service the allocation - allocate a new one.
 		std::size_t chunkSize = std::max(nextChunkSize, needed);
 		auto* mem = static_cast<std::byte*>(std::malloc(chunkSize));
@@ -287,7 +307,11 @@ private:
 		}
 		dtors.clear();
 		for (auto& chunk : chunks) {
-			std::free(chunk.data);
+			if (pool_.valid()) {
+				pool_.release({chunk.data, chunk.size, chunk.dedicated});
+			} else {
+				std::free(chunk.data);
+			}
 		}
 		chunks.clear();
 		current = nullptr;
@@ -295,6 +319,8 @@ private:
 		currentChunkIndex = INLINE_REGION_INDEX;
 	}
 
+	/// Empty for a standalone arena, which uses malloc.
+	ChunkPool pool_;
 	alignas(std::max_align_t) std::byte inlineBuffer[INLINE_BUFFER_SIZE];
 	std::byte* current;
 	std::byte* currentEnd;
@@ -353,7 +379,18 @@ public:
 		return Handle(new Arena, Returner {});
 	}
 
-	explicit ArenaPool(std::size_t maxSpares = DEFAULT_MAX_SPARES) noexcept : maxSpares_(maxSpares) {
+	/// A pool of arenas over its own chunk pool with the default budget.
+	explicit ArenaPool(std::size_t maxSpares = DEFAULT_MAX_SPARES)
+	    : chunks_(ChunkPool::create()), maxSpares_(maxSpares) {
+	}
+
+	/// A pool of arenas over a chunk pool shared with other arena pools (the engine's trace and IR pools).
+	explicit ArenaPool(ChunkPool chunks, std::size_t maxSpares = DEFAULT_MAX_SPARES)
+	    : chunks_(std::move(chunks)), maxSpares_(maxSpares) {
+	}
+
+	const ChunkPool& chunkPool() const noexcept {
+		return chunks_;
 	}
 
 	~ArenaPool() = default;
@@ -379,7 +416,7 @@ public:
 			}
 		}
 		if (!arena) {
-			arena = std::make_unique<Arena>();
+			arena = std::make_unique<Arena>(chunks_);
 		}
 		return Handle(arena.release(), Returner {this});
 	}
@@ -394,8 +431,9 @@ private:
 	friend struct Returner;
 
 	void release(Arena* arena) noexcept {
-		// Reset before pushing so the next acquirer sees an empty arena.
-		arena->softReset();
+		// Reset before pushing so the next acquirer sees an empty arena. Its chunks go back to the chunk pool, which
+		// decides how many stay (02 §4.1); only the arena object itself is recycled here.
+		arena->reset();
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (spares_.size() < maxSpares_) {
 			spares_.emplace_back(arena);
@@ -406,6 +444,7 @@ private:
 
 	mutable std::mutex mutex_;
 	std::vector<std::unique_ptr<Arena>> spares_;
+	ChunkPool chunks_;
 	std::size_t maxSpares_;
 };
 

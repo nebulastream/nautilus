@@ -1,3 +1,4 @@
+#include "nautilus/extensions/IntrinsicRegistration.hpp"
 #include <bit>
 #include <cstdint>
 #include <nautilus/function.hpp>
@@ -472,3 +473,34 @@ val<uint64_t> byteswap(val<uint64_t> x) noexcept {
 }
 
 } // namespace nautilus
+
+// The backend-neutral registration (04 §3.5): bit operations are pure functions of their arguments.
+namespace {
+
+struct BitIntrinsicRegistrar {
+	BitIntrinsicRegistrar() {
+		using namespace nautilus::ext;
+		using namespace nautilus;
+		constexpr uint32_t pure =
+		    AttrNoArgRead | AttrNoArgWrite | AttrNoOtherRead | AttrNoOtherWrite | AttrNoUnwind | AttrWillReturn;
+#define NAUTILUS_REGISTER_BIT(fn) registerIntrinsicFor("std." #fn, &fn##_impl, pure)
+#define NAUTILUS_REGISTER_BIT_WIDTHS(op)                                                                               \
+	NAUTILUS_REGISTER_BIT(op##_u8);                                                                                    \
+	NAUTILUS_REGISTER_BIT(op##_u16);                                                                                   \
+	NAUTILUS_REGISTER_BIT(op##_u32);                                                                                   \
+	NAUTILUS_REGISTER_BIT(op##_u64)
+		NAUTILUS_REGISTER_BIT_WIDTHS(countl_zero);
+		NAUTILUS_REGISTER_BIT_WIDTHS(countr_zero);
+		NAUTILUS_REGISTER_BIT_WIDTHS(popcount);
+		NAUTILUS_REGISTER_BIT_WIDTHS(rotl);
+		NAUTILUS_REGISTER_BIT_WIDTHS(rotr);
+		NAUTILUS_REGISTER_BIT(byteswap_u16);
+		NAUTILUS_REGISTER_BIT(byteswap_u32);
+		NAUTILUS_REGISTER_BIT(byteswap_u64);
+#undef NAUTILUS_REGISTER_BIT_WIDTHS
+#undef NAUTILUS_REGISTER_BIT
+	}
+};
+const BitIntrinsicRegistrar bitRegistrar_;
+
+} // namespace

@@ -69,7 +69,6 @@ inline constexpr StageMeta STAGE_TABLE[] = {
     {"after_llvm_generation", "backend", "LLVM IR (optimized)", 42},
     {"after_c_generation", "backend", "Generated C", 43},
     {"after_cpp_generation", "backend", "Generated C++", 43},
-    {"after_bc_generation", "backend", "Bytecode", 44},
     {"after_tbc_generation", "backend", "Tiered bytecode", 45},
     {"after_asmjit_generation", "backend", "AsmJit IR", 46},
     {"after_asmjit_assembly", "backend", "Assembly", 47},

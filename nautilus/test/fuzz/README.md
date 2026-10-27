@@ -569,7 +569,7 @@ titles, and `nautilus-fuzz-replay --survey` buckets all use it.
 
 | Variable | Effect |
 |----------|--------|
-| `NAUTILUS_FUZZ_BACKENDS=a,b` | Restrict the differential peers to these backends (e.g. `interpreter,bc`); an empty selection is a startup error. |
+| `NAUTILUS_FUZZ_BACKENDS=a,b` | Restrict the differential peers to these backends (e.g. `interpreter,tbc`); an empty selection is a startup error. |
 | `NAUTILUS_FUZZ_STRICT=1` | Stop tolerating [known findings](#known-findings) (to reproduce or minimize one, or check it is fixed). |
 | `NAUTILUS_FUZZ_DUMP=1` | Dump every compilation stage to the console (triage a replayed finding). |
 | `NAUTILUS_FUZZ_LOG=1` | Keep the engine's info-level logging in `nautilus-fuzz` (silenced to warnings by default). |

@@ -1,4 +1,5 @@
 #include "nautilus/nir/Verifier.hpp"
+#include "nautilus/extensions/ExtensionRegistry.hpp"
 #include <algorithm>
 #include <set>
 #include <string>
@@ -28,7 +29,14 @@ public:
 	}
 	bool cAbi(TypeWord w) const {
 		auto t = typeOf(w);
-		return !isExtension(t) || (o_.extensionHasCabi && o_.extensionHasCabi(t));
+		if (!isExtension(t)) {
+			return true;
+		}
+		if (o_.extensionHasCabi) {
+			return o_.extensionHasCabi(t);
+		}
+		auto* info = ext::ExtensionRegistry::instance().type(static_cast<uint8_t>(t));
+		return info != nullptr && info->available && !info->cabi.empty();
 	}
 	bool sigCAbi(uint32_t sig) const {
 		auto& s = m_.signatures[sig];

@@ -211,8 +211,7 @@ void floatToUnsignedCastTest(engine::NautilusEngine& engine) {
 	                          16500484545456129080.0, 18446744073709549568.0 /*largest f64 < 2^64*/});
 }
 
-// Casts to bool are `x != 0`. The bc backend has no lowering for them yet, so it
-// is skipped; every other backend must match the native conversion.
+// Casts to bool are `x != 0`; every backend must match the native conversion.
 template <typename In>
 void checkCastToBool(engine::NautilusEngine& engine, std::string name, std::initializer_list<In> inputs) {
 	DYNAMIC_SECTION(name) {
@@ -225,9 +224,6 @@ void checkCastToBool(engine::NautilusEngine& engine, std::string name, std::init
 }
 
 void castToBoolTest(engine::NautilusEngine& engine) {
-	if (engine.getNameOfBackend() == "bc") {
-		return;
-	}
 	checkCastToBool<int8_t>(engine, "i8_to_bool", {0, 1, -1, INT8_MIN, INT8_MAX});
 	checkCastToBool<int16_t>(engine, "i16_to_bool", {0, 1, -1, INT16_MIN, INT16_MAX});
 	checkCastToBool<int32_t>(engine, "i32_to_bool", {0, 1, -1, 256, INT32_MIN, INT32_MAX});

@@ -4,9 +4,6 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         ExecutionTest.cpp
         backends/asmjit/AsmJitLoweringModeTest.cpp
         backends/asmjit/PostRAPeepholeTest.cpp
-        backends/bc/BCDispatchModeTest.cpp
-        backends/bc/BCRegisterCoalescingTest.cpp
-        backends/bc/BCExceptionDispatchTest.cpp
         backends/tbc/TBCDispatchModeTest.cpp
         backends/tbc/TBCJitModeTest.cpp
         backends/tbc/TBCJitWhiteBoxTest.cpp
@@ -26,15 +23,11 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         ModuleLifecycleTest.cpp
         ModuleTest.cpp
         TieredCompilationTest.cpp
+        ArenaMemoryTest.cpp
         PointerExecutionTest.cpp
         RegionTest.cpp
         SelectExecutionTest.cpp
 )
-
-if (ENABLE_BC_BACKEND)
-    list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
-            backends/bc/CompilationStatisticsTest.cpp)
-endif ()
 
 if (ENABLE_TBC_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES

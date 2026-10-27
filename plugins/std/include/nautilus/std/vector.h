@@ -62,7 +62,7 @@ class val<std::vector<T, Allocator>> {
 	/// Loads the vector's internal data pointer via direct memory access at
 	/// the probed byte offset. Emits a LOAD op instead of an opaque invoke()
 	/// call. Goes through `val<void*>` intermediates because some backends
-	/// (bc on macOS) reject direct ptr→ptr casts between unrelated types.
+	/// (tbc on macOS) reject direct ptr→ptr casts between unrelated types.
 	val<T*> load_data_ptr() {
 		auto byte_ptr = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data_ptr));
 		auto data_field_byte_ptr = byte_ptr + val<uint64_t>(detail::vector_layout<T, Allocator>.start_offset);

@@ -11,7 +11,7 @@ namespace nautilus::compiler {
 namespace {
 
 /// Packs a native value into the raw 64-bit register slot convention shared by
-/// the bc and tbc interpreters: bool as 0/1, narrow integers zero-extended via
+/// the tbc interpreter: bool as 0/1, narrow integers zero-extended via
 /// their unsigned representation, floats and pointers bit-exact.
 template <class T>
 uint64_t slotOf(T value) {

@@ -455,13 +455,13 @@ The functions `conditionalReturn`, `multipleReturns`, and `withBranchProbability
 
 #### I1. When a finding is non-obvious, ask the user to dump the IR
 
-`Engine` accepts options (`include/nautilus/options.hpp`) — `dump.ir`, `dump.after_ir_creation`, `dump.after_constant_folding`, `dump.after_empty_block_elim`. The same directory layout is mirrored under `nautilus/test/data/<category>/` so you can diff a problematic kernel against a known-good test for the same shape.
+`Engine` accepts options (`include/nautilus/options.hpp`) — `dump.all`, `dump.after_tracing`, `dump.after_ir_creation`. The same directory layout is mirrored under `nautilus/test/data/<category>/` so you can diff a problematic kernel against a known-good test for the same shape.
 
 For return-merge findings specifically, the smoking gun is in `dump.after_ir_creation`:
 - A merge block whose only operation is `RETURN` and whose argument list has multiple incoming values → the source has multiple `return` statements that conversion merged. Under the single-return rule (H1), this is a violation; rewrite per H2–H8.
 - The same merge block containing extra ops (Stores, Calls) duplicated across predecessors → H5 candidate (per-branch side effects), and the multi-return shape that produced it is itself an H1 violation.
 
-For probability-hint findings, dump the LLVM IR (`dump.llvm_ir`) and look for `!prof !{!"branch_weights", …}` metadata on the relevant `br` instruction (see `withBranchProbability.ll:9`).
+For probability-hint findings, dump the LLVM IR (`dump.after_llvm_generation`) and look for `!prof !{!"branch_weights", …}` metadata on the relevant `br` instruction (see `withBranchProbability.ll:9`).
 
 #### I2. Cross-check against `nautilus/test/data/regressions/`
 
@@ -498,7 +498,7 @@ If the reviewed code has **no findings**, say so explicitly and call out two or 
 - Not a build/CMake/formatting reviewer — defer to `./format.sh` and `cmake --build . --target format`.
 - Not a generic C++ style reviewer — naming, comments, file layout are out of scope unless they obscure traced semantics.
 - Not a tool for changing IR phases or backend code — that's compiler-internal work and gets a normal C++ review, not this skill.
-- Not authoritative about whether a transformation will *actually* fire on a given kernel without checking the dumped IR. Always frame findings as "this *should* enable X — confirm with `dump.after_ir_passes`" when uncertain.
+- Not authoritative about whether a transformation will *actually* fire on a given kernel without checking the dumped IR. Always frame findings as "this *should* enable X — confirm with `dump.all`" when uncertain.
 
 ## Quick reference: signal words to grep for during review
 

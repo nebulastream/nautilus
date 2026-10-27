@@ -20,8 +20,6 @@ std::string getAnyBackend() {
 	return "mlir";
 #elif defined(ENABLE_TRACING) && defined(ENABLE_C_BACKEND)
 	return "cpp";
-#elif defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND)
-	return "bc";
 #elif defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND)
 	return "tbc";
 #else
@@ -139,7 +137,7 @@ TEST_CASE("CompilationStatistics: per-pass IR counts are opt-in via ir.passStati
 	}
 }
 
-#if defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND)
+#if defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND)
 namespace {
 
 /// A lower-bound search: its loop is traced with two headers, one where `lo`
@@ -179,8 +177,8 @@ std::pair<int64_t, int64_t> blocksAndArgumentsAfterPasses(const compiler::Compil
 TEST_CASE("CompilationStatistics: a loop traced with two headers compiles to one") {
 	std::vector<int32_t> sorted {1, 3, 5, 7, 9, 11};
 	Options options;
-	// bc runs the whole IR pipeline, so the counts below are the final shape.
-	options.setOption("engine.backend", std::string("bc"));
+	// tbc runs the whole IR pipeline, so the counts below are the final shape.
+	options.setOption("engine.backend", std::string("tbc"));
 	options.setOption("ir.passStatistics", true);
 	NautilusEngine engine(options);
 	auto fn = engine.registerFunction(statsLowerBound);
@@ -230,11 +228,11 @@ TEST_CASE("CompilationStatistics: a module compiled by mlir alone gets only bloc
 }
 #endif
 
-#if defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND)
+#if defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND)
 TEST_CASE("CompilationStatistics: a backend that executes the IR as it is gets the optimization passes") {
 	{
 		Options options;
-		options.setOption("engine.backend", std::string("bc"));
+		options.setOption("engine.backend", std::string("tbc"));
 		NautilusEngine engine(options);
 		auto fn = engine.registerFunction(statsAddOne);
 		REQUIRE(fn(41) == 42);
@@ -245,7 +243,7 @@ TEST_CASE("CompilationStatistics: a backend that executes the IR as it is gets t
 	// ... unless the option turns them off.
 	{
 		Options options;
-		options.setOption("engine.backend", std::string("bc"));
+		options.setOption("engine.backend", std::string("tbc"));
 		options.setOption("ir.runOptimizationPasses", false);
 		NautilusEngine engine(options);
 		auto fn = engine.registerFunction(statsAddOne);
@@ -259,12 +257,12 @@ TEST_CASE("CompilationStatistics: a backend that executes the IR as it is gets t
 }
 #endif
 
-#if defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-TEST_CASE("CompilationStatistics: a two-tier compile optimizes the graph its bc tier executes") {
+#if defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
+TEST_CASE("CompilationStatistics: a two-tier compile optimizes the graph its tbc tier executes") {
 	// The graph is traced once and shared by both tiers; tier 0 executes it as
 	// it is, so it is optimized even though tier 1 is mlir.
 	Options options;
-	options.setOption("engine.tier0.backend", std::string("bc"));
+	options.setOption("engine.tier0.backend", std::string("tbc"));
 	options.setOption("engine.tier1.backend", std::string("mlir"));
 	options.setOption("engine.tiered.backgroundPromotion", true);
 	NautilusEngine engine(options);
@@ -327,8 +325,6 @@ TEST_CASE("CompilationStatistics: interpreted module has no stats") {
 	REQUIRE(fn.getStatistics() == nullptr);
 }
 
-// Backend-internal statistics keys (bc.*, tbc.*) are covered by
-// backends/bc/CompilationStatisticsTest.cpp and
-// backends/tbc/CompilationStatisticsTest.cpp instead of here.
+// Backend-internal statistics keys (tbc.*) are covered by backends/tbc/CompilationStatisticsTest.cpp instead of here.
 
 } // namespace nautilus::engine

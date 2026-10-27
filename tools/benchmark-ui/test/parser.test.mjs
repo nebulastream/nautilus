@@ -28,15 +28,15 @@ const cases = [
 	['comp_mlir_staticLoop', { phase: 'comp', backend: 'mlir', workload: 'staticLoop', variant: 'default' }],
 	['comp_asmjit_add', { phase: 'comp', backend: 'asmjit', workload: 'add', variant: 'default' }],
 	['exec_mlir_sum', { phase: 'exec', backend: 'mlir', workload: 'sum', variant: 'default' }],
-	['exec_bc_add_threaded_noReuse', { phase: 'exec', backend: 'bc', workload: 'add', variant: 'threaded_noReuse' }],
-	['exec_bc_sum_passesOn', { phase: 'exec', backend: 'bc', workload: 'sum', variant: 'passesOn' }],
-	['exec_bc_fibonacci_switch', { phase: 'exec', backend: 'bc', workload: 'fibonacci', variant: 'switch' }],
+	['exec_tbc_add_threaded_noReuse', { phase: 'exec', backend: 'tbc', workload: 'add', variant: 'threaded_noReuse' }],
+	['exec_tbc_sum_passesOn', { phase: 'exec', backend: 'tbc', workload: 'sum', variant: 'passesOn' }],
+	['exec_tbc_fibonacci_switch', { phase: 'exec', backend: 'tbc', workload: 'fibonacci', variant: 'switch' }],
 	['exec_interpreted_addOne', { phase: 'exec', backend: 'interpreted', workload: 'addOne', variant: 'default' }],
 	['exec_tbc_sum_passesOff', { phase: 'exec', backend: 'tbc', workload: 'sum', variant: 'passesOff' }],
 	// Present in benchmark sources but not yet in published data (capable-runner only):
 	['exec_tbc_internalCall_jit', { phase: 'exec', backend: 'tbc', workload: 'internalCall', variant: 'jit' }],
 	['exec_asmjit_add_allOpts', { phase: 'exec', backend: 'asmjit', workload: 'add', variant: 'allOpts' }],
-	['exec_bc_add_threaded_allOpts', { phase: 'exec', backend: 'bc', workload: 'add', variant: 'threaded_allOpts' }],
+	['exec_tbc_add_threaded_allOpts', { phase: 'exec', backend: 'tbc', workload: 'add', variant: 'threaded_allOpts' }],
 	['single_compile_mlir_sumLoop', { phase: 'single_compile', backend: 'mlir', workload: 'sumLoop', variant: 'default' }],
 	['tiered_twotier_addOne', { phase: 'tiered', backend: 'twotier', workload: 'addOne', variant: 'default' }],
 	['tiered_singletier_sumLoop', { phase: 'tiered', backend: 'singletier', workload: 'sumLoop', variant: 'default' }],
@@ -57,7 +57,7 @@ test('series keys separate variations within a workload', () => {
 	assert.equal(parse('trace_add').seriesKey, 'exception-based tracing');
 	assert.equal(parse('completing_trace_add').seriesKey, 'lazy tracing');
 	assert.equal(parse('comp_mlir_add').seriesKey, 'mlir');
-	assert.equal(parse('exec_bc_add_threaded_reuse').seriesKey, 'bc / threaded_reuse');
+	assert.equal(parse('exec_tbc_add_threaded_reuse').seriesKey, 'tbc / threaded_reuse');
 	assert.equal(parse('ir_add').seriesKey, 'value');
 });
 

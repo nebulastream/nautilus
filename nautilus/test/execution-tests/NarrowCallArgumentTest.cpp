@@ -55,9 +55,9 @@ void checkNarrowArgument(NautilusEngine& engine, const std::string& name, std::i
 
 void narrowCallArgumentTest(NautilusEngine& engine) {
 	const auto backend = engine.getNameOfBackend();
-	// bc passes narrow unsigned arguments through dyncall's signed types, and so
-	// does tbc on Apple arm64, where dyncall packs stack arguments by size.
-	bool narrowUnsignedSupported = backend != "bc";
+	// tbc on Apple arm64 passes narrow unsigned arguments through dyncall's signed types, where dyncall packs stack
+	// arguments by size.
+	bool narrowUnsignedSupported = true;
 #if defined(__APPLE__) && defined(__aarch64__)
 	narrowUnsignedSupported = narrowUnsignedSupported && backend != "tbc";
 #endif

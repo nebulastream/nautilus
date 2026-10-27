@@ -7,6 +7,8 @@ add_executable(nautilus-std-tests
         StringTest.cpp
         VectorTest.cpp
         BitIntrinsicExecutionTest.cpp
+        BitIntrinsicRegistrationTest.cpp
+        MathAtomicIntrinsicRegistrationTest.cpp
         MemoryIntrinsicExecutionTest.cpp
         AtomicTest.cpp
 )

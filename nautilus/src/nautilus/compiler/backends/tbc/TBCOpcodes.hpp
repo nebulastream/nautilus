@@ -13,7 +13,7 @@ namespace nautilus::compiler::tbc {
 // and the lowering computes `family base + type index` instead of a per-type
 // switch, so this order is load-bearing (see the static_asserts at the bottom).
 // Type::b and Type::ptr are mapped onto this order at lowering time (b -> ui8
-// for compares, ptr -> i64/ui64), mirroring the bc backend's choices.
+// for compares, ptr -> i64/ui64).
 //
 // Each entry is X(NAME, (handlerExpression)). The handler expression is a
 // value-op body `void(const Instr&, uint64_t*)` and is parenthesized so

@@ -1,0 +1,38 @@
+name: CI image
+
+# Builds the pinned image of the 0.4 measurement jobs (.github/docker/ci-0.4/Dockerfile) and publishes it to the GitHub
+# container registry. The digest in the job summary is what the latency-corpus and baselines-0.3 jobs name as their
+# container (docs/plans/nautilus-0.4/16-implementation-plan.md, M1.11; D9).
+on:
+  workflow_dispatch:
+  push:
+    branches: [nautilus-0.4]
+    paths:
+      - '.github/docker/ci-0.4/**'
+      - '.github/workflows/ci-image.yml'
+permissions:
+  contents: read
+  packages: write
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    name: Build and publish the CI image
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Log in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .github/docker/ci-0.4
+          push: true
+          tags: ghcr.io/${{ github.repository }}/ci-0.4:latest
+      - name: Report the digest
+        run: |
+          echo "ghcr.io/${{ github.repository }}/ci-0.4@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,58 @@
+name: Baselines 0.3
+
+# Builds `main` (0.3) in the same environment as the 0.4 jobs with the 0.4 latency-corpus driver and records its numbers
+# (docs/plans/nautilus-0.4/16-implementation-plan.md §2, M1.10). The driver uses only the public engine API, so the same
+# source builds against both. The result is an artifact (corpus numbers, inferred FunctionAttributes and operation
+# counts per function); `test/baselines/0.3/` holds the committed copy that the 0.4 gates compare against.
+# A `schedule` trigger would run on the default branch only, so this runs when the driver changes and on request.
+on:
+  workflow_dispatch:
+  push:
+    branches: [nautilus-0.4]
+    paths:
+      - 'nautilus/test/benchmark/latency-corpus/**'
+      - 'tools/baselines/**'
+      - '.github/workflows/baselines-0.3.yml'
+
+jobs:
+  baselines:
+    runs-on: ubuntu-24.04
+    name: Latency corpus on main (clang-21)
+    env:
+      CC: clang-21
+      CXX: clang++-21
+    steps:
+      - name: Check out the driver (nautilus-0.4)
+        uses: actions/checkout@v4
+        with:
+          path: driver
+      - name: Check out main (0.3)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+          submodules: recursive
+      - name: Force apt to use IPv4
+        run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-baselines
+      - name: Install clang + LLVM 21
+        uses: ./driver/.github/actions/install-llvm
+        with:
+          llvm-version: "21"
+      - name: Install ninja
+        run: sudo apt-get install -y ninja-build
+      - name: Record the baselines
+        shell: bash
+        run: |
+          # builds main with the driver, runs the corpus and the execution tests, extracts the IR facts
+          driver/tools/baselines/record-0.3.sh main baselines-0.3 5 build
+      - name: upload the baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: baselines-0.3-${{ github.sha }}
+          path: baselines-0.3/*.*

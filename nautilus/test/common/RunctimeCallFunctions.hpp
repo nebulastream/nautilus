@@ -251,7 +251,7 @@ int64_t sum3I64(int64_t a, int64_t b, int64_t c) noexcept {
 // Regression (differential fuzzer, "Key $N does not exists in frame."): a value
 // merged across two if-arms and used as a proxy-call argument inside another
 // if-arm, i.e. `if (p0 != 0) sum3(p1, (if (p1 != 0) p1 else p2) ^ p2, p0) else
-// p2`. The cpp/bc/asmjit lowering providers once failed to find the merged SSA
+// p2`. The cpp/tbc/asmjit lowering providers once failed to find the merged SSA
 // value in their Frame for this shape.
 val<int64_t> ifMergedValueAsCallArg(val<int64_t> p0, val<int64_t> p1, val<int64_t> p2) {
 	val<int64_t> result = p2;

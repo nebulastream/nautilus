@@ -20,6 +20,9 @@
 namespace nautilus::common {
 class Arena;
 class ArenaPool;
+class ChunkPool;
+class ChunkProvider;
+struct ChunkPoolStats;
 } // namespace nautilus::common
 
 namespace nautilus::engine {
@@ -162,6 +165,12 @@ public:
 	NautilusEngine(const Options& options = Options());
 
 	/**
+	 * @brief Create an engine whose compiler memory (arena chunks) comes from @p provider, so that an embedder can
+	 * charge it to its own budget and limit it. The provider must outlive nothing: the engine keeps it alive.
+	 */
+	NautilusEngine(const Options& options, std::shared_ptr<common::ChunkProvider> provider);
+
+	/**
 	 * @brief Create an engine with a specific JIT compiler implementation.
 	 * @param jit The JIT compiler to use (takes ownership)
 	 * @param options Engine options
@@ -209,6 +218,13 @@ public:
 	 */
 	NautilusModule createModule(ModuleOptions overrides) const;
 
+	/// Gives the memory that compilations no longer use back to the OS (the reaction to memory pressure). Chunks in
+	/// use by running compilations are unaffected; the pool refills as compilations continue.
+	void trimMemory();
+
+	/// The counters of the engine's arena chunk pool: bytes held, in use, peak, chunks trimmed.
+	common::ChunkPoolStats arenaStatistics() const;
+
 	std::string getNameOfBackend() const {
 		return jit_->getName();
 	}
@@ -218,6 +234,11 @@ public:
 	}
 
 private:
+	/**
+	 * @brief The chunk pool both arena pools draw from (`engine.arena.retainedBytes` bounds what it keeps idle).
+	 * Declared first: it outlives the arena pools and the compiler.
+	 */
+	std::unique_ptr<common::ChunkPool> chunkPool_;
 	/**
 	 * @brief Pool of trace arenas owned by the engine.
 	 *

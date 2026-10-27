@@ -2,7 +2,6 @@
 
 #cmakedefine ENABLE_TRACING
 #cmakedefine ENABLE_LOGGING
-#cmakedefine ENABLE_BC_BACKEND
 #cmakedefine ENABLE_TBC_BACKEND
 #cmakedefine ENABLE_TBC_JIT
 #cmakedefine NAUTILUS_FFI_CLOSURES

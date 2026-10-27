@@ -31,8 +31,8 @@ namespace nautilus::compiler::ir {
  * mechanism.
  *
  * Opt-in only (see "ir.enableStrengthReduction" in CompilationPipeline.cpp):
- * measured on the BC interpreter, this transform is *correct* but regressed
- * performance, because BC's per-op cost is dispatch-dominated rather than
+ * measured on the former bytecode interpreter, this transform is *correct* but regressed
+ * performance, because the interpreter's per-op cost is dispatch-dominated rather than
  * ALU-dominated -- trading one multiply for a new stride-add plus a leftover
  * dead cast and an unfolded "ptr+0" was a net loss there. It may still be
  * worth enabling for an ALU-bound backend (e.g. MLIR's generated code),
@@ -45,7 +45,7 @@ namespace nautilus::compiler::ir {
  * and the dead cast. The original blocker is therefore gone, but flipping the
  * default (renaming the option to `ir.disableStrengthReduction`) is still
  * gated on a fresh Release (Clang 21) `ExecutionBenchmark` sweep on `tbc`,
- * `bc`, and `asmjit` (off vs on, >= 5 runs, medians), which has not yet been
+ * `tbc`, and `asmjit` (off vs on, >= 5 runs, medians), which has not yet been
  * run. Record the medians here and flip only if no interpreter kernel
  * regresses > 2%.
  */

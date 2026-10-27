@@ -242,7 +242,7 @@ FRONTEND_PASSES = ("tracing", "ssaCreation", "irGeneration", "irPasses.")
 def passes(phases):
     """Splits a compilation's time into its passes, tracing first, so they add up
     to its total: every `.ms` statistic, plus `backend` for backend time no
-    statistic of its own covers (all of it for bc and tbc), plus `other` for the
+    statistic of its own covers (all of it for tbc), plus `other` for the
     rest."""
     leaves = {k.removesuffix(".ms"): v for k, v in phases.items() if k.endswith(".ms")}
     frontend = sum(v for k, v in leaves.items() if k.startswith(FRONTEND_PASSES))

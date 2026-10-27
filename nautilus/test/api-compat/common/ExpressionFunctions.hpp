@@ -1,0 +1,332 @@
+#pragma once
+
+#include <nautilus/Engine.hpp>
+
+namespace nautilus::engine {
+
+val<int32_t> assignment1(val<int32_t> x) {
+	auto y = x;
+	return y;
+}
+
+val<int32_t> assignment2(val<int32_t> x) {
+	auto y = x;
+	y = y + 1;
+	return y;
+}
+
+val<int32_t> assignment3(val<int32_t> x) {
+	auto y = x;
+	y = y + 1;
+	return x;
+}
+
+val<int32_t> assignment4(val<int32_t> x) {
+	val<int32_t> y = 42;
+	y = x + 1;
+	return y;
+}
+
+val<int32_t> assignment5(val<int32_t> x) {
+	val<int32_t> y = 42;
+	y = x + 1;
+	return x;
+}
+
+val<int8_t> int8AddExpression(val<int8_t> x) {
+	val<int8_t> y = (int8_t) 2;
+	return y + x;
+}
+
+val<int16_t> int16AddExpression(val<int16_t> x) {
+	val<int16_t> y = (int16_t) 5;
+	return x + y;
+}
+
+val<int32_t> int32AddExpression(val<int32_t> x) {
+	val<int32_t> y = 5;
+	return x + y;
+}
+
+val<int64_t> int64AddExpression(val<int64_t> x) {
+	val<int64_t> y = (int64_t) 7;
+	return x + y;
+}
+
+val<float> floatAddExpression(val<float> x) {
+	val<float> y = 7.0f;
+	return x + y;
+}
+
+val<double> doubleAddExpression(val<double> x) {
+	val<double> y = 7.0;
+	return x + y;
+}
+
+// The result of int8_t - int8_t is int32_t
+auto subInt8AndInt8(val<int8_t> x, val<int8_t> y) {
+	const auto result = x - y;
+	return result;
+}
+
+val<int8_t> subInt8AndInt8TruncateResult(val<int8_t> x, val<int8_t> y) {
+	const auto result = x - y;
+	return result;
+}
+
+auto mulInt64AndNotDefinedI64(val<int64_t> x) {
+	// We want to test, if the default initialization is correct
+	val<int64_t> y;
+	const auto result = x * y;
+	return result;
+}
+
+auto addInt8AndInt32(val<int8_t> x, val<int32_t> y) {
+	const auto result = x + y;
+	return result;
+}
+
+val<double> castFloatToDoubleAddExpression(val<float> x) {
+	val<double> y = 7.0;
+	return x + y;
+}
+
+val<int64_t> castInt8ToInt64AddExpression(val<int8_t> x) {
+	val<int64_t> y = (int64_t) 7;
+	return x + y;
+}
+
+val<int64_t> castInt8ToInt64AddExpression2(val<int8_t> x) {
+	val<int64_t> y = (int64_t) 42;
+	return y + x;
+}
+
+val<int32_t> incrementPost(val<int32_t> x) {
+	auto y = x++;
+	return y + x;
+}
+
+val<int32_t> incrementPre(val<int32_t> x) {
+	auto y = ++x;
+	return y + x;
+}
+
+val<int32_t> decrementPost(val<int32_t> x) {
+	auto y = x--;
+	return y + x;
+}
+
+val<int32_t> decrementPre(val<int32_t> x) {
+	auto y = --x;
+	return y + x;
+}
+
+val<int32_t> assignAdd(val<int32_t> x) {
+	x += 5;
+	return x;
+}
+
+val<int32_t> assignSub(val<int32_t> x) {
+	x -= 5;
+	return x;
+}
+
+val<int32_t> assignMul(val<int32_t> x) {
+	x *= 5;
+	return x;
+}
+
+val<int32_t> assignDiv(val<int32_t> x) {
+	x /= 5;
+	return x;
+}
+
+val<int32_t> assignMod(val<int32_t> x) {
+	x %= 5;
+	return x;
+}
+
+val<int32_t> assignAnd(val<int32_t> x) {
+	x &= 5;
+	return x;
+}
+
+val<int32_t> assignOr(val<int32_t> x) {
+	x |= 5;
+	return x;
+}
+
+val<int32_t> assignXor(val<int32_t> x) {
+	x ^= 5;
+	return x;
+}
+
+val<int32_t> assignShl(val<int32_t> x) {
+	x <<= 5;
+	return x;
+}
+
+val<int32_t> assignShr(val<int32_t> x) {
+	x >>= 5;
+	return x;
+}
+
+template <typename T>
+val<T> shiftLeft(val<T> x, val<T> y) {
+	return x << y;
+}
+
+template <typename T>
+val<T> shiftRight(val<T> x, val<T> y) {
+	return x >> y;
+}
+
+template <typename T>
+val<T> negate(val<T> x) {
+	if constexpr (std::is_floating_point_v<T>) {
+		return -x;
+	} else {
+		return ~x;
+	}
+}
+
+template <typename T>
+val<T> logicalNot(val<T> x) {
+	return !x;
+}
+
+struct RObject {
+	val<int32_t> a;
+	val<int32_t> b;
+};
+
+RObject returnObject(val<int32_t> a, val<int32_t> b) {
+	if (a > b) {
+		return {.a = a, .b = b};
+	}
+	return {.a = 0, .b = 0};
+}
+
+val<int32_t> constructComplexReturnObject(val<int32_t> a, val<int32_t> b) {
+	auto r = returnObject(a, b);
+	auto t1 = r.a + 1;
+	auto t2 = r.b + 1;
+	return t1 + t2;
+}
+
+val<int32_t> constructComplexReturnObject2(val<int32_t> a, val<int32_t> b) {
+	val<int32_t> t = 0;
+	{
+		t = constructComplexReturnObject(a, b);
+	}
+	return t + 42;
+}
+
+// ============================================================================
+// C++ Semantic Equivalence Test Functions
+// ============================================================================
+
+/// Tests chained prefix increment: ++(++x)
+/// In C++, this is valid and should increment x twice
+val<int32_t> chainedPrefixIncrement(val<int32_t> x) {
+	++(++x);
+	return x;
+}
+
+/// Tests chained prefix decrement: --(--x)
+/// In C++, this is valid and should decrement x twice
+val<int32_t> chainedPrefixDecrement(val<int32_t> x) {
+	--(--x);
+	return x;
+}
+
+/// Tests unary plus on a value
+val<int32_t> unaryPlus(val<int32_t> x) {
+	return +x;
+}
+
+/// Tests unary minus (negation) on a value
+val<int32_t> unaryMinus(val<int32_t> x) {
+	return -x;
+}
+
+/// Tests move assignment semantics
+val<int32_t> moveAssignment(val<int32_t> x) {
+	val<int32_t> y = 0;
+	y = std::move(x);
+	return y;
+}
+
+/// Tests that prefix increment returns a reference that can be used
+val<int32_t> prefixIncrementReturnValue(val<int32_t> x) {
+	// ++x should return x after increment, so (++x) + 1 = x + 2
+	return (++x) + 1;
+}
+
+/// Tests that prefix decrement returns a reference that can be used
+val<int32_t> prefixDecrementReturnValue(val<int32_t> x) {
+	// --x should return x after decrement, so (--x) + 1 = x
+	return (--x) + 1;
+}
+
+// Regression (differential fuzzer): a narrow unsigned subtraction that wraps
+// around feeds an unsigned comparison. Backends that keep narrow integers in
+// full-width registers must re-normalize (zero-extend) the wrapped result
+// before the compare; the AsmJit A64 backend used to skip that, so the
+// comparison saw the un-wrapped 64-bit difference and answered with the
+// opposite result for wrapped values.
+val<uint32_t> u32WrapSubThenCompare(val<uint32_t> x, val<uint32_t> y) {
+	val<uint32_t> wrapped = x - val<uint32_t>(4279714710u); // wraps for x < 4279714710
+	val<uint32_t> result = 0u;
+	if (wrapped <= y) {
+		result = 1u;
+	}
+	return result;
+}
+
+// Issue #542: constant folding computed f32 arithmetic in double without rounding back to float, so an f32 product
+// that underflows to 0 stayed nonzero and one that overflows to inf stayed finite. Operands are all constants, so the
+// whole expression is folded before any backend sees it.
+inline val<bool> f32ConstProductUnderflowIsNonZero() {
+	val<float> a = 9.1834094859526887e-41f;
+	val<float> b = 2.9427267750821158e-44f;
+	return (a * b) != val<float>(0.0f);
+}
+
+inline val<bool> f32ConstQuotientUnderflowIsNonZero() {
+	val<float> a = 1.2830050170821365e-22f;
+	val<float> b = -1.0425157298336919e+34f;
+	return (a / b) != val<float>(0.0f);
+}
+
+inline val<float> f32ConstProductOverflowThenScale() {
+	val<float> a = -2.5353030138451882e+30f;
+	val<float> b = 7.5557863725914323e+22f;
+	val<float> c = 9.0033426332869497e-41f;
+	return (a * b) * c;
+}
+
+// Issue #517: a literal is traced as a constant of the type the operator converts it to, where that conversion is
+// exact for every value of the literal's type.
+inline val<int64_t> addInt64AndLiteral(val<int64_t> x) {
+	return x + 1;
+}
+
+inline val<int64_t> literalMinusInt64(val<int64_t> x) {
+	return 10 - x;
+}
+
+inline val<bool> compareUInt64AndLiteral(val<uint64_t> x) {
+	return x == 7;
+}
+
+inline val<double> mulDoubleAndLiteral(val<double> x) {
+	return x * 2;
+}
+
+// Not every int64_t is a float, so this keeps the traced CAST.
+inline val<float> addFloatAndInt64Literal(val<float> x) {
+	return x + int64_t {3};
+}
+
+} // namespace nautilus::engine

@@ -202,9 +202,11 @@ differs from the work packages above:
   `options.hpp` is untouched.
 - **Debug sections** are read and written but dropped by `canonicalize` (M1.4): remapping them needs the debug
   producers of M4.9.
-- **Not in this PR** (they depend on the registry of PR 2): extension productions in the text form (M1.3a), extension
-  checks `NIR-V070`–`V072`, `NIR-L010`–`L012`, `NIR-L015`, and `extension` lines. Extension types print as
-  `!ext.t<N>` placeholders and the parser does not read them.
+- **Not in this PR** (they depend on the registry of PR 2): extension checks `NIR-V070`–`V072`, `NIR-L010`–`L012` and
+  `NIR-L015`. PR 2 adds all of them but `NIR-L015` (portable pointers; no producer yet): images hold image-local
+  extension ids (`ExtensionIds.cpp`; the writer translates, the loader resolves by name and version, the canonical form
+  and the hash go through the writer, so they do not depend on process ids). The extension productions of the text form (M1.3a: `extension` lines, `!` types and bytes constants,
+  extension operations printed and read from their operand shape, intrinsic callees) landed in PR 2 with the registry.
 - **Bundling** (§8.5) is M5.4: `writeImage` serializes imports as they are, which the loader then rejects
   (`NIR-V038`); the hash input of such a module (§7.3) is written the same way.
 - **Fuzzing:** `nautilus-nir-fuzz` (libFuzzer) and `nautilus-nir-fuzz-replay` (any compiler, deterministic mutation).
@@ -650,6 +652,18 @@ README §6 and [02 §8](02-nir.md).
   NIR (pointing at `Opcodes.def` and the spec); `steward` skill (PR
   conventions for this branch).
 - **Done when:** `doc-check` passes and fails on a planted stale path.
+
+**M1.8–M1.11 status (PR 2):** the chunk pool is in (`common/ChunkPool.*`); the corpus check against the baseline holds: the
+IR operation and allocation counts of the corpus are those of `main`, and `calls` and the other cases compile in the same
+time (13.0 ms against 13.1 ms for `calls` 5000 on `tbc`, seven repetitions each). `bc` is removed. The corpus driver is
+`nautilus/test/benchmark/latency-corpus/` with a reporting `latency-corpus` CI job; `tools/baselines/record-0.3.sh` builds
+`main` with it and records the corpus and, from the IR dumps of the execution tests, the inferred `FunctionAttributes` and
+the operation count after 0.3's passes of 305 functions: committed in `nautilus/test/baselines/0.3/`, refreshed by the
+`baselines-0.3` workflow. `test/api-compat/` holds 16 of 0.3's test files, `ExecutionTest.cpp` with three cuts, and the
+examples (each pinned backend recorded in its CMake file). `nebulastream.yml` runs for `nautilus-0.4`, and
+`.github/docker/ci-0.4` with the `ci-image` workflow builds the pinned image. Still open and not code: the reference
+machine (needs an owner, §16) and, once the image is published, naming its digest in the two measurement jobs; the
+callgrind instruction counts that "two runs of the same image are identical" is checked with come from that machine.
 
 **M1 exit:** M1.1–M1.12 (with M1.3a, M1.4a and M1.7a) done; the spec is
 marked final ([13 §11](13-nir-spec.md)).
