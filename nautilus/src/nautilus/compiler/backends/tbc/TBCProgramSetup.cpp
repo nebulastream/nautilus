@@ -1,6 +1,6 @@
+#include "nautilus/compiler/backends/tbc/TBCProgramSetup.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
-#include "nautilus/compiler/backends/tbc/TBCProgramSetup.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #ifdef ENABLE_TBC_JIT
@@ -54,7 +54,6 @@ ExecutionMode parseExecutionMode(const std::string& name) {
 }
 } // namespace
 
-
 void configureProgram(TBCProgram& program, const engine::Options& options) {
 	program.dispatch =
 	    clampDispatchMode(parseDispatchMode(options.getOptionOrDefault<std::string>("tbc.dispatch", "auto")));
@@ -105,7 +104,6 @@ void finishProgram(TBCProgram& programRef, const engine::Options& options, Compi
 		}
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
-
 }
 
 } // namespace nautilus::compiler::tbc

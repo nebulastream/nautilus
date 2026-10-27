@@ -103,7 +103,7 @@ ctest --test-dir build/dev/plugins/std/test --output-on-failure                #
 | `plugins/` | `std`, `simd`, `builtin`, `specialization`, `inlining`, `gpu`, `profiling`, each with its own tests |
 | `nautilus/test/` | tests (§3), `data/` reference dumps, `benchmark/`, `fuzz/` |
 | `docs/` | user documentation; `docs/options.md` lists every option |
-| `tools/` | playground, stencil generator for `tbc`, perf helpers, `nir-opt` (`nautilus-nir-opt`: read, verify, print, hash NIR) |
+| `tools/` | playground, stencil generator for `tbc`, perf helpers, `nir-opt` (`nautilus-nir-opt`: read, verify, print, hash NIR), `nir-run` (`nautilus-nir-run`: compile `.nir` with a NIR backend and run its `; run` directives) |
 
 ## 6. Debugging and measuring
 

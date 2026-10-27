@@ -470,13 +470,15 @@ int main(int argc, char** argv) {
 			for (auto v : g_log) {
 				got += (got.empty() ? "" : ", ") + std::to_string(v);
 			}
-			fail("expected the log [" + [&] {
-				std::string e;
-				for (auto v : d.log) {
-					e += (e.empty() ? "" : ", ") + std::to_string(v);
-				}
-				return e;
-			}() + "], got [" + got + "]");
+			fail("expected the log [" +
+			     [&] {
+				     std::string e;
+				     for (auto v : d.log) {
+					     e += (e.empty() ? "" : ", ") + std::to_string(v);
+				     }
+				     return e;
+			     }() +
+			     "], got [" + got + "]");
 		}
 	}
 	if (failures == 0) {

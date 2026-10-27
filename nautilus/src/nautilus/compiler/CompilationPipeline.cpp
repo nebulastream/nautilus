@@ -262,7 +262,9 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	}
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
 	const auto nirAttributesFile = moduleOptions.getOptionOrDefault<std::string>("tracing.nirAttributesFile", "");
-	if (const bool verifyNir = moduleOptions.getOptionOrDefault("tracing.verifyNir", false);
+	const bool nirChain = moduleOptions.getOptionOrDefault("tracing.nirChain", false);
+	std::shared_ptr<const nir::Module> chainModule;
+	if (const bool verifyNir = moduleOptions.getOptionOrDefault("tracing.verifyNir", false) || nirChain;
 	    verifyNir || !nirAttributesFile.empty() || dumpHandler.shouldDump("after_nir_tracing")) {
 		try {
 			auto nirModule = tracing::nirtrace::toPreSSA(*traceModule);
@@ -315,6 +317,9 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 						}
 					}
 				}
+				if (nirChain) {
+					chainModule = std::make_shared<const nir::Module>(std::move(ssa));
+				}
 			}
 		} catch (const std::exception&) {
 			// a dump must not fail a compilation; the verification exists to fail it
@@ -333,6 +338,9 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	auto ir = tracing::TraceToIRConversionPhase().apply(std::move(traceModule), *irArenaPool_, compilationId);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("irGeneration.ms", irGenStart);
+	}
+	if (chainModule) {
+		ir->setNirModule(std::move(chainModule));
 	}
 	if (statistics != nullptr) {
 		const auto snapshot = ir::computeStatistics(*ir);

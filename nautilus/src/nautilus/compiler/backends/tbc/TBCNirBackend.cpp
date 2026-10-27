@@ -26,7 +26,8 @@ std::unordered_set<std::string> functionsNeedingCapture(const nir::Module& modul
 				const uint32_t* list = module.extra.data() + inst.c;
 				const uint32_t argc = list[0];
 				direct[f] = direct[f] || list[1 + argc] != nir::NO_UNWIND;
-				if (op == nir::Op::Call && module.callees[inst.a].kind == static_cast<uint8_t>(nir::CalleeKind::Internal)) {
+				if (op == nir::Op::Call &&
+				    module.callees[inst.a].kind == static_cast<uint8_t>(nir::CalleeKind::Internal)) {
 					callees[f].push_back(module.callees[inst.a].target);
 				}
 			}
