@@ -372,10 +372,13 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	}
 
 	// The default front end: the direct NIR tracer and the conversion. `tracing.nirTracer=false` selects the 0.3
-	// pipeline below, kept as a fallback for one release, and so does `dump.copySites`: only the 0.3 tracer records
-	// where copies come from.
-	if (moduleOptions.getOptionOrDefault("tracing.nirTracer", true) &&
-	    !moduleOptions.getOptionOrDefault("dump.copySites", false)) {
+	// pipeline below, kept as a fallback for one release, and so do the options below.
+	// Debug information and perf need the source tags and region tables of the 0.3 trace, which NIR gets with the debug
+	// producers of M4.9, so `debug`, `perf` and `perf.sample` select it as well.
+	const bool needs03Trace =
+	    moduleOptions.getOptionOrDefault("dump.copySites", false) || moduleOptions.getOptionOrDefault("debug", false) ||
+	    moduleOptions.getOptionOrDefault("perf", false) || moduleOptions.getOptionOrDefault("perf.sample", false);
+	if (moduleOptions.getOptionOrDefault("tracing.nirTracer", true) && !needs03Trace) {
 		return traceToNir(functions, moduleOptions, statistics, compilationId, dumpHandler);
 	}
 
