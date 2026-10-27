@@ -72,8 +72,8 @@ std::unique_ptr<IRGraph> bridge(const std::string& text) {
 	return graph;
 }
 
-const FunctionOperation& function(const IRGraph& graph, const std::string& name) {
-	const auto* found = graph.getFunctionOperation(name);
+const FunctionOperation& function(const IRGraph& graph, std::string_view name) {
+	const auto* found = graph.getFunctionOperation(std::string(name));
 	REQUIRE(found != nullptr);
 	return *found;
 }
