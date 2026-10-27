@@ -22,3 +22,18 @@ in `CompilationBackend.cpp`; plugins call `CompilationBackendRegistry::registerB
   the fuzzer replay; for `asmjit`, also diff the assembly dumps before and
   after (`perf-investigation` skill). Patches to `third_party/asmjit` must keep
   the `[Nautilus]` markers.
+
+## NIR backends (0.4)
+
+- `nir/NirBackend.hpp` is the 0.4 interface (`NirBackend::compile(shared_ptr<const nir::Module>, CompileContext)`) with
+  a registry; it lives next to `CompilationBackend` until the cut-over. `tbc/TBCNirLowering.cpp` lowers SSA NIR into the
+  same `TBCProgram` as the 0.3 lowering, so dispatch skins, stencils and the executable are shared.
+- D10/D11 are lowered in bytecode, not in handlers, so the stencils do not change: a checked `div`/`rem` compares and
+  branches to a cold block that calls `nautilus_rt_throw_arith` through its capture thunk, shift amounts are masked,
+  `fptosi`/`fptoui` call the saturating helpers of `nir/NirRuntime.cpp`.
+- `tools/nir-run` (`nautilus-nir-run`) compiles a `.nir` file and runs its `; run @f(args) = result` directives;
+  ctest runs `test/data/nir-run/*.nir` on `tbc` in three modes. Add a file there for every NIR operation a backend
+  handles.
+- The execution tests also run on the pseudo-backends `nir-tbc` and `nir-tbc-jit`: `tracing.nirChain=true` converts the
+  trace to SSA NIR (0.3 tracer -> `toPreSSA` -> conversion) and attaches it to the IR graph, and the `nirtbc` backend
+  compiles that NIR with `tbc` on NIR. Both go away at the cut-over.

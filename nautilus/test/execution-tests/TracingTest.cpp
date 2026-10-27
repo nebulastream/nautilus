@@ -8,6 +8,7 @@
 #include "LoopFunctions.hpp"
 #include "NautilusFunction.hpp"
 #include "NestedIfBenchmarks.hpp"
+#include "NirEval.hpp"
 #include "PathExplosionFunctions.hpp"
 #include "PointerFunctions.hpp"
 #include "ReferenceDumpHelper.hpp"
@@ -25,6 +26,7 @@
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/conversion/Conversion.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/nir/Printer.hpp"
 #include "nautilus/nir/Verifier.hpp"
@@ -35,6 +37,7 @@
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <algorithm>
+#include <array>
 #include <catch2/catch_all.hpp>
 #include <cstdio>
 #include <cstdlib>
@@ -42,6 +45,7 @@
 #include <iostream>
 #include <regex>
 #include <stdexcept>
+#include <tuple>
 
 namespace nautilus::log::options {
 
@@ -101,6 +105,18 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 				}
 				INFO(all);
 				REQUIRE(diagnostics.empty());
+				// and so must the SSA NIR the conversion makes of it
+				auto ssa = conversion::convert(nirModule);
+				auto ssaDiagnostics = nir::verify(ssa);
+				std::string ssaAll;
+				for (auto& d : ssaDiagnostics) {
+					ssaAll += d.str() + "\n";
+				}
+				if (!ssaDiagnostics.empty()) {
+					ssaAll += nir::print(ssa);
+				}
+				INFO(ssaAll);
+				REQUIRE(ssaDiagnostics.empty());
 				// host addresses differ from run to run; the dump keeps the shape of the pointers table
 				auto text = std::regex_replace(nir::print(nirModule), std::regex("0x[0-9a-f]+"), "0x0");
 				REQUIRE(checkTestFile(text, category, "nir", name, ".nir"));
@@ -976,6 +992,147 @@ TEST_CASE("Tracing statistics: copies by kind", "[tracing][statistics]") {
 	CHECK(pointers.copiesExplicit == 1);
 	CHECK(pointers.copiesConstruct == 0);
 	CHECK(pointers.copies() == pointers.copiesExplicit + pointers.copiesConstruct);
+}
+
+} // namespace nautilus::engine
+
+// The conversion against the native result: the trace of a function becomes pre-SSA NIR, the conversion makes SSA NIR,
+// and the reference evaluator runs it on sample inputs; the function itself, run natively, is the oracle.
+namespace nautilus::engine {
+
+namespace {
+
+template <class T>
+uint64_t rawBitsOf(T v) {
+	if constexpr (std::is_same_v<T, bool>) {
+		return v ? 1 : 0;
+	} else if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
+		return nir::test::Evaluator::bitsOf(v);
+	} else if constexpr (std::is_pointer_v<T>) {
+		return reinterpret_cast<uintptr_t>(v);
+	} else {
+		return static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(v));
+	}
+}
+
+template <class R, class... A>
+void checkConversion(const std::string& name, val<R> (*fn)(val<A>...), const std::vector<std::tuple<A...>>& inputs) {
+	DYNAMIC_SECTION(name) {
+		common::Arena arena;
+		std::list<compiler::CompilableFunction> functions;
+		functions.emplace_back("execute", details::createFunctionWrapper(fn));
+		auto traced = tracing::TraceContext::Trace(functions, engine::Options {}, arena);
+		auto ssa = conversion::convert(tracing::nirtrace::toPreSSA(*traced));
+		REQUIRE(nir::verify(ssa).empty());
+
+		engine::Options nativeOptions;
+		nativeOptions.setOption("engine.compilation", false);
+		NautilusEngine nativeEngine(nativeOptions);
+		auto native = nativeEngine.registerFunction(fn);
+
+		nir::test::Evaluator evaluator(ssa);
+		for (const auto& input : inputs) {
+			std::array<uint64_t, sizeof...(A)> args =
+			    std::apply([](auto... v) { return std::array<uint64_t, sizeof...(A)> {rawBitsOf(v)...}; }, input);
+			uint64_t got = evaluator.call("execute", args);
+			R expected = std::apply([&](auto... v) { return native(v...); }, input);
+			CAPTURE(name, args);
+			CHECK(got == rawBitsOf(expected));
+		}
+	}
+}
+
+const std::vector<std::tuple<int32_t>> ints1 {{-7}, {0}, {1}, {2}, {5}, {10}, {42}, {100}};
+const std::vector<std::tuple<int32_t>> smallInts {{0}, {1}, {2}, {3}, {7}, {10}};
+// functions that never finish or divide by zero on 0 (collatz(0) loops; shortCircuitEvaluation evaluates both sides)
+const std::vector<std::tuple<int32_t>> positiveInts {{1}, {2}, {3}, {7}, {10}, {42}};
+const std::vector<std::tuple<int32_t, int32_t>> ints2 {{0, 0}, {1, 2}, {5, 3}, {10, 10}, {-4, 9}, {42, 7}, {100, 1}};
+
+} // namespace
+
+TEST_CASE("The SSA NIR of a traced function computes what the function computes", "[tracing][conversion]") {
+	nautilus::log::options::setLogAddresses(false);
+	checkConversion("assignment1", assignment1, ints1);
+	checkConversion("assignment2", assignment2, ints1);
+	checkConversion("assignment3", assignment3, ints1);
+	checkConversion("assignment4", assignment4, ints1);
+	checkConversion("assignment5", assignment5, ints1);
+	checkConversion("int8AddExpression", int8AddExpression,
+	                std::vector<std::tuple<int8_t>> {{-128}, {-1}, {0}, {1}, {125}, {127}});
+	checkConversion("int16AddExpression", int16AddExpression,
+	                std::vector<std::tuple<int16_t>> {{-32768}, {-1}, {0}, {32767}});
+	checkConversion("int32AddExpression", int32AddExpression, ints1);
+	checkConversion("int64AddExpression", int64AddExpression,
+	                std::vector<std::tuple<int64_t>> {{-1}, {0}, {1ll << 40}, {INT64_MAX - 3}});
+	checkConversion("floatAddExpression", floatAddExpression,
+	                std::vector<std::tuple<float>> {{-1.5f}, {0.0f}, {2.25f}, {1e10f}});
+	checkConversion("doubleAddExpression", doubleAddExpression,
+	                std::vector<std::tuple<double>> {{-1.5}, {0.0}, {2.25}, {1e300}});
+	checkConversion("ifThenCondition", ifThenCondition, ints1);
+	checkConversion("ifThenElseCondition", ifThenElseCondition, ints1);
+	checkConversion("nestedIfThenElseCondition", nestedIfThenElseCondition, ints2);
+	checkConversion("nestedIfNoElseCondition", nestedIfNoElseCondition, ints2);
+	checkConversion("orCondition", orCondition, ints1);
+	checkConversion("andCondition", andCondition, ints2);
+	checkConversion("andFunction", andFunction, ints1);
+	checkConversion("nestedIf", nestedIf, ints1);
+	checkConversion("ifElseIfElse", ifElseIfElse, ints1);
+	checkConversion("logicalAnd", logicalAnd, ints1);
+	checkConversion("logicalOr", logicalOr, ints1);
+	checkConversion("ifNotEqual", ifNotEqual, ints1);
+	checkConversion("multipleConditions", multipleConditions, ints1);
+	checkConversion("ifElseIfOnly", ifElseIfOnly, ints1);
+	checkConversion("compoundAssignment", compoundAssignment, ints1);
+	checkConversion("multipleElse", multipleElse, ints1);
+	checkConversion("ifWithTernary", ifWithTernary, ints1);
+	checkConversion("complexLogicalExpressions", complexLogicalExpressions, ints1);
+	checkConversion("shortCircuitEvaluation", shortCircuitEvaluation, positiveInts);
+	checkConversion("compoundStatements", compoundStatements, ints1);
+	checkConversion("varyingComplexity", varyingComplexity, ints1);
+	checkConversion("logicalXOR", logicalXOR, ints1);
+	checkConversion("nestedIfElseDifferentLevels", nestedIfElseDifferentLevels, ints1);
+	checkConversion("forBreak", forBreak, smallInts);
+	checkConversion("whileBreak", whileBreak, smallInts);
+	checkConversion("whileContinue", whileContinue, smallInts);
+	checkConversion("ifInsideLoop", ifInsideLoop, smallInts);
+	checkConversion("sumLoop", sumLoop, smallInts);
+	checkConversion("nestedSumLoop", nestedSumLoop, smallInts);
+	checkConversion("sumOfNumbers", sumOfNumbers, smallInts);
+	checkConversion("factorial", factorial, smallInts);
+	checkConversion("reverseNumber", reverseNumber, ints1);
+	checkConversion("fibonacci", fibonacci, smallInts);
+	checkConversion("gcd", gcd, std::vector<std::tuple<int32_t, int32_t>> {{12, 18}, {7, 13}, {100, 75}, {9, 3}});
+	checkConversion("decimalToBinary", decimalToBinary, smallInts);
+	checkConversion("isPrime", isPrime, std::vector<std::tuple<int32_t>> {{1}, {2}, {7}, {9}, {13}, {25}});
+	checkConversion("collatz", collatz, positiveInts);
+	checkConversion("digitSum", digitSum, ints1);
+	checkConversion("sumOfSquares", sumOfSquares, smallInts);
+	checkConversion("countDigits", countDigits, ints1);
+	checkConversion("boolNot", boolNot, std::vector<std::tuple<bool>> {{false}, {true}});
+	checkConversion("boolAnd", boolAnd,
+	                std::vector<std::tuple<bool, bool>> {{false, false}, {true, false}, {true, true}});
+	checkConversion("boolOr", boolOr,
+	                std::vector<std::tuple<bool, bool>> {{false, false}, {true, false}, {false, true}});
+	checkConversion("boolIfElse", boolIfElse,
+	                std::vector<std::tuple<bool, bool>> {{false, false}, {true, false}, {true, true}});
+	checkConversion("selectInt32True", selectInt32True,
+	                std::vector<std::tuple<bool, int32_t, int32_t>> {{true, 1, 2}, {false, 1, 2}});
+	checkConversion("selectBasedOnComparison", selectBasedOnComparison, ints2);
+	checkConversion("nestedSelect", nestedSelect, ints1);
+	checkConversion("selectInLoop", selectInLoop, smallInts);
+	checkConversion("implicitCast_i8_i64", implicitCastExpression<int8_t, int64_t>,
+	                std::vector<std::tuple<int8_t>> {{-128}, {-1}, {0}, {127}});
+	checkConversion("staticCast_ui8_i32", staticCastExpression<uint8_t, int32_t>,
+	                std::vector<std::tuple<uint8_t>> {{0}, {1}, {200}, {255}});
+	checkConversion("staticCast_i32_ui8", staticCastExpression<int32_t, uint8_t>, ints1);
+	checkConversion("staticCast_i32_f64", staticCastExpression<int32_t, double>, ints1);
+	// out-of-range values are left out: C++ leaves them undefined, NIR saturates them (D11)
+	checkConversion("staticCast_f64_i32", staticCastExpression<double, int32_t>,
+	                std::vector<std::tuple<double>> {{-1.9}, {0.0}, {3.99}});
+	checkConversion("staticCast_f32_f64", staticCastExpression<float, double>,
+	                std::vector<std::tuple<float>> {{-1.5f}, {0.25f}});
+	checkConversion("staticCast_i64_bool", staticCastExpression<int64_t, bool>,
+	                std::vector<std::tuple<int64_t>> {{0}, {1}, {-5}});
 }
 
 } // namespace nautilus::engine

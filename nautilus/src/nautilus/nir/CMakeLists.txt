@@ -19,7 +19,9 @@ add_library(nautilus-nir STATIC
         Hash.cpp
         ../common/OptionRegistry.cpp
         ../extensions/ExtensionRegistry.cpp
-        ../extensions/CoreIntrinsics.cpp)
+        ../extensions/CoreIntrinsics.cpp
+        ../conversion/AttributeInference.cpp
+        ../conversion/Conversion.cpp)
 target_include_directories(nautilus-nir PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>)
 # the public headers: the capture thunk template of intrinsic registration (ExceptionTransport.hpp) is header-only
 target_include_directories(nautilus-nir PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../../include>)

@@ -460,37 +460,54 @@ private:
 			std::vector<uint32_t> index(n, NONE), low(n, 0), st;
 			std::vector<uint8_t> on(n, 0);
 			uint32_t counter = 0, comps = 0;
-			std::function<void(uint32_t)> visit = [&](uint32_t v) {
+			// iterative: a function can have more blocks than the stack has frames to spare
+			struct Frame {
+				uint32_t v;
+				size_t next;
+			};
+			std::vector<Frame> work;
+			auto start = [&](uint32_t v) {
 				index[v] = low[v] = counter++;
 				st.push_back(v);
 				on[v] = 1;
-				for (auto w : succ_[v]) {
-					if (isPad(w)) {
+				work.push_back({v, 0});
+			};
+			for (uint32_t root = 0; root < n; ++root) {
+				if (isPad(root) || index[root] != NONE) {
+					continue;
+				}
+				start(root);
+				while (!work.empty()) {
+					const auto v = work.back().v;
+					if (work.back().next < succ_[v].size()) {
+						const auto w = succ_[v][work.back().next++];
+						if (isPad(w)) {
+							continue;
+						}
+						if (index[w] == NONE) {
+							start(w);
+						} else if (on[w]) {
+							low[v] = std::min(low[v], index[w]);
+						}
 						continue;
 					}
-					if (index[w] == NONE) {
-						visit(w);
-						low[v] = std::min(low[v], low[w]);
-					} else if (on[w]) {
-						low[v] = std::min(low[v], index[w]);
-					}
-				}
-				if (low[v] == index[v]) {
-					while (true) {
-						auto w = st.back();
-						st.pop_back();
-						on[w] = 0;
-						comp[w] = comps;
-						if (w == v) {
-							break;
+					if (low[v] == index[v]) {
+						while (true) {
+							auto w = st.back();
+							st.pop_back();
+							on[w] = 0;
+							comp[w] = comps;
+							if (w == v) {
+								break;
+							}
 						}
+						comps++;
 					}
-					comps++;
-				}
-			};
-			for (uint32_t v = 0; v < n; ++v) {
-				if (!isPad(v) && index[v] == NONE) {
-					visit(v);
+					work.pop_back();
+					if (!work.empty()) {
+						auto parent = work.back().v;
+						low[parent] = std::min(low[parent], low[v]);
+					}
 				}
 			}
 		}

@@ -128,6 +128,14 @@ public:
 	void setLocationMap(std::shared_ptr<const IRLocationMap> map) {
 		locationMap = std::move(map);
 	}
+	/// The SSA-level NIR module of the same trace, set by the pipeline under `tracing.nirChain` for the `nirtbc`
+	/// pseudo-backend (type-erased: the IR does not depend on the NIR library). Removed at the cut-over.
+	[[nodiscard]] const std::shared_ptr<const void>& getNirModule() const {
+		return nirModule;
+	}
+	void setNirModule(std::shared_ptr<const void> module) {
+		nirModule = std::move(module);
+	}
 	[[nodiscard]] FunctionTable& getFunctionTableMut() {
 		return functionTable;
 	}
@@ -193,6 +201,7 @@ private:
 	/// Next region id to hand out; see nextRegionId().
 	uint32_t regionIdCounter = 0;
 	std::shared_ptr<const IRLocationMap> locationMap;
+	std::shared_ptr<const void> nirModule;
 };
 
 } // namespace nautilus::compiler::ir

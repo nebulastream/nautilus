@@ -11,7 +11,7 @@ const std::vector<OptionSpec>& optionRegistry() {
 	// Generated from the table of docs/options.md; the doc-check test keeps the two in step.
 	static const std::vector<OptionSpec> registry = {
 	    {"engine.compilation", OptionType::Bool, "true", false, {}},
-	    {"engine.backend", OptionType::String, "", false, {"mlir", "cpp", "tbc", "asmjit"}},
+	    {"engine.backend", OptionType::String, "", false, {"mlir", "cpp", "tbc", "asmjit", "nirtbc"}},
 	    {"engine.tier0.backend", OptionType::String, "", false, {}},
 	    {"engine.tier1.backend", OptionType::String, "", false, {}},
 	    {"engine.tiered.promotion", OptionType::String, "eager", false, {"eager", "manual", "none"}},
@@ -25,6 +25,8 @@ const std::vector<OptionSpec>& optionRegistry() {
 	    {"dump.copySites", OptionType::Bool, "false", false, {}},
 	    {"dump.after_nir_tracing", OptionType::Bool, "false", false, {}},
 	    {"tracing.verifyNir", OptionType::Bool, "false", false, {}},
+	    {"tracing.nirAttributesFile", OptionType::String, "", false, {}},
+	    {"tracing.nirChain", OptionType::Bool, "false", false, {}},
 	    {"dump.after_tracing", OptionType::Bool, "false", false, {}},
 	    {"dump.after_ir_creation", OptionType::Bool, "false", false, {}},
 	    {"dump.after_mlir_generation", OptionType::Bool, "false", false, {}},

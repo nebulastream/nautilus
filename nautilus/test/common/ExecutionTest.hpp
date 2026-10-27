@@ -52,6 +52,16 @@ inline std::vector<std::string> availableBackends(bool include_asmjit = true) {
 		backends.emplace_back("tbc-jit");
 	}
 #endif
+#ifdef ENABLE_TBC_BACKEND
+	// Pseudo-backends of the chain 0.3 tracer -> NIR -> conversion -> tbc on NIR (tracing.nirChain), until the
+	// cut-over.
+	backends.emplace_back("nir-tbc");
+#ifdef ENABLE_TBC_JIT
+	if (compiler::tbc::jit::jitRuntimeAvailable()) {
+		backends.emplace_back("nir-tbc-jit");
+	}
+#endif
+#endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	if (include_asmjit) {
 		backends.emplace_back("asmjit");
@@ -69,6 +79,12 @@ inline engine::NautilusEngine makeEngine(const std::string& backend, const Optio
 	} else if (backend == "tbc-jit") {
 		options.setOption("engine.backend", std::string("tbc"));
 		options.setOption("tbc.mode", std::string("jit"));
+	} else if (backend == "nir-tbc" || backend == "nir-tbc-jit") {
+		options.setOption("engine.backend", std::string("nirtbc"));
+		options.setOption("tracing.nirChain", true);
+		if (backend == "nir-tbc-jit") {
+			options.setOption("tbc.mode", std::string("jit"));
+		}
 	} else {
 		options.setOption("engine.backend", backend);
 	}
