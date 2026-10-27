@@ -287,6 +287,9 @@ changes M4.2 and §2 step 2 as follows:
   pipeline) and `tools/vscode-nautilus-ir`: they call the 0.3 API directly, which is still there. `test/data` is not
   regenerated for the same reason. Not started: the `api-compat` leg change, the corpus gates against the 0.3 baselines
   (the corpus statistics now count the bridged IR), and the fuzzer's generation of D10/D11 edge cases.
+- **Debug information and perf stay on the 0.3 trace.** `debug`, `perf`, `perf.sample` and `dump.copySites` select the 0.3
+  pipeline: DWARF lines, `region()` scopes and jitdump symbols need its source tags and region tables, which NIR gets with
+  the debug producers (M4.9). This is the one place the default depends on options.
 - **Found on the way.** Both NIR tracers wrote cleanup lists in registration order, although 13 §3.4 says destruction
   order, so pads destroyed in construction order; fixed in its own commit. The 0.3 backends' `ir.*` options configure
   the fallback only.
