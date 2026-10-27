@@ -320,7 +320,9 @@ uint32_t FunctionConverter::calleeFor(const FunctionCall& call, Type resultType)
 uint32_t FunctionConverter::cleanupList(const std::vector<FunctionCall::Destructor>& destructors) {
 	std::vector<uint32_t> list;
 	list.push_back(static_cast<uint32_t>(destructors.size()));
-	for (const auto& d : destructors) {
+	// destruction order (13 §3.4): the reverse of the order the objects were registered in
+	for (auto it = destructors.rbegin(); it != destructors.rend(); ++it) {
+		const auto& d = *it;
 		nir::CalleeRecord record {};
 		record.kind = static_cast<uint8_t>(nir::CalleeKind::External);
 		record.target = pointerFor(nir::PointerKind::Destructor, d.ptr, 0);
