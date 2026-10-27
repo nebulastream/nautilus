@@ -21,7 +21,8 @@ double nautilus_rt_fmod_f64(double a, double b);
 
 /// The saturating conversions of `fptosi` and `fptoui` (13 §5.5, D11): NaN gives 0, a value outside the range of the
 /// result gives its minimum or maximum. `signedResult` selects `fptosi`, `bits` is the width of the integer result and
-/// `sourceBits` the width of the float. The helper takes the float and returns the integer of that width, signed or unsigned.
+/// `sourceBits` the width of the float. The helper takes the float and returns the integer of that width, signed or
+/// unsigned.
 void* floatToIntHelper(bool signedResult, unsigned bits, unsigned sourceBits);
 
 } // namespace nautilus::compiler::nirbackend

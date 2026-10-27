@@ -38,7 +38,8 @@ Type tbcTypeOfWord(nir::TypeWord word) {
 	case TypeId::Ptr:
 		return Type::ptr;
 	default:
-		throw NotImplementedException("tbc: extension types in a signature are lowered with the extension opcode (M4.1)");
+		throw NotImplementedException(
+		    "tbc: extension types in a signature are lowered with the extension opcode (M4.1)");
 	}
 }
 
@@ -236,8 +237,7 @@ private:
 	}
 
 	TypeId typeOfRef(nir::Ref r) const {
-		return nir::isConstRef(r) ? static_cast<TypeId>(m_.consts.record(r).type)
-		                          : static_cast<TypeId>(insts_[r].type);
+		return nir::isConstRef(r) ? static_cast<TypeId>(m_.consts.record(r).type) : static_cast<TypeId>(insts_[r].type);
 	}
 
 	/// The register that holds the value of `r`.
@@ -441,10 +441,11 @@ private:
 			if (op == N::Div) {
 				emit(family(Op::DIV_i8, familyIndex(type, false)), dst, l, r);
 			} else {
-				emitHelperCall(type == TypeId::F32 ? reinterpret_cast<void*>(&nirbackend::nautilus_rt_fmod_f32)
-				                                   : reinterpret_cast<void*>(&nirbackend::nautilus_rt_fmod_f64),
-				               {type == TypeId::F32 ? Type::f32 : Type::f64, type == TypeId::F32 ? Type::f32 : Type::f64},
-				               {l, r}, type == TypeId::F32 ? Type::f32 : Type::f64, dst);
+				emitHelperCall(
+				    type == TypeId::F32 ? reinterpret_cast<void*>(&nirbackend::nautilus_rt_fmod_f32)
+				                        : reinterpret_cast<void*>(&nirbackend::nautilus_rt_fmod_f64),
+				    {type == TypeId::F32 ? Type::f32 : Type::f64, type == TypeId::F32 ? Type::f32 : Type::f64}, {l, r},
+				    type == TypeId::F32 ? Type::f32 : Type::f64, dst);
 			}
 			return;
 		}
@@ -761,14 +762,15 @@ private:
 		}
 	}
 
-	void emitNativeCall(CallSite site, void* target, const CallArgs& args, uint16_t dst, void* intrinsicThunk = nullptr) {
+	void emitNativeCall(CallSite site, void* target, const CallArgs& args, uint16_t dst,
+	                    void* intrinsicThunk = nullptr) {
 		if (args.unwind == nir::NO_UNWIND) {
 			site.target = target;
 			emit(Op::CALL_EXT, dst, addCallSite(std::move(site)));
 			return;
 		}
-		// a call that may throw goes through the capture thunk, a real C++ frame, so that the exception is caught before
-		// it crosses the dyncall trampoline; the target becomes the thunk's first argument
+		// a call that may throw goes through the capture thunk, a real C++ frame, so that the exception is caught
+		// before it crosses the dyncall trampoline; the target becomes the thunk's first argument
 		void* thunk = intrinsicThunk;
 		if (thunk == nullptr) {
 			if (args.thunk == nir::NONE) {
