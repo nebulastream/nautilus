@@ -372,8 +372,10 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	}
 
 	// The default front end: the direct NIR tracer and the conversion. `tracing.nirTracer=false` selects the 0.3
-	// pipeline below, kept as a fallback for one release.
-	if (moduleOptions.getOptionOrDefault("tracing.nirTracer", true)) {
+	// pipeline below, kept as a fallback for one release, and so does `dump.copySites`: only the 0.3 tracer records
+	// where copies come from.
+	if (moduleOptions.getOptionOrDefault("tracing.nirTracer", true) &&
+	    !moduleOptions.getOptionOrDefault("dump.copySites", false)) {
 		return traceToNir(functions, moduleOptions, statistics, compilationId, dumpHandler);
 	}
 
