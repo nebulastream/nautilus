@@ -18,10 +18,13 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/common/ExceptionTransport.hpp"
 #include "nautilus/compiler/backends/nir/NirBackend.hpp"
+#include "nautilus/conversion/Conversion.hpp"
 #include "nautilus/exceptions/ArithmeticException.hpp"
 #include "nautilus/nir/Module.hpp"
 #include "nautilus/nir/Parser.hpp"
 #include "nautilus/nir/Printer.hpp"
+#include "nautilus/nir/Verifier.hpp"
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -334,6 +337,27 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 	auto module = std::make_shared<nir::Module>(std::move(*parsed.module));
+	// pre-SSA input is converted first, so the conversion can be run on text
+	const bool preSSA = std::any_of(module->functions.begin(), module->functions.end(),
+	                                [](const auto& f) { return f.level == static_cast<uint8_t>(nir::Level::PreSSA); });
+	if (preSSA) {
+		try {
+			*module = conversion::convert(*module);
+		} catch (const std::exception& e) {
+			std::cerr << path << ": conversion failed: " << e.what() << "\n";
+			return 1;
+		}
+		const auto diagnostics = nir::verify(*module);
+		for (const auto& d : diagnostics) {
+			std::cerr << path << ": after the conversion: " << d.str() << "\n";
+		}
+		if (!diagnostics.empty()) {
+			if (dump) {
+				std::cout << nir::print(*module);
+			}
+			return 1;
+		}
+	}
 	if (dump) {
 		std::cout << nir::print(*module);
 	}
