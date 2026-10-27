@@ -2,7 +2,10 @@
 
 A backend implements `CompilationBackend` (`CompilationBackend.hpp`):
 `compile(ir, dumpHandler, options, statistics)`, its exception-propagation
-mode and the IR optimization level it needs. Built-in backends are registered
+mode and the IR optimization level it needs. The engine's front end produces
+NIR: a backend that returns true from `compilesNir()` reads the module the graph
+carries (`tbc`), the others get the 0.3 IR built from it first (`compiler/NirToIR.cpp`)
+until their NIR port lands. Built-in backends are registered
 in `CompilationBackend.cpp`; plugins call `CompilationBackendRegistry::registerBackend`.
 
 | Backend | Directory | Notes |
@@ -34,6 +37,9 @@ in `CompilationBackend.cpp`; plugins call `CompilationBackendRegistry::registerB
 - `tools/nir-run` (`nautilus-nir-run`) compiles a `.nir` file and runs its `; run @f(args) = result` directives;
   ctest runs `test/data/nir-run/*.nir` on `tbc` in three modes. Add a file there for every NIR operation a backend
   handles.
-- The execution tests also run on the pseudo-backends `nir-tbc` and `nir-tbc-jit`: `tracing.nirChain=true` converts the
-  trace to SSA NIR (0.3 tracer -> `toPreSSA` -> conversion) and attaches it to the IR graph, and the `nirtbc` backend
-  compiles that NIR with `tbc` on NIR. Both go away at the cut-over.
+- `TBCBackend::compile` hands a graph that carries a NIR module and no IR to `TBCNirBackend`; the `tbc.registerAllocator`,
+  `tbc.coalescing`, `tbc.superinstructions` and `tbc.immediates` options belong to the 0.3 lowering only.
+- The execution tests run every backend on the default pipeline, plus `legacy-tbc` and `legacy-asmjit` (the 0.3
+  pipeline, `tracing.nirTracer=false`) and the pseudo-backends `nir-tbc` and `nir-tbc-jit`: with the 0.3 tracer,
+  `tracing.nirChain=true` converts the trace to SSA NIR (`toPreSSA` -> conversion) and attaches it to the IR graph, and
+  the `nirtbc` backend compiles that NIR with `tbc` on NIR. They go with the 0.3 pipeline.

@@ -192,7 +192,7 @@ opened as drafts early and kept up to date with the branch.
 | 18 | GPU production features and validation: shared memory, atomics, warp ops, math; device-code caching, artifacts carrying the NIR image; Metal benchmarks and validation tooling, `docs/gpu.md` | M7.5–M7.7 | 13, 17 | 5–12 |
 | 19 | Documentation, migration guide, release validation, merge and tag | M8.1–M8.3 | 13–18 | 2.5–7 |
 
-**State and next steps (end of the autoresearch session).** PRs 1–4 are open as
+**State and next steps (end of the autoresearch session; PR 6 is opened since, see its status below).** PRs 1–4 are open as
 a stack (#570 ← #571 ← #572 ← #573, all drafts). Open in them: M2.1's
 direct-recording tracer (#572 maps the 0.3 trace instead), the `NirChain`
 fixture and `useCount` (#573), and the reference machine, the published CI
@@ -244,6 +244,36 @@ addressing tag map, index-based replay cursor, no `malloc` per recorded op) and 
 conversion of PR 4 reads pre-SSA NIR from either producer, so it starts from `toPreSSA`; the direct recorder then
 replaces the producer in its own PR. Spec change found on the way: `NIR-V051` counts an `assign` as a write of the
 variable (13 §6.2), because the tracer's reconciling `assign` of #95 writes a variable that the other arm defined.
+
+**PR 6 status.** The engine runs the NIR pipeline by default (`claude/nir-cutover-pr6`, stacked on the direct
+tracer of #576): the direct NIR tracer, the conversion, then the backend. `tbc` compiles the SSA module as it is. The
+owner decided to keep a temporary bridge for the backends without a NIR port so that the PR stays reviewable, and that
+changes M4.2 and §2 step 2 as follows:
+
+- **Bridge instead of switch-off.** `asmjit`, `mlir` and `cpp` stay on and get the 0.3 IR built from the SSA module
+  (`compiler/NirToIR.*`, run by `CompilationPipeline::prepareFor`, on the promotion thread for a background tier). It
+  infers the sign of integers (NIR is signless) from the operations and signatures that state it, turns landing pads
+  into the destructor lists of their calls, and runs only the exception-region preparation. The 0.3 backends keep
+  their lowerings; PRs 7 and 8 replace backend and bridge together. A backend that has a NIR port says so with
+  `CompilationBackend::compilesNir()`. Intrinsics need nothing: the 0.3 backends find them by address in the
+  `IntrinsicRegistry`, and `tbc` calls their fallbacks as before.
+- **Nothing is deleted.** The 0.3 pipeline (`TraceContext`, `ExecutionTrace`, the trace-to-IR conversion, `compiler/ir/`
+  with its passes) stays as the fallback `tracing.nirTracer=false` for one release, and so do `NirChain` (`nir-tbc`
+  test backends, which check the mapping from the 0.3 trace) and `test/ir-pass-tests/`. They go with the last 0.3
+  backend (PRs 7 and 8). The sources of no backend are excluded from the build.
+- **D10/D11 on the bridged backends.** The bridge does not apply checked division, masked shifts and saturating
+  float-to-int casts: `asmjit`, `mlir` and `cpp` behave as in 0.3 until their ports. `tbc` applies them.
+- **Tests.** Every execution test, plugin test and the fuzzer run each backend on the default pipeline; `legacy-tbc` and
+  `legacy-asmjit` run the fallback. Tests of the 0.3 pass statistics, dumps and tbc lowering options pin
+  `tracing.nirTracer=false`; `CompilationStatisticsTest` has the NIR counterparts. Not ported from M4.2's list:
+  `TracingTest`, `RegionTest`, `NoThrowInferenceIntegrationTest`, `InvokeExceptionExecutionTest`'s trace-level cases,
+  `AliveVariableHashTest`, `tracing/CopyAttribution.*`, `TracingBenchmark`, the playground runner (pinned to the 0.3
+  pipeline) and `tools/vscode-nautilus-ir`: they call the 0.3 API directly, which is still there. `test/data` is not
+  regenerated for the same reason. Not started: the `api-compat` leg change, the corpus gates against the 0.3 baselines
+  (the corpus statistics now count the bridged IR), and the fuzzer's generation of D10/D11 edge cases.
+- **Found on the way.** Both NIR tracers wrote cleanup lists in registration order, although 13 §3.4 says destruction
+  order, so pads destroyed in construction order; fixed in its own commit. The 0.3 backends' `ir.*` options configure
+  the fallback only.
 
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 9.

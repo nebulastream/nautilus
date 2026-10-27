@@ -4,8 +4,10 @@ NIR is the Nautilus IR of 0.4. The design is in `docs/plans/nautilus-0.4/` (star
 normative definition is `13-nir-spec.md`**, and where code and spec differ the spec wins. A change to the format
 follows the spec's change control (§11): change the spec first, in the same PR.
 
-Until the cut-over (plan PR 6) this library is built next to the 0.3 pipeline and **the engine does not call it**. It
-is the static library `nautilus-nir`; its tests are `nautilus-nir-tests`; the tool is `nautilus-nir-opt`.
+Since the cut-over (plan PR 6) the engine's default pipeline traces to NIR and converts it (`tracing/nir/`,
+`conversion/`, driven by `compiler/CompilationPipeline.cpp`); `tracing.nirTracer=false` selects the 0.3 pipeline. `tbc`
+compiles NIR natively; `asmjit`, `mlir` and `cpp` get the 0.3 IR built from it by `compiler/NirToIR.cpp` until their
+ports. It is the static library `nautilus-nir`; its tests are `nautilus-nir-tests`; the tool is `nautilus-nir-opt`.
 
 ## Files
 
