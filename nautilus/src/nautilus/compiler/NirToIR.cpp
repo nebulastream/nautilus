@@ -170,6 +170,9 @@ struct ModuleBridge {
 	std::vector<ir::FunctionId> internalIds;
 	/// NIR callee index -> function table id, interned at the first call site.
 	std::vector<ir::FunctionId> calleeIds;
+	/// Per function, once planned: the sign of its parameters and of its result, which every call of it must match.
+	std::vector<std::vector<Sign>> paramSigns;
+	std::vector<Sign> returnSigns;
 
 	ModuleBridge(const nir::Module& module, ir::IRGraph& g, const engine::Options& options,
 	             const nirbackend::HostEnvironment* hostEnvironment)
@@ -240,6 +243,8 @@ public:
 	      blocks_(m_.functionBlocks(function)), name_(std::string(m_.name(record_.nameId))) {
 	}
 
+	/// Infers the signs of the function; every function is planned before any is built, so that calls can match them.
+	void plan();
 	ir::FunctionOperation* build();
 
 private:
@@ -282,7 +287,6 @@ private:
 		}
 		return planned_[find(r)] ? Sign::Signed : Sign::Unsigned;
 	}
-	void plan();
 
 	// ---- values -----------------------------------------------------------------------------------------------------
 
@@ -349,6 +353,9 @@ private:
 };
 
 void FunctionBridge::plan() {
+	if (record_.level != static_cast<uint8_t>(nir::Level::SSA)) {
+		fail(name_, "the function is not an SSA function");
+	}
 	const auto n = static_cast<uint32_t>(insts_.size());
 	parent_.resize(n);
 	std::iota(parent_.begin(), parent_.end(), 0u);
@@ -492,6 +499,11 @@ void FunctionBridge::plan() {
 	if (returnSign_ == Sign::None) {
 		returnSign_ = firstReturn != nir::NONE ? planSign(firstReturn) : Sign::Unsigned;
 	}
+	auto& parameters = s_.paramSigns[f_];
+	for (uint32_t a = 0; a < blocks_[0].argCount; ++a) {
+		parameters.push_back(signatureSign(m_.paramType(signature, a), blocks_[0].first + a));
+	}
+	s_.returnSigns[f_] = returnSign_;
 }
 
 Operation* FunctionBridge::constant(Ref r, Sign want) {
@@ -624,18 +636,35 @@ void FunctionBridge::emitCall(uint32_t id, const nir::Inst& inst) {
 	const uint32_t unwind = list[1 + argc];
 	const uint32_t thunk = list[2 + argc];
 	const auto& sig = m_.signatures[callee.signature];
+	const bool internal = static_cast<nir::CalleeKind>(callee.kind) == nir::CalleeKind::Internal;
 
+	// an external function that an earlier call declared has the types of that call, whatever the signs here
+	const ir::NativeTarget* known = nullptr;
+	if (!internal) {
+		const auto existing = s_.graph.getFunctionTable().find(s_.addressOf(callee));
+		if (existing != ir::INVALID_FUNCTION_ID) {
+			known = s_.graph.getFunctionTarget(existing).getNative();
+		}
+	}
 	std::vector<Operation*> arguments;
 	std::vector<Type> parameterTypes;
 	arguments.reserve(argc);
 	for (uint32_t i = 0; i < argc; ++i) {
-		arguments.push_back(use(list[1 + i], signatureSign(m_.paramType(sig, i), list[1 + i])));
+		// a call of a function of the module passes what the function declares
+		auto want = internal ? s_.paramSigns[callee.target][i] : signatureSign(m_.paramType(sig, i), list[1 + i]);
+		if (known != nullptr && i < known->paramTypes.size() && signOf(known->paramTypes[i]) != Sign::None) {
+			want = signOf(known->paramTypes[i]);
+		}
+		arguments.push_back(use(list[1 + i], want));
 		parameterTypes.push_back(arguments.back()->getStamp());
 	}
 	const auto resultId = static_cast<TypeId>(inst.type);
-	const auto resultType = stampOf(resultId, signatureSign(sig.result, id));
+	auto resultSign = internal ? s_.returnSigns[callee.target] : signatureSign(sig.result, id);
+	if (known != nullptr && signOf(known->resultType) != Sign::None) {
+		resultSign = signOf(known->resultType);
+	}
+	const auto resultType = stampOf(resultId, resultSign);
 	const auto calleeId = s_.calleeId(inst.a, resultType, parameterTypes);
-	const bool internal = static_cast<nir::CalleeKind>(callee.kind) == nir::CalleeKind::Internal;
 	const bool exceptionHandling = unwind != nir::NO_UNWIND;
 	void* captureFunc = thunk == nir::NONE ? nullptr : nirbackend::resolvePointer(m_, thunk, s_.host);
 	auto destructors = destructorsOf<ir::CallOperation::Destructor>(unwind);
@@ -938,7 +967,6 @@ ir::FunctionOperation* FunctionBridge::build() {
 	if (record_.level != static_cast<uint8_t>(nir::Level::SSA)) {
 		fail(name_, "the function is not an SSA function");
 	}
-	plan();
 	nextId_ = static_cast<uint32_t>(insts_.size());
 	values_.assign(insts_.size(), nullptr);
 	auto& arena = s_.arena;
@@ -1035,8 +1063,16 @@ void buildIRFromNir(const nir::Module& module, ir::IRGraph& graph, const engine:
 		descriptor.customName = std::string(module.name(module.functions[f].nameId));
 		bridge.internalIds[f] = graph.internCallee(descriptor);
 	}
+	bridge.paramSigns.resize(module.functions.size());
+	bridge.returnSigns.assign(module.functions.size(), Sign::Unsigned);
+	std::vector<FunctionBridge> functions;
+	functions.reserve(module.functions.size());
 	for (uint32_t f = 0; f < module.functions.size(); ++f) {
-		auto* function = FunctionBridge(bridge, f).build();
+		functions.emplace_back(bridge, f);
+		functions.back().plan();
+	}
+	for (uint32_t f = 0; f < module.functions.size(); ++f) {
+		auto* function = functions[f].build();
 		graph.addFunctionOperation(function);
 		graph.defineFunction(bridge.internalIds[f], function);
 		graph.getFunctionTableMut()
