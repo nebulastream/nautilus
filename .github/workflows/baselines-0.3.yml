@@ -15,7 +15,7 @@ on:
       - '.github/workflows/baselines-0.3.yml'
 
 jobs:
-  baselines-0.3:
+  baselines:
     runs-on: ubuntu-24.04
     name: Latency corpus on main (clang-21)
     env:
