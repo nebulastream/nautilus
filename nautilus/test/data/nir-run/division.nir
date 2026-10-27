@@ -1,0 +1,64 @@
+; Checked and unchecked integer division and remainder (13 §5.10, D10): the failing cases throw
+; nautilus::ArithmeticException, the others round toward zero.
+nir 1.0
+
+func export @sdiv : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = div.s.checked %0, %1 unwind caller
+  ret %2
+}
+; run @sdiv(7, 2) = 3
+; run @sdiv(-7, 2) = -3
+; run @sdiv(7, -2) = -3
+; run @sdiv(-7, -2) = 3
+; run @sdiv(1, 0) throws ArithmeticException
+; run @sdiv(-9223372036854775808, -1) throws ArithmeticException
+; run @sdiv(-9223372036854775808, 1) = -9223372036854775808
+
+func export @srem : (i32, i32) -> i32 {
+^b0(%0: i32, %1: i32):
+  %2 = rem.s.checked %0, %1 unwind caller
+  ret %2
+}
+; run @srem(7, 3) = 1
+; run @srem(-7, 3) = -1
+; run @srem(7, -3) = 1
+; run @srem(5, 0) throws ArithmeticException
+; run @srem(-2147483648, -1) throws ArithmeticException
+
+func export @udiv : (i32, i32) -> i32 {
+^b0(%0: i32, %1: i32):
+  %2 = div.u.checked %0, %1 unwind caller
+  ret %2
+}
+; run @udiv(7, 2) = 3
+; run @udiv(-1, 2) = 2147483647
+; run @udiv(-2147483648, -1) = 0
+; run @udiv(3, 0) throws ArithmeticException
+
+func export @urem8 : (i8 zext, i8 zext) -> i8 zext {
+^b0(%0: i8, %1: i8):
+  %2 = rem.u.checked %0, %1 unwind caller
+  ret %2
+}
+; run @urem8(200, 7) = 4
+; run @urem8(200, 0) throws ArithmeticException
+
+func export @sdiv8 : (i8 sext, i8 sext) -> i8 sext {
+^b0(%0: i8, %1: i8):
+  %2 = div.s.checked %0, %1 unwind caller
+  ret %2
+}
+; run @sdiv8(-128, -1) throws ArithmeticException
+; run @sdiv8(-128, 1) = -128
+; run @sdiv8(100, -3) = -33
+
+func export @safe : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = div.s %0, 3:i64
+  %2 = rem.s %0, 4:i64
+  %3 = add %1, %2
+  ret %3
+}
+; run @safe(10) = 5
+; run @safe(-10) = -5

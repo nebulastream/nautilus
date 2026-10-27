@@ -1,0 +1,126 @@
+; Blocks, block arguments, loops and branches. Edges that carry arguments are parallel copies: a swap and a rotation
+; need a temporary, and a loop-carried value may be the source of another one.
+nir 1.0
+
+func export @sum : (i64) -> i64 {
+^b0(%0: i64):
+  br ^b1(0:i64, 0:i64)
+^b1(%2: i64, %3: i64):
+  %4 = cmp.lt.s %2, %0
+  condbr %4, ^b2, ^b3(%3) prob 3865470566
+^b2:
+  %6 = add %3, %2
+  %7 = add %2, 1:i64
+  br ^b1(%7, %6)
+^b3(%9: i64):
+  ret %9
+}
+; run @sum(0) = 0
+; run @sum(10) = 45
+; run @sum(100000) = 4999950000
+
+func export @diamond : (bool zext, i32, i32) -> i32 {
+^b0(%0: bool, %1: i32, %2: i32):
+  condbr %0, ^b1, ^b2
+^b1:
+  br ^b3(%1)
+^b2:
+  br ^b3(%2)
+^b3(%6: i32):
+  ret %6
+}
+; run @diamond(true, 1, 2) = 1
+; run @diamond(false, 1, 2) = 2
+
+func export @fib : (i64) -> i64 {
+^b0(%0: i64):
+  br ^b1(0:i64, 0:i64, 1:i64)
+^b1(%2: i64, %3: i64, %4: i64):
+  %5 = cmp.lt.s %2, %0
+  condbr %5, ^b2, ^b3(%3)
+^b2:
+  %7 = add %3, %4
+  %8 = add %2, 1:i64
+  br ^b1(%8, %4, %7)
+^b3(%10: i64):
+  ret %10
+}
+; run @fib(0) = 0
+; run @fib(1) = 1
+; run @fib(10) = 55
+; run @fib(50) = 12586269025
+
+func export @swapn : (i64, i64, i64) -> i64 {
+^b0(%0: i64, %1: i64, %2: i64):
+  br ^b1(0:i64, %1, %2)
+^b1(%4: i64, %5: i64, %6: i64):
+  %7 = cmp.lt.s %4, %0
+  condbr %7, ^b2, ^b3(%5, %6)
+^b2:
+  %9 = add %4, 1:i64
+  br ^b1(%9, %6, %5)
+^b3(%11: i64, %12: i64):
+  %13 = mul %11, 10:i64
+  %14 = add %13, %12
+  ret %14
+}
+; run @swapn(0, 1, 2) = 12
+; run @swapn(1, 1, 2) = 21
+; run @swapn(2, 1, 2) = 12
+; run @swapn(3, 1, 2) = 21
+
+func export @rotate : (i64, i64, i64, i64) -> i64 {
+^b0(%0: i64, %1: i64, %2: i64, %3: i64):
+  br ^b1(0:i64, %1, %2, %3)
+^b1(%5: i64, %6: i64, %7: i64, %8: i64):
+  %9 = cmp.lt.s %5, %0
+  condbr %9, ^b2, ^b3(%6, %7, %8)
+^b2:
+  %11 = add %5, 1:i64
+  br ^b1(%11, %7, %8, %6)
+^b3(%13: i64, %14: i64, %15: i64):
+  %16 = mul %13, 100:i64
+  %17 = mul %14, 10:i64
+  %18 = add %16, %17
+  %19 = add %18, %15
+  ret %19
+}
+; run @rotate(0, 1, 2, 3) = 123
+; run @rotate(1, 1, 2, 3) = 231
+; run @rotate(2, 1, 2, 3) = 312
+; run @rotate(3, 1, 2, 3) = 123
+
+; both edges of a conditional branch carry arguments
+func export @twoedges : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = cmp.lt.s %0, %1
+  condbr %2, ^b1(%0, %1), ^b1(%1, %0)
+^b1(%4: i64, %5: i64):
+  %6 = sub %5, %4
+  ret %6
+}
+; run @twoedges(1, 5) = 4
+; run @twoedges(5, 1) = 4
+; run @twoedges(2, 2) = 0
+
+func export @nested : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  br ^b1(0:i64, 0:i64)
+^b1(%3: i64, %4: i64):
+  %5 = cmp.lt.s %3, %0
+  condbr %5, ^b2(0:i64, %4), ^b5(%4)
+^b2(%7: i64, %8: i64):
+  %9 = cmp.lt.s %7, %1
+  condbr %9, ^b3, ^b4
+^b3:
+  %11 = add %8, 1:i64
+  %12 = add %7, 1:i64
+  br ^b2(%12, %11)
+^b4:
+  %14 = add %3, 1:i64
+  br ^b1(%14, %8)
+^b5(%16: i64):
+  ret %16
+}
+; run @nested(3, 4) = 12
+; run @nested(0, 4) = 0
