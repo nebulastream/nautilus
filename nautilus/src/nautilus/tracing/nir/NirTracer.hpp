@@ -79,6 +79,7 @@ public:
 	                                        std::function<void()> fwrapper) override;
 	bool traceBool(const TypedValueRef& value, double probability) override;
 	void traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) override;
+	TypedValueRef& traceExtOp(uint16_t opcode, uint8_t resultType, const std::vector<TypedValueRef>& inputs) override;
 	TypedValueRef& traceData(std::span<const std::byte> bytes, size_t align) override;
 	TypedValueRef& traceBinding(std::string_view name, size_t size, size_t align) override;
 	void allocateValRef(ValueRef ref) override;
