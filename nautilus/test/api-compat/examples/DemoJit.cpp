@@ -30,5 +30,8 @@ int main(int, char*[]) {
 	auto array = new int32_t[4] {1, 2, 3, 4};
 	auto result = function(4, mask, array);
 	std::cout << "Result: " << result << std::endl;
+	// the only difference from examples/: the 0.4 sanitizer legs run this program and report the leak
+	delete[] mask;
+	delete[] array;
 	return 0;
 }
