@@ -1,5 +1,6 @@
-// Replaces the global operator new of the nautilus-nir-tracer-tests executable to count heap allocations, so that a
-// test can state how many a trace makes (docs/plans/nautilus-0.4/12-validation.md, row 01: no malloc per recorded op).
+// Replaces the global operator new of the nautilus-nir-tracer-allocation-tests executable to count heap allocations, so
+// that a test can state how many a trace makes (docs/plans/nautilus-0.4/12-validation.md, row 01: no malloc per
+// recorded op).
 #include "AllocationCounter.hpp"
 #include <atomic>
 #include <cstdlib>
