@@ -247,7 +247,7 @@ variable (13 §6.2), because the tracer's reconciling `assign` of #95 writes a v
 
 **The direct recorder (#576, M2.1).** `NirTracer` records pre-SSA NIR into `FlatTrace` and is selected by
 `tracing.nirTracer`; the execution tests and the fuzzer run it as `nir-direct`. Evidence, from the tests in
-`nautilus/test/tracing-tests/NirTracerTest.cpp`: golden pre-SSA dumps of ten functions
+`nautilus/test/tracing-tests/NirTracerTest.cpp` and `NirTracerAllocationTest.cpp`: golden pre-SSA dumps of ten functions
 (`test/data/nir-trace/`, `NAUTILUS_UPDATE_GOLDEN=1` rewrites them) including a `val` initialised from a constant and
 assigned in a loop, a copy assigned in a loop and #95; the converted SSA of the direct tracer equals that of the 0.3
 tracer plus `toPreSSA` on all of them; and the allocation counter: 0.013 heap allocations per recorded operation in
