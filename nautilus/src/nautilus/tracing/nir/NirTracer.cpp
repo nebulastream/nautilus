@@ -1,6 +1,7 @@
 #include "nautilus/tracing/nir/NirTracer.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
+#include "nautilus/extensions/ExtensionRegistry.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/nir/Builder.hpp"
@@ -1265,6 +1266,71 @@ TypedValueRef& NirTracer::traceNautilusFunctionPtr(const NautilusFunctionDefinit
 		const auto first = state->trace.nextId();
 		const auto id = emit(NOp::FuncAddr, TypeId::Ptr, 0, internalCallee(function));
 		return finish(first, tag, id, Type::ptr);
+	});
+}
+
+TypedValueRef& NirTracer::traceExtOp(uint16_t opcode, uint8_t resultType, const std::vector<TypedValueRef>& inputs) {
+	if (paused_) {
+		++session_->stats_.pausedOperations;
+		return dummyRef_;
+	}
+	const auto* info = ext::ExtensionRegistry::instance().op(opcode);
+	if (info == nullptr) {
+		throw RuntimeException(fmt::format("NIR trace: extension operation {} is not registered", opcode));
+	}
+	// the type of the `val` that receives the result: only core types have one
+	Type valType = Type::v;
+	bool known = resultType == static_cast<uint8_t>(TypeId::Void);
+	for (auto t : {Type::b, Type::i8, Type::i16, Type::i32, Type::i64, Type::ui8, Type::ui16, Type::ui32, Type::ui64,
+	               Type::f32, Type::f64, Type::ptr}) {
+		if (static_cast<uint8_t>(typeInfo(t).id) == resultType) {
+			valType = t;
+			known = true;
+			break; // signed before unsigned: the TypeId does not say, and the caller knows its C++ type
+		}
+	}
+	if (!known) {
+		throw NotImplementedException(
+		    fmt::format("NIR trace: the result type of '{}' is an extension type", info->name));
+	}
+	return traceOperation([&](Snapshot& tag) -> TypedValueRef& {
+		auto& trace = state->trace;
+		const auto first = trace.nextId();
+		// the inputs fill the value fields a, b, c in order; a list field takes the rest as the words of its payload
+		uint32_t fields[3] = {0, 0, 0};
+		const ext::FieldKind kinds[3] = {info->shape.a, info->shape.b, info->shape.c};
+		size_t next = 0;
+		for (int f = 0; f < 3; ++f) {
+			switch (kinds[f]) {
+			case ext::FieldKind::Unused:
+				break;
+			case ext::FieldKind::Value:
+			case ext::FieldKind::Const:
+				if (next >= inputs.size()) {
+					throw RuntimeException(fmt::format("NIR trace: '{}' is missing operands", info->name));
+				}
+				fields[f] = inputs[next++].ref;
+				break;
+			case ext::FieldKind::List: {
+				std::vector<uint32_t> words;
+				words.push_back(static_cast<uint32_t>(inputs.size() - next));
+				for (; next < inputs.size(); ++next) {
+					words.push_back(inputs[next].ref);
+				}
+				fields[f] = trace.module().addExtra(words);
+				break;
+			}
+			case ext::FieldKind::Imm:
+				throw NotImplementedException(
+				    fmt::format("NIR trace: '{}' takes an immediate, which a traced call cannot give", info->name));
+			}
+		}
+		if (next != inputs.size()) {
+			throw RuntimeException(fmt::format("NIR trace: '{}' got more operands than its shape has", info->name));
+		}
+		const auto id =
+		    emit(static_cast<NOp>(opcode), static_cast<TypeId>(resultType), 0, fields[0], fields[1], fields[2]);
+		return finish(first, tag, id, valType);
 	});
 }
 

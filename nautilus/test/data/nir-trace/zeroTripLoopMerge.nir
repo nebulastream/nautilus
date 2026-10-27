@@ -1,0 +1,39 @@
+nir 1.0
+
+func export pressa @execute : (f32) -> f32 {
+^b0(%0: f32):
+  %1 = var 0:f32
+  %2 = var 0:f32
+  %3 = var 0:f32
+  %4 = cmp.ne %0, %3
+  [5] condbr %4, ^b1, ^b5 prob 2147483647
+^b1:
+  %6 = var 0:f32
+  %7 = var 0:i32
+  %8 = var 0:i32
+  [9] br ^b2
+^b2:
+  %10 = cmp.lt.s %7, %8
+  [11] condbr %10, ^b3, ^b4 prob 2147483647
+^b3:
+  %12 = var 0:f32
+  [13] assign %6, %12
+  %14 = var 1:i32
+  %15 = add %7, %14
+  [16] assign %7, %15
+  [17] assign %8, 0:i32
+  [18] br ^b2
+^b4:
+  [19] assign %2, %6
+  [20] assign %1, 0:f32
+  [21] br ^b6
+^b5:
+  [22] assign %1, 0:f32
+  [23] br ^b6
+^b6:
+  %24 = cmp.ne %2, %1
+  %25 = var 1:f32
+  %26 = var 0:f32
+  %27 = select %24, %25, %26
+  [28] ret %27
+}

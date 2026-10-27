@@ -245,6 +245,22 @@ conversion of PR 4 reads pre-SSA NIR from either producer, so it starts from `to
 replaces the producer in its own PR. Spec change found on the way: `NIR-V051` counts an `assign` as a write of the
 variable (13 §6.2), because the tracer's reconciling `assign` of #95 writes a variable that the other arm defined.
 
+**The direct recorder (#576, M2.1).** `NirTracer` records pre-SSA NIR into `FlatTrace` and is selected by
+`tracing.nirTracer`; the execution tests and the fuzzer run it as `nir-direct`. Evidence, from the tests in
+`nautilus/test/tracing-tests/NirTracerTest.cpp`: golden pre-SSA dumps of ten functions
+(`test/data/nir-trace/`, `NAUTILUS_UPDATE_GOLDEN=1` rewrites them) including a `val` initialised from a constant and
+assigned in a loop, a copy assigned in a loop and #95; the converted SSA of the direct tracer equals that of the 0.3
+tracer plus `toPreSSA` on all of them; and the allocation counter: 0.013 heap allocations per recorded operation in
+steady state (62 for a 6-operation function, 128 for `distinctSites1024`'s 5122). Callgrind instructions per trace
+(`nautilus-tracing-corpus`, Clang 21, Release; `main` at `71ce5f76`, the 0.3 tracer of this branch, and the direct
+tracer including its write-out to a `nir::Module`): `distinctSites1024` 23.2 M / 8.1 M / 8.8 M, `chainedIf100`
+15.6 M / 15.5 M / 12.4 M. So the ≥ 30 % target on `distinctSites1024` is met against `main` (−62 %), and almost all of
+it comes from PR 3's hashed trie: the direct tracer itself costs 9 % more than the 0.3 tracer there, because it also
+builds the module that the 0.3 path builds later (`toPreSSA` or the IR conversion), and 20 % less on `chainedIf100`.
+The shared tag recording (`createReferenceTagBuildin`, trie `append`) is 40 % of what is left. `traceExtOp` records
+extension operations whose operands are values (the conversion does not handle extension instructions yet, so the
+chain stops at the pre-SSA module for them). Not supported by this tracer: `dump.copySites`.
+
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 9.
 

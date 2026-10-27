@@ -1,5 +1,5 @@
 // Traces one function of the tracing corpus a number of times and does nothing else, so that a profiler (callgrind)
-// sees the tracer alone: `nautilus-tracing-corpus [function [reps]]`.
+// sees the tracer alone: `nautilus-tracing-corpus [function [reps [nir]]]`; `nir` drives the direct NIR tracer.
 #include "DistinctSitesFunctions.hpp"
 #include "NestedIfBenchmarks.hpp"
 #include "TracingUtil.hpp"
@@ -7,6 +7,7 @@
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
+#include "nautilus/tracing/nir/NirTracer.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -30,14 +31,21 @@ int main(int argc, char** argv) {
 		std::fprintf(stderr, "unknown function '%s'\n", name.c_str());
 		return 1;
 	}
+	const bool direct = argc > 3 && std::strcmp(argv[3], "nir") == 0;
 	uint64_t operations = 0, snapshots = 0;
 	for (int i = 0; i < reps; ++i) {
 		common::Arena arena;
 		std::list<compiler::CompilableFunction> functions;
 		functions.emplace_back("execute", it->second);
-		auto module = tracing::TraceContext::Trace(functions, engine::Options {}, arena);
-		operations = module->statistics.operations;
-		snapshots = module->statistics.snapshots;
+		if (direct) {
+			auto result = tracing::nirtrace::NirTracer::Trace(functions, engine::Options {}, arena);
+			operations = result.statistics.operations;
+			snapshots = result.statistics.snapshots;
+		} else {
+			auto module = tracing::TraceContext::Trace(functions, engine::Options {}, arena);
+			operations = module->statistics.operations;
+			snapshots = module->statistics.snapshots;
+		}
 	}
 	std::printf("%s: %llu operations, %llu snapshots\n", name.c_str(), static_cast<unsigned long long>(operations),
 	            static_cast<unsigned long long>(snapshots));
