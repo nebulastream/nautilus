@@ -9,6 +9,9 @@ if (ENABLE_ASMJIT_BACKEND)
     add_subdirectory(asmjit)
 endif ()
 
+# the 0.4 backend interface and runtime helpers (docs/plans/nautilus-0.4/05-backends.md)
+add_subdirectory(nir)
+
 
 add_source_files(nautilus
         CapturedExceptionTransport.cpp
