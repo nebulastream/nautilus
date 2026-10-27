@@ -1,0 +1,20 @@
+nir 1.0
+pointer #p0 = address local 0x0 raw
+pointer #p1 = address local 0x0 raw
+
+func export pressa @execute : (bool zext, i32 sext, i32 sext) -> i32 sext {
+^b0(%0: bool, %1: i32, %2: i32):
+  %3 = ptr.const #p0
+  [4] condbr %0, ^b1, ^b2 prob 2147483647
+^b1:
+  %5 = ptr.const #p0
+  [6] assign %3, %5
+  [7] br ^b3
+^b2:
+  %8 = ptr.const #p1
+  [9] assign %3, %8
+  [10] br ^b3
+^b3:
+  %11 = call.indirect %3(%1, %2) : (i32 sext, i32 sext) -> i32 sext
+  [12] ret %11
+}

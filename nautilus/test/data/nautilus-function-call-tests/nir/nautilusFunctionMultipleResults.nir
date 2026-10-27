@@ -1,0 +1,16 @@
+nir 1.0
+callee #c0 = internal @multiply : (i32 sext, i32 sext) -> i32 sext
+
+func export pressa @execute : (i32 sext, i32 sext, i32 sext) -> i32 sext {
+^b0(%0: i32, %1: i32, %2: i32):
+  %3 = call #c0(%0, %1) cleanup []
+  %4 = call #c0(%1, %2) cleanup []
+  %5 = call #c0(%3, %4) cleanup []
+  [6] ret %5
+}
+
+func pressa @multiply : (i32 sext, i32 sext) -> i32 sext {
+^b0(%0: i32, %1: i32):
+  %2 = mul %0, %1
+  [3] ret %2
+}

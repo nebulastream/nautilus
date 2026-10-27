@@ -7,7 +7,10 @@
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <span>
+#include <string_view>
 #include <vector>
 
 namespace nautilus {
@@ -44,6 +47,11 @@ public:
 
 	/// Trace a copy of an existing traced value.
 	virtual TypedValueRef& traceCopy(const TypedValueRef& ref) = 0;
+
+	/// The next traceCopy is a copy the library makes on purpose (`ptr + 0`), not a `val` copy construction. Only the
+	/// statistics tell the two apart.
+	virtual void noteExplicitCopy() {
+	}
 
 	/// Trace a binary operation (e.g. ADD, MUL, EQ, ...).
 	virtual TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
@@ -127,6 +135,19 @@ public:
 	/// tracing state per region simply invoke the body inline, which traces it into the
 	/// enclosing function.
 	virtual void traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) = 0;
+
+	/// Trace an extension operation (docs/plans/nautilus-0.4/04-extensions.md §4): @p opcode is the registry's opcode
+	/// (256 and up), @p resultType the TypeId of the result (a core type or an extension type, 0 for none) and
+	/// @p inputs the operands. Tracers that record NIR implement it; the others throw.
+	virtual TypedValueRef& traceExtOp(uint16_t opcode, uint8_t resultType, const std::vector<TypedValueRef>& inputs);
+
+	/// Trace a read-only data object (`constData`): a copy of @p bytes in the module's data section; the result is a
+	/// pointer to it. Tracers that record NIR implement it; the others throw.
+	virtual TypedValueRef& traceData(std::span<const std::byte> bytes, size_t align);
+
+	/// Trace the address of the runtime binding @p name of @p size bytes and @p align alignment (`bind.addr`).
+	/// Tracers that record NIR implement it; the others throw.
+	virtual TypedValueRef& traceBinding(std::string_view name, size_t size, size_t align);
 
 	/// Increment the reference count of a value.
 	virtual void allocateValRef(ValueRef ref) = 0;

@@ -1,0 +1,7 @@
+nir 1.0
+
+func export pressa @execute : (ptr, i32 sext) -> void {
+^b0(%0: ptr, %1: i32):
+  [2] store %0, %1
+  [3] ret
+}

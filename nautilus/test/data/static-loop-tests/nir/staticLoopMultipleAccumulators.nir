@@ -1,0 +1,34 @@
+nir 1.0
+
+func export pressa @execute : () -> i32 sext {
+^b0:
+  %0 = var 0:i32
+  %1 = var 1:i32
+  %2 = var 10:i32
+  %3 = add %0, %2
+  [4] assign %0, %3
+  %5 = add %1, %1
+  [6] assign %1, %5
+  %7 = var 10:i32
+  %8 = add %0, %7
+  [9] assign %0, %8
+  %10 = add %1, %1
+  [11] assign %1, %10
+  %12 = var 10:i32
+  %13 = add %0, %12
+  [14] assign %0, %13
+  %15 = add %1, %1
+  [16] assign %1, %15
+  %17 = var 10:i32
+  %18 = add %0, %17
+  [19] assign %0, %18
+  %20 = add %1, %1
+  [21] assign %1, %20
+  %22 = var 10:i32
+  %23 = add %0, %22
+  [24] assign %0, %23
+  %25 = add %1, %1
+  [26] assign %1, %25
+  %27 = add %0, %1
+  [28] ret %27
+}

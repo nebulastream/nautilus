@@ -1,0 +1,17 @@
+nir 1.0
+callee #c0 = internal @addUInt16 : (i16 zext, i16 zext) -> i16 zext
+
+func export pressa @execute : (i16 zext, i16 zext) -> i16 zext {
+^b0(%0: i16, %1: i16):
+  %2 = call #c0(%0, %1) cleanup []
+  [3] ret %2
+}
+
+func pressa @addUInt16 : (i16 zext, i16 zext) -> i16 zext {
+^b0(%0: i16, %1: i16):
+  %2 = cast.zext %0 : i32
+  %3 = cast.zext %1 : i32
+  %4 = add %2, %3
+  %5 = cast.trunc %4 : i16
+  [6] ret %5
+}

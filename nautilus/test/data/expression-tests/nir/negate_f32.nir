@@ -1,0 +1,7 @@
+nir 1.0
+
+func export pressa @execute : (f32) -> f32 {
+^b0(%0: f32):
+  %1 = fneg %0
+  [2] ret %1
+}

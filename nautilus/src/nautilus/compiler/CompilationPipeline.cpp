@@ -37,8 +37,11 @@
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
 #include "nautilus/compiler/ir/passes/StrengthReductionPass.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
+#include "nautilus/nir/Printer.hpp"
+#include "nautilus/nir/Verifier.hpp"
 #include "nautilus/tracing/CopyAttribution.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
+#include "nautilus/tracing/nir/NirTrace.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #endif
@@ -236,7 +239,48 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 	}
+	if (statistics != nullptr) {
+		const auto& t = traceModule->statistics;
+		statistics->set("tracing.iterations", static_cast<int64_t>(t.iterations));
+		statistics->set("tracing.replayedOperations", static_cast<int64_t>(t.replayedOperations));
+		statistics->set("tracing.snapshots", static_cast<int64_t>(t.snapshots));
+		statistics->set("tracing.operations", static_cast<int64_t>(t.operations));
+		statistics->set("tracing.pausedOperations", static_cast<int64_t>(t.pausedOperations));
+		statistics->set("tracing.copies", static_cast<int64_t>(t.copies()));
+		statistics->set("tracing.copies.construct", static_cast<int64_t>(t.copiesConstruct));
+		statistics->set("tracing.copies.assign", static_cast<int64_t>(t.copiesAssign));
+		statistics->set("tracing.copies.explicit", static_cast<int64_t>(t.copiesExplicit));
+		statistics->set("tracing.scopes", static_cast<int64_t>(t.scopes));
+		statistics->set("tracing.maxScopeIterations", static_cast<int64_t>(t.maxScopeIterations));
+		statistics->set("tracing.firstRun.ms", t.firstRunMs);
+		statistics->set("tracing.rerun.ms", t.rerunMs);
+		statistics->set("tracing.rerun.follow.ms", t.rerunFollowMs);
+		statistics->set("tracing.rerun.record.ms", t.rerunRecordMs);
+		statistics->set("tracing.rerun.paused.ms", t.rerunPausedMs);
+	}
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
+	if (const bool verifyNir = moduleOptions.getOptionOrDefault("tracing.verifyNir", false);
+	    verifyNir || dumpHandler.shouldDump("after_nir_tracing")) {
+		try {
+			auto nirModule = tracing::nirtrace::toPreSSA(*traceModule);
+			dumpHandler.dump("after_nir_tracing", "nir", [&]() { return nir::print(nirModule); });
+			if (verifyNir) {
+				auto diagnostics = nir::verify(nirModule);
+				if (!diagnostics.empty()) {
+					std::string message = "the pre-SSA NIR of the trace does not verify:";
+					for (const auto& d : diagnostics) {
+						message += "\n  " + d.str();
+					}
+					throw RuntimeException(message + "\n" + nir::print(nirModule));
+				}
+			}
+		} catch (const RuntimeException&) {
+			// a dump must not fail a compilation; the verification exists to fail it
+			if (verifyNir) {
+				throw;
+			}
+		}
+	}
 	// Not part of dump.all: resolving every copy's call stack through the debug information is slow.
 	if (moduleOptions.getOptionOrDefault("dump.copySites", false)) {
 		tracing::SourceLocationResolver copySiteResolver;

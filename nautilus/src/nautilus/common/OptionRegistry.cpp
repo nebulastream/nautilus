@@ -23,6 +23,8 @@ const std::vector<OptionSpec>& optionRegistry() {
 	    {"engine.arena.retainedBytes", OptionType::Int, "8388608", false, {}},
 	    {"dump.all", OptionType::Bool, "false", false, {}},
 	    {"dump.copySites", OptionType::Bool, "false", false, {}},
+	    {"dump.after_nir_tracing", OptionType::Bool, "false", false, {}},
+	    {"tracing.verifyNir", OptionType::Bool, "false", false, {}},
 	    {"dump.after_tracing", OptionType::Bool, "false", false, {}},
 	    {"dump.after_ir_creation", OptionType::Bool, "false", false, {}},
 	    {"dump.after_mlir_generation", OptionType::Bool, "false", false, {}},

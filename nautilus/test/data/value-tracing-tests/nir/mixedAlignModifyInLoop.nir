@@ -1,0 +1,65 @@
+nir 1.0
+
+func export pressa @execute : (i32 sext) -> i64 {
+  alloca 16 align 8
+^b0(%0: i32):
+  %1 = alloca 0
+  %2 = var 0:i8
+  [3] store %1, %2
+  %4 = var 0:i32
+  %5 = var 4:i64
+  %6 = add %1, %5
+  [7] store %6, %4
+  %8 = var 0:i64
+  %9 = var 8:i64
+  %10 = add %1, %9
+  [11] store %10, %8
+  %12 = var 0:i32
+  [13] br ^b1
+^b1:
+  %14 = cmp.lt.s %12, %0
+  [15] condbr %14, ^b2, ^b3 prob 2147483647
+^b2:
+  %16 = var %1
+  %17 = load %16 : i8
+  %18 = var 1:i8
+  %19 = cast.sext %17 : i32
+  %20 = cast.sext %18 : i32
+  %21 = add %19, %20
+  %22 = cast.trunc %21 : i8
+  [23] store %1, %22
+  %24 = var 4:i64
+  %25 = add %1, %24
+  %26 = load %25 : i32
+  %27 = var 10:i32
+  %28 = add %26, %27
+  %29 = var 4:i64
+  %30 = add %1, %29
+  [31] store %30, %28
+  %32 = var 8:i64
+  %33 = add %1, %32
+  %34 = load %33 : i64
+  %35 = var 100:i64
+  %36 = add %34, %35
+  %37 = var 8:i64
+  %38 = add %1, %37
+  [39] store %38, %36
+  %40 = var 1:i32
+  %41 = add %12, %40
+  [42] assign %12, %41
+  [43] br ^b1
+^b3:
+  %44 = var %1
+  %45 = load %44 : i8
+  %46 = var 4:i64
+  %47 = add %1, %46
+  %48 = load %47 : i32
+  %49 = var 8:i64
+  %50 = add %1, %49
+  %51 = load %50 : i64
+  %52 = cast.sext %45 : i64
+  %53 = cast.sext %48 : i64
+  %54 = add %52, %53
+  %55 = add %54, %51
+  [56] ret %55
+}

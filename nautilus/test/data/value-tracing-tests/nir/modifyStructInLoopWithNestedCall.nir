@@ -1,0 +1,44 @@
+nir 1.0
+callee #c0 = internal @incrementFieldA : (ptr, i32 sext) -> void
+callee #c1 = internal @readFieldA : (ptr) -> i32 sext
+
+func export pressa @execute : (i32 sext) -> i32 sext {
+  alloca 8 align 4
+^b0(%0: i32):
+  %1 = alloca 0
+  %2 = var 0:i32
+  [3] store %1, %2
+  %4 = var 0:i32
+  [5] br ^b1
+^b1:
+  %6 = cmp.lt.s %4, %0
+  [7] condbr %6, ^b2, ^b3 prob 2147483647
+^b2:
+  %8 = var %1
+  %9 = var 1:i32
+  [10] call #c0(%8, %9) cleanup []
+  %11 = var 1:i32
+  %12 = add %4, %11
+  [13] assign %4, %12
+  [14] br ^b1
+^b3:
+  %15 = var %1
+  %16 = call #c1(%15) cleanup []
+  [17] ret %16
+}
+
+func pressa @incrementFieldA : (ptr, i32 sext) -> void {
+^b0(%0: ptr, %1: i32):
+  %2 = var %0
+  %3 = load %2 : i32
+  %4 = add %3, %1
+  [5] store %0, %4
+  [6] ret
+}
+
+func pressa @readFieldA : (ptr) -> i32 sext {
+^b0(%0: ptr):
+  %1 = var %0
+  %2 = load %1 : i32
+  [3] ret %2
+}

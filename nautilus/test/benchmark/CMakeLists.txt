@@ -16,6 +16,13 @@ if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
     catch_discover_tests(nautilus-benchmarks EXTRA_ARGS --allow-running-no-tests)
 
+    # the tracer alone, for a profiler: nautilus-tracing-corpus [function [reps]]
+    add_executable(nautilus-tracing-corpus TracingCorpus.cpp)
+    target_include_directories(nautilus-tracing-corpus PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../src>)
+    target_link_libraries(nautilus-tracing-corpus PRIVATE nautilus)
+
     # The latency corpus (docs/plans/nautilus-0.4/10-observability.md). A plain executable that replaces the global
     # operator new to count allocations; it uses only the public engine API.
     add_executable(nautilus-latency-corpus latency-corpus/LatencyCorpus.cpp)

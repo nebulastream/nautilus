@@ -1,0 +1,10 @@
+nir 1.0
+pointer #p0 = callee local 0x0
+callee #c0 = external #p0 : (ptr, ptr, i64) -> ptr attrs(noUnwind)
+
+func export pressa @execute : (ptr, ptr) -> void {
+^b0(%0: ptr, %1: ptr):
+  %2 = var 0:i64
+  %3 = call #c0(%1, %0, %2)
+  [4] ret
+}

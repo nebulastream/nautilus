@@ -1,0 +1,9 @@
+nir 1.0
+
+func export pressa @execute : (ptr) -> i32 sext {
+^b0(%0: ptr):
+  %1 = var %0
+  %2 = var %1
+  %3 = load %2 : i32
+  [4] ret %3
+}

@@ -25,9 +25,13 @@
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/exceptions/NotImplementedException.hpp"
+#include "nautilus/nir/Printer.hpp"
+#include "nautilus/nir/Verifier.hpp"
 #include "nautilus/tracing/CopyAttribution.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
+#include "nautilus/tracing/nir/NirTrace.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <algorithm>
@@ -36,6 +40,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <regex>
 #include <stdexcept>
 
 namespace nautilus::log::options {
@@ -82,6 +87,23 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 			auto executionTrace = tracing::TraceContext::Trace(functionsToTrace, engine::Options(), arena);
 			DYNAMIC_SECTION("tracing") {
 				REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
+			}
+			DYNAMIC_SECTION("nir") {
+				// the trace as pre-SSA NIR must verify (docs/plans/nautilus-0.4/01-tracing-frontend.md §6)
+				auto nirModule = tracing::nirtrace::toPreSSA(*executionTrace);
+				auto diagnostics = nir::verify(nirModule);
+				std::string all;
+				for (auto& d : diagnostics) {
+					all += d.str() + "\n";
+				}
+				if (!diagnostics.empty()) {
+					all += nir::print(nirModule);
+				}
+				INFO(all);
+				REQUIRE(diagnostics.empty());
+				// host addresses differ from run to run; the dump keeps the shape of the pointers table
+				auto text = std::regex_replace(nir::print(nirModule), std::regex("0x[0-9a-f]+"), "0x0");
+				REQUIRE(checkTestFile(text, category, "nir", name, ".nir"));
 			}
 			DYNAMIC_SECTION("ir") {
 				auto ir = tracing::TraceToIRConversionPhase().apply(
@@ -890,4 +912,70 @@ TEST_CASE("Nautilus Function Call Trace Test") {
 	};
 	runTraceTests("nautilus-function-call-tests", tests);
 }
+} // namespace nautilus::engine
+
+// The tracing statistics (docs/plans/nautilus-0.4/10-observability.md §3, M2.0).
+namespace nautilus::engine {
+
+namespace {
+
+val<int32_t*> pointerPlusZero(val<int32_t*> p) {
+	return p + 0;
+}
+
+tracing::TracingStatistics statisticsOf(std::function<void()> function) {
+	common::Arena arena;
+	std::list<compiler::CompilableFunction> functions;
+	functions.emplace_back("execute", std::move(function));
+	return tracing::TraceContext::Trace(functions, engine::Options {}, arena)->statistics;
+}
+
+} // namespace
+
+TEST_CASE("Tracing statistics: straight-line code is one pass", "[tracing][statistics]") {
+	auto stats = statisticsOf(details::createFunctionWrapper(int8AddExpression));
+	CHECK(stats.iterations == 1);
+	CHECK(stats.scopes == 1);
+	CHECK(stats.maxScopeIterations == 1);
+	CHECK(stats.replayedOperations == 0);
+	CHECK(stats.pausedOperations == 0);
+	CHECK(stats.snapshots > 0);
+	CHECK(stats.operations > 0);
+	CHECK(stats.rerunMs == 0);
+	CHECK(stats.firstRunMs > 0);
+}
+
+TEST_CASE("Tracing statistics: independent branches are replayed", "[tracing][statistics]") {
+	auto stats = statisticsOf(details::createFunctionWrapper(chainedIf10));
+	// ten independent ifs need eleven passes; every re-run steps over the path it follows
+	CHECK(stats.iterations == 11);
+	CHECK(stats.maxScopeIterations == 11);
+	CHECK(stats.replayedOperations > 0);
+	CHECK(stats.rerunMs > 0);
+	// the split covers the re-run time and no more
+	CHECK(stats.rerunFollowMs + stats.rerunRecordMs + stats.rerunPausedMs <= stats.rerunMs * 1.001 + 1e-6);
+	CHECK(stats.rerunFollowMs > 0);
+}
+
+TEST_CASE("The 0.3 tracer rejects the NIR tracer's hooks", "[tracing]") {
+	common::Arena arena;
+	auto attempt = [&](std::function<void()> hook) {
+		std::list<compiler::CompilableFunction> functions;
+		functions.emplace_back("execute", std::move(hook));
+		return tracing::TraceContext::Trace(functions, engine::Options {}, arena);
+	};
+	CHECK_THROWS_AS(attempt([] { tracing::traceExtOp(256, 0, {}); }), NotImplementedException);
+	CHECK_THROWS_AS(attempt([] { tracing::traceData({}, 1); }), NotImplementedException);
+	CHECK_THROWS_AS(attempt([] { tracing::traceBinding("state", 8, 8); }), NotImplementedException);
+}
+
+TEST_CASE("Tracing statistics: copies by kind", "[tracing][statistics]") {
+	auto assignments = statisticsOf(details::createFunctionWrapper(assignAdd));
+	CHECK(assignments.copiesAssign > 0);
+	auto pointers = statisticsOf(details::createFunctionWrapper(pointerPlusZero));
+	CHECK(pointers.copiesExplicit == 1);
+	CHECK(pointers.copiesConstruct == 0);
+	CHECK(pointers.copies() == pointers.copiesExplicit + pointers.copiesConstruct);
+}
+
 } // namespace nautilus::engine

@@ -1,0 +1,18 @@
+nir 1.0
+pointer #p0 = callee local 0x0
+pointer #p1 = callee local 0x0
+callee #c0 = external #p0 : (ptr) -> void attrs(noUnwind)
+callee #c1 = external #p1 : (ptr) -> void attrs(noUnwind)
+
+func export pressa @execute : () -> i32 sext {
+  alloca 4 align 4
+^b0:
+  %0 = alloca 0
+  [1] call #c0(%0)
+  %2 = var 42:i32
+  [3] store %0, %2
+  %4 = var %0
+  %5 = load %4 : i32
+  [6] call #c1(%0)
+  [7] ret %5
+}

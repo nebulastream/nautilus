@@ -2,6 +2,7 @@
 
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
+#include "TracingStatistics.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/options.hpp"
@@ -10,6 +11,7 @@
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -255,6 +257,9 @@ public:
 	TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) override;
 	TypedValueRef& traceAlloca(size_t size, size_t align) override;
 	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
+	void noteExplicitCopy() override {
+		nextCopyExplicit_ = true;
+	}
 	TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
 	                             const TypedValueRef& right) override;
 	TypedValueRef& traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) override;
@@ -494,6 +499,24 @@ private:
 	/// the normalized function-name cache. Always the outermost context;
 	/// `this` for a function scope.
 	TraceContext* session_ = this;
+
+	/// Statistics (session-owned; see session_) and the pass timer behind the re-run split. Only the outermost scope is
+	/// timed: a region's passes run inside a pass of the enclosing scope and are part of its time.
+	enum class Phase : uint8_t { None, Follow, Record, Paused };
+	TracingStatistics stats_;
+	Phase phase_ = Phase::None;
+	bool rerunPass_ = false;
+	bool nextCopyExplicit_ = false;
+	std::chrono::steady_clock::time_point phaseStart_, passStart_;
+	void beginPass(bool rerun);
+	void enterPhase(Phase phase);
+	void endPass();
+	void accountPhase(std::chrono::steady_clock::time_point now);
+	/// Ends the pass: the traced calls that follow do nothing but return a dummy.
+	void pause() {
+		paused_ = true;
+		enterPhase(Phase::Paused);
+	}
 
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars;

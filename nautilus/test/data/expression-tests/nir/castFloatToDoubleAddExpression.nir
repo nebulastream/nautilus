@@ -1,0 +1,9 @@
+nir 1.0
+
+func export pressa @execute : (f32) -> f64 {
+^b0(%0: f32):
+  %1 = var 7:f64
+  %2 = cast.fpext %0 : f64
+  %3 = add %2, %1
+  [4] ret %3
+}

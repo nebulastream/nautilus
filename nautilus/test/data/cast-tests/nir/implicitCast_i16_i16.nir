@@ -1,0 +1,7 @@
+nir 1.0
+
+func export pressa @execute : (i16 sext) -> i16 sext {
+^b0(%0: i16):
+  %1 = var %0
+  [2] ret %1
+}

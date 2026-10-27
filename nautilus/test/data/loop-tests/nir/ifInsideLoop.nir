@@ -1,0 +1,33 @@
+nir 1.0
+
+func export pressa @execute : (i32 sext) -> i32 sext {
+^b0(%0: i32):
+  %1 = var 0:i32
+  %2 = var 0:i32
+  [3] br ^b1
+^b1:
+  %4 = cmp.lt.s %2, %0
+  [5] condbr %4, ^b2, ^b6 prob 2147483647
+^b2:
+  %6 = var 2:i32
+  %7 = rem.s.checked %2, %6 cleanup []
+  %8 = var 0:i32
+  %9 = cmp.eq %7, %8
+  [10] condbr %9, ^b3, ^b4 prob 2147483647
+^b3:
+  %11 = var 1:i32
+  %12 = add %1, %11
+  [13] assign %1, %12
+  %14 = var 1:i32
+  [15] br ^b5
+^b4:
+  %16 = var 1:i32
+  [17] assign %14, %16
+  [18] br ^b5
+^b5:
+  %19 = add %2, %14
+  [20] assign %2, %19
+  [21] br ^b1
+^b6:
+  [22] ret %1
+}

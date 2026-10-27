@@ -69,8 +69,16 @@ TypedValueRef traceConstant(T&& value) {
 	return {0, TypeResolver<T>::to_type()};
 }
 
+/// Extension operations, data objects and runtime bindings; see TracingInterface. They throw when no tracer is active
+/// or the active one cannot record them.
+TypedValueRef& traceExtOp(uint16_t opcode, uint8_t resultType, const std::vector<TypedValueRef>& inputs);
+TypedValueRef& traceData(std::span<const std::byte> bytes, size_t align);
+TypedValueRef& traceBinding(std::string_view name, size_t size, size_t align);
+
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
 TypedValueRef traceCopy(const TypedValueRef& ref);
+/// The next traceCopy is a copy the library makes on purpose (`ptr + 0`); see TracingInterface::noteExplicitCopy.
+void noteExplicitCopy();
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                          FunctionAttributes fnAttrs);

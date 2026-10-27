@@ -176,7 +176,8 @@ TEST_CASE("NIR-V061 values used in a pad are defined before the throwing instruc
 }
 
 TEST_CASE("NIR-V051 pre-SSA definitions reach every use", "[nir][verifier][flow]") {
-	auto build = [](bool varInBranch) {
+	// assignInOther: the other arm writes the variable with a reconciling assign (a native `c ? a : b`, #95)
+	auto build = [](bool varInBranch, bool assignInOther = false) {
 		Module m;
 		Builder b(m);
 		TypeWord params[] = {test::tw(TypeId::I64)};
@@ -199,6 +200,9 @@ TEST_CASE("NIR-V051 pre-SSA definitions reach every use", "[nir][verifier][flow]
 		}
 		b.emit(Op::Br, TypeId::Void, 0, 3, 0, m.addExtra(none));
 		b.beginBlock();
+		if (assignInOther) {
+			b.emit(Op::Assign, TypeId::Void, 0, v, x);
+		}
 		b.emit(Op::Br, TypeId::Void, 0, 3, 0, m.addExtra(none));
 		b.beginBlock();
 		b.emit(Op::Ret, TypeId::Void, 0, v);
@@ -207,6 +211,8 @@ TEST_CASE("NIR-V051 pre-SSA definitions reach every use", "[nir][verifier][flow]
 	};
 	requireValid(build(false));
 	REQUIRE(has(verify(build(true)), DiagCode::V051));
+	// an assign onto the variable is a write on its path, so the use is reached on both
+	requireValid(build(true, true));
 }
 
 TEST_CASE("a landing pad whose br has a bad extra offset is reported, not followed", "[nir][verifier][flow]") {

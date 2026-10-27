@@ -1,0 +1,17 @@
+nir 1.0
+callee #c0 = internal @mulUInt8 : (i8 zext, i8 zext) -> i8 zext
+
+func export pressa @execute : (i8 zext, i8 zext) -> i8 zext {
+^b0(%0: i8, %1: i8):
+  %2 = call #c0(%0, %1) cleanup []
+  [3] ret %2
+}
+
+func pressa @mulUInt8 : (i8 zext, i8 zext) -> i8 zext {
+^b0(%0: i8, %1: i8):
+  %2 = cast.zext %0 : i32
+  %3 = cast.zext %1 : i32
+  %4 = mul %2, %3
+  %5 = cast.trunc %4 : i8
+  [6] ret %5
+}

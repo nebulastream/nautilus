@@ -214,6 +214,15 @@ differs from the work packages above:
   only process-local pointer kept the `processToken`, V040); see the commit messages. The one-CPU-hour exit of M1.6 is
   met: 69.1M executions in 3601 s on the final code without a crash.
 
+**PR 3 status.** Part 1 is on `claude/nir-tracer-pr3`: the mapping from a finished 0.3 trace to pre-SSA NIR
+(`tracing/nir/NirTrace.cpp`, checked by `tracing.verifyNir` over the whole test suite and by golden dumps in
+`test/data/*/nir`), M2.0's statistics, hashed trie children (`distinctSites1024` tracing -67% instructions) and the
+new `TracingInterface` hooks. Not yet: the second recorder that writes `FlatTrace` directly (16-byte records, open
+addressing tag map, index-based replay cursor, no `malloc` per recorded op) and the allocation-counter test. The
+conversion of PR 4 reads pre-SSA NIR from either producer, so it starts from `toPreSSA`; the direct recorder then
+replaces the producer in its own PR. Spec change found on the way: `NIR-V051` counts an `assign` as a write of the
+variable (13 §6.2), because the tracer's reconciling `assign` of #95 writes a variable that the other arm defined.
+
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 9.
 

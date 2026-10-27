@@ -2,6 +2,7 @@
 #include "BoolOperations.hpp"
 #include "CastFunctions.hpp"
 #include "ControlFlowFunctions.hpp"
+#include "DistinctSitesFunctions.hpp"
 #include "EnumFunction.hpp"
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
@@ -40,6 +41,7 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
     {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
     {"chainedIf10Region", details::createFunctionWrapper(chainedIf10Region)},
     {"chainedIf100Region", details::createFunctionWrapper(chainedIf100Region)},
+    {"distinctSites1024", details::createFunctionWrapper(distinctSites1024)},
 };
 
 TEST_CASE("Tracing Benchmark") {
