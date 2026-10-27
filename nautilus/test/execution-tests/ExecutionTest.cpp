@@ -14,7 +14,13 @@
 #include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <limits>
+#include <map>
+#include <set>
+#include <sstream>
+#include <unistd.h>
 namespace nautilus::engine {
 
 val<bool> makeConstantOfTracingValue(val<int> ref) {
@@ -1809,6 +1815,88 @@ TEST_CASE("NautilusFunction Compiled Execution Test") {
 			                                  options.setOption("mlir.enableMultithreading", false);
 		                                  }
 	                                  });
+}
+#endif
+
+#if defined(ENABLE_TRACING) && defined(NAUTILUS_BASELINES_DIR)
+namespace {
+
+/// `name<TAB>...<TAB>bits...` lines; the bits of a name are the union over its lines (a name can occur at several
+/// sites).
+std::map<std::string, uint32_t> readBits(const std::filesystem::path& path, size_t bitsColumn) {
+	std::map<std::string, uint32_t> bits;
+	std::ifstream in(path);
+	std::string line;
+	while (std::getline(in, line)) {
+		std::vector<std::string> columns;
+		std::stringstream ss(line);
+		for (std::string column; std::getline(ss, column, '\t');) {
+			columns.push_back(column);
+		}
+		if (columns.size() > bitsColumn) {
+			bits[columns[0]] |= static_cast<uint32_t>(std::stoul(columns[bitsColumn]));
+		}
+	}
+	return bits;
+}
+
+} // namespace
+
+// M3.6: the attribute pre-pass of the conversion derives the guarantee bits of the internal functions that the tests
+// compile. They must not be more optimistic than what 0.3 inferred (recorded in the baselines); where they are less,
+// the expected-delta file names the reason, and the only accepted ones are a checked division (D10: 0.3 inferred
+// noUnwind for a division by a variable) and a pessimization of a body the conversion does not fold.
+TEST_CASE("The inferred attributes are no more optimistic than 0.3's") {
+	const auto backends = nautilus::testing::availableBackends();
+	if (backends.empty()) {
+		SKIP("no compiling backend");
+	}
+	const auto file =
+	    std::filesystem::temp_directory_path() / ("nautilus-attributes-" + std::to_string(::getpid()) + ".tsv");
+	std::filesystem::remove(file);
+	{
+		auto engine = nautilus::testing::makeEngine(backends.front(), [&](engine::Options& options) {
+			options.setOption("tracing.nirAttributesFile", file.string());
+		});
+		nautilusFunctionExecutionTest(engine);
+	}
+	const auto ours = readBits(file, 1);
+	std::filesystem::remove(file);
+	const std::filesystem::path baselines = NAUTILUS_BASELINES_DIR;
+	const auto theirs = readBits(baselines / "ir-functions.tsv", 2);
+
+	std::map<std::string, std::string> expected;
+	{
+		std::ifstream in(baselines / "expected-attribute-delta.tsv");
+		for (std::string line; std::getline(in, line);) {
+			if (line.empty() || line[0] == '#') {
+				continue;
+			}
+			const auto tab = line.find('\t');
+			expected[line.substr(0, tab)] = line.substr(tab + 1);
+		}
+	}
+	size_t compared = 0;
+	for (const auto& [name, bits] : ours) {
+		auto base = theirs.find(name);
+		if (base == theirs.end()) {
+			continue;
+		}
+		++compared;
+		INFO(name);
+		const uint32_t moreOptimistic = bits & ~base->second;
+		CHECK(moreOptimistic == 0);
+		if ((base->second & ~bits) != 0) {
+			// less optimistic than 0.3: only with a recorded reason
+			auto reason = expected.find(name);
+			INFO("less optimistic than 0.3 without a reason in expected-attribute-delta.tsv: "
+			     << name << " (0.3 " << base->second << ", now " << bits << ")");
+			REQUIRE(reason != expected.end());
+			CHECK((reason->second == "checkedDivision" || reason->second == "pessimization"));
+		}
+	}
+	// (Catch runs this case once per leaf section of nautilusFunctionExecutionTest, so each run sees a few functions.)
+	CHECK(compared >= 1);
 }
 #endif
 

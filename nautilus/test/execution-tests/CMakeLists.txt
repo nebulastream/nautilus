@@ -60,6 +60,9 @@ endif ()
 add_executable(nautilus-execution-tests ${NAUTILUS_EXECUTION_TEST_SOURCES})
 
 target_link_libraries(nautilus-execution-tests PUBLIC nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
+# the recorded 0.3 baselines (M1.10), which the attribute inference of the conversion is compared with
+target_compile_definitions(nautilus-execution-tests PRIVATE
+        NAUTILUS_BASELINES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../baselines/0.3")
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus-execution-tests PRIVATE spdlog::spdlog)
 endif ()

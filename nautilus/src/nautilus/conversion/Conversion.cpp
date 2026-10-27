@@ -1,4 +1,5 @@
 #include "nautilus/conversion/Conversion.hpp"
+#include "nautilus/conversion/AttributeInference.hpp"
 #include "nautilus/nir/Builder.hpp"
 #include "nautilus/nir/Operands.hpp"
 #include "nautilus/nir/Semantics.hpp"
@@ -787,8 +788,15 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 			temps_[t].list.push_back(value);
 		}
 		const uint32_t unwind = list[1 + argc];
+		// a callee that cannot throw needs no unwind entry and no cleanup (M3.5: only where the final noUnwind is
+		// clear)
+		const bool cannotThrow = optimize_ && op == Op::Call && inst.a < pre_.callees.size() &&
+		                         (pre_.callees[inst.a].attrs & AttrNoUnwind) != 0;
 		if (unwind == NO_UNWIND) {
 			temps_[t].unwind = NO_UNWIND;
+		} else if (cannotThrow) {
+			temps_[t].unwind = NO_UNWIND;
+			++stats_.droppedUnwinds;
 		} else {
 			auto pad = convertUnwind(b, unwind);
 			temps_[t].unwind = pad;
@@ -1181,7 +1189,16 @@ Module convert(const Module& preSSA, const ConversionOptions& options, Conversio
 	auto& stats = statistics != nullptr ? *statistics : local;
 	stats = {};
 
-	Module out = preSSA;
+	// the attribute pre-pass runs over all bodies before any function is converted (03 §3.5)
+	Module pre = preSSA;
+	if (options.inferAttributes && options.optimize) {
+		auto inferred = inferAttributes(pre);
+		stats.inferredFunctions = inferred.functions;
+		stats.cyclicFunctions = inferred.cyclic;
+		stats.inferredNoUnwind = inferred.noUnwind;
+		stats.inferredWillReturn = inferred.willReturn;
+	}
+	Module out = pre;
 	out.insts.clear();
 	out.blocks.clear();
 	out.functions.clear();
@@ -1190,14 +1207,14 @@ Module convert(const Module& preSSA, const ConversionOptions& options, Conversio
 	// come along
 	out.extra.clear();
 	for (auto& sig : out.signatures) {
-		const auto words = std::span<const uint32_t>(preSSA.extra.data() + sig.paramTypes, sig.paramCount);
+		const auto words = std::span<const uint32_t>(pre.extra.data() + sig.paramTypes, sig.paramCount);
 		sig.paramTypes = out.addExtra(words);
 	}
-	for (uint32_t f = 0; f < preSSA.functions.size(); ++f) {
-		if (preSSA.functions[f].level != static_cast<uint8_t>(Level::PreSSA)) {
+	for (uint32_t f = 0; f < pre.functions.size(); ++f) {
+		if (pre.functions[f].level != static_cast<uint8_t>(Level::PreSSA)) {
 			throw std::runtime_error("conversion of function #" + std::to_string(f) + ": it is not a pre-SSA function");
 		}
-		FunctionConverter(preSSA, f, out, stats, options.optimize).run();
+		FunctionConverter(pre, f, out, stats, options.optimize).run();
 	}
 	out.rebuildIndexes();
 	return out;

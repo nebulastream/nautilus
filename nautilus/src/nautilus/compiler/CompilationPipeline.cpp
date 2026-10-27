@@ -12,6 +12,7 @@
 #include <chrono>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
+#include <fstream>
 #include <iomanip>
 #include <random>
 #include <sstream>
@@ -260,8 +261,9 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		statistics->set("tracing.rerun.paused.ms", t.rerunPausedMs);
 	}
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
+	const auto nirAttributesFile = moduleOptions.getOptionOrDefault<std::string>("tracing.nirAttributesFile", "");
 	if (const bool verifyNir = moduleOptions.getOptionOrDefault("tracing.verifyNir", false);
-	    verifyNir || dumpHandler.shouldDump("after_nir_tracing")) {
+	    verifyNir || !nirAttributesFile.empty() || dumpHandler.shouldDump("after_nir_tracing")) {
 		try {
 			auto nirModule = tracing::nirtrace::toPreSSA(*traceModule);
 			dumpHandler.dump("after_nir_tracing", "nir", [&]() { return nir::print(nirModule); });
@@ -283,6 +285,16 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 						message += "\n  " + d.str();
 					}
 					throw RuntimeException(message + "\n" + nir::print(ssa) + "\nfrom\n" + nir::print(nirModule));
+				}
+			}
+			if (!nirAttributesFile.empty()) {
+				// the guarantee bits the attribute pre-pass derived, one line per internal function: name, bits
+				auto ssa = conversion::convert(nirModule);
+				std::ofstream out(nirAttributesFile, std::ios::app);
+				for (const auto& f : ssa.functions) {
+					if (f.visibility == static_cast<uint8_t>(nir::Visibility::Internal)) {
+						out << ssa.name(f.nameId) << '\t' << (f.attrs & nir::GUARANTEE_MASK) << '\n';
+					}
 				}
 			}
 		} catch (const std::exception&) {

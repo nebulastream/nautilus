@@ -377,3 +377,239 @@ func export pressa @f : (i64) -> i64 {
 	CHECK(plain.instructions == 3);
 	CHECK(plain.folded == 0);
 }
+
+// ---- the attribute pre-pass (03 §3.5) ----------------------------------------------------------------------------
+
+namespace {
+
+constexpr uint32_t kNoRead = AttrNoArgRead | AttrNoOtherRead;
+constexpr uint32_t kNoWrite = AttrNoArgWrite | AttrNoOtherWrite;
+constexpr uint32_t kPure = kNoRead | kNoWrite | AttrNoUnwind | AttrWillReturn;
+
+/// The guarantee bits of the function named `name` after conversion, which every callee record naming it must repeat.
+uint32_t inferred(const Module& ssa, std::string_view name) {
+	for (uint32_t f = 0; f < ssa.functions.size(); ++f) {
+		if (ssa.name(ssa.functions[f].nameId) == name) {
+			for (auto& c : ssa.callees) {
+				if (c.kind == static_cast<uint8_t>(CalleeKind::Internal) && c.target == f) {
+					CHECK((c.attrs & GUARANTEE_MASK) == (ssa.functions[f].attrs & GUARANTEE_MASK));
+				}
+			}
+			return ssa.functions[f].attrs & GUARANTEE_MASK;
+		}
+	}
+	FAIL("no function " << name);
+	return 0;
+}
+
+Module convertedModule(const std::string& text, ConversionStatistics* stats = nullptr) {
+	auto pre = parseOk(text);
+	auto ssa = convert(pre, {}, stats);
+	auto diagnostics = verify(ssa);
+	std::string all;
+	for (auto& d : diagnostics) {
+		all += d.str() + "\n";
+	}
+	INFO(all + print(ssa));
+	REQUIRE(diagnostics.empty());
+	return ssa;
+}
+
+} // namespace
+
+TEST_CASE("a function without memory access, loops or throwing calls gets every guarantee",
+          "[nir][conversion][attrs]") {
+	ConversionStatistics stats;
+	auto ssa = convertedModule(R"(nir 1.0
+callee #c0 = internal @pure : (i64) -> i64
+
+func pressa @pure : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = add %0, 1:i64
+  [2] ret %1
+}
+
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = call #c0(%0)
+  [2] ret %1
+}
+)",
+	                           &stats);
+	CHECK(inferred(ssa, "pure") == kPure);
+	CHECK(stats.inferredFunctions == 1);
+	CHECK(stats.inferredNoUnwind == 1);
+	CHECK(stats.inferredWillReturn == 1);
+}
+
+TEST_CASE("loads and stores take away the no-read and no-write guarantees and callers inherit that",
+          "[nir][conversion][attrs]") {
+	auto ssa = convertedModule(R"(nir 1.0
+callee #c0 = internal @reader : (ptr) -> i64
+callee #c1 = internal @writer : (ptr) -> void
+callee #c2 = internal @viaReader : (ptr) -> i64
+
+func pressa @reader : (ptr) -> i64 {
+^b0(%0: ptr):
+  %1 = load %0 : i64
+  [2] ret %1
+}
+
+func pressa @writer : (ptr) -> void {
+^b0(%0: ptr):
+  [1] store %0, 1:i64
+  [2] ret
+}
+
+func pressa @viaReader : (ptr) -> i64 {
+^b0(%0: ptr):
+  %1 = call #c0(%0)
+  [2] ret %1
+}
+
+func export pressa @f : (ptr) -> i64 {
+^b0(%0: ptr):
+  [1] call #c1(%0)
+  %2 = call #c2(%0)
+  [3] ret %2
+}
+)");
+	CHECK(inferred(ssa, "reader") == (kNoWrite | AttrNoUnwind | AttrWillReturn));
+	CHECK(inferred(ssa, "writer") == (kNoRead | AttrNoUnwind | AttrWillReturn));
+	CHECK(inferred(ssa, "viaReader") == (kNoWrite | AttrNoUnwind | AttrWillReturn));
+}
+
+TEST_CASE("a loop is not willReturn, and a cycle in the call graph gets nothing", "[nir][conversion][attrs]") {
+	ConversionStatistics stats;
+	auto ssa = convertedModule(R"(nir 1.0
+callee #c0 = internal @spin : (i64) -> i64
+callee #c1 = internal @ping : (i64) -> i64
+callee #c2 = internal @pong : (i64) -> i64
+
+func pressa @spin : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = var 0:i64
+  [2] br ^b1
+^b1:
+  %3 = cmp.lt.s %1, %0
+  [4] condbr %3, ^b2, ^b3
+^b2:
+  %5 = add %1, 1:i64
+  [6] assign %1, %5
+  [7] br ^b1
+^b3:
+  [8] ret %1
+}
+
+func pressa @ping : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = call #c2(%0)
+  [2] ret %1
+}
+
+func pressa @pong : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = call #c1(%0)
+  [2] ret %1
+}
+
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = call #c0(%0)
+  %2 = call #c1(%1)
+  [3] ret %2
+}
+)",
+	                           &stats);
+	CHECK(inferred(ssa, "spin") == (kNoRead | kNoWrite | AttrNoUnwind));
+	CHECK(inferred(ssa, "ping") == 0);
+	CHECK(inferred(ssa, "pong") == 0);
+	CHECK(stats.cyclicFunctions == 2);
+}
+
+TEST_CASE("a checked division makes a function may-throw unless the divisor is a safe constant",
+          "[nir][conversion][attrs]") {
+	auto ssa = convertedModule(R"(nir 1.0
+callee #c0 = internal @byVariable : (i64, i64) -> i64
+callee #c1 = internal @byConstant : (i64) -> i64
+callee #c2 = internal @byConstantVariable : (i64) -> i64
+callee #c3 = internal @byMinusOne : (i64) -> i64
+
+func pressa @byVariable : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = div.s.checked %0, %1 cleanup []
+  [3] ret %2
+}
+
+func pressa @byConstant : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = div.s.checked %0, 4:i64 cleanup []
+  [2] ret %1
+}
+
+func pressa @byConstantVariable : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = var 8:i64
+  %2 = div.u.checked %0, %1 cleanup []
+  [3] ret %2
+}
+
+func pressa @byMinusOne : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = div.s.checked %0, -1:i64 cleanup []
+  [2] ret %1
+}
+
+func export pressa @f : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = call #c0(%0, %1)
+  %3 = call #c1(%2)
+  %4 = call #c2(%3)
+  %5 = call #c3(%4)
+  [6] ret %5
+}
+)");
+	CHECK(inferred(ssa, "byVariable") == (kNoRead | kNoWrite | AttrWillReturn));
+	CHECK(inferred(ssa, "byConstant") == kPure);
+	CHECK(inferred(ssa, "byConstantVariable") == kPure);
+	// the minimum divided by -1 still throws
+	CHECK(inferred(ssa, "byMinusOne") == (kNoRead | kNoWrite | AttrWillReturn));
+}
+
+TEST_CASE("an exported function keeps what the trace recorded", "[nir][conversion][attrs]") {
+	auto pre = parseOk(R"(nir 1.0
+
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = add %0, 1:i64
+  [2] ret %1
+}
+)");
+	auto before = pre.functions[0].attrs;
+	auto ssa = convert(pre);
+	CHECK(ssa.functions[0].attrs == before);
+}
+
+TEST_CASE("a call to a callee that cannot throw loses its unwind entry and its landing pad",
+          "[nir][conversion][attrs]") {
+	ConversionStatistics stats;
+	auto ssa = convertedModule(R"(nir 1.0
+pointer #p0 = destructor symbol "~T"
+callee #c0 = external #p0 : (ptr) -> void attrs(noUnwind)
+callee #c1 = internal @quiet : (ptr) -> void
+
+func pressa @quiet : (ptr) -> void {
+^b0(%0: ptr):
+  [1] ret
+}
+
+func export pressa @f : (ptr) -> void {
+^b0(%0: ptr):
+  [1] call #c1(%0) cleanup [(#c0, %0)]
+  [2] ret
+}
+)",
+	                           &stats);
+	CHECK(stats.droppedUnwinds == 1);
+	CHECK(stats.landingPads == 0);
+}
