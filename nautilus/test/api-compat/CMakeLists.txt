@@ -35,11 +35,6 @@ endif ()
 # backend is enabled. DemoBackends (compares every backend), DemoInliningPlugin (needs the Clang pass plugin) and DemoGPU
 # (disabled until M7.7) are not copied.
 if (ENABLE_TRACING)
-    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        set(API_COMPAT_WHOLE_ARCHIVE_PREFIX -Wl,--whole-archive)
-        set(API_COMPAT_WHOLE_ARCHIVE_SUFFIX -Wl,--no-whole-archive)
-    endif ()
-
     # api_compat_example(<name> <source> <pinned backend or NONE> [<plugin library>])
     function(api_compat_example name source pinned plugin)
         string(TOUPPER "${pinned}" pinnedUpper)
@@ -63,10 +58,12 @@ if (ENABLE_TRACING)
         endif ()
         add_executable(${name} examples/${source})
         if (plugin)
-            target_link_libraries(${name} PRIVATE nautilus ${API_COMPAT_WHOLE_ARCHIVE_PREFIX} ${plugin}
-                    ${API_COMPAT_WHOLE_ARCHIVE_SUFFIX})
+            # the plugin registers itself from a static initializer, so the linker must keep all of it (portable:
+            # --whole-archive on ELF, -force_load on macOS)
+            target_link_libraries(${name} PRIVATE nautilus "$<LINK_LIBRARY:WHOLE_ARCHIVE,${plugin}>"
+                    nautilus-sanitizer-suppressions)
         else ()
-            target_link_libraries(${name} PRIVATE nautilus)
+            target_link_libraries(${name} PRIVATE nautilus nautilus-sanitizer-suppressions)
         endif ()
         add_test(NAME "api-compat: example ${name}" COMMAND ${name})
     endfunction()
