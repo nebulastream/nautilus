@@ -599,14 +599,19 @@ void FunctionConverter::emitOperation(const TraceOperation& op, uint32_t traceBl
 		result(b_.emit(t.isFloat ? NOp::FNeg : NOp::BNot, t.id, 0, valueOf(in(0))));
 		break;
 	}
+	// val<bool>'s `&`, `|` and `^` combine two values of a 0/1 domain: NIR has no bitwise operation on `bool`, so they
+	// are the logical ones (`xor` is "differs", `cmp.ne`)
 	case Op::BAND:
-		result(binary(NOp::BAnd, op.resultType, in(0), in(1)));
+		result(op.resultType == Type::b ? b_.emit(NOp::And, TypeId::Bool, 0, valueOf(in(0)), valueOf(in(1)))
+		                                : binary(NOp::BAnd, op.resultType, in(0), in(1)));
 		break;
 	case Op::BOR:
-		result(binary(NOp::BOr, op.resultType, in(0), in(1)));
+		result(op.resultType == Type::b ? b_.emit(NOp::Or, TypeId::Bool, 0, valueOf(in(0)), valueOf(in(1)))
+		                                : binary(NOp::BOr, op.resultType, in(0), in(1)));
 		break;
 	case Op::BXOR:
-		result(binary(NOp::BXor, op.resultType, in(0), in(1)));
+		result(op.resultType == Type::b ? b_.emit(NOp::Cmp, TypeId::Bool, 1 /* ne */, valueOf(in(0)), valueOf(in(1)))
+		                                : binary(NOp::BXor, op.resultType, in(0), in(1)));
 		break;
 	case Op::LSH:
 		result(binary(NOp::Shl, op.resultType, in(0), in(1)));
