@@ -889,7 +889,9 @@ criteria: [03 §6](03-conversion-and-passes.md).
   `.deadValues`, `.foldedBranches`, `.loops`; reported when the pipeline
   builds the NIR, checked in `CompilationStatisticsTest`). Not built:
   `useCount` during emission (nothing consumes it before M3.8), and the
-  fuzzer-replay and corpus modes of `NirChain`. The execution-test mode exists:
+  corpus op-count mode of `NirChain`. The fuzzer replay runs the chain as the
+  peers `nir-tbc` and `nir-tbc-jit` (smoke corpus and seeds pass; it found a
+  tracer mapping and a conversion layout bug, both fixed). The execution-test mode exists:
   the pseudo-backends `nir-tbc` and `nir-tbc-jit` (`tracing.nirChain`: 0.3
   tracer, `toPreSSA`, conversion, `tbc` on NIR) run every execution test, and
   all pass.
