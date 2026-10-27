@@ -149,7 +149,8 @@ inline std::vector<CorpusEntry> corpus() {
 	        {"extensionOperation", engine::details::createFunctionWrapper(extensionOperation), true}};
 }
 
-inline nir::Module traceDirect(const std::function<void()>& wrapper, common::Arena& arena, uint64_t* operations = nullptr) {
+inline nir::Module traceDirect(const std::function<void()>& wrapper, common::Arena& arena,
+                               uint64_t* operations = nullptr) {
 	std::list<compiler::CompilableFunction> functions;
 	functions.emplace_back("execute", wrapper);
 	auto result = tracing::nirtrace::NirTracer::Trace(functions, engine::Options {}, arena);
