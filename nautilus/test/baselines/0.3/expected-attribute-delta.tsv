@@ -1,0 +1,4 @@
+# Internal functions whose derived attributes are less optimistic than 0.3's, with the reason (M3.6).
+# Accepted reasons: checkedDivision (D10: 0.3 inferred noUnwind for a division by a variable) and
+# pessimization (a body the conversion does not fold). Format: name<TAB>reason. Today every function the tests
+# compile derives exactly the bits 0.3 did, so the list is empty.

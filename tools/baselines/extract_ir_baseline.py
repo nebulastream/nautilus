@@ -13,6 +13,7 @@ M1.10: the inputs of M3.6 and of the NirChain checks of M3.2 and M3.3).
 """
 import json
 import os
+import posixpath
 import re
 import sys
 
@@ -23,8 +24,9 @@ BLOCK = re.compile(r"^Block_\d+\(.*\):$")
 def location(raw):
     if not raw:
         return ""
-    # keep the path from the repository's `nautilus/` directory on, without the checkout prefix and the `..` segments
-    parts = [p for p in raw.split("/") if p != ".."]
+    # the path from the repository's `nautilus/` directory on, without the checkout prefix and with `..` resolved
+    path = posixpath.normpath(raw)
+    parts = path.split("/")
     for i, part in enumerate(parts):
         if part == "nautilus" and i + 1 < len(parts) and parts[i + 1] in ("test", "include", "src"):
             return "/".join(parts[i:])
@@ -54,6 +56,17 @@ def functions(path):
                 name["operations"] += 1
 
 
+# 0.3's attribute names as guarantee bits (13 §4.6.2): no read = 1|4, no write = 2|8, nounwind 16, willreturn 32
+BITS = {"readnone": 1 | 4 | 2 | 8, "readonly": 2 | 8, "writeonly": 1 | 4, "nounwind": 16, "willreturn": 32}
+
+
+def bits(attributes):
+    value = 0
+    for a in attributes:
+        value |= BITS.get(a, 0)
+    return value
+
+
 def main(argv):
     if len(argv) != 3:
         print(__doc__)
@@ -79,6 +92,11 @@ def main(argv):
     with open(out, "w", encoding="utf-8") as f:
         json.dump({"units": units, "conflicts": conflicts, "functions": dict(sorted(result.items()))}, f, indent=1)
         f.write("\n")
+    # the same facts in the form the execution tests read: name, location, guarantee bits, operations
+    with open(os.path.splitext(out)[0] + ".tsv", "w", encoding="utf-8") as f:
+        for key, entry in sorted(result.items()):
+            name, _, loc = key.partition(" @ ")
+            f.write(f'{name}\t{loc}\t{bits(entry["attributes"])}\t{entry["operations"]}\n')
     print(f"{len(result)} functions from {units} compilation units ({conflicts} differing duplicates)")
     return 0
 

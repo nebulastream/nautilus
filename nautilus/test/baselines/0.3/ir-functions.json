@@ -2,7 +2,7 @@
  "units": 1390,
  "conflicts": 0,
  "functions": {
-  "add @ nautilus/test/execution-tests/common/NautilusFunction.hpp:13:27": {
+  "add @ nautilus/test/common/NautilusFunction.hpp:13:27": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -10,7 +10,7 @@
    ],
    "operations": 2
   },
-  "addFloat @ nautilus/test/execution-tests/common/NautilusFunction.hpp:292:32": {
+  "addFloat @ nautilus/test/common/NautilusFunction.hpp:292:32": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -18,7 +18,7 @@
    ],
    "operations": 2
   },
-  "addInt64 @ nautilus/test/execution-tests/common/NautilusFunction.hpp:270:32": {
+  "addInt64 @ nautilus/test/common/NautilusFunction.hpp:270:32": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -26,7 +26,7 @@
    ],
    "operations": 2
   },
-  "addInt8 @ nautilus/test/execution-tests/common/NautilusFunction.hpp:215:31": {
+  "addInt8 @ nautilus/test/common/NautilusFunction.hpp:215:31": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -34,7 +34,7 @@
    ],
    "operations": 5
   },
-  "addUInt16 @ nautilus/test/execution-tests/common/NautilusFunction.hpp:248:33": {
+  "addUInt16 @ nautilus/test/common/NautilusFunction.hpp:248:33": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -42,7 +42,7 @@
    ],
    "operations": 5
   },
-  "andBool @ nautilus/test/execution-tests/common/NautilusFunction.hpp:314:31": {
+  "andBool @ nautilus/test/common/NautilusFunction.hpp:314:31": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -50,7 +50,7 @@
    ],
    "operations": 2
   },
-  "colorToCode @ nautilus/test/execution-tests/common/NautilusFunction.hpp:356:35": {
+  "colorToCode @ nautilus/test/common/NautilusFunction.hpp:356:35": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -58,7 +58,7 @@
    ],
    "operations": 13
   },
-  "derefAdd @ nautilus/test/execution-tests/common/NautilusFunction.hpp:325:32": {
+  "derefAdd @ nautilus/test/common/NautilusFunction.hpp:325:32": {
    "attributes": [
     "nounwind",
     "readonly",
@@ -2134,7 +2134,7 @@
    ],
    "operations": 2
   },
-  "floatsToInt @ nautilus/test/execution-tests/common/NautilusFunction.hpp:432:35": {
+  "floatsToInt @ nautilus/test/common/NautilusFunction.hpp:432:35": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2142,14 +2142,14 @@
    ],
    "operations": 3
   },
-  "incrementFieldA @ nautilus/test/execution-tests/common/ValueTypeFunctions.hpp:310:39": {
+  "incrementFieldA @ nautilus/test/common/ValueTypeFunctions.hpp:310:39": {
    "attributes": [
     "nounwind",
     "willreturn"
    ],
    "operations": 4
   },
-  "inlineAdd @ nautilus/test/execution-tests/common/NautilusFunction.hpp:160:19": {
+  "inlineAdd @ nautilus/test/common/NautilusFunction.hpp:160:19": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2157,7 +2157,7 @@
    ],
    "operations": 2
   },
-  "inlineAdd2 @ nautilus/test/execution-tests/common/NautilusFunction.hpp:186:19": {
+  "inlineAdd2 @ nautilus/test/common/NautilusFunction.hpp:186:19": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2165,7 +2165,7 @@
    ],
    "operations": 2
   },
-  "inlineMul @ nautilus/test/execution-tests/common/NautilusFunction.hpp:166:19": {
+  "inlineMul @ nautilus/test/common/NautilusFunction.hpp:166:19": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2173,7 +2173,7 @@
    ],
    "operations": 2
   },
-  "inlineMul2 @ nautilus/test/execution-tests/common/NautilusFunction.hpp:187:19": {
+  "inlineMul2 @ nautilus/test/common/NautilusFunction.hpp:187:19": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2181,7 +2181,7 @@
    ],
    "operations": 2
   },
-  "inlineSub @ nautilus/test/execution-tests/common/NautilusFunction.hpp:180:19": {
+  "inlineSub @ nautilus/test/common/NautilusFunction.hpp:180:19": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2189,7 +2189,7 @@
    ],
    "operations": 2
   },
-  "intsToFloat @ nautilus/test/execution-tests/common/NautilusFunction.hpp:417:35": {
+  "intsToFloat @ nautilus/test/common/NautilusFunction.hpp:417:35": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2197,7 +2197,7 @@
    ],
    "operations": 5
   },
-  "mixedSignature @ nautilus/test/execution-tests/common/NautilusFunction.hpp:398:38": {
+  "mixedSignature @ nautilus/test/common/NautilusFunction.hpp:398:38": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2205,7 +2205,7 @@
    ],
    "operations": 7
   },
-  "mulDouble @ nautilus/test/execution-tests/common/NautilusFunction.hpp:303:33": {
+  "mulDouble @ nautilus/test/common/NautilusFunction.hpp:303:33": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2213,7 +2213,7 @@
    ],
    "operations": 2
   },
-  "mulUInt32 @ nautilus/test/execution-tests/common/NautilusFunction.hpp:259:33": {
+  "mulUInt32 @ nautilus/test/common/NautilusFunction.hpp:259:33": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2221,7 +2221,7 @@
    ],
    "operations": 2
   },
-  "mulUInt64 @ nautilus/test/execution-tests/common/NautilusFunction.hpp:281:33": {
+  "mulUInt64 @ nautilus/test/common/NautilusFunction.hpp:281:33": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2229,7 +2229,7 @@
    ],
    "operations": 2
   },
-  "mulUInt8 @ nautilus/test/execution-tests/common/NautilusFunction.hpp:226:32": {
+  "mulUInt8 @ nautilus/test/common/NautilusFunction.hpp:226:32": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2237,7 +2237,7 @@
    ],
    "operations": 5
   },
-  "readFieldA @ nautilus/test/execution-tests/common/ValueTypeFunctions.hpp:304:34": {
+  "readFieldA @ nautilus/test/common/ValueTypeFunctions.hpp:304:34": {
    "attributes": [
     "nounwind",
     "readonly",
@@ -2245,7 +2245,7 @@
    ],
    "operations": 2
   },
-  "subInt16 @ nautilus/test/execution-tests/common/NautilusFunction.hpp:237:32": {
+  "subInt16 @ nautilus/test/common/NautilusFunction.hpp:237:32": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2253,7 +2253,7 @@
    ],
    "operations": 5
   },
-  "sumFields @ nautilus/test/execution-tests/common/ValueTypeFunctions.hpp:317:33": {
+  "sumFields @ nautilus/test/common/ValueTypeFunctions.hpp:317:33": {
    "attributes": [
     "nounwind",
     "readonly",
@@ -2261,7 +2261,7 @@
    ],
    "operations": 6
   },
-  "tenArg @ nautilus/test/execution-tests/common/NautilusFunction.hpp:450:30": {
+  "tenArg @ nautilus/test/common/NautilusFunction.hpp:450:30": {
    "attributes": [
     "nounwind",
     "readnone",
@@ -2269,14 +2269,14 @@
    ],
    "operations": 10
   },
-  "voidHelper @ nautilus/test/execution-tests/common/NautilusFunction.hpp:32:32": {
+  "voidHelper @ nautilus/test/common/NautilusFunction.hpp:32:32": {
    "attributes": [
     "nounwind",
     "willreturn"
    ],
    "operations": 5
   },
-  "writeDouble @ nautilus/test/execution-tests/common/NautilusFunction.hpp:336:35": {
+  "writeDouble @ nautilus/test/common/NautilusFunction.hpp:336:35": {
    "attributes": [
     "nounwind",
     "willreturn",
