@@ -613,3 +613,137 @@ func export pressa @f : (ptr) -> void {
 	CHECK(stats.droppedUnwinds == 1);
 	CHECK(stats.landingPads == 0);
 }
+
+// ---- common subexpressions (03 §3.4) -----------------------------------------------------------------------------
+
+namespace {
+
+uint32_t countOps(const Module& ssa, Op op) {
+	uint32_t n = 0;
+	for (auto& inst : ssa.insts) {
+		n += inst.op == static_cast<uint16_t>(op);
+	}
+	return n;
+}
+
+} // namespace
+
+TEST_CASE("equal pure values and loads in a block, and in its single-predecessor successors, are shared",
+          "[nir][conversion][cse]") {
+	ConversionStatistics stats;
+	auto ssa = convertedModule(R"(nir 1.0
+func export pressa @f : (ptr, i64, i64) -> i64 {
+^b0(%0: ptr, %1: i64, %2: i64):
+  %3 = add %1, %2
+  %4 = add %2, %1
+  %5 = load %0 : i64
+  %6 = load %0 : i64
+  %7 = cmp.lt.s %3, %1
+  [8] condbr %7, ^b1, ^b2
+^b1:
+  %9 = add %1, %2
+  %10 = load %0 : i64
+  %11 = mul %9, %10
+  %12 = add %11, %5
+  [13] ret %12
+^b2:
+  %14 = add %3, %6
+  [15] ret %14
+}
+)",
+	                           &stats);
+	CHECK(countOps(ssa, Op::Load) == 1);
+	CHECK(stats.cse >= 4);
+}
+
+TEST_CASE("a store between two loads keeps both, and a join does not reuse a load across an arm that stored",
+          "[nir][conversion][cse]") {
+	auto ssa = convertedModule(R"(nir 1.0
+func export pressa @f : (ptr, i64) -> i64 {
+^b0(%0: ptr, %1: i64):
+  %2 = load %0 : i64
+  %3 = load %0 : i64
+  [4] store %0, 7:i64
+  %5 = load %0 : i64
+  %6 = cmp.lt.s %1, 5:i64
+  [7] condbr %6, ^b1, ^b2
+^b1:
+  [8] store %0, 9:i64
+  [9] br ^b3
+^b2:
+  [10] br ^b3
+^b3:
+  %11 = load %0 : i64
+  %12 = add %2, %3
+  %13 = add %12, %5
+  %14 = add %13, %11
+  [15] ret %14
+}
+)");
+	// before the store (shared), after it, and at the join
+	CHECK(countOps(ssa, Op::Load) == 3);
+}
+
+TEST_CASE("a load in a loop header is not replaced by one before the loop that the body overwrites",
+          "[nir][conversion][cse]") {
+	auto ssa = convertedModule(R"(nir 1.0
+func export pressa @f : (ptr, i64) -> i64 {
+^b0(%0: ptr, %1: i64):
+  %2 = load %0 : i64
+  %3 = var 0:i64
+  [4] br ^b1
+^b1:
+  %5 = load %0 : i64
+  %6 = cmp.lt.s %3, %1
+  [7] condbr %6, ^b2, ^b3
+^b2:
+  [8] store %0, %3
+  %9 = add %3, 1:i64
+  [10] assign %3, %9
+  [11] br ^b1
+^b3:
+  %12 = add %2, %5
+  [13] ret %12
+}
+)");
+	CHECK(countOps(ssa, Op::Load) == 2);
+}
+
+TEST_CASE("a read-only callee is called once until memory may change", "[nir][conversion][cse]") {
+	auto ssa = convertedModule(R"(nir 1.0
+callee #c0 = internal @peek : (ptr) -> i64
+callee #c1 = internal @poke : (ptr) -> void
+
+func pressa @peek : (ptr) -> i64 {
+^b0(%0: ptr):
+  %1 = load %0 : i64
+  [2] ret %1
+}
+
+func pressa @poke : (ptr) -> void {
+^b0(%0: ptr):
+  [1] store %0, 1:i64
+  [2] ret
+}
+
+func export pressa @f : (ptr) -> i64 {
+^b0(%0: ptr):
+  %1 = call #c0(%0)
+  %2 = call #c0(%0)
+  [3] call #c1(%0)
+  %4 = call #c0(%0)
+  %5 = add %1, %2
+  %6 = add %5, %4
+  [7] ret %6
+}
+)");
+	uint32_t peeks = 0;
+	for (auto& inst : ssa.insts) {
+		if (inst.op == static_cast<uint16_t>(Op::Call) &&
+		    ssa.callees[inst.a].kind == static_cast<uint8_t>(CalleeKind::Internal) &&
+		    ssa.name(ssa.functions[ssa.callees[inst.a].target].nameId) == "peek") {
+			++peeks;
+		}
+	}
+	CHECK(peeks == 2);
+}

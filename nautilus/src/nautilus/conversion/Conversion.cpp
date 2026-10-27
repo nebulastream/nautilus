@@ -120,6 +120,43 @@ private:
 	uint32_t padFor(const std::vector<std::pair<uint32_t, Ref>>& entries);
 	uint32_t convertUnwind(uint32_t b, uint32_t cleanupOffset);
 	Ref simplify(Inst& inst);
+
+	// ---- common subexpressions (M3.4) --------------------------------------------------------------------------
+	// Available values are kept per block and chained to the block's only static predecessor (an extended basic
+	// block): a value computed there dominates this block. Loads and calls that read memory are keyed on the memory
+	// epoch, a number that every store and every call that may write takes anew; a block with several predecessors
+	// starts a new epoch, so a store in one arm of an if never lets the join reuse a load from before it.
+	struct AvailKey {
+		uint16_t op;
+		uint8_t type, flags;
+		uint32_t a, b, c, epoch;
+		std::vector<uint32_t> list;
+		bool operator==(const AvailKey&) const = default;
+	};
+	struct AvailHash {
+		size_t operator()(const AvailKey& k) const {
+			uint64_t h = k.op * 0x9E3779B97F4A7C15ull ^ (uint64_t(k.type) << 8 | k.flags);
+			for (uint32_t v : {k.a, k.b, k.c, k.epoch}) {
+				h = (h ^ v) * 0x100000001B3ull;
+				h ^= h >> 29;
+			}
+			for (uint32_t v : k.list) {
+				h = (h ^ v) * 0x100000001B3ull;
+				h ^= h >> 29;
+			}
+			return static_cast<size_t>(h);
+		}
+	};
+	using AvailMap = std::unordered_map<AvailKey, Ref, AvailHash>;
+	static constexpr uint32_t MaxAvailDepth = 32;
+	void enterBlockForCse(uint32_t b);
+	Ref findAvailable(const AvailKey& key, uint32_t b) const;
+	/// Whether `ni` may be shared, and the key that says so; calls are keyed on their argument list.
+	bool availKey(const Inst& ni, uint32_t b, std::span<const uint32_t> args, AvailKey& key) const;
+	std::vector<AvailMap> avail_;
+	std::vector<uint32_t> ebbParent_, ebbDepth_, epochAtEnd_;
+	uint32_t nextEpoch_ = 1;
+
 	TypeId typeOfRef(Ref r) const {
 		return isConstRef(r) ? static_cast<TypeId>(out_.consts.record(r).type) : temps_[r].type;
 	}
@@ -172,6 +209,61 @@ private:
 
 	std::vector<uint32_t> finalId_;
 };
+
+void FunctionConverter::enterBlockForCse(uint32_t b) {
+	ebbParent_[b] = NONE;
+	ebbDepth_[b] = 0;
+	const auto& preds = predsStatic_[b];
+	if (preds.size() == 1 && preds[0] != b && visited_[preds[0]] && ebbDepth_[preds[0]] < MaxAvailDepth) {
+		ebbParent_[b] = preds[0];
+		ebbDepth_[b] = ebbDepth_[preds[0]] + 1;
+		epochAtEnd_[b] = epochAtEnd_[preds[0]];
+	} else {
+		epochAtEnd_[b] = nextEpoch_++;
+	}
+}
+
+Ref FunctionConverter::findAvailable(const AvailKey& key, uint32_t b) const {
+	for (uint32_t at = b; at != NONE; at = ebbParent_[at]) {
+		auto it = avail_[at].find(key);
+		if (it != avail_[at].end()) {
+			return resolve(it->second);
+		}
+	}
+	return NONE;
+}
+
+bool FunctionConverter::availKey(const Inst& ni, uint32_t b, std::span<const uint32_t> args, AvailKey& key) const {
+	const auto op = static_cast<Op>(ni.op);
+	const auto* info = coreOpInfo(ni.op);
+	key = AvailKey {ni.op, ni.type, ni.flags, ni.a, ni.b, ni.c, 0, {}};
+	if (info->flags & OpPure) {
+		const bool commutative = op == Op::Add || op == Op::Mul || op == Op::BAnd || op == Op::BOr || op == Op::BXor ||
+		                         op == Op::And || op == Op::Or;
+		if (commutative && !semantics::isFloatType(static_cast<TypeId>(ni.type)) && key.a > key.b) {
+			std::swap(key.a, key.b);
+		}
+		return true;
+	}
+	if (op == Op::Load) {
+		key.epoch = epochAtEnd_[b];
+		return true;
+	}
+	if (op == Op::Call && ni.a < pre_.callees.size()) {
+		// only a call that neither writes, nor throws, nor fails to return can be shared
+		const auto attrs = pre_.callees[ni.a].attrs;
+		constexpr uint32_t Needed = AttrNoArgWrite | AttrNoOtherWrite | AttrNoUnwind | AttrWillReturn;
+		if ((attrs & Needed) != Needed) {
+			return false;
+		}
+		const bool reads = (attrs & (AttrNoArgRead | AttrNoOtherRead)) != (AttrNoArgRead | AttrNoOtherRead);
+		key.c = 0;
+		key.epoch = reads ? epochAtEnd_[b] : 0;
+		key.list.assign(args.begin(), args.end());
+		return true;
+	}
+	return false;
+}
 
 // ---- analysis -------------------------------------------------------------------------------------------------
 
@@ -767,6 +859,22 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 			return;
 		}
 	}
+	AvailKey key {};
+	bool shareable = false;
+	if (optimize_ && op != Op::Call) {
+		shareable = availKey(ni, b, {}, key);
+		if (shareable) {
+			if (Ref hit = findAvailable(key, b); hit != NONE) {
+				++stats_.cse;
+				if (isVariable_[id]) {
+					setDef(id, b, hit);
+				} else {
+					valueOf_[id] = hit;
+				}
+				return;
+			}
+		}
+	}
 	auto t = newTemp(Kind::Inst, static_cast<TypeId>(inst.type), b);
 	temps_[t].inst = ni;
 	switch (op) {
@@ -804,10 +912,41 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 		}
 		temps_[t].tail.assign(list + 2 + argc, list + (op == Op::Call ? 3 : 4) + argc);
 		temps_[t].inst.c = 0;
+		if (optimize_ && op == Op::Call) {
+			std::vector<uint32_t> args;
+			for (auto v : temps_[t].list) {
+				args.push_back(resolve(v));
+			}
+			shareable = availKey(ni, b, args, key);
+			if (shareable) {
+				if (Ref hit = findAvailable(key, b); hit != NONE) {
+					// the temporary stays out of the block's body and is never emitted
+					++stats_.cse;
+					if (isVariable_[id]) {
+						setDef(id, b, hit);
+					} else {
+						valueOf_[id] = hit;
+					}
+					return;
+				}
+			}
+		}
 		break;
 	}
 	default:
 		break;
+	}
+	// a store, and a call that may write, start a new memory epoch
+	if (optimize_ && !shareable) {
+		const bool readsOnly =
+		    op == Op::Call && inst.a < pre_.callees.size() &&
+		    (pre_.callees[inst.a].attrs & (AttrNoArgWrite | AttrNoOtherWrite)) == (AttrNoArgWrite | AttrNoOtherWrite);
+		if (op == Op::Store || op == Op::CallIndirect || (op == Op::Call && !readsOnly)) {
+			epochAtEnd_[b] = nextEpoch_++;
+		}
+	}
+	if (shareable && inst.type != static_cast<uint8_t>(TypeId::Void)) {
+		avail_[b].emplace(std::move(key), t);
 	}
 	body_[b].push_back(t);
 	if (inst.type != static_cast<uint8_t>(TypeId::Void)) {
@@ -1160,6 +1299,10 @@ void FunctionConverter::run() {
 
 	foldBranches_ = optimize_ && irreducibleHere_ == 0;
 	visited_.assign(n_, 0);
+	avail_.assign(n_, {});
+	ebbParent_.assign(n_, NONE);
+	ebbDepth_.assign(n_, 0);
+	epochAtEnd_.assign(n_, 0);
 	for (auto b : layout_) {
 		if (foldBranches_ && b != 0 && incoming_[b].empty()) {
 			// no live edge enters the block: it is never emitted, and its successors no longer wait for it
@@ -1171,6 +1314,7 @@ void FunctionConverter::run() {
 			}
 			continue;
 		}
+		enterBlockForCse(b);
 		visited_[b] = 1;
 		convertBlock(b);
 	}

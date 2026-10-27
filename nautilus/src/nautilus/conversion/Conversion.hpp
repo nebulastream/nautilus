@@ -26,6 +26,8 @@ struct ConversionStatistics {
 	/// Blocks never emitted because no live edge entered them, and conditional branches that became jumps.
 	uint32_t deadBlocks = 0;
 	uint32_t foldedBranches = 0;
+	/// Instructions replaced by an equal value computed earlier in the same extended basic block.
+	uint32_t cse = 0;
 	/// Instructions and block parameters the dead-value sweep removed.
 	uint32_t deadValues = 0;
 	/// The attribute pre-pass: internal functions it derived attributes for, those in a cycle of the call graph, and
