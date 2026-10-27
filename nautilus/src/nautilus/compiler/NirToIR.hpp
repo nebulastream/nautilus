@@ -19,8 +19,8 @@ namespace nautilus::compiler {
 ///
 /// NIR is signless, so the bridge infers the signedness of every integer value from the operations that state it
 /// (`div.u`, `cmp.lt.s`, `cast.zext`, the extension kinds of signatures) and inserts a same-width cast where a use
-/// disagrees with the stamp of its operand. What it does not reproduce are the defined semantics of D10 and D11 (checked
-/// division, saturating float-to-int casts, masked shifts): the 0.3 backends behave as they did before.
+/// disagrees with the stamp of its operand. What it does not reproduce are the defined semantics of D10 and D11
+/// (checked division, saturating float-to-int casts, masked shifts): the 0.3 backends behave as they did before.
 ///
 /// Throws `RuntimeException` for what 0.3 cannot express (`data.addr`, `bind.addr`, imported callees, `bitcast`).
 ///

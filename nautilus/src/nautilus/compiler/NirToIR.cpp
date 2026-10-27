@@ -48,12 +48,12 @@ namespace nautilus::compiler {
 namespace {
 
 namespace nir = ::nautilus::nir;
-using nir::Op;
-using nir::Ref;
-using nir::TypeId;
 using ir::BasicBlock;
 using ir::Operation;
 using ir::OperationIdentifier;
+using nir::Op;
+using nir::Ref;
+using nir::TypeId;
 
 [[noreturn]] void fail(const std::string& function, const std::string& message) {
 	throw RuntimeException(fmt::format("NIR to IR bridge, function '{}': {}", function, message));
@@ -140,10 +140,10 @@ Sign wordSign(nir::TypeWord word) {
 
 FunctionAttributes attributesOf(uint32_t bits) {
 	FunctionAttributes attributes;
-	const bool noRead = (bits & (nir::AttrNoArgRead | nir::AttrNoOtherRead)) ==
-	                    (nir::AttrNoArgRead | nir::AttrNoOtherRead);
-	const bool noWrite = (bits & (nir::AttrNoArgWrite | nir::AttrNoOtherWrite)) ==
-	                     (nir::AttrNoArgWrite | nir::AttrNoOtherWrite);
+	const bool noRead =
+	    (bits & (nir::AttrNoArgRead | nir::AttrNoOtherRead)) == (nir::AttrNoArgRead | nir::AttrNoOtherRead);
+	const bool noWrite =
+	    (bits & (nir::AttrNoArgWrite | nir::AttrNoOtherWrite)) == (nir::AttrNoArgWrite | nir::AttrNoOtherWrite);
 	if (noRead && noWrite) {
 		attributes.modRefInfo = ModRefInfo::NoModRef;
 	} else if (noWrite) {
@@ -178,7 +178,8 @@ struct ModuleBridge {
 			host = *hostEnvironment;
 		}
 		// names never affect the generated code, so they are resolved (dladdr is slow) only when someone will read them
-		const bool inspected = options.getOptionOrDefault("debug", false) || options.getOptionOrDefault("perf", false) ||
+		const bool inspected = options.getOptionOrDefault("debug", false) ||
+		                       options.getOptionOrDefault("perf", false) ||
 		                       options.getOptionOrDefault("perf.sample", false);
 		resolveNames = options.getOptionOrDefault("engine.resolveFunctionNames", inspected);
 		demangle = options.getOptionOrDefault("engine.demangleFunctionNames", true);
@@ -500,9 +501,8 @@ Operation* FunctionBridge::constant(Ref r, Sign want) {
 	if (want == Sign::None) {
 		want = Sign::Unsigned;
 	}
-	const auto key = std::make_tuple(cur_, index, static_cast<uint8_t>(type == TypeId::Bool || !nir::isInteger(type)
-	                                                                       ? Sign::None
-	                                                                       : want));
+	const auto key = std::make_tuple(
+	    cur_, index, static_cast<uint8_t>(type == TypeId::Bool || !nir::isInteger(type) ? Sign::None : want));
 	if (auto it = constants_.find(key); it != constants_.end()) {
 		return it->second;
 	}
@@ -611,10 +611,8 @@ std::vector<Destructor> FunctionBridge::destructorsOf(uint32_t unwind) {
 	destructors.reserve(cleanups.size());
 	for (auto it = cleanups.rbegin(); it != cleanups.rend(); ++it) {
 		const auto& callee = m_.callees[it->callee];
-		destructors.push_back(Destructor {.address = use(it->object),
-		                                  .functionSymbol = {},
-		                                  .functionName = {},
-		                                  .functionPtr = s_.addressOf(callee)});
+		destructors.push_back(Destructor {
+		    .address = use(it->object), .functionSymbol = {}, .functionName = {}, .functionPtr = s_.addressOf(callee)});
 	}
 	return destructors;
 }
@@ -643,10 +641,10 @@ void FunctionBridge::emitCall(uint32_t id, const nir::Inst& inst) {
 	auto destructors = destructorsOf<ir::CallOperation::Destructor>(unwind);
 	const auto& target = s_.graph.getFunctionTarget(calleeId);
 
-	auto* call = cur_->addOperation<ir::CallOperation>(
-	    target.getName().getMangled(), target.getName().get(), s_.addressOf(callee), identifier(id), arguments,
-	    resultType, attributesOf(callee.attrs), calleeId, std::move(destructors), exceptionHandling, captureFunc,
-	    internal);
+	auto* call = cur_->addOperation<ir::CallOperation>(target.getName().getMangled(), target.getName().get(),
+	                                                   s_.addressOf(callee), identifier(id), arguments, resultType,
+	                                                   attributesOf(callee.attrs), calleeId, std::move(destructors),
+	                                                   exceptionHandling, captureFunc, internal);
 	if (resultType != Type::v) {
 		define(id, call);
 	}
@@ -692,24 +690,25 @@ void FunctionBridge::emitCast(uint32_t id, const nir::Inst& inst) {
 			result = cur_->addOperation<ir::SelectOperation>(identifier(id), condition, ones, zero, stamp);
 			break;
 		}
-		result = cur_->addOperation<ir::CastOperation>(identifier(id), use(inst.a, Sign::Signed),
-		                                               stampOf(to, planSign(id)));
+		result =
+		    cur_->addOperation<ir::CastOperation>(identifier(id), use(inst.a, Sign::Signed), stampOf(to, planSign(id)));
 		break;
 	}
 	case 1: // zext
-		result = cur_->addOperation<ir::CastOperation>(
-		    identifier(id), from == TypeId::Bool ? use(inst.a) : use(inst.a, Sign::Unsigned),
-		    stampOf(to, planSign(id)));
+		result = cur_->addOperation<ir::CastOperation>(identifier(id),
+		                                               from == TypeId::Bool ? use(inst.a) : use(inst.a, Sign::Unsigned),
+		                                               stampOf(to, planSign(id)));
 		break;
 	case 2: // trunc
 		result = cur_->addOperation<ir::CastOperation>(identifier(id), use(inst.a), stampOf(to, planSign(id)));
 		break;
 	case 3: // sitofp
-		result = cur_->addOperation<ir::CastOperation>(identifier(id), use(inst.a, Sign::Signed), stampOf(to, Sign::None));
+		result =
+		    cur_->addOperation<ir::CastOperation>(identifier(id), use(inst.a, Sign::Signed), stampOf(to, Sign::None));
 		break;
 	case 4: // uitofp
-		result = cur_->addOperation<ir::CastOperation>(identifier(id), use(inst.a, Sign::Unsigned),
-		                                               stampOf(to, Sign::None));
+		result =
+		    cur_->addOperation<ir::CastOperation>(identifier(id), use(inst.a, Sign::Unsigned), stampOf(to, Sign::None));
 		break;
 	case 5: // fptosi
 		result = cur_->addOperation<ir::CastOperation>(identifier(id), use(inst.a), stampOf(to, Sign::Signed));
@@ -798,7 +797,8 @@ void FunctionBridge::emit(uint32_t id, const nir::Inst& inst) {
 		if (type == TypeId::Ptr) {
 			auto* address = use(inst.a);
 			auto* offset = use(inst.b, planSign(inst.b));
-			define(id, op == Op::Add ? static_cast<Operation*>(cur_->addOperation<ir::AddOperation>(identifier(id), address, offset))
+			define(id, op == Op::Add ? static_cast<Operation*>(
+			                               cur_->addOperation<ir::AddOperation>(identifier(id), address, offset))
 			                         : cur_->addOperation<ir::SubOperation>(identifier(id), address, offset));
 			break;
 		}
@@ -834,9 +834,9 @@ void FunctionBridge::emit(uint32_t id, const nir::Inst& inst) {
 		const auto sign = planSign(id);
 		auto* left = use(inst.a, sign);
 		auto* right = use(inst.b, sign);
-		const auto kind = op == Op::BAnd   ? ir::BinaryCompOperation::BAND
+		const auto kind = op == Op::BAnd  ? ir::BinaryCompOperation::BAND
 		                  : op == Op::BOr ? ir::BinaryCompOperation::BOR
-		                                   : ir::BinaryCompOperation::XOR;
+		                                  : ir::BinaryCompOperation::XOR;
 		define(id, cur_->addOperation<ir::BinaryCompOperation>(identifier(id), left, right, kind));
 		break;
 	}
@@ -848,8 +848,8 @@ void FunctionBridge::emit(uint32_t id, const nir::Inst& inst) {
 		const auto sign = op == Op::Shr ? ((inst.flags & 1) ? Sign::Unsigned : Sign::Signed) : planSign(id);
 		auto* left = use(inst.a, sign);
 		auto* right = use(inst.b, sign);
-		define(id, cur_->addOperation<ir::ShiftOperation>(identifier(id), left, right,
-		                                                  op == Op::Shl ? ir::ShiftOperation::LS : ir::ShiftOperation::RS));
+		define(id, cur_->addOperation<ir::ShiftOperation>(
+		               identifier(id), left, right, op == Op::Shl ? ir::ShiftOperation::LS : ir::ShiftOperation::RS));
 		break;
 	}
 	case Op::Cmp: {
@@ -904,15 +904,14 @@ void FunctionBridge::emit(uint32_t id, const nir::Inst& inst) {
 		const auto& sig = m_.signatures[callee.signature];
 		std::vector<Type> parameterTypes;
 		for (uint32_t i = 0; i < sig.paramCount; ++i) {
-			parameterTypes.push_back(
-			    stampOf(nir::typeOf(m_.paramType(sig, i)), wordSign(m_.paramType(sig, i))));
+			parameterTypes.push_back(stampOf(nir::typeOf(m_.paramType(sig, i)), wordSign(m_.paramType(sig, i))));
 		}
 		const auto resultType = stampOf(nir::typeOf(sig.result), wordSign(sig.result));
 		const auto calleeId = s_.calleeId(inst.a, resultType, parameterTypes);
 		const auto& target = s_.graph.getFunctionTarget(calleeId);
-		define(id, cur_->addOperation<ir::FunctionAddressOfOperation>(target.getName().getMangled(),
-		                                                              target.getName().get(), s_.addressOf(callee),
-		                                                              identifier(id), calleeId));
+		define(id,
+		       cur_->addOperation<ir::FunctionAddressOfOperation>(target.getName().getMangled(), target.getName().get(),
+		                                                          s_.addressOf(callee), identifier(id), calleeId));
 		break;
 	}
 	case Op::PtrConst: {
@@ -1040,8 +1039,9 @@ void buildIRFromNir(const nir::Module& module, ir::IRGraph& graph, const engine:
 		auto* function = FunctionBridge(bridge, f).build();
 		graph.addFunctionOperation(function);
 		graph.defineFunction(bridge.internalIds[f], function);
-		graph.getFunctionTableMut().getMut(bridge.internalIds[f]).setDerivedAttributes(
-		    attributesOf(module.functions[f].attrs));
+		graph.getFunctionTableMut()
+		    .getMut(bridge.internalIds[f])
+		    .setDerivedAttributes(attributesOf(module.functions[f].attrs));
 	}
 }
 
