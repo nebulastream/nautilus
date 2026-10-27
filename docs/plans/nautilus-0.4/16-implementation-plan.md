@@ -653,12 +653,17 @@ README §6 and [02 §8](02-nir.md).
   conventions for this branch).
 - **Done when:** `doc-check` passes and fails on a planted stale path.
 
-**M1.8–M1.10 status (PR 2):** the chunk pool is in (`common/ChunkPool.*`; the corpus check against the baseline waits for
-the committed baselines). `bc` is removed. The corpus driver is `nautilus/test/benchmark/latency-corpus/` with a
-reporting `latency-corpus` CI job and a `baselines-0.3` workflow that records the numbers of `main` as an artifact;
-`test/api-compat/` holds the 15 clean files of 0.3's tests (`ExecutionTest.cpp` is still to be split case by case, and
-`example/` is not copied yet). Still open: the committed `test/baselines/0.3/` with the recorded `FunctionAttributes` and
-per-function IR op counts, the reference machine (needs an owner, §16), and the pinned CI container image.
+**M1.8–M1.11 status (PR 2):** the chunk pool is in (`common/ChunkPool.*`); the corpus check against the baseline holds: the
+IR operation and allocation counts of the corpus are those of `main`, and `calls` and the other cases compile in the same
+time (13.0 ms against 13.1 ms for `calls` 5000 on `tbc`, seven repetitions each). `bc` is removed. The corpus driver is
+`nautilus/test/benchmark/latency-corpus/` with a reporting `latency-corpus` CI job; `tools/baselines/record-0.3.sh` builds
+`main` with it and records the corpus and, from the IR dumps of the execution tests, the inferred `FunctionAttributes` and
+the operation count after 0.3's passes of 305 functions: committed in `nautilus/test/baselines/0.3/`, refreshed by the
+`baselines-0.3` workflow. `test/api-compat/` holds 16 of 0.3's test files, `ExecutionTest.cpp` with three cuts, and the
+examples (each pinned backend recorded in its CMake file). `nebulastream.yml` runs for `nautilus-0.4`, and
+`.github/docker/ci-0.4` with the `ci-image` workflow builds the pinned image. Still open and not code: the reference
+machine (needs an owner, §16) and, once the image is published, naming its digest in the two measurement jobs; the
+callgrind instruction counts that "two runs of the same image are identical" is checked with come from that machine.
 
 **M1 exit:** M1.1–M1.12 (with M1.3a, M1.4a and M1.7a) done; the spec is
 marked final ([13 §11](13-nir-spec.md)).
