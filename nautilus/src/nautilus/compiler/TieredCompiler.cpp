@@ -212,7 +212,8 @@ void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>
 		// The IR and per-module options are owned per call and moved into the
 		// background thread, so concurrent promotions never share state.
 		thread = std::thread([weakState = std::move(state), ir = std::move(ir), config = config_,
-		                      options = std::move(options), &pendingCount = pendingPromotions_, finished]() {
+		                      options = std::move(options), &pendingCount = pendingPromotions_, finished,
+		                      pipeline = &pipeline_]() {
 			try {
 				auto* registry = CompilationBackendRegistry::getInstance();
 				auto* backend = registry->getBackend(config.tier1.backend);
@@ -226,6 +227,8 @@ void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>
 				statistics->set("backend.name", config.tier1.backend);
 
 				const auto promotionStart = std::chrono::steady_clock::now();
+				// the graph of the NIR front end has its 0.3 IR built here, for a backend that needs it
+				pipeline->prepareFor(ir, config.tier1.backend, options, statistics.get());
 				auto tier1Executable = backend->compile(ir, dumpHandler, options, statistics.get());
 				statistics->recordTimingMs("compilation.totalMs", promotionStart);
 				tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());

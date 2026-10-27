@@ -75,6 +75,16 @@ public:
 		return IROptimizationLevel::Full;
 	}
 
+	/**
+	 * @brief Whether this backend compiles the NIR module a graph carries (`IRGraph::getNirModule`) itself.
+	 *
+	 * The engine's front end produces NIR. A backend that returns false gets the 0.3 IR built from it first (the
+	 * temporary bridge of the cut-over, `compiler/NirToIR.hpp`), until its NIR port lands.
+	 */
+	[[nodiscard]] virtual bool compilesNir() const {
+		return false;
+	}
+
 	virtual ~CompilationBackend();
 };
 

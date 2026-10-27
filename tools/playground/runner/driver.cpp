@@ -98,6 +98,9 @@ int main(int argc, char** argv) {
 	// Single-tier, synchronous compile: no background promotion threads and
 	// no second dump directory from a tier-1 recompile.
 	options.setOption("engine.tiered.backgroundPromotion", false);
+	// The playground shows the 0.3 pipeline (trace, IR, one dump per IR pass); its port to the NIR stages is M4.2's
+	// remaining item (docs/plans/nautilus-0.4/16-implementation-plan.md).
+	options.setOption("tracing.nirTracer", false);
 	options.setOption("dump.all", true);
 	options.setOption("ir.dumpAfterEachPass", true);
 	options.setOption("dump.graph", true);

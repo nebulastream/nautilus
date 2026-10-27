@@ -23,6 +23,7 @@ bool DumpHandler::shallCreateFolder() const {
 	// This means that we must check if we generally dump something and dump something to a file
 	bool generallyDump = shouldDump("after_tracing");
 	generallyDump = generallyDump or shouldDump("after_nir_tracing");
+	generallyDump = generallyDump or shouldDump("after_nir_conversion");
 	generallyDump = generallyDump or shouldDump("after_ir_creation");
 	generallyDump = generallyDump or shouldDump("after_mlir_generation");
 	generallyDump = generallyDump or shouldDump("before_llvm_optimization");
