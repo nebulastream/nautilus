@@ -208,13 +208,92 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 		b.addAlloca(spec.size, spec.align);
 	}
 
+	// A variable that one path declared and another assigns (a constant reached again on the second path) may be used
+	// in a block that the layout places before its declaration. Such a declaration moves to the entry block, and its
+	// place keeps an assign of the initial value; the function stays valid since every path that reads it has written
+	// it.
+	const auto isOp = [&](uint32_t id, NOp op) {
+		return trace.recs[id].op == static_cast<uint16_t>(op);
+	};
+	std::vector<uint32_t> position(trace.recs.size(), 0);
+	{
+		uint32_t next = 0;
+		for (auto blockId : order) {
+			for (auto id : trace.blocks[blockId].ops) {
+				position[id] = next++;
+			}
+		}
+	}
+	std::vector<uint8_t> hoisted(trace.recs.size(), 0);
+	std::vector<uint32_t> hoistedVars;
+	for (auto blockId : order) {
+		for (auto id : trace.blocks[blockId].ops) {
+			if (isOp(id, NOp::BlockArg)) {
+				continue;
+			}
+			nir::Inst scan = trace.recs[id];
+			auto visit = [&](nir::Ref& r) {
+				if (!nir::isConstRef(r) && r < trace.recs.size() && isOp(r, NOp::Var) && position[r] > position[id] &&
+				    !hoisted[r]) {
+					hoisted[r] = 1;
+					hoistedVars.push_back(r);
+				}
+			};
+			if (scan.op == static_cast<uint16_t>(NOp::CondBr)) {
+				visit(scan.a);
+			} else if (scan.op != static_cast<uint16_t>(NOp::Br)) {
+				nir::forEachRef(scan, module.extra.data(), nir::Level::PreSSA, visit);
+			}
+		}
+	}
+	std::sort(hoistedVars.begin(), hoistedVars.end());
+
+	// The ids the records get are known up front: the parameters, the hoisted declarations, then the records in layout
+	// order.
 	std::vector<nir::Ref> newId(trace.recs.size(), nir::NONE);
+	std::vector<nir::Ref> slotOf(trace.recs.size(), nir::NONE);
+	{
+		nir::Ref next = 0;
+		for (auto record : trace.parameters) {
+			newId[record] = next++;
+		}
+		for (auto v : hoistedVars) {
+			if (trace.recs[v].type == static_cast<uint8_t>(TypeId::Ptr)) {
+				++next; // the null pointer it starts with
+			}
+			newId[v] = next++;
+		}
+		for (auto blockId : order) {
+			for (auto id : trace.blocks[blockId].ops) {
+				if (!isOp(id, NOp::BlockArg)) {
+					slotOf[id] = next++;
+					if (!hoisted[id]) {
+						newId[id] = slotOf[id];
+					}
+				}
+			}
+		}
+	}
 	for (uint32_t i = 0; i < order.size(); ++i) {
 		b.beginBlock();
 		if (i == 0) {
 			for (uint32_t p = 0; p < trace.parameters.size(); ++p) {
 				const auto record = trace.parameters[p];
-				newId[record] = b.emit(NOp::BlockArg, typeInfo(paramTypes[p]).id, 0, p);
+				if (b.emit(NOp::BlockArg, typeInfo(paramTypes[p]).id, 0, p) != newId[record]) {
+					throw RuntimeException("NIR trace: the instruction numbering of the parameters moved");
+				}
+			}
+			for (auto v : hoistedVars) {
+				const auto type = static_cast<TypeId>(trace.recs[v].type);
+				nir::Ref init;
+				if (type == TypeId::Ptr) {
+					init = b.emit(NOp::PtrConst, TypeId::Ptr, 0, nir::NONE);
+				} else {
+					init = module.consts.intern(type, nir::Provenance::Literal, 0);
+				}
+				if (b.emit(NOp::Var, type, 0, init) != newId[v]) {
+					throw RuntimeException("NIR trace: the instruction numbering of a hoisted variable moved");
+				}
 			}
 		}
 		for (auto id : trace.blocks[order[i]].ops) {
@@ -227,8 +306,19 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 					return;
 				}
 				if (r >= newId.size() || newId[r] == nir::NONE) {
+					std::string dump;
+					for (uint32_t bi = 0; bi < trace.blocks.size(); ++bi) {
+						dump += fmt::format("\n  block {} preds:", bi);
+						for (auto p : trace.blocks[bi].preds) {
+							dump += fmt::format(" {}", p);
+						}
+						for (auto o : trace.blocks[bi].ops) {
+							const auto& rec = trace.recs[o];
+							dump += fmt::format("\n    ${} op {} a {} b {} c {}", o, rec.op, rec.a, rec.b, rec.c);
+						}
+					}
 					throw RuntimeException(
-					    fmt::format("NIR trace of '{}': ${} is used before its definition", name, r));
+					    fmt::format("NIR trace of '{}': ${} is used before its definition{}", name, r, dump));
 				}
 				r = newId[r];
 			};
@@ -245,7 +335,18 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 			} else {
 				nir::forEachRef(out, module.extra.data(), nir::Level::PreSSA, remap);
 			}
-			newId[id] = b.emit(out);
+			if (hoisted[id]) {
+				// the declaration moved up: here the variable is written with what it was declared to hold
+				nir::Inst assign {};
+				assign.op = static_cast<uint16_t>(NOp::Assign);
+				assign.type = static_cast<uint8_t>(TypeId::Void);
+				assign.a = newId[id];
+				assign.b = out.a;
+				out = assign;
+			}
+			if (b.emit(out) != slotOf[id]) {
+				throw RuntimeException("NIR trace: the instruction numbering of a block moved");
+			}
 		}
 	}
 	b.endFunction();

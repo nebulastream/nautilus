@@ -173,3 +173,14 @@ TEST_CASE("use table lists the users of each value", "[nir][uses]") {
 	}
 	REQUIRE(total == counted);
 }
+
+TEST_CASE("the operand walker visits all three operands of a select", "[nir][uses]") {
+	Inst select {};
+	select.op = static_cast<uint16_t>(Op::Select);
+	select.a = 1;
+	select.b = 2;
+	select.c = 3;
+	std::vector<Ref> seen;
+	forEachRef(select, static_cast<const uint32_t*>(nullptr), Level::SSA, [&](Ref r) { seen.push_back(r); });
+	REQUIRE(seen == std::vector<Ref> {1, 2, 3});
+}

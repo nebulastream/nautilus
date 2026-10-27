@@ -299,7 +299,15 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 			if (verifyNir || !nirAttributesFile.empty() || statistics != nullptr) {
 				conversion::ConversionStatistics conversionStats;
 				const auto conversionStart = std::chrono::steady_clock::now();
-				auto ssa = conversion::convert(nirModule, {}, &conversionStats);
+				nir::Module ssa;
+				try {
+					ssa = conversion::convert(nirModule, {}, &conversionStats);
+				} catch (const std::exception& e) {
+					if (!verifyNir) {
+						throw;
+					}
+					throw RuntimeException(std::string(e.what()) + "\nwhile converting\n" + nir::print(nirModule));
+				}
 				if (statistics != nullptr) {
 					statistics->recordTimingMs("conversion.ms", conversionStart);
 					statistics->set("conversion.instructions", static_cast<int64_t>(conversionStats.instructions));

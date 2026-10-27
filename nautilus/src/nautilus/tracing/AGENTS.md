@@ -28,3 +28,11 @@ the SSA `IRGraph`. Read `docs/tracing.md` and `docs/region.md` first.
 - **NIR:** `nir/NirTrace.cpp` maps a finished trace to pre-SSA NIR. `tracing.verifyNir=true` runs the NIR verifier
   on it for every compilation (`NAUTILUS_OPTIONS="tracing.verifyNir=true" ctest --preset dev` checks the mapping on
   the whole suite); `nautilus-tracing-tests` compares the text with `nautilus/test/data/*/nir`.
+
+## The direct NIR tracer (`tracing/nir/NirTracer`, `FlatTrace`)
+
+`tracing.nirTracer=true` records pre-SSA NIR directly (16-byte records, tag map, replay cursor) instead of the 0.3
+`TraceContext` + `toPreSSA`; the module then goes through verification and conversion into an empty IR graph for the
+`nirtbc` pseudo-backend. Tests run it as the `nir-direct` / `nir-direct-jit` backends, the fuzzer as peers. When the
+layout puts an assigning block before the block that declared a variable (a constant reached again on the second
+path), `emitFunction` hoists the declaration to the entry block and leaves an assign at the original site.
