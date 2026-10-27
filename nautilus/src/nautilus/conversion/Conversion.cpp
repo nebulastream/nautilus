@@ -321,9 +321,23 @@ void FunctionConverter::buildCfg() {
 	}
 }
 
-void FunctionConverter::orderBlocks() {
+/// The layout of a control-flow graph: reverse postorder, with every natural loop placed contiguously where its header
+/// is, and the loops it found. Irreducible regions (a retreating edge whose target does not dominate its source) keep
+/// the plain reverse postorder.
+struct CfgLayout {
+	std::vector<uint32_t> rpo,
+	    rpoIndex; // reachable blocks in reverse postorder, and the index of each (NONE: unreachable)
+	std::vector<std::vector<uint32_t>> latches;  // per header: the sources of its back edges
+	std::vector<std::vector<uint32_t>> loopBody; // per header: the other blocks of the loop, in reverse postorder
+	std::vector<uint32_t> layout;
+	uint32_t irreducible = 0;
+};
+
+CfgLayout computeLayout(uint32_t n, const std::vector<std::vector<uint32_t>>& succ,
+                        const std::vector<std::vector<uint32_t>>& pred) {
+	CfgLayout r;
 	// reverse postorder from the entry block
-	std::vector<uint8_t> state(n_, 0);
+	std::vector<uint8_t> state(n, 0);
 	std::vector<uint32_t> post;
 	struct Frame {
 		uint32_t block;
@@ -333,9 +347,9 @@ void FunctionConverter::orderBlocks() {
 	state[0] = 1;
 	while (!stack.empty()) {
 		auto& top = stack.back();
-		const auto& succ = succEdgesStatic_[top.block];
-		if (top.next < succ.size()) {
-			auto next = succ[top.next++];
+		const auto& out = succ[top.block];
+		if (top.next < out.size()) {
+			auto next = out[top.next++];
 			if (state[next] == 0) {
 				state[next] = 1;
 				stack.push_back({next, 0});
@@ -345,28 +359,21 @@ void FunctionConverter::orderBlocks() {
 			stack.pop_back();
 		}
 	}
-	rpo_.assign(post.rbegin(), post.rend());
-	rpoIndex_.assign(n_, NONE);
-	for (uint32_t i = 0; i < rpo_.size(); ++i) {
-		rpoIndex_[rpo_[i]] = i;
-	}
-	if (!predsStatic_[0].empty()) {
-		for (auto p : predsStatic_[0]) {
-			if (rpoIndex_[p] != NONE) {
-				fail(f_, "the entry block has a predecessor");
-			}
-		}
+	r.rpo.assign(post.rbegin(), post.rend());
+	r.rpoIndex.assign(n, NONE);
+	for (uint32_t i = 0; i < r.rpo.size(); ++i) {
+		r.rpoIndex[r.rpo[i]] = i;
 	}
 
 	// dominators (Cooper, Harvey, Kennedy) over the reachable blocks, by reverse postorder index
-	std::vector<uint32_t> idom(n_, NONE);
+	std::vector<uint32_t> idom(n, NONE);
 	idom[0] = 0;
 	auto intersect = [&](uint32_t a, uint32_t b) {
 		while (a != b) {
-			while (rpoIndex_[a] > rpoIndex_[b]) {
+			while (r.rpoIndex[a] > r.rpoIndex[b]) {
 				a = idom[a];
 			}
-			while (rpoIndex_[b] > rpoIndex_[a]) {
+			while (r.rpoIndex[b] > r.rpoIndex[a]) {
 				b = idom[b];
 			}
 		}
@@ -374,11 +381,11 @@ void FunctionConverter::orderBlocks() {
 	};
 	for (bool changed = true; changed;) {
 		changed = false;
-		for (size_t i = 1; i < rpo_.size(); ++i) {
-			auto b = rpo_[i];
+		for (size_t i = 1; i < r.rpo.size(); ++i) {
+			auto b = r.rpo[i];
 			uint32_t candidate = NONE;
-			for (auto p : predsStatic_[b]) {
-				if (rpoIndex_[p] == NONE || idom[p] == NONE) {
+			for (auto p : pred[b]) {
+				if (r.rpoIndex[p] == NONE || idom[p] == NONE) {
 					continue;
 				}
 				candidate = candidate == NONE ? p : intersect(p, candidate);
@@ -401,34 +408,29 @@ void FunctionConverter::orderBlocks() {
 		}
 	};
 
-	// back edges (the target dominates the source) head the natural loops; retreating edges whose target does not
-	// dominate the source belong to irreducible regions, which keep the plain reverse postorder
-	std::vector<std::vector<uint32_t>> latches(n_);
-	for (auto s : rpo_) {
-		for (auto t : succEdgesStatic_[s]) {
-			if (rpoIndex_[t] > rpoIndex_[s]) {
+	// back edges (the target dominates the source) head the natural loops
+	r.latches.assign(n, {});
+	for (auto s : r.rpo) {
+		for (auto t : succ[s]) {
+			if (r.rpoIndex[t] > r.rpoIndex[s]) {
 				continue;
 			}
 			if (dominates(t, s)) {
-				latches[t].push_back(s);
+				r.latches[t].push_back(s);
 			} else {
-				++stats_.irreducibleRegions;
-				++irreducibleHere_;
+				++r.irreducible;
 			}
 		}
 	}
-	loopAssigned_.assign(n_, {});
-	loopEntry_.assign(n_, NONE);
-	std::vector<std::vector<uint32_t>> loopBody(n_); // per header: the other blocks of the loop, in reverse postorder
-	for (uint32_t h = 0; h < n_; ++h) {
-		if (latches[h].empty()) {
+	r.loopBody.assign(n, {});
+	for (uint32_t h = 0; h < n; ++h) {
+		if (r.latches[h].empty()) {
 			continue;
 		}
-		++stats_.loops;
-		std::vector<uint8_t> inLoop(n_, 0);
+		std::vector<uint8_t> inLoop(n, 0);
 		inLoop[h] = 1;
 		std::vector<uint32_t> work;
-		for (auto l : latches[h]) {
+		for (auto l : r.latches[h]) {
 			if (!inLoop[l]) {
 				inLoop[l] = 1;
 				work.push_back(l);
@@ -437,18 +439,61 @@ void FunctionConverter::orderBlocks() {
 		while (!work.empty()) {
 			auto b = work.back();
 			work.pop_back();
-			for (auto p : predsStatic_[b]) {
-				if (rpoIndex_[p] != NONE && !inLoop[p]) {
+			for (auto p : pred[b]) {
+				if (r.rpoIndex[p] != NONE && !inLoop[p]) {
 					inLoop[p] = 1;
 					work.push_back(p);
 				}
 			}
 		}
-		for (auto b : rpo_) {
+		for (auto b : r.rpo) {
 			if (inLoop[b] && b != h) {
-				loopBody[h].push_back(b);
+				r.loopBody[h].push_back(b);
 			}
 		}
+	}
+
+	// layout: reverse postorder, with each natural loop placed contiguously where its header is
+	std::vector<uint8_t> placed(n, 0);
+	std::function<void(const std::vector<uint32_t>&)> place = [&](const std::vector<uint32_t>& range) {
+		for (auto b : range) {
+			if (placed[b]) {
+				continue;
+			}
+			placed[b] = 1;
+			r.layout.push_back(b);
+			if (!r.latches[b].empty()) {
+				place(r.loopBody[b]);
+			}
+		}
+	};
+	place(r.rpo);
+	return r;
+}
+
+void FunctionConverter::orderBlocks() {
+	auto cfg = computeLayout(n_, succEdgesStatic_, predsStatic_);
+	rpo_ = std::move(cfg.rpo);
+	rpoIndex_ = std::move(cfg.rpoIndex);
+	layout_ = std::move(cfg.layout);
+	if (!predsStatic_[0].empty()) {
+		for (auto p : predsStatic_[0]) {
+			if (rpoIndex_[p] != NONE) {
+				fail(f_, "the entry block has a predecessor");
+			}
+		}
+	}
+	stats_.irreducibleRegions += cfg.irreducible;
+	irreducibleHere_ += cfg.irreducible;
+
+	loopAssigned_.assign(n_, {});
+	loopEntry_.assign(n_, NONE);
+	for (uint32_t h = 0; h < n_; ++h) {
+		if (cfg.latches[h].empty()) {
+			continue;
+		}
+		++stats_.loops;
+		const auto& body = cfg.loopBody[h];
 		// the variables assigned in the loop, and the one block that enters it: a variable nobody assigns in the loop
 		// has the value it has on entry and needs no phi in the header
 		auto& assigned = loopAssigned_[h];
@@ -463,13 +508,15 @@ void FunctionConverter::orderBlocks() {
 			}
 		};
 		note(h);
-		for (auto b : loopBody[h]) {
+		for (auto b : body) {
 			note(b);
 		}
+		std::unordered_set<uint32_t> inLoop(body.begin(), body.end());
+		inLoop.insert(h);
 		uint32_t entry = NONE;
 		bool unique = true;
 		for (auto p : predsStatic_[h]) {
-			if (inLoop[p] || rpoIndex_[p] == NONE) {
+			if (inLoop.contains(p) || rpoIndex_[p] == NONE) {
 				continue;
 			}
 			unique = unique && entry == NONE;
@@ -477,23 +524,6 @@ void FunctionConverter::orderBlocks() {
 		}
 		loopEntry_[h] = unique ? entry : NONE;
 	}
-
-	// layout: reverse postorder, with each natural loop placed contiguously where its header is
-	layout_.clear();
-	std::vector<uint8_t> placed(n_, 0);
-	std::function<void(const std::vector<uint32_t>&)> place = [&](const std::vector<uint32_t>& range) {
-		for (auto b : range) {
-			if (placed[b]) {
-				continue;
-			}
-			placed[b] = 1;
-			layout_.push_back(b);
-			if (!latches[b].empty()) {
-				place(loopBody[b]);
-			}
-		}
-	};
-	place(rpo_);
 	layoutIndex_.assign(n_, NONE);
 	for (uint32_t i = 0; i < layout_.size(); ++i) {
 		layoutIndex_[layout_[i]] = i;
@@ -1079,9 +1109,20 @@ void FunctionConverter::convertBlock(uint32_t b) {
 void FunctionConverter::emit() {
 	Builder builder(out_);
 	emitOrder_.clear();
-	for (auto b : layout_) {
-		if (visited_[b]) {
-			emitOrder_.push_back(b);
+	if (foldBranches_) {
+		// Folded branches and dropped blocks changed the graph: a block that the static graph put into a loop may no
+		// longer reach its latch and must leave the loop's range. The layout is computed again on the live edges.
+		std::vector<std::vector<uint32_t>> liveSucc(n_), livePred(n_);
+		for (const auto& edge : dynEdges_) {
+			liveSucc[edge.from].push_back(edge.to);
+			livePred[edge.to].push_back(edge.from);
+		}
+		emitOrder_ = computeLayout(n_, liveSucc, livePred).layout;
+	} else {
+		for (auto b : layout_) {
+			if (visited_[b]) {
+				emitOrder_.push_back(b);
+			}
 		}
 	}
 	for (uint32_t i = 0; i < emitOrder_.size(); ++i) {

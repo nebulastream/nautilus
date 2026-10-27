@@ -4,6 +4,8 @@
 #include "nautilus/nir/Printer.hpp"
 #include "nautilus/nir/Verifier.hpp"
 #include <catch2/catch_all.hpp>
+#include <fstream>
+#include <sstream>
 
 using namespace nautilus::nir;
 using nautilus::conversion::ConversionStatistics;
@@ -805,4 +807,34 @@ func export pressa @f : (i64) -> i64 {
 	// %1 only ever holds 0, so %3 is 1 and the compare is against the parameter
 	CHECK(stats.refoldedInsts >= 1);
 	CHECK(countOps(ssa, Op::Add) == 0);
+}
+
+TEST_CASE("a block that a folded branch cut off from the latch leaves the range of its loop",
+          "[nir][conversion][loops]") {
+	// ^b3 is on a path to the latch in the graph the trace recorded, but its branch folds to the exit: after the
+	// conversion it does not belong to the loop, and the loop's blocks must still be contiguous (13 §6.3)
+	auto ssa = convertedModule(R"(nir 1.0
+func export pressa @f : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = var 0:i64
+  [2] br ^b1
+^b1:
+  %3 = cmp.lt.s %1, %0
+  [4] condbr %3, ^b2, ^b6
+^b2:
+  %5 = cmp.eq %0, 7:i64
+  [6] condbr %5, ^b3, ^b4
+^b3:
+  [7] condbr false:bool, ^b5, ^b6
+^b4:
+  %8 = add %1, 1:i64
+  [9] assign %1, %8
+  [10] br ^b5
+^b5:
+  [11] br ^b1
+^b6:
+  [12] ret %1
+}
+)");
+	CHECK(print(ssa).find("func export @f") != std::string::npos);
 }
