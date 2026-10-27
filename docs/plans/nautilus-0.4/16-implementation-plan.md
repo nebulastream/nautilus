@@ -889,7 +889,10 @@ criteria: [03 §6](03-conversion-and-passes.md).
   `.deadValues`, `.foldedBranches`, `.loops`; reported when the pipeline
   builds the NIR, checked in `CompilationStatisticsTest`). Not built:
   `useCount` during emission (nothing consumes it before M3.8), and the
-  `NirChain` fixture, which needs the `tbc` backend on NIR (PR 5).
+  fuzzer-replay and corpus modes of `NirChain`. The execution-test mode exists:
+  the pseudo-backends `nir-tbc` and `nir-tbc-jit` (`tracing.nirChain`: 0.3
+  tracer, `toPreSSA`, conversion, `tbc` on NIR) run every execution test, and
+  all pass.
 
 #### M3.2 Folding and simplification rules · M · deps: M3.1
 - **Builds:** the rules of `ConstantFoldingAndCopyPropagationPass` and
