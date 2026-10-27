@@ -41,7 +41,7 @@ cmake --build "$build" --target nautilus-latency-corpus nautilus-execution-tests
 # the dumps of every compilation of the execution tests go to a scratch TMPDIR
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
-(cd "$build/nautilus/test/execution-tests" && TMPDIR="$scratch" NAUTILUS_OPTIONS="dump.all=true;dump.after_tracing=false" \
-	ctest --test-dir "$build" -R 'Engine Compiler Test|NautilusFunction Compiled Execution Test' -j4 > /dev/null || true)
+TMPDIR="$scratch" NAUTILUS_OPTIONS="dump.all=true;dump.after_tracing=false" \
+	ctest --test-dir "$build/nautilus" -R 'Engine Compiler Test|NautilusFunction Compiled Execution Test' -j4 > /dev/null
 python3 -I "$here/tools/baselines/extract_ir_baseline.py" "$scratch/dump" "$out/ir-functions.json"
 wc -l "$out/corpus.jsonl"
