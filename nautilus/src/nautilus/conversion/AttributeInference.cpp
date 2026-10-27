@@ -235,8 +235,8 @@ InferenceStatistics inferAttributes(Module& m) {
 				mayThrow |= (bits[callee] & AttrNoUnwind) == 0;
 				mayNotReturn |= (bits[callee] & AttrWillReturn) == 0;
 			}
-			bits[f] = (reads ? 0 : NO_READ) | (writes ? 0 : NO_WRITE) | (mayThrow ? 0 : AttrNoUnwind) |
-			          (mayNotReturn ? 0 : AttrWillReturn);
+			bits[f] = (reads ? 0 : NO_READ) | (writes ? 0 : NO_WRITE) | (mayThrow ? 0u : uint32_t(AttrNoUnwind)) |
+			          (mayNotReturn ? 0u : uint32_t(AttrWillReturn));
 		}
 		if (cyclic) {
 			stats.cyclic += static_cast<uint32_t>(members.size());
