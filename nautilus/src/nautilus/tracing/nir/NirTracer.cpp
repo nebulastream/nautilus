@@ -703,7 +703,9 @@ uint32_t NirTracer::cleanupList() {
 	auto& module = state->trace.module();
 	std::vector<uint32_t> list;
 	list.push_back(static_cast<uint32_t>(activeDestructors.size()));
-	for (const auto& d : activeDestructors) {
+	// destruction order (13 §3.4): the reverse of the order the objects were registered in
+	for (auto it = activeDestructors.rbegin(); it != activeDestructors.rend(); ++it) {
+		const auto& d = *it;
 		nir::CalleeRecord record {};
 		record.kind = static_cast<uint8_t>(nir::CalleeKind::External);
 		record.target = pointerEntry(nir::PointerKind::Destructor, d.ptr, 0);

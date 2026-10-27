@@ -18,6 +18,10 @@ public:
 		return ExceptionPropagationMode::CapturedHostRethrow;
 	}
 
+	[[nodiscard]] bool compilesNir() const override {
+		return true;
+	}
+
 	/// The IR passes are not needed: the IR is only the carrier of the NIR.
 	[[nodiscard]] IROptimizationLevel irOptimizationLevel() const override {
 		return IROptimizationLevel::None;

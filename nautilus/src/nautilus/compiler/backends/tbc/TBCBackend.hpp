@@ -24,6 +24,11 @@ public:
 	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode() const override {
 		return ExceptionPropagationMode::CapturedHostRethrow;
 	}
+
+	/// The NIR the engine's front end produces is compiled natively, by `TBCNirBackend`.
+	[[nodiscard]] bool compilesNir() const override {
+		return true;
+	}
 };
 
 } // namespace nautilus::compiler::tbc

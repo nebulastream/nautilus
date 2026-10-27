@@ -90,7 +90,29 @@ public:
 	                                                    const engine::ModuleOptions& moduleOptions,
 	                                                    CompilationStatistics* statistics = nullptr) const;
 
+	/**
+	 * @brief Makes @p ir ready for the backend @p backendName.
+	 *
+	 * The NIR front end hands on a graph that only carries the NIR module. A backend that compiles NIR
+	 * (`CompilationBackend::compilesNir`) takes it as it is; for the others the 0.3 IR is built from the module (the
+	 * temporary bridge of the cut-over, `NirToIR.hpp`). A graph that has its IR already is left alone. `compileIR`
+	 * calls this; a caller that hands the graph to a backend itself (the background promotion) must call it first, on
+	 * the thread that compiles.
+	 */
+	void prepareFor(const std::shared_ptr<ir::IRGraph>& ir, const std::string& backendName,
+	                const engine::ModuleOptions& moduleOptions, CompilationStatistics* statistics = nullptr) const;
+
 private:
+	/// The NIR front end: traces with the direct NIR tracer, converts, and returns a graph that carries the SSA module.
+	[[nodiscard]] std::shared_ptr<ir::IRGraph> traceToNir(std::list<CompilableFunction>& functions,
+	                                                      const engine::ModuleOptions& moduleOptions,
+	                                                      CompilationStatistics* statistics,
+	                                                      const CompilationUnitID& compilationId,
+	                                                      const DumpHandler& dumpHandler) const;
+	/// Builds the 0.3 IR of the graph's NIR module into the graph and runs the passes the backends need on it.
+	void lowerToIR(ir::IRGraph& graph, const engine::ModuleOptions& moduleOptions, CompilationStatistics* statistics,
+	               DumpHandler& dumpHandler) const;
+
 	const engine::Options options;
 	const CompilationBackendRegistry* backends;
 

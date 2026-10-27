@@ -67,8 +67,19 @@ inline std::vector<Config> configs() {
 
 	// Appends one compiling backend's permutation menu: plain defaults plus the
 	// shared IR-pass sweep, plus any backend-specific `extra` permutations.
-	auto addCompiling = [&result](const std::string& backend, std::vector<Config> extra = {}) {
+	// The IR passes belong to the 0.3 pipeline (tracing.nirTracer=false); the default pipeline converts NIR instead.
+	auto legacy = [](OptionsTweak tweak) -> OptionsTweak {
+		return [tweak = std::move(tweak)](engine::Options& o) {
+			o.setOption("tracing.nirTracer", false);
+			if (tweak) {
+				tweak(o);
+			}
+		};
+	};
+	auto addCompiling = [&result, &legacy](const std::string& backend, std::vector<Config> extra = {}) {
 		result.push_back({backend, "default", {}});
+		// the 0.3 pipeline (fallback of the cut-over) and the IR-pass permutations that run on it
+		result.push_back({backend, "legacy", legacy({})});
 		// Individual default-ON optimization passes flipped OFF, each isolating a
 		// distinct lowering path. NOTE: we deliberately do NOT expose a blanket
 		// `ir.runPasses=false` -- that also disables constant folding, and the
@@ -77,9 +88,9 @@ inline std::vector<Config> configs() {
 		// per-pass toggles keep constant folding on, so the IR stays bounded while
 		// still exercising the un-optimized path.
 		result.push_back({backend, "no-dead-code-elim",
-		                  [](engine::Options& o) { o.setOption("ir.disableDeadCodeElimination", true); }});
+		                  legacy([](engine::Options& o) { o.setOption("ir.disableDeadCodeElimination", true); })});
 		result.push_back({backend, "no-const-branch-fold",
-		                  [](engine::Options& o) { o.setOption("ir.disableConstantBranchFolding", true); }});
+		                  legacy([](engine::Options& o) { o.setOption("ir.disableConstantBranchFolding", true); })});
 		// A currently default-OFF pass flipped ON. This is exactly the
 		// "extended differential-fuzzer soak before the default flips" gate the
 		// IR-pass milestone (#343 and siblings) requires: point the fuzzer here
@@ -87,11 +98,11 @@ inline std::vector<Config> configs() {
 		// is the one opt-in pass wired today (see CompilationPipeline.cpp); add
 		// a sibling entry for the next pass you promote.
 		result.push_back({backend, "strength-reduction",
-		                  [](engine::Options& o) { o.setOption("ir.enableStrengthReduction", true); }});
+		                  legacy([](engine::Options& o) { o.setOption("ir.enableStrengthReduction", true); })});
 		// A default-ON P0 pass flipped OFF: differentially tests the
 		// un-simplified lowering path against the simplified default.
 		result.push_back({backend, "no-algebraic-simpl",
-		                  [](engine::Options& o) { o.setOption("ir.disableAlgebraicSimplification", true); }});
+		                  legacy([](engine::Options& o) { o.setOption("ir.disableAlgebraicSimplification", true); })});
 		for (auto& c : extra) {
 			result.push_back(std::move(c));
 		}
@@ -107,11 +118,10 @@ inline std::vector<Config> configs() {
 #endif
 #ifdef ENABLE_TBC_BACKEND
 	addCompiling("tbc");
-	// The NIR chain (0.3 tracer -> NIR -> conversion -> tbc on NIR, tracing.nirChain). The IR passes do not run on its
-	// path, so one peer per execution mode covers it; it is checked against the same native oracle as every backend.
+	// The NIR chain from the 0.3 tracer (0.3 tracer -> NIR -> conversion -> tbc on NIR, tracing.nirChain). The default
+	// pipeline covers the direct NIR tracer; one peer per execution mode covers this mapping against the same native
+	// oracle as every backend.
 	result.push_back({"nir-tbc", "default", {}});
-	// and with the direct NIR recorder as the tracer (tracing.nirTracer)
-	result.push_back({"nir-direct", "default", {}});
 #endif
 #ifdef ENABLE_TBC_JIT
 	// tbc's copy-and-patch JIT (tbc.mode=jit, strict). It shares tbc's
@@ -120,7 +130,6 @@ inline std::vector<Config> configs() {
 	if (compiler::tbc::jit::jitRuntimeAvailable()) {
 		addCompiling("tbc-jit");
 		result.push_back({"nir-tbc-jit", "default", {}});
-		result.push_back({"nir-direct-jit", "default", {}});
 	}
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
@@ -135,10 +144,10 @@ inline std::vector<Config> configs() {
 	     {"asmjit", "no-loop-rotation", [](engine::Options& o) { o.setOption("asmjit.enableLoopRotation", false); }},
 	     {"asmjit", "no-tail-duplication",
 	      [](engine::Options& o) { o.setOption("asmjit.enableTailDuplication", false); }},
-	     {"asmjit", "licm-cse", [](engine::Options& o) {
+	     {"asmjit", "licm-cse", legacy([](engine::Options& o) {
 		      o.setOption("ir.enableLICM", true);
 		      o.setOption("ir.enableLocalCSE", true);
-	      }}});
+	      })}});
 #endif
 	// Triage aid: NAUTILUS_FUZZ_BACKENDS=<comma-list> restricts the peers
 	// (e.g. "interpreter,tbc,tbc-jit" to bisect a finding to one backend).
@@ -157,14 +166,12 @@ inline engine::NautilusEngine makeEngine(const std::string& backend, const Optio
 	} else if (backend == "tbc-jit") {
 		options.setOption("engine.backend", std::string("tbc"));
 		options.setOption("tbc.mode", std::string("jit"));
-	} else if (backend == "nir-tbc" || backend == "nir-tbc-jit" || backend == "nir-direct" ||
-	           backend == "nir-direct-jit") {
+	} else if (backend == "nir-tbc" || backend == "nir-tbc-jit") {
+		// the 0.3 tracer, mapped to NIR and converted
 		options.setOption("engine.backend", std::string("nirtbc"));
+		options.setOption("tracing.nirTracer", false);
 		options.setOption("tracing.nirChain", true);
-		if (backend == "nir-direct" || backend == "nir-direct-jit") {
-			options.setOption("tracing.nirTracer", true);
-		}
-		if (backend == "nir-tbc-jit" || backend == "nir-direct-jit") {
+		if (backend == "nir-tbc-jit") {
 			options.setOption("tbc.mode", std::string("jit"));
 		}
 	} else {
