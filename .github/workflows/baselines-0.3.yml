@@ -2,7 +2,8 @@ name: Baselines 0.3
 
 # Builds `main` (0.3) in the same environment as the 0.4 jobs with the 0.4 latency-corpus driver and records its numbers
 # (docs/plans/nautilus-0.4/16-implementation-plan.md §2, M1.10). The driver uses only the public engine API, so the same
-# source builds against both. The result is an artifact; committing it as `test/baselines/0.3/` is a maintainer's step.
+# source builds against both. The result is an artifact (corpus numbers, inferred FunctionAttributes and operation
+# counts per function); `test/baselines/0.3/` holds the committed copy that the 0.4 gates compare against.
 # A `schedule` trigger would run on the default branch only, so this runs when the driver changes and on request.
 on:
   workflow_dispatch:
@@ -10,6 +11,7 @@ on:
     branches: [nautilus-0.4]
     paths:
       - 'nautilus/test/benchmark/latency-corpus/**'
+      - 'tools/baselines/**'
       - '.github/workflows/baselines-0.3.yml'
 
 jobs:
@@ -42,35 +44,15 @@ jobs:
         uses: ./driver/.github/actions/install-llvm
         with:
           llvm-version: "21"
-      - name: Add the driver to main
+      - name: Install ninja
+        run: sudo apt-get install -y ninja-build
+      - name: Record the baselines
         shell: bash
         run: |
-          mkdir -p main/nautilus/test/benchmark/latency-corpus
-          cp driver/nautilus/test/benchmark/latency-corpus/LatencyCorpus.cpp main/nautilus/test/benchmark/latency-corpus/
-          cat >> main/nautilus/test/benchmark/CMakeLists.txt <<'CMAKE'
-
-          if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
-              add_executable(nautilus-latency-corpus latency-corpus/LatencyCorpus.cpp)
-              target_link_libraries(nautilus-latency-corpus PRIVATE nautilus)
-          endif ()
-          CMAKE
-      - name: cmake
-        shell: bash
-        run: |
-          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_MLIR_BACKEND=OFF -DENABLE_BENCHMARKS=ON -G Ninja -S main -B build
-      - name: build
-        shell: bash
-        run: |
-          cmake --build build --target nautilus-latency-corpus
-      - name: run the corpus
-        shell: bash
-        run: |
-          mkdir -p baselines-0.3
-          git -C main rev-parse HEAD > baselines-0.3/main-commit.txt
-          ./build/nautilus/test/benchmark/nautilus-latency-corpus 5 > baselines-0.3/corpus.jsonl
-          wc -l baselines-0.3/corpus.jsonl
+          # builds main with the driver, runs the corpus and the execution tests, extracts the IR facts
+          driver/tools/baselines/record-0.3.sh main baselines-0.3 5 build
       - name: upload the baseline
         uses: actions/upload-artifact@v4
         with:
           name: baselines-0.3-${{ github.sha }}
-          path: baselines-0.3
+          path: baselines-0.3/*.*

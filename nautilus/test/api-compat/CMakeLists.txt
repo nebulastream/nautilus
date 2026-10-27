@@ -10,6 +10,7 @@ if (ENABLE_TRACING)
             BoolExecutionTest.cpp
             CastExecutionTest.cpp
             ConcurrentExecutionTest.cpp
+            ExecutionTest.cpp
             FloatValTypeTest.cpp
             FunctionPtrValTypeTest.cpp
             FunctionTest.cpp
@@ -27,4 +28,61 @@ if (ENABLE_TRACING)
     target_link_libraries(nautilus-api-compat-tests PRIVATE nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
     catch_discover_tests(nautilus-api-compat-tests TEST_PREFIX "api-compat: " EXTRA_ARGS --allow-running-no-tests)
+endif ()
+
+# The examples (docs/plans/nautilus-0.4/16-implementation-plan.md, M1.10), copied unchanged. An example that pins no
+# backend runs on the default configuration; one that pins a backend is recorded here with it and runs only when that
+# backend is enabled. DemoBackends (compares every backend), DemoInliningPlugin (needs the Clang pass plugin) and DemoGPU
+# (disabled until M7.7) are not copied.
+if (ENABLE_TRACING)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        set(API_COMPAT_WHOLE_ARCHIVE_PREFIX -Wl,--whole-archive)
+        set(API_COMPAT_WHOLE_ARCHIVE_SUFFIX -Wl,--no-whole-archive)
+    endif ()
+
+    # api_compat_example(<name> <source> <pinned backend or NONE> [<plugin library>])
+    function(api_compat_example name source pinned plugin)
+        string(TOUPPER "${pinned}" pinnedUpper)
+        if (NOT pinned STREQUAL "NONE")
+            if (pinned STREQUAL "cpp")
+                set(flag ENABLE_C_BACKEND)
+            else ()
+                set(flag ENABLE_${pinnedUpper}_BACKEND)
+            endif ()
+            if (NOT ${flag})
+                return()
+            endif ()
+        endif ()
+        # the plugin targets are defined after this directory is processed, so test the option that builds them
+        if (plugin)
+            string(REPLACE "nautilus-" "" pluginName "${plugin}")
+            string(TOUPPER "${pluginName}" pluginUpper)
+            if (NOT ENABLE_${pluginUpper}_PLUGIN)
+                return()
+            endif ()
+        endif ()
+        add_executable(${name} examples/${source})
+        if (plugin)
+            target_link_libraries(${name} PRIVATE nautilus ${API_COMPAT_WHOLE_ARCHIVE_PREFIX} ${plugin}
+                    ${API_COMPAT_WHOLE_ARCHIVE_SUFFIX})
+        else ()
+            target_link_libraries(${name} PRIVATE nautilus)
+        endif ()
+        add_test(NAME "api-compat: example ${name}" COMMAND ${name})
+    endfunction()
+
+    api_compat_example(api_compat_demo_modules DemoModules.cpp NONE "")
+    api_compat_example(api_compat_demo_runtime_calls DemoRuntimeCalls.cpp NONE "")
+    api_compat_example(api_compat_demo_std_plugin DemoStdPlugin.cpp NONE nautilus-std)
+    api_compat_example(api_compat_demo_jit DemoJit.cpp cpp "")
+    api_compat_example(api_compat_demo_regions DemoRegions.cpp cpp "")
+    api_compat_example(api_compat_demo_simd_plugin DemoSimdPlugin.cpp mlir nautilus-simd)
+    api_compat_example(api_compat_demo_specialization_plugin DemoSpecializationPlugin.cpp mlir
+            nautilus-specialization)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        api_compat_example(api_compat_demo_profiling DemoProfiling.cpp mlir nautilus-profiling)
+        if (TARGET api_compat_demo_profiling AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_link_options(api_compat_demo_profiling PRIVATE -rdynamic)
+        endif ()
+    endif ()
 endif ()
