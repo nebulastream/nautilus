@@ -60,6 +60,13 @@ if (ENABLE_FUZZING OR ENABLE_FUZZER_REPLAY)
 	# against libnautilus (it only needs the header-only AST/ByteReader
 	# layout), that regenerates corpus/ from Ast.hpp's own Kind/TypeId tables.
 	add_executable(nautilus-fuzz-seedgen SeedGen.cpp)
+
+	# The smoke corpus and the committed seeds, for ctest runs of a build that has the replay driver. Not part of a
+	# default build: the targets exist only with ENABLE_FUZZER_REPLAY or ENABLE_FUZZING.
+	enable_testing()
+	add_test(NAME fuzz-replay-smoke COMMAND nautilus-fuzz-replay)
+	add_test(NAME fuzz-replay-seeds COMMAND nautilus-fuzz-replay ${CMAKE_CURRENT_SOURCE_DIR}/corpus)
+	set_tests_properties(fuzz-replay-smoke fuzz-replay-seeds PROPERTIES LABELS fuzz TIMEOUT 1200)
 endif ()
 
 # NIR format fuzzers (M1.6): the binary image loader, the verifier and the text parser. They link only nautilus-nir.
