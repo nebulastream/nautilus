@@ -8,6 +8,9 @@
 #ifdef ENABLE_C_BACKEND
 #include "nautilus/compiler/backends/cpp/CPPNirBackend.hpp"
 #endif
+#ifdef ENABLE_MLIR_BACKEND
+#include "nautilus/compiler/backends/mlir/MLIRNirBackend.hpp"
+#endif
 
 namespace nautilus::compiler::nirbackend {
 
@@ -24,6 +27,9 @@ NirBackendRegistry::NirBackendRegistry() {
 #endif
 #ifdef ENABLE_C_BACKEND
 	registerBackend("cpp", std::make_unique<cpp::CPPNirBackend>());
+#endif
+#ifdef ENABLE_MLIR_BACKEND
+	registerBackend("mlir", std::make_unique<mlir::MLIRNirBackend>());
 #endif
 }
 

@@ -18,6 +18,11 @@ public:
 		return ExceptionPropagationMode::NativeUnwind;
 	}
 
+	/// The graph of the NIR front end carries a module that this backend compiles itself (M4.5).
+	[[nodiscard]] bool compilesNir() const override {
+		return true;
+	}
+
 	/// LLVM's pipeline folds constants, simplifies the CFG and eliminates
 	/// dead code itself, so those IR passes would only repeat that work
 	/// before the lowering -- but it is slower on a graph whose block

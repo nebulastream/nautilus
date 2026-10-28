@@ -6,6 +6,7 @@
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRExecutable.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
+#include "nautilus/compiler/backends/mlir/MLIRNirBackend.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
 #include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
@@ -45,6 +46,13 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
                                                             const DumpHandler& dumpHandler,
                                                             const engine::Options& options,
                                                             CompilationStatistics* statistics) const {
+	// The graph of the NIR front end carries the module and no IR: it compiles natively (M4.5)
+	if (ir->getNirModule() != nullptr && ir->getFunctionOperations().empty()) {
+		auto module = std::static_pointer_cast<const nir::Module>(ir->getNirModule());
+		// the traced module is process-local: its pointers are addresses, so the host resolves nothing
+		const nirbackend::CompileContext context {dumpHandler, options, statistics, nullptr, {}};
+		return MLIRNirBackend().compileNamed(std::move(module), context, ir->getId());
+	}
 	const auto backendStart = std::chrono::steady_clock::now();
 
 	// 1. Create the MLIRLoweringProvider and lower the given Nautilus IR. Return
