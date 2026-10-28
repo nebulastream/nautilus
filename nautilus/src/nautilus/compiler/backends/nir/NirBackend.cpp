@@ -8,6 +8,9 @@
 #ifdef ENABLE_C_BACKEND
 #include "nautilus/compiler/backends/cpp/CPPNirBackend.hpp"
 #endif
+#ifdef ENABLE_ASMJIT_BACKEND
+#include "nautilus/compiler/backends/asmjit/AsmJitNirBackend.hpp"
+#endif
 
 namespace nautilus::compiler::nirbackend {
 
@@ -24,6 +27,9 @@ NirBackendRegistry::NirBackendRegistry() {
 #endif
 #ifdef ENABLE_C_BACKEND
 	registerBackend("cpp", std::make_unique<cpp::CPPNirBackend>());
+#endif
+#ifdef ENABLE_ASMJIT_BACKEND
+	registerBackend("asmjit", std::make_unique<asmjit::AsmJitNirBackend>());
 #endif
 }
 

@@ -7,6 +7,7 @@ endif()
 
 add_source_files(nautilus
         AsmJitCompilationBackend.cpp
+        AsmJitNirBackend.cpp
         ${ASMJIT_LOWERING_SRC}
         AsmJitExecutable.cpp
         intrinsics/AsmJitBackendIntrinsic.cpp
