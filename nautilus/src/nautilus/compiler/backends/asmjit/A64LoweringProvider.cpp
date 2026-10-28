@@ -2163,8 +2163,16 @@ void AsmJitLoweringProvider::LoweringContext::visitCall(ir::CallOperation* op, R
 				narrowToStamp(toGp(frame.getValue(arg->getIdentifier())), arg->getStamp());
 			}
 		}
-		IntrinsicCallContext ctx {cc, op, frame};
+		std::vector<AsmReg> args;
+		args.reserve(op->getInputArguments().size());
+		for (auto* arg : op->getInputArguments()) {
+			args.push_back(frame.getValue(arg->getIdentifier()));
+		}
+		IntrinsicCallContext ctx {cc, args, std::nullopt};
 		if ((*intrinsic)(ctx)) {
+			if (ctx.result.has_value()) {
+				bindResult(op->getIdentifier(), *ctx.result, frame);
+			}
 			return;
 		}
 	}

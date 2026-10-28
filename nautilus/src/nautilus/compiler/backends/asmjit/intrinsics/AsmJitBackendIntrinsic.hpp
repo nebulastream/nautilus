@@ -7,16 +7,10 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
-
-// Forward-declare: CallOperation.hpp lacks include guards (a project-wide
-// convention — see the existing include sites). We only need a pointer-to-it
-// here, so the forward declaration is enough.
-namespace nautilus::compiler::ir {
-class CallOperation;
-} // namespace nautilus::compiler::ir
 
 namespace nautilus::compiler::asmjit {
 
@@ -27,15 +21,14 @@ namespace nautilus::compiler::asmjit {
 /// is by the IntrinsicId the IR carries.
 using IntrinsicTarget = void*;
 
-/// Context handed to intrinsic handlers. Holds the AsmJit Compiler and the
-/// per-function RegisterFrame so a handler can:
-///   1. Look up its operand registers via `frame.getValue(...)`
-///   2. Emit instructions via `cc.<...>()`
-///   3. Bind the result identifier via `frame.setValue(...)`
+/// Context handed to intrinsic handlers. A handler is independent of the IR the backend lowers: it reads its operand
+/// registers from `args` (in call order, a narrow integer already extended to the full register), emits instructions
+/// through `cc`, and publishes the call's result by setting `result`. The 0.3 lowering and the NIR lowering
+/// (`X64NirLowering.cpp`, `A64NirLowering.cpp`) fill the same context, so a plugin writes each handler once.
 struct IntrinsicCallContext {
 	AsmJitCompiler& cc;
-	const ir::CallOperation* call;
-	RegisterFrame& frame;
+	std::span<const AsmReg> args;
+	std::optional<AsmReg> result;
 };
 
 /// An intrinsic handler. Returns `true` if it fully handled the call and the
