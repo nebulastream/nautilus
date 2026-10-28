@@ -189,14 +189,13 @@ private:
 		return types;
 	}
 
-	/// The declaration of a function: exported ones carry their exact name as the symbol, since it need not be a C
-	/// identifier or may clash with a name of the C library.
+	/// The declaration of a function. Every function is a symbol of the library under its exact name, which need not be
+	/// a C identifier and may clash with a name of the C library, so the C name is `nfn_<index>` and the symbol an
+	/// assembler label: the engine looks module functions up by name, not only the entry point.
 	std::string prototype(uint32_t f, bool declaration) const {
 		const auto& record = m_.functions[f];
 		const auto& sig = m_.signatures[record.signature];
-		std::string text =
-		    record.visibility == static_cast<uint8_t>(nir::Visibility::Exported) ? "extern \"C\" " : "static ";
-		text += abiType(sig.result) + " " + functionName(f) + "(";
+		std::string text = "extern \"C\" " + abiType(sig.result) + " " + functionName(f) + "(";
 		for (uint32_t p = 0; p < sig.paramCount; ++p) {
 			text += (p == 0 ? "" : ", ") + abiType(m_.paramType(sig, p));
 			if (!declaration) {
@@ -204,7 +203,7 @@ private:
 			}
 		}
 		text += ")";
-		if (declaration && record.visibility == static_cast<uint8_t>(nir::Visibility::Exported)) {
+		if (declaration) {
 			text += " __asm__(\"" + std::string(m_.name(record.nameId)) + "\")";
 		}
 		return text;
