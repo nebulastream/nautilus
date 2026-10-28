@@ -4,7 +4,7 @@ A backend implements `CompilationBackend` (`CompilationBackend.hpp`):
 `compile(ir, dumpHandler, options, statistics)`, its exception-propagation
 mode and the IR optimization level it needs. The engine's front end produces
 NIR: a backend that returns true from `compilesNir()` reads the module the graph
-carries (`tbc`), the others get the 0.3 IR built from it first (`compiler/NirToIR.cpp`)
+carries (`tbc`, `cpp`), the others get the 0.3 IR built from it first (`compiler/NirToIR.cpp`)
 until their NIR port lands. Built-in backends are registered
 in `CompilationBackend.cpp`; plugins call `CompilationBackendRegistry::registerBackend`.
 A backend that reads what only the 0.3 trace carries returns true from `needs03Frontend()` (the GPU backends: the `kernel`
@@ -36,6 +36,13 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
 - D10/D11 are lowered in bytecode, not in handlers, so the stencils do not change: a checked `div`/`rem` compares and
   branches to a cold block that calls `nautilus_rt_throw_arith` through its capture thunk, shift amounts are masked,
   `fptosi`/`fptoui` call the saturating helpers of `nir/NirRuntime.cpp`.
+- `cpp/CPPNirLowering.cpp` prints C++ from SSA NIR (M4.3): values of integer and pointer types are unsigned integers of
+  their width, so arithmetic wraps and the signed view is a cast; checked `div`/`rem` test the divisor (and the minimum
+  divided by -1) and throw through the same captured-call `try` as calls that may throw; shift amounts are masked;
+  `fptosi`/`fptoui` use saturating helpers emitted into the source; memory goes through `__builtin_memcpy`. Every function
+  is an `extern "C"` symbol `nfn_<index>` with its exact name as an assembler label (quoted when it is not an identifier),
+  since the engine looks functions up by name. The generated code points into the module (data objects, bindings), which
+  the executable keeps alive.
 - `tools/nir-run` (`nautilus-nir-run`) compiles a `.nir` file and runs its `; run @f(args) = result` directives;
   ctest runs `test/data/nir-run/*.nir` on `tbc` in three modes. Add a file there for every NIR operation a backend
   handles.

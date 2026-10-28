@@ -278,7 +278,13 @@ changes M4.2 and §2 step 2 as follows:
   test backends, which check the mapping from the 0.3 trace) and `test/ir-pass-tests/`. They go with the last 0.3
   backend (PRs 7 and 8). The sources of no backend are excluded from the build.
 - **D10/D11 on the bridged backends.** The bridge does not apply checked division, masked shifts and saturating
-  float-to-int casts: `asmjit`, `mlir` and `cpp` behave as in 0.3 until their ports. `tbc` applies them.
+  float-to-int casts: `asmjit` and `mlir` behave as in 0.3 until their ports. `tbc` applies them, and `cpp` since M4.3.
+- **M4.3 (`cpp` on NIR) is done in PR 7.** `CPPNirLowering` prints C++ from the SSA module and `cpp` returns true from
+  `compilesNir()`, so it leaves the bridge and applies D10/D11 (checked `div`/`rem` through the captured-call `try`,
+  masked shifts, saturating casts as helpers in the source, `memcpy` memory access, no signed overflow). Every
+  execution test passes on it (1035 tests of `ctest --preset dev`). The loop that got there (autoresearch, metric = failing
+  assertions and crashed tests): 1504 for the scaffold that throws, 20 with the lowering, 4 once every function is a
+  symbol under its exact name, 0 with quoted symbols and the statistics tests told that `cpp` compiles NIR.
 - **Tests.** Every execution test, plugin test and the fuzzer run each backend on the default pipeline; `legacy-tbc` and
   `legacy-asmjit` run the fallback. Tests of the 0.3 pass statistics, dumps and tbc lowering options pin
   `tracing.nirTracer=false`; `CompilationStatisticsTest` has the NIR counterparts. Not ported from M4.2's list:
