@@ -1,6 +1,9 @@
 #pragma once
 
+#include "nautilus/nir/Module.hpp"
 #include <cstdint>
+#include <string>
+#include <unordered_set>
 
 // The runtime helpers that every NIR backend may call (docs/plans/nautilus-0.4/06-semantics.md §4). They are plain C++
 // functions of the library, never `pointers` entries of a module.
@@ -24,5 +27,9 @@ double nautilus_rt_fmod_f64(double a, double b);
 /// `sourceBits` the width of the float. The helper takes the float and returns the integer of that width, signed or
 /// unsigned.
 void* floatToIntHelper(bool signedResult, unsigned bits, unsigned sourceBits);
+
+/// The functions that must run under an exception frame: those with a call that may throw or a checked division, and
+/// those that reach one through internal calls. Their entry points are reported as captured-host-rethrow.
+std::unordered_set<std::string> functionsNeedingCapture(const nir::Module& module);
 
 } // namespace nautilus::compiler::nirbackend
