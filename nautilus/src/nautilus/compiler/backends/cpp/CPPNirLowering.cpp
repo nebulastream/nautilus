@@ -118,8 +118,10 @@ std::string toAbi(nir::TypeWord word, const std::string& value) {
 	return "(" + abiType(word) + ")" + value;
 }
 
-/// The assembler label of a function symbol. A name with characters outside of [A-Za-z0-9_.$] (a signature such as
-/// `add(one)!`) must be quoted for the assembler, which accepts any other character in a quoted symbol.
+/// The assembler label of a function symbol, as the string-literal expression of an `__asm__`. On Mach-O the label is
+/// not given the underscore that C names get, so the generated source adds the platform's prefix (NAUTILUS_PREFIX). A
+/// name with characters outside of [A-Za-z0-9_.$] (a signature such as `add(one)!`) must be quoted for the assembler,
+/// which accepts any other character in a quoted symbol.
 std::string symbolLabel(const std::string& name) {
 	bool plain = !name.empty();
 	for (const unsigned char c : name) {
@@ -128,7 +130,7 @@ std::string symbolLabel(const std::string& name) {
 		}
 		plain = plain && (std::isalnum(c) != 0 || c == '_' || c == '.' || c == '$');
 	}
-	return plain ? name : "\\\"" + name + "\\\"";
+	return plain ? "NAUTILUS_PREFIX \"" + name + "\"" : "\"\\\"\" NAUTILUS_PREFIX \"" + name + "\" \"\\\"\"";
 }
 
 std::string hex(uint64_t value) {
@@ -157,6 +159,7 @@ public:
 
 		std::ostringstream out;
 		out << "\n#include <cstdint>\n";
+		out << "#if defined(__APPLE__)\n#define NAUTILUS_PREFIX \"_\"\n#else\n#define NAUTILUS_PREFIX \"\"\n#endif\n";
 		if (needsCapture) {
 			// The generated library cannot link against nautilus, so the helpers of the exception frame are baked in
 			// as raw addresses resolved in the host process.
@@ -218,7 +221,7 @@ private:
 		}
 		text += ")";
 		if (declaration) {
-			text += " __asm__(\"" + symbolLabel(std::string(m_.name(record.nameId))) + "\")";
+			text += " __asm__(" + symbolLabel(std::string(m_.name(record.nameId))) + ")";
 		}
 		return text;
 	}
