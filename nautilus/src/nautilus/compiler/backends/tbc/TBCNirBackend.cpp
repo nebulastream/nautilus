@@ -1,5 +1,6 @@
 #include "nautilus/compiler/backends/tbc/TBCNirBackend.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/compiler/backends/nir/NirRuntime.hpp"
 #include "nautilus/compiler/backends/tbc/TBCClosure.hpp"
 #include "nautilus/compiler/backends/tbc/TBCExecutable.hpp"
 #include "nautilus/compiler/backends/tbc/TBCNirLowering.hpp"
