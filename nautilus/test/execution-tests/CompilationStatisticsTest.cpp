@@ -27,15 +27,13 @@ std::string getAnyBackend() {
 #endif
 }
 
-/// A backend that has no NIR port, so the NIR pipeline builds the 0.3 IR for it (the bridge), or "" if the build has
-/// none.
+/// A backend that has no NIR port (`tbc` and `cpp` have one), so the NIR pipeline builds the 0.3 IR for it (the
+/// bridge), or "" if the build has none.
 std::string getBridgedBackend() {
 #if defined(ENABLE_TRACING) && defined(ENABLE_ASMJIT_BACKEND)
 	return "asmjit";
 #elif defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
 	return "mlir";
-#elif defined(ENABLE_TRACING) && defined(ENABLE_C_BACKEND)
-	return "cpp";
 #else
 	return "";
 #endif
@@ -155,8 +153,8 @@ TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats of the 
 	}
 	REQUIRE(std::get<int64_t>(*stats->find("tracing.iterations")) == 1);
 
-	// tbc compiles the NIR as it is; the other backends get the 0.3 IR built from it
-	if (backend == "tbc") {
+	// tbc and cpp compile the NIR as it is; the other backends get the 0.3 IR built from it
+	if (backend == "tbc" || backend == "cpp") {
 		REQUIRE_FALSE(stats->contains("bridge.ms"));
 		REQUIRE_FALSE(stats->contains("ir.operations"));
 	} else {
@@ -187,9 +185,9 @@ namespace {
 } // namespace
 
 TEST_CASE("CompilationStatistics: per-pass IR counts are opt-in via ir.passStatistics") {
-	auto backend = getAnyBackend();
+	auto backend = getBridgedBackend();
 	if (backend.empty()) {
-		SKIP("No compilation backend available");
+		SKIP("No backend that executes the IR is available");
 	}
 
 	// Timing keys are always recorded; the IR walks behind the entity counts

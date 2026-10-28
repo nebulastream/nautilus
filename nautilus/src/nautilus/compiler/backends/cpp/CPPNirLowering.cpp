@@ -5,6 +5,7 @@
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/extensions/ExtensionRegistry.hpp"
 #include "nautilus/nir/Inst.hpp"
+#include <cctype>
 #include <cstdint>
 #include <set>
 #include <sstream>
@@ -117,6 +118,19 @@ std::string toAbi(nir::TypeWord word, const std::string& value) {
 	return "(" + abiType(word) + ")" + value;
 }
 
+/// The assembler label of a function symbol. A name with characters outside of [A-Za-z0-9_.$] (a signature such as
+/// `add(one)!`) must be quoted for the assembler, which accepts any other character in a quoted symbol.
+std::string symbolLabel(const std::string& name) {
+	bool plain = !name.empty();
+	for (const unsigned char c : name) {
+		if (c == '"' || c == '\\' || c < 0x20 || c == 0x7f) {
+			throw NotImplementedException("cpp: a function name with a quote, a backslash or a control character");
+		}
+		plain = plain && (std::isalnum(c) != 0 || c == '_' || c == '.' || c == '$');
+	}
+	return plain ? name : "\\\"" + name + "\\\"";
+}
+
 std::string hex(uint64_t value) {
 	std::ostringstream out;
 	out << "0x" << std::hex << value << "ULL";
@@ -204,7 +218,7 @@ private:
 		}
 		text += ")";
 		if (declaration) {
-			text += " __asm__(\"" + std::string(m_.name(record.nameId)) + "\")";
+			text += " __asm__(\"" + symbolLabel(std::string(m_.name(record.nameId))) + "\")";
 		}
 		return text;
 	}
