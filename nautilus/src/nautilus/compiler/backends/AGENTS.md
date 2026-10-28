@@ -44,7 +44,7 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
   since the engine looks functions up by name. The generated code points into the module (data objects, bindings), which
   the executable keeps alive.
 - `tools/nir-run` (`nautilus-nir-run`) compiles a `.nir` file and runs its `; run @f(args) = result` directives;
-  ctest runs `test/data/nir-run/*.nir` on `tbc` in three modes. Add a file there for every NIR operation a backend
+  ctest runs `test/data/nir-run/*.nir` on `tbc` in three modes and on `cpp` (native executables are called through dyncall). Add a file there for every NIR operation a backend
   handles.
 - `TBCBackend::compile` hands a graph that carries a NIR module and no IR to `TBCNirBackend`; the `tbc.registerAllocator`,
   `tbc.coalescing`, `tbc.superinstructions` and `tbc.immediates` options belong to the 0.3 lowering only.

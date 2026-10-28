@@ -284,7 +284,7 @@ changes M4.2 and §2 step 2 as follows:
   masked shifts, saturating casts as helpers in the source, `memcpy` memory access, no signed overflow). Every
   execution test passes on it (1035 tests of `ctest --preset dev`). The loop that got there (autoresearch, metric = failing
   assertions and crashed tests): 1504 for the scaffold that throws, 20 with the lowering, 4 once every function is a
-  symbol under its exact name, 0 with quoted symbols and the statistics tests told that `cpp` compiles NIR.
+  symbol under its exact name, 0 with quoted symbols and the statistics tests told that `cpp` compiles NIR. `nautilus-nir-run` calls native executables through dyncall, so the `.nir` corpus (division, shifts, casts, exceptions) also runs on `cpp`; breaking the minimum-divided-by-minus-one check, the shift mask or the saturating NaN case in the lowering fails exactly `division`, `shifts` and `casts`.
 - **Tests.** Every execution test, plugin test and the fuzzer run each backend on the default pipeline; `legacy-tbc` and
   `legacy-asmjit` run the fallback. Tests of the 0.3 pass statistics, dumps and tbc lowering options pin
   `tracing.nirTracer=false`; `CompilationStatisticsTest` has the NIR counterparts. Not ported from M4.2's list:
