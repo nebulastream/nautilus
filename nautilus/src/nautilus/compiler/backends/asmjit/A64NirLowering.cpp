@@ -14,6 +14,7 @@
 #include <asmjit/a64.h>
 #include <asmjit/arm/armutils.h>
 #include <bit>
+#include <chrono>
 #include <cstring>
 #include <functional>
 #include <optional>
@@ -186,6 +187,7 @@ public:
 			nodes_[i] = cc.newFunc(signatureOf(m_.signatures[record.signature]));
 			nodesByName_[std::string(m_.name(record.nameId))] = nodes_[i];
 		}
+		const auto loweringStart = std::chrono::steady_clock::now();
 		inlinable_.assign(m_.functions.size(), -1);
 		for (uint32_t i = 0; i < m_.functions.size(); ++i) {
 			lowerFunction(i);
@@ -216,7 +218,14 @@ public:
 			::asmjit::Formatter::formatNodeList(sb, formatOptions, &cc);
 			irDump->assign(sb.data(), sb.size());
 		}
+		const auto finalizeStart = std::chrono::steady_clock::now();
 		cc.finalize();
+		if (statistics_ != nullptr) {
+			// the builder nodes (this file), then AsmJit's register allocation, the peephole pass and the encoding
+			statistics_->set("asmjit.lowering.ms",
+			                 std::chrono::duration<double, std::milli>(finalizeStart - loweringStart).count());
+			statistics_->recordTimingMs("asmjit.finalize.ms", finalizeStart);
+		}
 	}
 
 	const std::unordered_map<std::string, FuncNode*>& functionNodes() const {
@@ -845,7 +854,16 @@ private:
 
 	/// A materialised address: one add with a shifted index, plus a constant.
 	void emitAddressAdd(uint32_t id, const AddressParts& parts) {
-		Gp d = defGp(id);
+		// the register of an operand that dies here takes the result
+		Ref dying = nir::NONE;
+		for (const Ref candidate :
+		     {parts.base, parts.scaledInput != nir::NONE && isScaledIndexDeferred(parts.offset) ? parts.scaledInput
+		                                                                                        : parts.offset}) {
+			if (dying == nir::NONE && canReuse(candidate)) {
+				dying = candidate;
+			}
+		}
+		Gp d = destGp(id, dying);
 		Gp base = gp(parts.base);
 		if (parts.offset == nir::NONE) {
 			emitAddConst(d.x(), base.x(), static_cast<uint64_t>(static_cast<int64_t>(parts.disp)), false, 64);
@@ -1196,7 +1214,7 @@ private:
 			return;
 		}
 		const auto test = emitIntegerCompare(inst, false);
-		Gp d = defGp(id);
+		Gp d = destGp(id, inst.a);
 		cc.cset(d.w(), Imm(static_cast<uint32_t>(test.cond)));
 	}
 
@@ -1253,7 +1271,7 @@ private:
 		switch (kind) {
 		case 0: { // sext
 			Gp src = gp(inst.a);
-			Gp d = defGp(id);
+			Gp d = destGp(id, inst.a);
 			switch (bitsOf(from)) {
 			case 8:
 				if (from == TypeId::Bool) {
@@ -1277,7 +1295,7 @@ private:
 		}
 		case 1: { // zext
 			Gp src = gp(inst.a);
-			Gp d = defGp(id);
+			Gp d = destGp(id, inst.a);
 			switch (bitsOf(from)) {
 			case 8:
 				cc.uxtb(d.w(), src.w());

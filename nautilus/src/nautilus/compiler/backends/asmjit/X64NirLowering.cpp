@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <asmjit/x86.h>
 #include <bit>
+#include <chrono>
 #include <cstring>
 #include <functional>
 #include <optional>
@@ -197,6 +198,7 @@ public:
 			nodes_[i] = cc.newFunc(signatureOf(m_.signatures[record.signature]));
 			nodesByName_[std::string(m_.name(record.nameId))] = nodes_[i];
 		}
+		const auto loweringStart = std::chrono::steady_clock::now();
 		inlinable_.assign(m_.functions.size(), -1);
 		// Pass 2: the bodies.
 		for (uint32_t i = 0; i < m_.functions.size(); ++i) {
@@ -226,7 +228,14 @@ public:
 			::asmjit::Formatter::formatNodeList(sb, formatOptions, &cc);
 			irDump->assign(sb.data(), sb.size());
 		}
+		const auto finalizeStart = std::chrono::steady_clock::now();
 		cc.finalize();
+		if (statistics_ != nullptr) {
+			// the builder nodes (this file), then AsmJit's register allocation, the peephole pass and the encoding
+			statistics_->set("asmjit.lowering.ms",
+			                 std::chrono::duration<double, std::milli>(finalizeStart - loweringStart).count());
+			statistics_->recordTimingMs("asmjit.finalize.ms", finalizeStart);
+		}
 	}
 
 	const std::unordered_map<std::string, FuncNode*>& functionNodes() const {
@@ -843,9 +852,20 @@ private:
 					F().deferred[id] |= kAddressPart;
 					return;
 				}
-				// otherwise one three-operand lea computes it, scaling included
-				Gp d = defGp(id);
-				cc.lea(d, memFromParts(*parts));
+				// otherwise one three-operand lea computes it, scaling included; the register of an operand that dies
+				// here takes the result
+				Ref dying = nir::NONE;
+				for (const Ref candidate :
+				     {parts->base, parts->scaledInput != nir::NONE && isScaledIndexDeferred(parts->offset)
+				                       ? parts->scaledInput
+				                       : parts->offset}) {
+					if (dying == nir::NONE && canReuse(candidate)) {
+						dying = candidate;
+					}
+				}
+				const Mem mem = memFromParts(*parts);
+				Gp d = destGp(id, dying);
+				cc.lea(d, mem);
 				if (parts->offset == nir::NONE) {
 					++foldedImmediates_;
 				}
@@ -892,7 +912,7 @@ private:
 	void lowerMulImmediate(uint32_t id, Ref a, int32_t imm, unsigned ow) {
 		const auto t = static_cast<TypeId>(F().insts[id].type);
 		Gp src = gp(a);
-		Gp d = defGp(id);
+		Gp d = destGp(id, a);
 		// strength-reduce the 3-cycle imul: a power of two is a shift, and 3/5/9 are one lea (the low bits agree)
 		if (imm > 1 && (imm & (imm - 1)) == 0) {
 			cc.mov(d, src);
@@ -1197,7 +1217,7 @@ private:
 		const auto type = typeOfRef(inst.a);
 		if (!isFp(type)) {
 			const auto cond = emitIntegerCompare(inst);
-			Gp d = defGp(id);
+			Gp d = destGp(id, inst.a);
 			cc.set(cond, d.r8());
 			cc.movzx(d.r32(), d.r8());
 			return;
@@ -1314,7 +1334,7 @@ private:
 		switch (kind) {
 		case 0: { // sext
 			Gp src = gp(inst.a);
-			Gp d = defGp(id);
+			Gp d = destGp(id, inst.a);
 			switch (bitsOf(from)) {
 			case 8:
 				if (from == TypeId::Bool) {
@@ -1339,7 +1359,7 @@ private:
 		}
 		case 1: { // zext
 			Gp src = gp(inst.a);
-			Gp d = defGp(id);
+			Gp d = destGp(id, inst.a);
 			switch (bitsOf(from)) {
 			case 8:
 				cc.movzx(d.r32(), src.r8());
@@ -1878,16 +1898,21 @@ private:
 
 	/// The register of integer value `ref` extended to the full register as the extension kind of `word` says, for
 	/// a value that crosses a native boundary (13 §4.5.1); the other types keep their register.
+	/// The bit pattern of constant `bits` of the type `word` as it crosses a native boundary.
+	static uint64_t abiBits(uint64_t bits, nir::TypeWord word) {
+		const auto t = nir::typeOf(word);
+		if (nir::extKindOf(word) == nir::ExtKind::Sext && bitsOf(t) < 64) {
+			const unsigned w = bitsOf(t);
+			bits = static_cast<uint64_t>(static_cast<int64_t>(bits << (64 - w)) >> (64 - w));
+		}
+		return bits;
+	}
+
 	Gp extendedForAbi(Ref ref, nir::TypeWord word) {
 		const auto t = nir::typeOf(word);
 		const auto kind = nir::extKindOf(word);
 		if (const auto c = constOf(ref)) {
-			uint64_t bits = *c;
-			if (kind == nir::ExtKind::Sext && bitsOf(t) < 64) {
-				const unsigned w = bitsOf(t);
-				bits = static_cast<uint64_t>(static_cast<int64_t>(bits << (64 - w)) >> (64 - w));
-			}
-			return gpConst(bits);
+			return gpConst(abiBits(*c, word));
 		}
 		Gp g = gp(ref);
 		if (bitsOf(t) == 64 || (t == TypeId::I32 && kind == nir::ExtKind::None) || nir::isFloat(t)) {
@@ -1941,10 +1966,32 @@ private:
 		cc.jne(target);
 	}
 
-	/// The argument registers of a call, the integers extended by the extension kinds of the signature when the callee
-	/// is native.
-	std::vector<AsmReg> argumentRegisters(const nir::SignatureRecord& sig, std::span<const uint32_t> args,
-	                                      bool native) {
+	/// An argument of a call. (A constant could be an immediate of the invoke node, but that only moves the move into
+	/// the register allocator: callgrind shows the same total.)
+	struct CallArg {
+		std::optional<AsmReg> reg;
+	};
+
+	/// The arguments of a call, the integers extended by the extension kinds of the signature when the callee is
+	/// native.
+	std::vector<CallArg> callArguments(const nir::SignatureRecord& sig, std::span<const uint32_t> args, bool native) {
+		std::vector<CallArg> out;
+		out.reserve(args.size());
+		for (size_t i = 0; i < args.size(); ++i) {
+			const auto word = m_.paramType(sig, static_cast<uint32_t>(i));
+			CallArg arg;
+			if (nir::isFloat(nir::typeOf(word))) {
+				arg.reg = xmm(args[i]);
+			} else {
+				arg.reg = native ? extendedForAbi(args[i], word) : gp(args[i]);
+			}
+			out.push_back(std::move(arg));
+		}
+		return out;
+	}
+
+	/// The argument registers of an intrinsic call (a handler reads registers): constants are materialised.
+	std::vector<AsmReg> argumentRegisters(const nir::SignatureRecord& sig, std::span<const uint32_t> args) {
 		std::vector<AsmReg> regs;
 		regs.reserve(args.size());
 		for (size_t i = 0; i < args.size(); ++i) {
@@ -1952,18 +1999,18 @@ private:
 			if (nir::isFloat(nir::typeOf(word))) {
 				regs.emplace_back(xmm(args[i]));
 			} else {
-				regs.emplace_back(native ? extendedForAbi(args[i], word) : gp(args[i]));
+				regs.emplace_back(extendedForAbi(args[i], word));
 			}
 		}
 		return regs;
 	}
 
-	void setInvokeArguments(InvokeNode* node, size_t first, const std::vector<AsmReg>& regs) {
-		for (size_t i = 0; i < regs.size(); ++i) {
-			if (std::holds_alternative<Xmm>(regs[i])) {
-				node->setArg(first + i, std::get<Xmm>(regs[i]));
+	void setInvokeArguments(InvokeNode* node, size_t first, const std::vector<CallArg>& args) {
+		for (size_t i = 0; i < args.size(); ++i) {
+			if (std::holds_alternative<Xmm>(*args[i].reg)) {
+				node->setArg(first + i, std::get<Xmm>(*args[i].reg));
 			} else {
-				node->setArg(first + i, std::get<Gp>(regs[i]));
+				node->setArg(first + i, std::get<Gp>(*args[i].reg));
 			}
 		}
 	}
@@ -1991,10 +2038,10 @@ private:
 			if (tryInline(callee.target, id, inst, record)) {
 				return;
 			}
-			const auto regs = argumentRegisters(sig, record.args, false);
+			const auto args = callArguments(sig, record.args, false);
 			InvokeNode* node = nullptr;
 			cc.invoke(&node, nodes_.at(callee.target)->label(), signatureOf(sig));
-			setInvokeArguments(node, 0, regs);
+			setInvokeArguments(node, 0, args);
 			bindCallResult(node, id, type);
 			emitCheckPending(record.unwind);
 			return;
@@ -2017,7 +2064,7 @@ private:
 			}
 			if (const auto handler =
 			        intrinsics_.getIntrinsic(ir::IntrinsicRegistry::instance().lookup(info->fallback))) {
-				const auto regs = argumentRegisters(sig, record.args, true);
+				const auto regs = argumentRegisters(sig, record.args);
 				IntrinsicCallContext ctx {cc, regs, std::nullopt};
 				if ((*handler)(ctx)) {
 					if (ctx.result.has_value()) {
@@ -2042,17 +2089,17 @@ private:
 	/// exception is caught before it crosses the JIT frame, with the target as the thunk's first argument.
 	void emitNativeCall(const nir::SignatureRecord& sig, void* target, void* thunk, const CallRecord& record,
 	                    uint32_t id, TypeId type) {
-		const auto regs = argumentRegisters(sig, record.args, true);
+		const auto args = callArguments(sig, record.args, true);
 		InvokeNode* node = nullptr;
 		if (thunk != nullptr) {
 			Gp targetReg = cc.newIntPtr();
 			cc.mov(targetReg, reinterpret_cast<uint64_t>(target));
 			cc.invoke(&node, reinterpret_cast<uint64_t>(thunk), signatureOf(sig, true));
 			node->setArg(0, targetReg);
-			setInvokeArguments(node, 1, regs);
+			setInvokeArguments(node, 1, args);
 		} else {
 			cc.invoke(&node, reinterpret_cast<uint64_t>(target), signatureOf(sig));
-			setInvokeArguments(node, 0, regs);
+			setInvokeArguments(node, 0, args);
 		}
 		bindCallResult(node, id, type);
 		emitCheckPending(record.unwind);
@@ -2063,7 +2110,7 @@ private:
 		const auto record = callRecord(m_.extra.data() + inst.c);
 		const auto type = nir::typeOf(sig.result);
 		Gp target = gp(inst.a);
-		const auto regs = argumentRegisters(sig, record.args, true);
+		const auto args = callArguments(sig, record.args, true);
 		InvokeNode* node = nullptr;
 		if (record.unwind != nir::NO_UNWIND) {
 			if (record.thunk == nir::NONE) {
@@ -2072,10 +2119,10 @@ private:
 			void* thunk = nirbackend::resolvePointer(m_, record.thunk, host_);
 			cc.invoke(&node, reinterpret_cast<uint64_t>(thunk), signatureOf(sig, true));
 			node->setArg(0, target);
-			setInvokeArguments(node, 1, regs);
+			setInvokeArguments(node, 1, args);
 		} else {
 			cc.invoke(&node, target, signatureOf(sig));
-			setInvokeArguments(node, 0, regs);
+			setInvokeArguments(node, 0, args);
 		}
 		bindCallResult(node, id, type);
 		emitCheckPending(record.unwind);
