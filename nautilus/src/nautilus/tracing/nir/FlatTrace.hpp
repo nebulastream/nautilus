@@ -20,11 +20,24 @@ inline constexpr FlatRegion NO_FLAT_REGION = 0xFFFFFFFFu;
 /// An open-addressing map from the snapshot of an operation to the id of its first record.
 class TagMap {
 public:
-	explicit TagMap(size_t expected = 128);
+	explicit TagMap(size_t expected = 32);
+	TagMap(const TagMap&) = delete;
+	TagMap& operator=(const TagMap&) = delete;
+	~TagMap();
 	/// The record id, or `nir::NONE`.
-	[[nodiscard]] uint32_t find(const Snapshot& key) const;
+	[[nodiscard]] uint32_t find(const Snapshot& key) const {
+		size_t slot = hashOf(key) & mask_;
+		while (table_[slot].key.getTag() != nullptr) {
+			if (table_[slot].key == key) {
+				return table_[slot].op;
+			}
+			slot = (slot + 1) & mask_;
+		}
+		return nir::NONE;
+	}
 	void set(const Snapshot& key, uint32_t op);
-	void clear();
+	/// Empties the map; a table that grew beyond @p keepCapacity slots is replaced by a small one.
+	void clear(size_t keepCapacity = 4096);
 	[[nodiscard]] size_t size() const {
 		return size_;
 	}
@@ -32,11 +45,19 @@ public:
 private:
 	struct Entry {
 		Snapshot key; // an unset snapshot (no tag) marks a free slot: a real snapshot always has a tag
-		uint32_t op = nir::NONE;
+		uint32_t op;
 	};
+	static size_t hashOf(const Snapshot& key) {
+		// the tag is a node of the trie (an aligned address), the static hash is already mixed
+		const uint64_t h = (reinterpret_cast<uintptr_t>(key.getTag()) >> 4) * 0x9E3779B97F4A7C15ull ^
+		                   key.getStaticValueHash() * 0xC2B2AE3D27D4EB4Full;
+		return static_cast<size_t>(h ^ (h >> 29));
+	}
 	void grow();
-	std::vector<Entry> table_;
-	size_t mask_ = 0, size_ = 0;
+	/// Zero-filled, which is a free slot: obtained from `calloc`, so that a table no function fills costs a page
+	/// map instead of a constructor per entry.
+	Entry* table_ = nullptr;
+	size_t capacity_ = 0, mask_ = 0, size_ = 0;
 };
 
 enum RecordFlags : uint8_t {
@@ -53,6 +74,8 @@ struct RecordMeta {
 	uint32_t result = 0;
 	Type type = Type::v;
 	uint8_t flags = 0;
+	/// The block the record is in. Updated for the moved tail of a split.
+	uint32_t block = 0;
 };
 
 struct FlatBlock {
@@ -71,13 +94,14 @@ struct FlatRegionSpec {
 class FlatTrace {
 public:
 	explicit FlatTrace(nir::Module& module);
+	/// Starts a new function recording into @p module, keeping the capacity of the tables so that the next trace of a
+	/// thread allocates only what it outgrows.
+	void reset(nir::Module& module);
 
 	// ---- the records ----------------------------------------------------------------------------------------
 
 	std::vector<nir::Inst> recs;
 	std::vector<RecordMeta> meta;
-	/// The block of each record. Updated for the moved tail of a split.
-	std::vector<uint32_t> blockOf;
 	std::vector<FlatBlock> blocks;
 	TagMap tags;
 
@@ -139,7 +163,7 @@ public:
 	std::vector<uint32_t> parameters;
 
 	nir::Module& module() {
-		return module_;
+		return *module_;
 	}
 
 	/// The false target and the probability of a `condbr`; its record holds the index of one of these in `c` until the
@@ -162,7 +186,10 @@ public:
 	}
 
 private:
-	nir::Module& module_;
+	nir::Module* module_;
+	/// The record vectors of blocks that a previous trace used, to be handed out again by `createBlock`.
+	std::vector<std::vector<uint32_t>> spareVectors_;
+	void recycleBlocks();
 	uint32_t currentBlock_ = 0;
 	uint32_t cursor_ = 0;
 	/// A new record of a block that is not the current one never happens, so the position of the cursor in the current

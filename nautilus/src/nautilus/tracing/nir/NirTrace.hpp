@@ -21,7 +21,39 @@ struct TypeInfo {
 	bool isSigned;
 	bool isFloat;
 };
-TypeInfo typeInfo(Type type);
+TypeInfo unknownType(); // throws
+inline TypeInfo typeInfo(Type type) {
+	using ::nautilus::nir::TypeId;
+	switch (type) {
+	case Type::v:
+		return {TypeId::Void, false, false};
+	case Type::b:
+		return {TypeId::Bool, false, false};
+	case Type::i8:
+		return {TypeId::I8, true, false};
+	case Type::i16:
+		return {TypeId::I16, true, false};
+	case Type::i32:
+		return {TypeId::I32, true, false};
+	case Type::i64:
+		return {TypeId::I64, true, false};
+	case Type::ui8:
+		return {TypeId::I8, false, false};
+	case Type::ui16:
+		return {TypeId::I16, false, false};
+	case Type::ui32:
+		return {TypeId::I32, false, false};
+	case Type::ui64:
+		return {TypeId::I64, false, false};
+	case Type::f32:
+		return {TypeId::F32, false, true};
+	case Type::f64:
+		return {TypeId::F64, false, true};
+	case Type::ptr:
+		return {TypeId::Ptr, false, false};
+	}
+	return unknownType();
+}
 
 /// The type word of `type` at a native boundary (13 §4.5.1): narrow integers carry the extension their signedness
 /// implies.

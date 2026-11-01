@@ -38,3 +38,13 @@ replay cursor), and `CompilationPipeline::traceToNir` verifies (under `tracing.v
 and the dump tests (`nautilus-tracing-tests`, which call `TraceContext::Trace` directly) still use it. When the layout
 puts an assigning block before the block that declared a variable (a constant reached again on the second path),
 `emitFunction` hoists the declaration to the entry block and leaves an assign at the original site.
+`tracing.nirTracer=true` records pre-SSA NIR directly (16-byte records, tag map, replay cursor) instead of the 0.3
+`TraceContext` + `toPreSSA`; the module then goes through verification and conversion into an empty IR graph for the
+`nirtbc` pseudo-backend. Tests run it as the `nir-direct` / `nir-direct-jit` backends, the fuzzer as peers. When the
+layout puts an assigning block before the block that declared a variable (a constant reached again on the second
+path), `emitFunction` hoists the declaration to the entry block and leaves an assign at the original site.
+
+The thread keeps the tables of the NIR tracer between traces (the flat trace, the symbolic execution context, the
+write-out scratch of `emitFunction`), so a trace allocates only what it outgrows; anything new that is per trace belongs
+there too, bounded so that one huge trace does not tax the small ones after it. Measure with `nautilus-compile-bench`
+and callgrind on `nautilus-tracing-corpus` (the `perf-investigation` skill).
