@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <unistd.h>
 
 namespace nautilus::engine {
 
@@ -32,7 +33,10 @@ template <typename Func>
 void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsics,
                 const std::filesystem::path& referenceIRDir,
                 const std::function<void(engine::Options&)>& extraOptions = {}) {
-	std::string dumpPath = (std::filesystem::temp_directory_path() / ("nautilus-ir-test-" + functionName)).string();
+	// the process id keeps tests of the same function name that run in parallel (with and without intrinsics) apart
+	std::string dumpPath = (std::filesystem::temp_directory_path() /
+	                        ("nautilus-ir-test-" + functionName + "-" + std::to_string(::getpid())))
+	                           .string();
 	std::filesystem::remove_all(dumpPath);
 	std::filesystem::create_directories(dumpPath);
 
