@@ -1,5 +1,6 @@
 // Traces one function of the tracing corpus a number of times and does nothing else, so that a profiler (callgrind)
-// sees the tracer alone: `nautilus-tracing-corpus [function [reps [nir]]]`; `nir` drives the direct NIR tracer.
+// sees the tracer alone: `nautilus-tracing-corpus [function[:N] [reps [nir]]]`; `nir` drives the direct NIR tracer.
+#include "CompileKernels.hpp"
 #include "DistinctSitesFunctions.hpp"
 #include "NestedIfBenchmarks.hpp"
 #include "TracingUtil.hpp"
@@ -24,7 +25,27 @@ int main(int argc, char** argv) {
 	    {"distinctSites1024", engine::details::createFunctionWrapper(distinctSites1024)},
 	    {"chainedIf100", engine::details::createFunctionWrapper(chainedIf100)},
 	};
+	// the kernels of the compile-time harness: `name` or `name:N` (the size of the kernel, default 500)
+	using namespace compile_kernels;
+	auto kernel = [&](const char* name, auto fn) {
+		corpus[name] = engine::details::createFunctionWrapper(fn);
+	};
+	kernel("add", addExpression);
+	kernel("fib", fib);
+	kernel("sum", sumArr);
+	kernel("internalCallLoop", internalCallLoop);
+	kernel("straight", straight);
+	kernel("calls", calls);
+	kernel("chainedIf", chainedIf);
+	kernel("chainedIfElse", chainedIfElse);
+	kernel("chainedIfRegion", chainedIfRegion);
+	kernel("loopBody", loopBody);
 	std::string name = argc > 1 ? argv[1] : "distinctSites1024";
+	kernelSize = 500;
+	if (const auto colon = name.find(':'); colon != std::string::npos) {
+		kernelSize = std::atoi(name.c_str() + colon + 1);
+		name.resize(colon);
+	}
 	int reps = argc > 2 ? std::atoi(argv[2]) : 1;
 	auto it = corpus.find(name);
 	if (it == corpus.end()) {
