@@ -534,6 +534,15 @@ private:
 		if (const auto disp = immFor(offset, 64)) {
 			parts.base = base;
 			parts.disp = *disp;
+			// an integer add of a doubled value and a constant is one `lea [x + x + disp]`
+			if (type != TypeId::Ptr) {
+				if (const auto scaled = scaledOf(base); scaled.has_value() && scaled->second == 1) {
+					parts.base = nir::NONE;
+					parts.offset = base;
+					parts.scaledInput = scaled->first;
+					parts.shift = 1;
+				}
+			}
 			return parts;
 		}
 		// for an integer add either side may be the scaled one
@@ -557,6 +566,15 @@ private:
 	}
 
 	Mem memFromParts(const AddressParts& parts) {
+		if (parts.base == nir::NONE) {
+			// `x * 2 + disp`: the doubling as base and index when folded, otherwise the doubled value plus the
+			// displacement
+			if (isScaledIndexDeferred(parts.offset)) {
+				auto x = gp(parts.scaledInput);
+				return x86::ptr(x, x, 0, parts.disp);
+			}
+			return x86::ptr(gp(parts.offset), parts.disp);
+		}
 		auto base = gp(parts.base);
 		if (parts.offset == nir::NONE) {
 			return x86::ptr(base, parts.disp);
@@ -841,24 +859,27 @@ private:
 				return;
 			}
 		}
-		const unsigned ow = opBitsOf(t);
+		// the operation runs on the whole register, whatever the width: the bits above it are never read, and a
+		// 64-bit `add` of a loop counter is measurably faster than the 32-bit one (main's lowering never used it);
+		// immediates are those of the type's width
+		const unsigned ow = 64, iw = opBitsOf(t);
 		Ref a = inst.a, b = inst.b;
 		const bool commutative = op != N::Sub;
 		if (commutative && !constOf(b).has_value() && constOf(a).has_value()) {
 			std::swap(a, b);
 		}
 		if (op == N::Mul) {
-			if (const auto imm = immFor(b, ow)) {
+			if (const auto imm = immFor(b, iw)) {
 				return lowerMulImmediate(id, a, *imm, ow);
 			}
 		}
 		bool reused = false;
 		Gp d = destGp(id, a, &reused);
 		if (!reused) {
-			cc.mov(view(d, ow), view(gp(a), ow));
+			cc.mov(d, gp(a));
 		}
 		const auto dv = view(d, ow);
-		if (const auto imm = immFor(b, ow)) {
+		if (const auto imm = immFor(b, iw)) {
 			op == N::Add ? cc.add(dv, *imm) : op == N::Sub ? cc.sub(dv, *imm) : cc.imul(dv, dv, *imm);
 			++foldedImmediates_;
 		} else {
@@ -874,7 +895,7 @@ private:
 		Gp d = defGp(id);
 		// strength-reduce the 3-cycle imul: a power of two is a shift, and 3/5/9 are one lea (the low bits agree)
 		if (imm > 1 && (imm & (imm - 1)) == 0) {
-			cc.mov(view(d, ow), view(src, ow));
+			cc.mov(d, src);
 			cc.shl(view(d, ow), static_cast<uint32_t>(std::countr_zero(static_cast<uint32_t>(imm))));
 		} else if (imm == 3 || imm == 5 || imm == 9) {
 			cc.lea(view(d, ow), x86::ptr(view(src, 64), view(src, 64),
@@ -906,7 +927,7 @@ private:
 
 	void lowerBitwise(N op, uint32_t id, const nir::Inst& inst) {
 		const auto t = static_cast<TypeId>(inst.type);
-		const unsigned ow = opBitsOf(t);
+		const unsigned ow = 64, iw = opBitsOf(t);
 		Ref a = inst.a, b = inst.b;
 		if (!constOf(b).has_value() && constOf(a).has_value()) {
 			std::swap(a, b);
@@ -914,12 +935,12 @@ private:
 		bool reused = false;
 		Gp d = destGp(id, a, &reused);
 		if (!reused) {
-			cc.mov(view(d, ow), view(gp(a), ow));
+			cc.mov(d, gp(a));
 		}
 		const auto dv = view(d, ow);
 		const bool isAnd = op == N::And || op == N::BAnd;
 		const bool isOr = op == N::Or || op == N::BOr;
-		if (const auto imm = immFor(b, ow)) {
+		if (const auto imm = immFor(b, iw)) {
 			isAnd ? cc.and_(dv, *imm) : isOr ? cc.or_(dv, *imm) : cc.xor_(dv, *imm);
 			++foldedImmediates_;
 		} else {
@@ -930,11 +951,11 @@ private:
 
 	void lowerNot(N op, uint32_t id, const nir::Inst& inst) {
 		const auto t = static_cast<TypeId>(inst.type);
-		const unsigned ow = opBitsOf(t);
+		const unsigned ow = 64;
 		bool reused = false;
 		Gp d = destGp(id, inst.a, &reused);
 		if (!reused) {
-			cc.mov(view(d, ow), view(gp(inst.a), ow));
+			cc.mov(d, gp(inst.a));
 		}
 		if (op == N::Not) {
 			// logical not of a bool: flips the low bit
@@ -968,7 +989,7 @@ private:
 				bits == 8 ? cc.movsx(d.r32(), src.r8()) : cc.movsx(d.r32(), src.r16());
 			}
 		} else if (!reused) {
-			cc.mov(view(d, ow), view(gp(inst.a), ow));
+			cc.mov(d, gp(inst.a));
 		}
 		const auto dv = view(d, ow);
 		if (const auto c = constOf(inst.b)) {
@@ -1061,7 +1082,7 @@ private:
 			}
 			divisor = extended;
 		} else {
-			cc.mov(view(quot, ow), view(left, ow));
+			cc.mov(quot, left);
 		}
 		if (isUnsigned) {
 			cc.xor_(rem.r32(), rem.r32());
@@ -1240,7 +1261,7 @@ private:
 			bool reused = false;
 			Gp d = destGp(id, inst.b, &reused);
 			if (!reused) {
-				cc.mov(view(d, ow), view(gp(inst.b), ow));
+				cc.mov(d, gp(inst.b));
 			}
 			cc.test(cond.r8(), cond.r8());
 			cc.cmovz(view(d, ow), view(falseValue, ow));
