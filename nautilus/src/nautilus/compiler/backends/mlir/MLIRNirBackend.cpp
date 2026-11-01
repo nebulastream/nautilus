@@ -13,6 +13,7 @@
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <fmt/format.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/TargetSelect.h>
@@ -81,7 +82,10 @@ std::unique_ptr<Executable> MLIRNirBackend::compileNamed(std::shared_ptr<const n
 	});
 
 	const auto pipelineStart = std::chrono::steady_clock::now();
-	if (MLIRPassManager::lowerAndOptimizeMLIRModule(lowered.module, {}, debugInfo)) {
+	// the module was verified once after the lowering; the pass pipeline does not verify after every pass
+	const char* verifyEnv = std::getenv("NAUTILUS_IR_VERIFY");
+	const bool verifyPasses = verifyEnv != nullptr && std::string(verifyEnv) == "1";
+	if (MLIRPassManager::lowerAndOptimizeMLIRModule(lowered.module, {}, debugInfo, verifyPasses)) {
 		throw RuntimeException("Could not lower and optimize MLIR module.");
 	}
 	if (statistics != nullptr) {

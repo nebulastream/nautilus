@@ -19,6 +19,6 @@ public:
 	// llvm.func).  Returns non-zero on pass-pipeline failure.
 	static int lowerAndOptimizeMLIRModule(::mlir::OwningOpRef<::mlir::ModuleOp>& module,
 	                                      const std::vector<OptimizationPass>& optimizationPasses,
-	                                      const DebugInfoOptions& debugInfo = {});
+	                                      const DebugInfoOptions& debugInfo = {}, bool verifyPasses = true);
 };
 } // namespace nautilus::compiler::mlir
