@@ -1,6 +1,9 @@
 #include "nautilus/tracing/nir/FlatTrace.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
+#include <new>
 
 namespace nautilus::tracing::nirtrace {
 
@@ -19,27 +22,24 @@ constexpr size_t roundUpToPowerOfTwo(size_t n) {
 // ---- TagMap ------------------------------------------------------------------------------------------------------
 
 TagMap::TagMap(size_t expected) {
-	// kept at most half full
-	table_.resize(roundUpToPowerOfTwo(expected * 2));
-	mask_ = table_.size() - 1;
+	// kept at most 5/8 full
+	capacity_ = roundUpToPowerOfTwo(expected * 2);
+	table_ = static_cast<Entry*>(std::calloc(capacity_, sizeof(Entry)));
+	if (table_ == nullptr) {
+		throw std::bad_alloc();
+	}
+	mask_ = capacity_ - 1;
 }
 
-uint32_t TagMap::find(const Snapshot& key) const {
-	size_t slot = std::hash<Snapshot> {}(key) &mask_;
-	while (table_[slot].key.getTag() != nullptr) {
-		if (table_[slot].key == key) {
-			return table_[slot].op;
-		}
-		slot = (slot + 1) & mask_;
-	}
-	return nir::NONE;
+TagMap::~TagMap() {
+	std::free(table_);
 }
 
 void TagMap::set(const Snapshot& key, uint32_t op) {
-	if ((size_ + 1) * 2 > table_.size()) {
+	if ((size_ + 1) * 8 > capacity_ * 5) { // at most 5/8 full
 		grow();
 	}
-	size_t slot = std::hash<Snapshot> {}(key) &mask_;
+	size_t slot = hashOf(key) & mask_;
 	while (table_[slot].key.getTag() != nullptr) {
 		if (table_[slot].key == key) {
 			table_[slot].op = op;
@@ -47,47 +47,108 @@ void TagMap::set(const Snapshot& key, uint32_t op) {
 		}
 		slot = (slot + 1) & mask_;
 	}
-	table_[slot] = {key, op};
+	table_[slot].key = key;
+	table_[slot].op = op;
 	++size_;
 }
 
 void TagMap::grow() {
-	std::vector<Entry> old = std::move(table_);
-	table_.assign(old.size() * 2, Entry {});
-	mask_ = table_.size() - 1;
-	size_ = 0;
-	for (const auto& entry : old) {
-		if (entry.key.getTag() != nullptr) {
-			set(entry.key, entry.op);
+	Entry* old = table_;
+	const size_t oldCapacity = capacity_;
+	// fewer rehashes of the entries a long trace adds: four times up to 64 K slots, then twice
+	capacity_ *= capacity_ < 65536 ? 4 : 2;
+	table_ = static_cast<Entry*>(std::calloc(capacity_, sizeof(Entry)));
+	if (table_ == nullptr) {
+		table_ = old;
+		capacity_ = oldCapacity;
+		throw std::bad_alloc();
+	}
+	mask_ = capacity_ - 1;
+	for (size_t i = 0; i < oldCapacity; ++i) {
+		if (old[i].key.getTag() != nullptr) {
+			size_t slot = hashOf(old[i].key) & mask_;
+			while (table_[slot].key.getTag() != nullptr) {
+				slot = (slot + 1) & mask_;
+			}
+			table_[slot] = old[i];
 		}
 	}
+	std::free(old);
 }
 
-void TagMap::clear() {
-	// keeps the capacity, like the tables the other tracer pools
-	std::fill(table_.begin(), table_.end(), Entry {});
+void TagMap::clear(size_t keepCapacity) {
+	if (capacity_ > keepCapacity) {
+		// one large trace must not make the memset of every later small one expensive
+		std::free(table_);
+		capacity_ = 64;
+		table_ = static_cast<Entry*>(std::calloc(capacity_, sizeof(Entry)));
+		if (table_ == nullptr) {
+			throw std::bad_alloc();
+		}
+		mask_ = capacity_ - 1;
+	} else {
+		std::memset(static_cast<void*>(table_), 0, capacity_ * sizeof(Entry));
+	}
 	size_ = 0;
 }
 
 // ---- FlatTrace ---------------------------------------------------------------------------------------------------
 
-FlatTrace::FlatTrace(nir::Module& module) : module_(module) {
+FlatTrace::FlatTrace(nir::Module& module) : module_(&module) {
 	recs.reserve(256);
 	meta.reserve(256);
-	blockOf.reserve(256);
 	blocks.reserve(8);
 	// record 0 is "no value"
 	recs.push_back(nir::Inst {});
 	meta.push_back({});
-	blockOf.push_back(0);
+	createBlock();
+}
+
+void FlatTrace::recycleBlocks() {
+	for (auto& block : blocks) {
+		// a vector that grew very large is not worth keeping
+		if (block.ops.capacity() <= 4096 && spareVectors_.size() < 1024) {
+			block.ops.clear();
+			spareVectors_.push_back(std::move(block.ops));
+		}
+		if (block.preds.capacity() <= 64 && spareVectors_.size() < 1024) {
+			block.preds.clear();
+			spareVectors_.push_back(std::move(block.preds));
+		}
+	}
+	blocks.clear();
+}
+
+void FlatTrace::reset(nir::Module& module) {
+	module_ = &module;
+	recycleBlocks();
+	// a trace that outgrew the usual size does not keep its tables
+	auto shrink = [](auto& v, size_t limit) {
+		v.clear();
+		if (v.capacity() > limit) {
+			v = {};
+			v.reserve(256);
+		}
+	};
+	shrink(recs, 1u << 20);
+	shrink(meta, 1u << 20);
+	conds.clear();
+	allocas.clear();
+	parameters.clear();
+	regions.clear();
+	currentRegion = NO_FLAT_REGION;
+	currentBlock_ = 0;
+	cursor_ = 0;
+	tags.clear();
+	recs.push_back(nir::Inst {});
+	meta.push_back({});
 	createBlock();
 }
 
 uint32_t FlatTrace::appendTo(uint32_t block, const nir::Inst& inst, uint8_t flags) {
 	const auto id = static_cast<uint32_t>(recs.size());
 	recs.push_back(inst);
-	meta.push_back(RecordMeta {0, Type::v, flags});
-	blockOf.push_back(block);
+	meta.push_back(RecordMeta {0, Type::v, flags, block});
 	blocks[block].ops.push_back(id);
 	return id;
 }
@@ -103,7 +164,6 @@ uint32_t FlatTrace::addParameter(const nir::Inst& inst, Type type) {
 	const auto id = static_cast<uint32_t>(recs.size());
 	recs.push_back(inst);
 	meta.push_back(RecordMeta {id, type, 0});
-	blockOf.push_back(0);
 	return id;
 }
 
@@ -119,6 +179,14 @@ void FlatTrace::markOperation(uint32_t first, const Snapshot* snapshot, TypedVal
 uint32_t FlatTrace::createBlock() {
 	const auto id = static_cast<uint32_t>(blocks.size());
 	blocks.emplace_back();
+	if (!spareVectors_.empty()) {
+		blocks.back().ops = std::move(spareVectors_.back());
+		spareVectors_.pop_back();
+	}
+	if (!spareVectors_.empty()) {
+		blocks.back().preds = std::move(spareVectors_.back());
+		spareVectors_.pop_back();
+	}
 	// a block belongs to the region that was open when it was made; a region's entry block is re-stamped by addRegion
 	blocks.back().region = currentRegion;
 	return id;
@@ -197,7 +265,7 @@ uint32_t FlatTrace::addJump(uint32_t target, const Snapshot* snapshot) {
 }
 
 uint32_t FlatTrace::processControlFlowMerge(uint32_t op) {
-	const uint32_t referenceIndex = blockOf[op];
+	const uint32_t referenceIndex = meta[op].block;
 	if (referenceIndex == currentBlock_) {
 		throw RuntimeException("Invalid trace. This is maybe caused by a constant loop.");
 	}
@@ -210,7 +278,7 @@ uint32_t FlatTrace::processControlFlowMerge(uint32_t op) {
 	auto& mergeBlock = blocks[merged];
 	mergeBlock.ops.assign(reference.ops.begin() + static_cast<std::ptrdiff_t>(position), reference.ops.end());
 	for (auto id : mergeBlock.ops) {
-		blockOf[id] = merged;
+		meta[id].block = merged;
 	}
 	reference.ops.resize(position);
 
@@ -287,7 +355,7 @@ void FlatTrace::collapseRegionSeams() {
 		}
 		predecessor.ops.pop_back();
 		for (auto id : block.ops) {
-			blockOf[id] = predecessorIndex;
+			meta[id].block = predecessorIndex;
 		}
 		predecessor.ops.insert(predecessor.ops.end(), block.ops.begin(), block.ops.end());
 		if (!block.ops.empty()) {
@@ -328,7 +396,7 @@ void FlatTrace::collapseRegionSeams() {
 			forEachTarget(recs[block.ops.back()], [&](uint32_t& target) { target = renumbering[target]; });
 		}
 		for (auto id : block.ops) {
-			blockOf[id] = renumbering[index];
+			meta[id].block = renumbering[index];
 		}
 		survivors.push_back(std::move(block));
 	}

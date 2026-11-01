@@ -117,18 +117,57 @@ struct NirTracer::SessionState {
 
 namespace {
 
-/// The blocks of a trace in reverse postorder from the entry, so that a definition comes before the uses it dominates
-/// (13 §4.3); the false target of a branch is visited first, so that the true target is laid out first.
-std::vector<uint32_t> layoutBlocks(FlatTrace& trace, std::vector<uint32_t>& newBlockId) {
-	const auto n = trace.blocks.size();
-	std::vector<uint8_t> state(n, 0);
-	std::vector<uint32_t> post;
+/// The working vectors of `emitFunction`, kept by the thread across traces so that writing a small function out
+/// allocates nothing; a vector that a very large function grew is released again.
+struct WriteScratch {
+	std::vector<uint32_t> newBlockId, order, post, position, hoistedVars, newId, slotOf;
+	std::vector<uint8_t> state, hoisted;
+	std::vector<Type> paramTypes;
+	std::vector<nir::TypeWord> params;
 	struct Frame {
 		uint32_t block;
 		uint32_t next;
 		uint32_t successors[2];
 		uint32_t count;
 	};
+	std::vector<Frame> stack;
+
+	void trim() {
+		constexpr size_t LIMIT = 1u << 18;
+		auto drop = [&](auto& v) {
+			if (v.capacity() > LIMIT) {
+				v = {};
+			}
+		};
+		drop(newBlockId);
+		drop(order);
+		drop(post);
+		drop(position);
+		drop(hoistedVars);
+		drop(newId);
+		drop(slotOf);
+		drop(state);
+		drop(hoisted);
+		drop(stack);
+	}
+};
+
+WriteScratch& writeScratch() {
+	static thread_local WriteScratch scratch;
+	return scratch;
+}
+
+/// The blocks of a trace in reverse postorder from the entry, so that a definition comes before the uses it dominates
+/// (13 §4.3); the false target of a branch is visited first, so that the true target is laid out first.
+void layoutBlocks(FlatTrace& trace, WriteScratch& scratch) {
+	const auto n = trace.blocks.size();
+	auto& state = scratch.state;
+	auto& post = scratch.post;
+	auto& stack = scratch.stack;
+	state.assign(n, 0);
+	post.clear();
+	stack.clear();
+	using Frame = WriteScratch::Frame;
 	auto frameFor = [&](uint32_t id) {
 		Frame frame {id, 0, {0, 0}, 0};
 		const auto& ops = trace.blocks[id].ops;
@@ -143,7 +182,6 @@ std::vector<uint32_t> layoutBlocks(FlatTrace& trace, std::vector<uint32_t>& newB
 		}
 		return frame;
 	};
-	std::vector<Frame> stack;
 	stack.push_back(frameFor(0));
 	state[0] = 1;
 	while (!stack.empty()) {
@@ -162,22 +200,24 @@ std::vector<uint32_t> layoutBlocks(FlatTrace& trace, std::vector<uint32_t>& newB
 			stack.pop_back();
 		}
 	}
-	std::vector<uint32_t> order(post.rbegin(), post.rend());
-	newBlockId.assign(n, nir::NONE);
-	for (uint32_t i = 0; i < order.size(); ++i) {
-		newBlockId[order[i]] = i;
+	scratch.order.assign(post.rbegin(), post.rend());
+	scratch.newBlockId.assign(n, nir::NONE);
+	for (uint32_t i = 0; i < scratch.order.size(); ++i) {
+		scratch.newBlockId[scratch.order[i]] = i;
 	}
-	return order;
 }
 
 } // namespace
 
 void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& name, FlatTrace& trace, bool exported) {
-	std::vector<uint32_t> newBlockId;
-	const auto order = layoutBlocks(trace, newBlockId);
+	auto& scratch = writeScratch();
+	layoutBlocks(trace, scratch);
+	const auto& newBlockId = scratch.newBlockId;
+	const auto& order = scratch.order;
 
 	// the signature: the parameters in position order, and the type of what the function returns
-	std::vector<Type> paramTypes;
+	auto& paramTypes = scratch.paramTypes;
+	paramTypes.clear();
 	for (auto record : trace.parameters) {
 		if (record == 0) {
 			throw RuntimeException(fmt::format("NIR trace of '{}': a parameter was never registered", name));
@@ -192,13 +232,16 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 			}
 		}
 	}
-	std::vector<nir::TypeWord> params;
+	auto& params = scratch.params;
+	params.clear();
 	for (auto t : paramTypes) {
 		params.push_back(typeWord(t));
 	}
 	const auto signature = module.internSignature(typeWord(resultType), params);
 
 	nir::Builder b(module);
+	b.setTrackUses(false);
+	b.reserve(trace.recs.size() + 8, trace.recs.size() + 4 * order.size() + 16);
 	const auto functionId =
 	    b.beginFunction(module.internName(name), signature,
 	                    exported ? nir::Visibility::Exported : nir::Visibility::Internal, nir::Level::PreSSA, 0);
@@ -216,18 +259,30 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 	const auto isOp = [&](uint32_t id, NOp op) {
 		return trace.recs[id].op == static_cast<uint16_t>(op);
 	};
-	std::vector<uint32_t> position(trace.recs.size(), 0);
+	auto& position = scratch.position;
+	position.assign(trace.recs.size(), 0);
+	// An operand is always a record made before the one that uses it. When the layout also keeps the records in the
+	// order they were made (code without a merge that comes before the arm it joins), no operand can be placed after
+	// its use and the scan for declarations to hoist has nothing to find.
+	bool layoutKeepsRecordingOrder = true;
 	{
 		uint32_t next = 0;
+		uint32_t previous = 0;
 		for (auto blockId : order) {
 			for (auto id : trace.blocks[blockId].ops) {
 				position[id] = next++;
+				layoutKeepsRecordingOrder &= id > previous;
+				previous = id;
 			}
 		}
 	}
-	std::vector<uint8_t> hoisted(trace.recs.size(), 0);
-	std::vector<uint32_t> hoistedVars;
-	for (auto blockId : order) {
+	auto& hoisted = scratch.hoisted;
+	auto& hoistedVars = scratch.hoistedVars;
+	hoistedVars.clear();
+	if (!layoutKeepsRecordingOrder) {
+		hoisted.assign(trace.recs.size(), 0);
+	}
+	for (auto blockId : layoutKeepsRecordingOrder ? std::span<const uint32_t> {} : std::span<const uint32_t>(order)) {
 		for (auto id : trace.blocks[blockId].ops) {
 			if (isOp(id, NOp::BlockArg)) {
 				continue;
@@ -251,8 +306,14 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 
 	// The ids the records get are known up front: the parameters, the hoisted declarations, then the records in layout
 	// order.
-	std::vector<nir::Ref> newId(trace.recs.size(), nir::NONE);
-	std::vector<nir::Ref> slotOf(trace.recs.size(), nir::NONE);
+	auto& newId = scratch.newId;
+	const bool anyHoisted = !hoistedVars.empty();
+	// without a hoisted declaration a record's slot is its new id
+	auto& slotOf = anyHoisted ? scratch.slotOf : newId;
+	newId.assign(trace.recs.size(), nir::NONE);
+	if (anyHoisted) {
+		slotOf.assign(trace.recs.size(), nir::NONE);
+	}
 	{
 		nir::Ref next = 0;
 		for (auto record : trace.parameters) {
@@ -268,7 +329,7 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 			for (auto id : trace.blocks[blockId].ops) {
 				if (!isOp(id, NOp::BlockArg)) {
 					slotOf[id] = next++;
-					if (!hoisted[id]) {
+					if (anyHoisted && !hoisted[id]) {
 						newId[id] = slotOf[id];
 					}
 				}
@@ -336,7 +397,7 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 			} else {
 				nir::forEachRef(out, module.extra.data(), nir::Level::PreSSA, remap);
 			}
-			if (hoisted[id]) {
+			if (anyHoisted && hoisted[id]) {
 				// the declaration moved up: here the variable is written with what it was declared to hold
 				nir::Inst assign {};
 				assign.op = static_cast<uint16_t>(NOp::Assign);
@@ -351,6 +412,7 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 		}
 	}
 	b.endFunction();
+	scratch.trim();
 }
 
 void NirTracer::SessionState::finish() {
@@ -365,7 +427,11 @@ void NirTracer::SessionState::finish() {
 			callee.attrs = internalAttrs[f];
 		}
 	}
-	module.rebuildIndexes();
+	// only the signatures of internal callees changed after they were interned, so a module without one keeps the
+	// interning tables the tracer built
+	if (std::any_of(internalCalleeOf.begin(), internalCalleeOf.end(), [](uint32_t c) { return c != nir::NONE; })) {
+		module.rebuildIndexes();
+	}
 	if (processLocal) {
 		module.module.processToken = nir::currentProcessToken();
 	}
@@ -415,10 +481,14 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 		session.currentFunctionLocation = currentFunction.getLocation();
 		auto wrapperFunc = currentFunction.getFunction();
 
-		FlatTrace trace(session.module);
+		static thread_local FlatTrace flatTrace(session.module);
+		auto& trace = flatTrace;
+		trace.reset(session.module);
 		auto rootAddress = __builtin_return_address(0);
 		auto tr = TagRecorder((TagAddress) rootAddress, arena);
-		SymbolicExecutionContext symbolicExecutionContext;
+		// kept by the thread: its tag map's buckets survive from one function to the next
+		static thread_local SymbolicExecutionContext symbolicExecutionContext;
+		symbolicExecutionContext.reset();
 		state.emplace(TraceScope {tr, trace, symbolicExecutionContext, options});
 
 		if (regionState_) {

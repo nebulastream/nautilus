@@ -13,35 +13,7 @@ namespace nautilus::tracing::nirtrace {
 
 namespace nir = ::nautilus::nir;
 
-TypeInfo typeInfo(Type type) {
-	switch (type) {
-	case Type::v:
-		return {nir::TypeId::Void, false, false};
-	case Type::b:
-		return {nir::TypeId::Bool, false, false};
-	case Type::i8:
-		return {nir::TypeId::I8, true, false};
-	case Type::i16:
-		return {nir::TypeId::I16, true, false};
-	case Type::i32:
-		return {nir::TypeId::I32, true, false};
-	case Type::i64:
-		return {nir::TypeId::I64, true, false};
-	case Type::ui8:
-		return {nir::TypeId::I8, false, false};
-	case Type::ui16:
-		return {nir::TypeId::I16, false, false};
-	case Type::ui32:
-		return {nir::TypeId::I32, false, false};
-	case Type::ui64:
-		return {nir::TypeId::I64, false, false};
-	case Type::f32:
-		return {nir::TypeId::F32, false, true};
-	case Type::f64:
-		return {nir::TypeId::F64, false, true};
-	case Type::ptr:
-		return {nir::TypeId::Ptr, false, false};
-	}
+TypeInfo unknownType() {
 	throw RuntimeException("NIR trace: unknown type");
 }
 

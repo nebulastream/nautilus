@@ -64,18 +64,25 @@ Ref Builder::emit(const Inst& inst) {
 		throw std::length_error("function has too many instructions");
 	}
 	m_.insts.push_back(inst);
-	useCount_.push_back(0);
 	if (level() == Level::SSA) {
 		m_.blocks.back().count++;
 	} else {
 		blockIds_.push_back(id);
 	}
-	forEachRef(inst, m_.extra.data(), level(), [&](Ref r) {
-		if (isValueRef(r) && r < useCount_.size()) {
-			useCount_[r]++;
-		}
-	});
+	if (trackUses_) {
+		useCount_.push_back(0);
+		forEachRef(inst, m_.extra.data(), level(), [&](Ref r) {
+			if (isValueRef(r) && r < useCount_.size()) {
+				useCount_[r]++;
+			}
+		});
+	}
 	return id;
+}
+
+void Builder::reserve(size_t insts, size_t extraWords) {
+	m_.insts.reserve(m_.insts.size() + insts);
+	m_.extra.reserve(m_.extra.size() + extraWords);
 }
 
 void Builder::endFunction() {
