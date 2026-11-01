@@ -1453,6 +1453,10 @@ private:
 		cc.bind(done);
 	}
 
+	void ucomis(bool single, const Xmm& a, const Xmm& b) {
+		single ? cc.ucomiss(a, b) : cc.ucomisd(a, b);
+	}
+
 	/// Saturating float to integer conversion (D11): the truncating `cvtt` plus a fixup. The instruction yields the
 	/// "integer indefinite" (the minimum) for NaN and every value out of range; a compare with 1 overflows exactly for
 	/// the minimum, and only then does a cold block tell NaN (0), too large (maximum) and too small (the minimum
@@ -1466,9 +1470,6 @@ private:
 		Gp d = defGp(id);
 		auto cvtt = [&](const Gp& g) {
 			single ? cc.cvttss2si(g, x) : cc.cvttsd2si(g, x);
-		};
-		auto ucomi = [&](const Xmm& a, const Xmm& b) {
-			single ? cc.ucomiss(a, b) : cc.ucomisd(a, b);
 		};
 		// the conversion is carried out in 64 bits for every unsigned result and for 64-bit ones, else in 32
 		const bool wide = !isSigned || bits == 64;
@@ -1517,11 +1518,11 @@ private:
 		F().cold.push_back([=, this]() {
 			cc.bind(cold);
 			Label nan = cc.newLabel(), positive = cc.newLabel();
-			ucomi(x, x);
+			ucomis(single, x, x);
 			cc.jp(nan);
 			Xmm zero = single ? cc.newXmmSs() : cc.newXmmSd();
 			cc.xorps(zero, zero);
-			ucomi(x, zero);
+			ucomis(single, x, zero);
 			cc.ja(positive);
 			cc.jmp(back); // below the range: the minimum is there already
 			cc.bind(positive);

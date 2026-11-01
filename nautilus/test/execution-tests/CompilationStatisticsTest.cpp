@@ -27,10 +27,10 @@ std::string getAnyBackend() {
 #endif
 }
 
-/// A backend that has no NIR port (`tbc` and `cpp` have one), so the NIR pipeline builds the 0.3 IR for it (the
-/// bridge), or "" if the build has none.
+/// A backend that has no NIR port (`tbc`, `cpp` and `asmjit` on x86-64 have one), so the NIR pipeline builds the 0.3 IR
+/// for it (the bridge), or "" if the build has none.
 std::string getBridgedBackend() {
-#if defined(ENABLE_TRACING) && defined(ENABLE_ASMJIT_BACKEND)
+#if defined(ENABLE_TRACING) && defined(ENABLE_ASMJIT_BACKEND) && !(defined(__x86_64__) || defined(_M_X64))
 	return "asmjit";
 #elif defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
 	return "mlir";
