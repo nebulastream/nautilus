@@ -41,7 +41,7 @@ val<int32_t> statsAddOne(val<int32_t> x) {
 	return x + 1;
 }
 
-val<int32_t> statsAddTwo(val<int32_t> x) {
+[[maybe_unused]] val<int32_t> statsAddTwo(val<int32_t> x) {
 	return x + 2;
 }
 
