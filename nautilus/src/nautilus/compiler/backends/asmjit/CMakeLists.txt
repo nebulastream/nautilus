@@ -1,6 +1,6 @@
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86")
-    set(ASMJIT_LOWERING_SRC X64LoweringProvider.cpp X64PostRAPeepholePass.cpp)
+    set(ASMJIT_LOWERING_SRC X64LoweringProvider.cpp X64NirLowering.cpp X64PostRAPeepholePass.cpp)
 else()
     set(ASMJIT_LOWERING_SRC A64LoweringProvider.cpp A64PostRAPeepholePass.cpp)
 endif()

@@ -23,9 +23,12 @@ public:
 	///        CapturedExceptionTransport::functionsNeedingCapture). A function
 	///        not in this set is reported as NativeUnwind: it never touches
 	///        the ExceptionFrame machinery, so it is safe to call directly.
+	/// @param owner what the generated code points into and so must outlive it: the NIR module of the lowering (its
+	///        data objects), null for code lowered from the 0.3 IR.
 	AsmJitExecutable(std::unique_ptr<::asmjit::JitRuntime> runtime, void* basePtr,
 	                 std::unordered_map<std::string, void*> jitPtrs,
-	                 std::unordered_set<std::string> functionsNeedingCapture);
+	                 std::unordered_set<std::string> functionsNeedingCapture,
+	                 std::shared_ptr<const void> owner = nullptr);
 	~AsmJitExecutable() override;
 
 	void* getInvocableFunctionPtr(const std::string& member) override;
@@ -41,6 +44,7 @@ public:
 	}
 
 private:
+	std::shared_ptr<const void> owner_;
 	std::unique_ptr<::asmjit::JitRuntime> runtime_;
 	/// Start of the single JIT memory block — released once in the destructor.
 	void* basePtr_;

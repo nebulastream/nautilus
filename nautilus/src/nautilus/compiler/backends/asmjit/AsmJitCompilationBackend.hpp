@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
+#include "nautilus/compiler/backends/asmjit/AsmJitNirLowering.hpp"
 
 namespace nautilus::compiler::asmjit {
 
@@ -16,7 +17,11 @@ public:
 
 	/// The graph of the NIR front end carries a module that this backend compiles itself (M4.4).
 	[[nodiscard]] bool compilesNir() const override {
+#if defined(NAUTILUS_ASMJIT_NIR_LOWERING)
 		return true;
+#else
+		return false;
+#endif
 	}
 
 	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode() const override {
