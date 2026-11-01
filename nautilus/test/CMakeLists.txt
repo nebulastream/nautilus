@@ -38,7 +38,8 @@ if (ENABLE_TBC_BACKEND)
             add_test(NAME nir-run-cpp-${name}
                     COMMAND nautilus-nir-run --backend=cpp ${file})
         endif ()
-        if (ENABLE_ASMJIT_BACKEND AND TARGET dyncall_s)
+        # asmjit has a NIR lowering for x86-64 only so far
+        if (ENABLE_ASMJIT_BACKEND AND TARGET dyncall_s AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
             add_test(NAME nir-run-asmjit-${name}
                     COMMAND nautilus-nir-run --backend=asmjit ${file})
         endif ()

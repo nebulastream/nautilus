@@ -10,6 +10,7 @@
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
 #include "nautilus/compiler/backends/asmjit/AsmJitNirBackend.hpp"
+#include "nautilus/compiler/backends/asmjit/AsmJitNirLowering.hpp"
 #endif
 
 namespace nautilus::compiler::nirbackend {
@@ -28,7 +29,7 @@ NirBackendRegistry::NirBackendRegistry() {
 #ifdef ENABLE_C_BACKEND
 	registerBackend("cpp", std::make_unique<cpp::CPPNirBackend>());
 #endif
-#ifdef ENABLE_ASMJIT_BACKEND
+#if defined(ENABLE_ASMJIT_BACKEND) && defined(NAUTILUS_ASMJIT_NIR_LOWERING)
 	registerBackend("asmjit", std::make_unique<asmjit::AsmJitNirBackend>());
 #endif
 }
