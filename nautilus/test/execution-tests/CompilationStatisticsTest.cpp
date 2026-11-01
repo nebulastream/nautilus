@@ -41,6 +41,10 @@ val<int32_t> statsAddOne(val<int32_t> x) {
 	return x + 1;
 }
 
+val<int32_t> statsAddTwo(val<int32_t> x) {
+	return x + 2;
+}
+
 } // namespace
 
 TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats of the 0.3 pipeline") {
@@ -327,6 +331,30 @@ TEST_CASE("CompilationStatistics: a loop traced with two headers compiles to one
 #endif
 
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
+TEST_CASE("CompilationStatistics: mlir reuses the context and the target machines of the compiling thread") {
+	// #561: building the MLIRContext and the TargetMachines is most of the fixed cost of a small compile, so a thread
+	// that compiles again must not build them again
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	NautilusEngine engine(options);
+	auto first = engine.registerFunction(statsAddOne);
+	REQUIRE(first(41) == 42);
+	auto firstStats = first.getStatistics();
+	REQUIRE(firstStats != nullptr);
+	REQUIRE(firstStats->contains("mlir.contextsCreated"));
+	const auto contexts = std::get<int64_t>(*firstStats->find("mlir.contextsCreated"));
+	const auto machines = std::get<int64_t>(*firstStats->find("mlir.targetMachinesCreated"));
+	REQUIRE(contexts >= 1);
+	REQUIRE(machines >= 1);
+
+	auto second = engine.registerFunction(statsAddTwo);
+	REQUIRE(second(40) == 42);
+	auto secondStats = second.getStatistics();
+	REQUIRE(secondStats != nullptr);
+	CHECK(std::get<int64_t>(*secondStats->find("mlir.contextsCreated")) == contexts);
+	CHECK(std::get<int64_t>(*secondStats->find("mlir.targetMachinesCreated")) == machines);
+}
+
 TEST_CASE("CompilationStatistics: a module compiled by mlir alone gets only block-argument pruning (0.3 pipeline)") {
 	// LLVM's pipeline performs the other cleanups itself, so by default the
 	// graph goes to the MLIR backend with only its block arguments pruned --
