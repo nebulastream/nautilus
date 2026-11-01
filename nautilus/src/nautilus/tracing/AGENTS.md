@@ -36,3 +36,8 @@ the SSA `IRGraph`. Read `docs/tracing.md` and `docs/region.md` first.
 `nirtbc` pseudo-backend. Tests run it as the `nir-direct` / `nir-direct-jit` backends, the fuzzer as peers. When the
 layout puts an assigning block before the block that declared a variable (a constant reached again on the second
 path), `emitFunction` hoists the declaration to the entry block and leaves an assign at the original site.
+
+The thread keeps the tables of the NIR tracer between traces (the flat trace, the symbolic execution context, the
+write-out scratch of `emitFunction`), so a trace allocates only what it outgrows; anything new that is per trace belongs
+there too, bounded so that one huge trace does not tax the small ones after it. Measure with `nautilus-compile-bench`
+and callgrind on `nautilus-tracing-corpus` (the `perf-investigation` skill).
