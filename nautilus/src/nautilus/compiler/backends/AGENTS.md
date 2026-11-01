@@ -79,3 +79,10 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
   0.3 and the NIR lowering alike; the handler is found by the `IntrinsicRegistry` id of the intrinsic's fallback.
 - Test the lowering with `nir-run-asmjit-*` (the `.nir` corpus), the execution tests, and `AsmJitLoweringModeTest` /
   `PostRAPeepholeTest`, which pin the counters and the differential behaviour of each option.
+- Cost: the statistics split the backend into `asmjit.lowering.ms` (the builder nodes, this file) and
+  `asmjit.finalize.ms` (AsmJit's register allocation, the peephole pass and the encoding), which is most of it. AsmJit's
+  work grows with the virtual registers and nodes it is given, so a result takes the register of an operand that dies
+  (`destGp`, `canReuse`) and a doubled value plus a constant is one `lea`. Check a change with callgrind on
+  `nautilus-latency-corpus 1 straight 1000 asmjit` (`lowerNirModule` inclusive) and with `tools/asm-diff/loop-diff.py`.
+- Run time: integer arithmetic runs on the whole 64-bit register on x86-64 whatever the type's width (immediates are
+  those of the width): a 32-bit `add` of a loop counter measured 30-50% slower than the 64-bit one in the `sum` kernel.
