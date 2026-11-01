@@ -8,11 +8,10 @@
 #include <string>
 #include <unordered_map>
 
-// The architectures that have a NIR lowering; the others keep the bridge to the 0.3 IR until theirs lands.
-#if defined(__x86_64__) || defined(_M_X64)
+// x86-64 (`X64NirLowering.cpp`) and AArch64 (`A64NirLowering.cpp`) have a NIR lowering.
+#if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) || defined(_M_ARM64)
 #define NAUTILUS_ASMJIT_NIR_LOWERING 1
 #endif
-
 namespace nautilus::compiler {
 class CompilationStatistics;
 class DumpHandler;
