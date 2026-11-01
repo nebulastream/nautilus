@@ -96,6 +96,7 @@ public:
 		resolveNames_ = options.getOptionOrDefault("engine.resolveFunctionNames", inspected);
 		demangle_ = options.getOptionOrDefault("engine.demangleFunctionNames", true);
 		inlineInvokeCalls_ = options.getOptionOrDefault("mlir.inline_invoke_calls", false);
+		normalizeNames_ = options.getOptionOrDefault("engine.normalizeFunctionNames", false);
 	}
 
 	MLIRNirModule run() {
@@ -140,6 +141,8 @@ private:
 	bool resolveNames_ = false;
 	bool demangle_ = true;
 	bool inlineInvokeCalls_ = false;
+	bool normalizeNames_ = false;
+	uint32_t normalizedNames_ = 0;
 
 	std::vector<M::func::FuncOp> functions_;
 	std::map<ExternalKey, std::string> externalNames_;
@@ -344,6 +347,10 @@ private:
 					name = *overridden;
 				}
 			}
+		}
+		if (name.empty() && normalizeNames_) {
+			// stable names (`runtimeFunc0`, ...), in the order of the first call, for reference IR
+			name = "runtimeFunc" + std::to_string(normalizedNames_++);
 		}
 		if (name.empty() && resolveNames_) {
 			const auto& resolved = tracing::resolveFunctionName(address);
