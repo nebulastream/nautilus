@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 namespace nautilus::nir {
@@ -89,8 +90,28 @@ struct OpInfo {
 	uint8_t flags;
 };
 
+namespace detail {
+struct CoreOpTable {
+	std::array<OpInfo, FIRST_EXTENSION_OP> info {};
+	std::array<bool, FIRST_EXTENSION_OP> valid {};
+	constexpr CoreOpTable() {
+#define NIR_OP(name, code, text, a, b, c, flags)                                                                       \
+	info[code] = OpInfo {text, OperandKind::a, OperandKind::b, OperandKind::c, static_cast<uint8_t>(flags)};           \
+	valid[code] = true;
+#include "nautilus/nir/Opcodes.def"
+#undef NIR_OP
+	}
+};
+inline constexpr CoreOpTable coreOpTable;
+} // namespace detail
+
 /// Static information of a core opcode; nullptr if the code is not a core opcode.
-const OpInfo* coreOpInfo(uint16_t op);
+inline const OpInfo* coreOpInfo(uint16_t op) {
+	if (op >= FIRST_EXTENSION_OP || !detail::coreOpTable.valid[op]) {
+		return nullptr;
+	}
+	return &detail::coreOpTable.info[op];
+}
 
 constexpr bool isCoreOp(uint16_t op) {
 	return op < FIRST_EXTENSION_OP;

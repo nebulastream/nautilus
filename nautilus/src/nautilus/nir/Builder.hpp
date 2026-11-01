@@ -30,6 +30,14 @@ public:
 	/// Closes the open function.
 	void endFunction();
 
+	/// Whether `emit` counts the uses of the values (`useCount`); on by default. A producer that never asks switches
+	/// it off and saves a walk over the operands of every instruction.
+	void setTrackUses(bool on) {
+		trackUses_ = on;
+	}
+	/// Makes room for @p insts more instructions and @p extraWords more words of the extra array.
+	void reserve(size_t insts, size_t extraWords);
+
 	/// Number of uses of value `id` of the open function; constants have none.
 	uint32_t useCount(Ref id) const {
 		return useCount_[id];
@@ -56,6 +64,7 @@ private:
 	Module& m_;
 	uint32_t fn_ = NONE;
 	bool blockOpen_ = false;
+	bool trackUses_ = true;
 	std::vector<uint32_t> useCount_;
 	std::vector<uint32_t> blockIds_; // pre-SSA: ids of the current block's instructions
 };

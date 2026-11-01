@@ -1,6 +1,5 @@
 # NIR: the Nautilus IR of 0.4 (docs/plans/nautilus-0.4). Built next to the 0.3 pipeline; the engine does not use it yet.
 add_library(nautilus-nir STATIC
-        Opcodes.cpp
         ConstPool.cpp
         Module.cpp
         Builder.cpp
