@@ -6,11 +6,9 @@
 
 namespace nautilus::compiler::mlir {
 namespace {
-using Call = compiler::ir::CallOperation;
-using Frame = MLIRLoweringProvider::ValueFrame;
-
-::mlir::Value load(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame, unsigned index) {
-	auto ptr = frame.getValue(call->getInputArguments()[index]->getIdentifier());
+::mlir::Value load(NirIntrinsicCall& call, unsigned index) {
+	[[maybe_unused]] auto& b = call.builder;
+	auto ptr = call.args[index];
 	return ::mlir::LLVM::LoadOp::create(*b, b->getUnknownLoc(), b->getIntegerType(128), ptr);
 }
 
@@ -35,41 +33,46 @@ std::optional<::mlir::APInt> constantInteger(::mlir::Value value) {
 	return std::nullopt;
 }
 
-void save(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame, ::mlir::Value value) {
+void save(NirIntrinsicCall& call, ::mlir::Value value) {
+	[[maybe_unused]] auto& b = call.builder;
 	auto one = ::mlir::LLVM::ConstantOp::create(*b, b->getUnknownLoc(), b->getI64Type(), b->getI64IntegerAttr(1));
 	auto ptr = ::mlir::LLVM::AllocaOp::create(
 	    *b, b->getUnknownLoc(), ::mlir::LLVM::LLVMPointerType::get(b->getContext()), b->getIntegerType(128), one, 16);
 	::mlir::LLVM::StoreOp::create(*b, b->getUnknownLoc(), value, ptr);
-	frame.setValue(call->getIdentifier(), ptr);
+	call.result = ptr;
 }
 
 template <typename Op>
-bool binary(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
-	save(b, call, frame, Op::create(*b, b->getUnknownLoc(), load(b, call, frame, 0), load(b, call, frame, 1)));
+bool binary(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
+	save(call, Op::create(*b, b->getUnknownLoc(), load(call, 0), load(call, 1)));
 	return true;
 }
 
-bool negate(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
+bool negate(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
 	auto i128 = b->getIntegerType(128);
 	auto zero = ::mlir::LLVM::ConstantOp::create(*b, b->getUnknownLoc(), i128, b->getIntegerAttr(i128, 0));
-	save(b, call, frame, ::mlir::LLVM::SubOp::create(*b, b->getUnknownLoc(), zero, load(b, call, frame, 0)));
+	save(call, ::mlir::LLVM::SubOp::create(*b, b->getUnknownLoc(), zero, load(call, 0)));
 	return true;
 }
 
-bool bitNot(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
+bool bitNot(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
 	auto i128 = b->getIntegerType(128);
 	// True 128-bit all-ones. `getIntegerAttr(i128, -1)` would build a 64-bit
 	// -1 and zero-extend it, flipping only the low 64 bits.
 	auto onesAttr = ::mlir::IntegerAttr::get(i128, ::mlir::APInt::getAllOnes(128));
 	auto ones = ::mlir::LLVM::ConstantOp::create(*b, b->getUnknownLoc(), i128, onesAttr);
-	save(b, call, frame, ::mlir::LLVM::XOrOp::create(*b, b->getUnknownLoc(), load(b, call, frame, 0), ones));
+	save(call, ::mlir::LLVM::XOrOp::create(*b, b->getUnknownLoc(), load(call, 0), ones));
 	return true;
 }
 
-bool make(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
+bool make(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
 	auto i128 = b->getIntegerType(128);
-	auto low = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto high = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto low = call.args[0];
+	auto high = call.args[1];
 
 	// When both halves are compile-time constants, fold them into a single
 	// i128 constant instead of emitting the zext/sext/shl/or chain. This lets
@@ -88,7 +91,7 @@ bool make(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame)
 			// Store the folded constant into the usual boxed alloca so the
 			// frame value stays a pointer (other int128 intrinsics load from
 			// it). LLVM's mem2reg + constant propagation then folds it.
-			save(b, call, frame, folded);
+			save(call, folded);
 			return true;
 		}
 	}
@@ -97,58 +100,63 @@ bool make(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame)
 	::mlir::Value hi = ::mlir::LLVM::SExtOp::create(*b, b->getUnknownLoc(), i128, high);
 	auto shift = ::mlir::LLVM::ConstantOp::create(*b, b->getUnknownLoc(), i128, b->getIntegerAttr(i128, 64));
 	hi = ::mlir::LLVM::ShlOp::create(*b, b->getUnknownLoc(), hi, shift);
-	save(b, call, frame, ::mlir::LLVM::OrOp::create(*b, b->getUnknownLoc(), lo, hi));
+	save(call, ::mlir::LLVM::OrOp::create(*b, b->getUnknownLoc(), lo, hi));
 	return true;
 }
 
 template <typename Op>
-bool shift(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
-	auto amount = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool shift(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
+	auto amount = call.args[1];
 	auto mask = ::mlir::LLVM::ConstantOp::create(*b, b->getUnknownLoc(), b->getI32Type(), b->getI32IntegerAttr(127));
 	amount = ::mlir::LLVM::AndOp::create(*b, b->getUnknownLoc(), amount, mask);
 	amount = ::mlir::LLVM::ZExtOp::create(*b, b->getUnknownLoc(), b->getIntegerType(128), amount);
-	save(b, call, frame, Op::create(*b, b->getUnknownLoc(), load(b, call, frame, 0), amount));
+	save(call, Op::create(*b, b->getUnknownLoc(), load(call, 0), amount));
 	return true;
 }
 
-bool compare(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame,
-             ::mlir::LLVM::ICmpPredicate predicate) {
-	auto result = ::mlir::LLVM::ICmpOp::create(*b, b->getUnknownLoc(), predicate, load(b, call, frame, 0),
-	                                           load(b, call, frame, 1));
-	frame.setValue(call->getIdentifier(), result);
+bool compare(NirIntrinsicCall& call, ::mlir::LLVM::ICmpPredicate predicate) {
+	[[maybe_unused]] auto& b = call.builder;
+	auto result = ::mlir::LLVM::ICmpOp::create(*b, b->getUnknownLoc(), predicate, load(call, 0), load(call, 1));
+	call.result = result;
 	return true;
 }
-bool eq(std::unique_ptr<::mlir::OpBuilder>& b, const Call* c, Frame& f) {
-	return compare(b, c, f, ::mlir::LLVM::ICmpPredicate::eq);
+bool eq(NirIntrinsicCall& c) {
+	[[maybe_unused]] auto& b = c.builder;
+	return compare(c, ::mlir::LLVM::ICmpPredicate::eq);
 }
-bool lt(std::unique_ptr<::mlir::OpBuilder>& b, const Call* c, Frame& f) {
-	return compare(b, c, f, ::mlir::LLVM::ICmpPredicate::slt);
+bool lt(NirIntrinsicCall& c) {
+	[[maybe_unused]] auto& b = c.builder;
+	return compare(c, ::mlir::LLVM::ICmpPredicate::slt);
 }
 
-bool low(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
-	auto result = ::mlir::LLVM::TruncOp::create(*b, b->getUnknownLoc(), b->getI64Type(), load(b, call, frame, 0));
-	frame.setValue(call->getIdentifier(), result);
+bool low(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
+	auto result = ::mlir::LLVM::TruncOp::create(*b, b->getUnknownLoc(), b->getI64Type(), load(call, 0));
+	call.result = result;
 	return true;
 }
-bool high(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
+bool high(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
 	auto i128 = b->getIntegerType(128);
 	auto amount = ::mlir::LLVM::ConstantOp::create(*b, b->getUnknownLoc(), i128, b->getIntegerAttr(i128, 64));
-	auto shifted = ::mlir::LLVM::AShrOp::create(*b, b->getUnknownLoc(), load(b, call, frame, 0), amount);
-	frame.setValue(call->getIdentifier(),
-	               ::mlir::LLVM::TruncOp::create(*b, b->getUnknownLoc(), b->getI64Type(), shifted));
+	auto shifted = ::mlir::LLVM::AShrOp::create(*b, b->getUnknownLoc(), load(call, 0), amount);
+	call.result = ::mlir::LLVM::TruncOp::create(*b, b->getUnknownLoc(), b->getI64Type(), shifted);
 	return true;
 }
 
-bool memoryLoad(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
-	auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool memoryLoad(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
+	auto ptr = call.args[0];
 	auto value = ::mlir::LLVM::LoadOp::create(*b, b->getUnknownLoc(), b->getIntegerType(128), ptr, 1);
-	save(b, call, frame, value);
+	save(call, value);
 	return true;
 }
 
-bool memoryStore(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
-	auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	::mlir::LLVM::StoreOp::create(*b, b->getUnknownLoc(), load(b, call, frame, 1), ptr, 1);
+bool memoryStore(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
+	auto ptr = call.args[0];
+	::mlir::LLVM::StoreOp::create(*b, b->getUnknownLoc(), load(call, 1), ptr, 1);
 	return true;
 }
 

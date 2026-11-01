@@ -53,72 +53,72 @@ public:
 
 /// Generic helper for unary bit operations
 template <typename MLIROp>
-bool replaceWithUnaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                  MLIRLoweringProvider::ValueFrame& frame) {
-	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool replaceWithUnaryBitIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto inputArg = call.args[0];
 	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), inputArg.getType(), inputArg);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Generic helper for binary bit operations
 template <typename MLIROp>
-bool replaceWithBinaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                   MLIRLoweringProvider::ValueFrame& frame) {
-	auto arg1 = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto arg2 = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool replaceWithBinaryBitIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto arg1 = call.args[0];
+	auto arg2 = call.args[1];
 	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), arg1.getType(), arg1, arg2);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Helper for CTLZ intrinsic (count leading zeros)
 /// LLVM CTLZ takes a second boolean argument indicating if zero is undefined
-bool replaceWithCtlzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                              MLIRLoweringProvider::ValueFrame& frame) {
-	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool replaceWithCtlzIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto inputArg = call.args[0];
 	// Second argument: is_zero_undef = false (zero is defined)
 	auto isZeroUndefAttr = builder->getBoolAttr(false);
 	auto result = ::mlir::LLVM::CountLeadingZerosOp::create(*builder, builder->getUnknownLoc(), inputArg.getType(),
 	                                                        inputArg, isZeroUndefAttr);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Helper for CTTZ intrinsic (count trailing zeros)
 /// LLVM CTTZ takes a second boolean argument indicating if zero is undefined
-bool replaceWithCttzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                              MLIRLoweringProvider::ValueFrame& frame) {
-	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool replaceWithCttzIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto inputArg = call.args[0];
 	// Second argument: is_zero_undef = false (zero is defined)
 	auto isZeroUndefAttr = builder->getBoolAttr(false);
 	auto result = ::mlir::LLVM::CountTrailingZerosOp::create(*builder, builder->getUnknownLoc(), inputArg.getType(),
 	                                                         inputArg, isZeroUndefAttr);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Helper for rotate left using funnel shift
 /// rotl(x, s) = fshl(x, x, s)
-bool replaceWithRotlIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                              MLIRLoweringProvider::ValueFrame& frame) {
-	auto x = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto s = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool replaceWithRotlIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto x = call.args[0];
+	auto s = call.args[1];
 	// fshl(x, x, s) performs a rotate left
 	auto result = ::mlir::LLVM::FshlOp::create(*builder, builder->getUnknownLoc(), x.getType(), x, x, s);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Helper for rotate right using funnel shift
 /// rotr(x, s) = fshr(x, x, s)
-bool replaceWithRotrIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                              MLIRLoweringProvider::ValueFrame& frame) {
-	auto x = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto s = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool replaceWithRotrIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto x = call.args[0];
+	auto s = call.args[1];
 	// fshr(x, x, s) performs a rotate right
 	auto result = ::mlir::LLVM::FshrOp::create(*builder, builder->getUnknownLoc(), x.getType(), x, x, s);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 

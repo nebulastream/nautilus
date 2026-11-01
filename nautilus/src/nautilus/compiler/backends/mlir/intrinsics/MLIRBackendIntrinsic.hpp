@@ -25,7 +25,7 @@ using IntrinsicFunction = std::function<bool(std::unique_ptr<::mlir::OpBuilder>&
 /// the operands already lowered, and the MLIR type of the result (null for `void`). A handler that expands the call
 /// sets `result` (when there is one) and returns true; returning false leaves the call to the native fallback.
 struct NirIntrinsicCall {
-	::mlir::OpBuilder& builder;
+	std::unique_ptr<::mlir::OpBuilder>& builder;
 	::mlir::Location loc;
 	llvm::ArrayRef<::mlir::Value> args;
 	::mlir::Type resultType;
@@ -56,6 +56,10 @@ public:
 	/// which is what the `ExtensionRegistry` records for an intrinsic callee of a NIR module. A plugin registers its
 	/// handler on both interfaces until the 0.3 pipeline goes.
 	void addNirIntrinsic(IntrinsicTarget target, NirIntrinsicFunction function, std::string_view name = {});
+
+	/// Registers a handler written on the NIR interface with both pipelines: the 0.3 lowering reaches it through an
+	/// adapter that reads the operands from its value frame. The plugins use this one.
+	void addIntrinsic(IntrinsicTarget target, NirIntrinsicFunction function, std::string_view name = {});
 
 	/// The NIR handler of the intrinsic whose fallback is at @p target, or null.
 	[[nodiscard]] const NirIntrinsicFunction* getNirIntrinsic(IntrinsicTarget target) const;

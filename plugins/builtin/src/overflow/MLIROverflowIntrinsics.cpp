@@ -5,44 +5,43 @@
 
 namespace nautilus::compiler::mlir {
 namespace {
-using Call = compiler::ir::CallOperation;
-using Frame = MLIRLoweringProvider::ValueFrame;
-
-::mlir::Value argument(const Call* call, Frame& frame, unsigned index) {
-	return frame.getValue(call->getInputArguments()[index]->getIdentifier());
+::mlir::Value argument(const NirIntrinsicCall& call, unsigned index) {
+	return call.args[index];
 }
 
 // `{result, overflow} = op(lhs, rhs)`; stores the result through `out`, the call yields the flag.
 template <typename Op>
-bool emit(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame, ::mlir::Value lhs, ::mlir::Value rhs,
-          ::mlir::Value out, unsigned alignment) {
+bool emit(NirIntrinsicCall& call, ::mlir::Value lhs, ::mlir::Value rhs, ::mlir::Value out, unsigned alignment) {
+	[[maybe_unused]] auto& b = call.builder;
 	auto loc = b->getUnknownLoc();
 	auto structType = ::mlir::LLVM::LLVMStructType::getLiteral(b->getContext(), {lhs.getType(), b->getI1Type()});
 	auto pair = Op::create(*b, loc, structType, lhs, rhs);
 	auto result = ::mlir::LLVM::ExtractValueOp::create(*b, loc, pair, 0);
 	auto overflow = ::mlir::LLVM::ExtractValueOp::create(*b, loc, pair, 1);
 	::mlir::LLVM::StoreOp::create(*b, loc, result, out, alignment);
-	frame.setValue(call->getIdentifier(), overflow);
+	call.result = overflow;
 	return true;
 }
 
 // Scalar operands: (a, b, out*).
 template <typename Op>
-bool scalar(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
-	auto lhs = argument(call, frame, 0);
-	auto rhs = argument(call, frame, 1);
+bool scalar(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
+	auto lhs = argument(call, 0);
+	auto rhs = argument(call, 1);
 	unsigned alignment = lhs.getType().getIntOrFloatBitWidth() / 8;
-	return emit<Op>(b, call, frame, lhs, rhs, argument(call, frame, 2), alignment);
+	return emit<Op>(call, lhs, rhs, argument(call, 2), alignment);
 }
 
 // 128-bit operands in memory: (a*, b*, out*), any alignment.
 template <typename Op>
-bool wide(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
+bool wide(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& b = call.builder;
 	auto loc = b->getUnknownLoc();
 	auto i128 = b->getIntegerType(128);
-	auto lhs = ::mlir::LLVM::LoadOp::create(*b, loc, i128, argument(call, frame, 0), 1);
-	auto rhs = ::mlir::LLVM::LoadOp::create(*b, loc, i128, argument(call, frame, 1), 1);
-	return emit<Op>(b, call, frame, lhs, rhs, argument(call, frame, 2), 1);
+	auto lhs = ::mlir::LLVM::LoadOp::create(*b, loc, i128, argument(call, 0), 1);
+	auto rhs = ::mlir::LLVM::LoadOp::create(*b, loc, i128, argument(call, 1), 1);
+	return emit<Op>(call, lhs, rhs, argument(call, 2), 1);
 }
 
 class Plugin final : public MLIRIntrinsicPlugin {

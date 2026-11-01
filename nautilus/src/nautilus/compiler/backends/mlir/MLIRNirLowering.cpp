@@ -87,7 +87,8 @@ class Lowering {
 public:
 	Lowering(M::MLIRContext& context, const nir::Module& module, const nirbackend::HostEnvironment& host,
 	         const engine::Options& options, const MLIRIntrinsicManager* intrinsics)
-	    : ctx_(context), m_(module), host_(host), intrinsics_(intrinsics), builder_(&context),
+	    : ctx_(context), m_(module), host_(host), intrinsics_(intrinsics),
+	      builderOwner_(std::make_unique<M::OpBuilder>(&context)), builder_(*builderOwner_),
 	      loc_(M::UnknownLoc::get(&context)) {
 		const bool inspected = options.getOptionOrDefault("debug", false) ||
 		                       options.getOptionOrDefault("perf", false) ||
@@ -132,7 +133,8 @@ private:
 	const nir::Module& m_;
 	const nirbackend::HostEnvironment& host_;
 	const MLIRIntrinsicManager* intrinsics_;
-	M::OpBuilder builder_;
+	std::unique_ptr<M::OpBuilder> builderOwner_;
+	M::OpBuilder& builder_;
 	M::Location loc_;
 	M::ModuleOp module_;
 	bool resolveNames_ = false;
@@ -210,7 +212,12 @@ private:
 		return types;
 	}
 
-	static const char* extensionAttribute(nir::TypeWord word) {
+	/// The ABI attribute of a narrow integer that crosses a native boundary. Types of 32 bits and wider occupy a full
+	/// register already and need none as an argument (`narrowOnly`); a result states its extension kind.
+	static const char* extensionAttribute(nir::TypeWord word, bool narrowOnly = true) {
+		if (narrowOnly && nir::typeOf(word) == TypeId::I32) {
+			return nullptr;
+		}
 		switch (nir::extKindOf(word)) {
 		case nir::ExtKind::Zext:
 			return "llvm.zeroext";
@@ -304,7 +311,7 @@ private:
 			}
 		}
 		if (nir::typeOf(sig.result) != TypeId::Void) {
-			if (const char* attribute = extensionAttribute(sig.result)) {
+			if (const char* attribute = extensionAttribute(sig.result, false)) {
 				function.setResultAttr(0, attribute, M::UnitAttr::get(&ctx_));
 			}
 		}
@@ -906,6 +913,25 @@ private:
 		}
 	}
 
+	/// Expands the call with the handler registered for the native function at `address`, if there is one.
+	bool tryHandler(uint32_t id, void* address, llvm::ArrayRef<M::Value> args, llvm::ArrayRef<M::Type> results) {
+		if (intrinsics_ == nullptr) {
+			return false;
+		}
+		const auto* handler = intrinsics_->getNirIntrinsic(address);
+		if (handler == nullptr) {
+			return false;
+		}
+		NirIntrinsicCall call {builderOwner_, loc_, args, results.empty() ? M::Type() : results[0], M::Value()};
+		if (!(*handler)(call)) {
+			return false;
+		}
+		if (call.result) {
+			bind(id, call.result);
+		}
+		return true;
+	}
+
 	void lowerCall(uint32_t id, const nir::Inst& inst) {
 		const auto& callee = m_.callees.at(inst.a);
 		const auto& sig = m_.signatures[callee.signature];
@@ -919,25 +945,23 @@ private:
 		case CalleeKind::Internal:
 			symbol = functionSymbol(m_, callee.target);
 			break;
-		case CalleeKind::External:
-			symbol = declareExternal(nirbackend::resolvePointer(m_, callee.target, host_), callee.signature,
-			                         callee.attrs, inst.a);
+		case CalleeKind::External: {
+			void* address = nirbackend::resolvePointer(m_, callee.target, host_);
+			// a handler registered by the address of a native function expands calls of it, whether or not the
+			// extension registry knows the function as an intrinsic
+			if (tryHandler(id, address, args, results)) {
+				return;
+			}
+			symbol = declareExternal(address, callee.signature, callee.attrs, inst.a);
 			break;
+		}
 		case CalleeKind::Intrinsic: {
 			const auto* info = ext::ExtensionRegistry::instance().intrinsic(callee.target);
 			if (info == nullptr) {
 				throw RuntimeException("mlir: an intrinsic callee that is not registered");
 			}
-			if (intrinsics_ != nullptr) {
-				if (const auto* handler = intrinsics_->getNirIntrinsic(info->fallback)) {
-					NirIntrinsicCall call {builder_, loc_, args, results.empty() ? M::Type() : results[0], M::Value()};
-					if ((*handler)(call)) {
-						if (call.result) {
-							bind(id, call.result);
-						}
-						return;
-					}
-				}
+			if (tryHandler(id, info->fallback, args, results)) {
+				return;
 			}
 			// no lowering: call the fallback
 			symbol = declareExternal(info->fallback, callee.signature, callee.attrs, inst.a);

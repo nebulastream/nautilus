@@ -24,93 +24,53 @@ public:
 
 /// Generic helper for unary operations (1 argument)
 template <typename MLIROp>
-bool replaceWithUnaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                               MLIRLoweringProvider::ValueFrame& frame) {
-	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool replaceWithUnaryIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto inputArg = call.args[0];
 	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), inputArg);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Generic helper for binary operations (2 arguments)
 template <typename MLIROp>
-bool replaceWithBinaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                MLIRLoweringProvider::ValueFrame& frame) {
-	auto arg1 = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto arg2 = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool replaceWithBinaryIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto arg1 = call.args[0];
+	auto arg2 = call.args[1];
 	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), arg1, arg2);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Generic helper for ternary operations (3 arguments)
 template <typename MLIROp>
-bool replaceWithTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                 MLIRLoweringProvider::ValueFrame& frame) {
-	auto arg1 = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto arg2 = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto arg3 = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+bool replaceWithTernaryIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto arg1 = call.args[0];
+	auto arg2 = call.args[1];
+	auto arg3 = call.args[2];
 	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), arg1, arg2, arg3);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
-/// Helper mapping Nautilus Type -> MLIR type for intrinsic results
-::mlir::Type getResultType(::mlir::OpBuilder& builder, Type type) {
-	switch (type) {
-	case Type::v:
-		return builder.getNoneType();
-	case Type::b:
-		return builder.getI1Type();
-	case Type::i8:
-		return builder.getI8Type();
-	case Type::i16:
-		return builder.getI16Type();
-	case Type::i32:
-		return builder.getI32Type();
-	case Type::i64:
-		return builder.getI64Type();
-	case Type::ui8:
-		return builder.getIntegerType(8, /*isSigned=*/false);
-	case Type::ui16:
-		return builder.getIntegerType(16, /*isSigned=*/false);
-	case Type::ui32:
-		return builder.getIntegerType(32, /*isSigned=*/false);
-	case Type::ui64:
-		return builder.getIntegerType(64, /*isSigned=*/false);
-	case Type::f32:
-		return builder.getF32Type();
-	case Type::f64:
-		return builder.getF64Type();
-	case Type::ptr:
-		return ::mlir::LLVM::LLVMPointerType::get(builder.getContext());
-	}
-	throw std::runtime_error("Unsupported intrinsic result type");
-}
-
+/// The rounding functions that return an integer (`lround`, `llround`, `lrint`, `llrint`) return a signed one.
 ::mlir::Value castRoundedValue(std::unique_ptr<::mlir::OpBuilder>& builder, ::mlir::Value roundedValue,
-                               const ir::CallOperation* call) {
-	auto targetType = getResultType(*builder, call->getStamp());
-	if (!::mlir::isa<::mlir::IntegerType>(targetType)) {
+                               ::mlir::Type targetType) {
+	if (!targetType || !::mlir::isa<::mlir::IntegerType>(targetType)) {
 		return roundedValue;
 	}
-
-	auto integerType = ::mlir::cast<::mlir::IntegerType>(targetType);
-	if (integerType.isUnsigned()) {
-		return ::mlir::arith::FPToUIOp::create(*builder, builder->getUnknownLoc(), targetType, roundedValue);
-	}
-
 	return ::mlir::arith::FPToSIOp::create(*builder, builder->getUnknownLoc(), targetType, roundedValue);
 }
 
 template <typename RoundOp>
-bool replaceWithIntegerRoundIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                      const compiler::ir::CallOperation* call,
-                                      MLIRLoweringProvider::ValueFrame& frame) {
-	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool replaceWithIntegerRoundIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto inputArg = call.args[0];
 	auto rounded = RoundOp::create(*builder, builder->getUnknownLoc(), inputArg);
-	auto result = castRoundedValue(builder, rounded, call);
-	frame.setValue(call->getIdentifier(), result);
+	auto result = castRoundedValue(builder, rounded, call.resultType);
+	call.result = result;
 	return true;
 }
 

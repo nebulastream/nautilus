@@ -32,12 +32,12 @@ namespace {
 constexpr int32_t kDataCache = 1;
 
 template <int32_t Rw, int32_t Locality>
-bool prefetchIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                       MLIRLoweringProvider::ValueFrame& frame) {
-	auto addr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool prefetchIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto addr = call.args[0];
 	::mlir::LLVM::Prefetch::create(*builder, builder->getUnknownLoc(), addr, builder->getI32IntegerAttr(Rw),
 	                               builder->getI32IntegerAttr(Locality), builder->getI32IntegerAttr(kDataCache));
-	// llvm.prefetch has no result, so there is nothing to bind in the frame.
+	// llvm.prefetch has no result, so there is there is no result to set.
 	return true;
 }
 
