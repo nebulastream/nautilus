@@ -76,10 +76,6 @@ val<int32_t> chain(val<int32_t> x) {
 static double us(Clock::duration d) {
 	return std::chrono::duration<double, std::micro>(d).count();
 }
-static double median(std::vector<double> v) {
-	std::sort(v.begin(), v.end());
-	return v[v.size() / 2];
-}
 static std::vector<int32_t> data(1 << 20, 3);
 
 template <typename F, typename Call>
