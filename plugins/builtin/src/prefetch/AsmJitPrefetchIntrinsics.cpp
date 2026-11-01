@@ -15,7 +15,6 @@
 
 #include "AsmJitPrefetchIntrinsics.hpp"
 #include "nautilus/compiler/backends/asmjit/intrinsics/AsmJitBackendIntrinsic.hpp"
-#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "prefetch_impl.hpp"
 
 namespace nautilus::compiler::asmjit {
@@ -39,7 +38,7 @@ using namespace ::asmjit;
 using namespace ::asmjit::x86;
 
 Gp argGp(IntrinsicCallContext& ctx, size_t idx) {
-	return std::get<Gp>(ctx.frame.getValue(ctx.call->getInputArguments()[idx]->getIdentifier()));
+	return std::get<Gp>(ctx.args[idx]);
 }
 
 /// PREFETCHW is missing on pre-Broadwell Intel cores, where the opcode decodes as a NOP and the hint would be
@@ -83,7 +82,7 @@ using namespace ::asmjit;
 using namespace ::asmjit::a64;
 
 Gp argGp(IntrinsicCallContext& ctx, size_t idx) {
-	return std::get<Gp>(ctx.frame.getValue(ctx.call->getInputArguments()[idx]->getIdentifier()));
+	return std::get<Gp>(ctx.args[idx]);
 }
 
 template <PrefetchMode Mode>

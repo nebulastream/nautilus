@@ -3,8 +3,8 @@
 - **Pipeline** (`CompilationPipeline.cpp`), default: the direct NIR tracer
   (`tracing/nir/`) → `conversion/` (SSA NIR, `dump.after_nir_conversion`) → a
   backend. A graph leaves `compileToIR` carrying only the NIR module
-  (`IRGraph::getNirModule`). A backend with `compilesNir()` (`tbc`, `cpp`, `mlir`) compiles it
-  as it is; for the others (`asmjit`) `prepareFor` first builds
+  (`IRGraph::getNirModule`). A backend with `compilesNir()` (`tbc`, `cpp`, `asmjit`, `mlir`) compiles it
+  as it is; for any other backend `prepareFor` first builds
   the 0.3 IR from it, in `NirToIR.cpp` (the temporary bridge: it infers integer
   signedness, turns landing pads into the destructors of their calls, and
   does not apply D10/D11), and runs the exception-region preparation. The

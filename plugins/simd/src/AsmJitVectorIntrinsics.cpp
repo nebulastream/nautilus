@@ -18,7 +18,6 @@
 
 #include "AsmJitVectorIntrinsics.hpp"
 #include "nautilus/compiler/backends/asmjit/intrinsics/AsmJitBackendIntrinsic.hpp"
-#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "vector_impl.hpp"
 #include <cstdint>
 #include <type_traits>
@@ -38,11 +37,11 @@ using namespace ::asmjit::x86;
 // --- argument / result helpers ----------------------------------------------
 
 static Gp argGp(IntrinsicCallContext& ctx, size_t idx) {
-	return std::get<Gp>(ctx.frame.getValue(ctx.call->getInputArguments()[idx]->getIdentifier()));
+	return std::get<Gp>(ctx.args[idx]);
 }
 
 static Xmm argXmm(IntrinsicCallContext& ctx, size_t idx) {
-	return std::get<Xmm>(ctx.frame.getValue(ctx.call->getInputArguments()[idx]->getIdentifier()));
+	return std::get<Xmm>(ctx.args[idx]);
 }
 
 // Load a 128-bit vector from a Gp address into a fresh Xmm.
@@ -64,7 +63,7 @@ static Gp storeVecToStack(Compiler& cc, const Xmm& v) {
 
 // Bind a pointer result into the frame.
 static void bindPtr(IntrinsicCallContext& ctx, const Gp& p) {
-	ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {p});
+	ctx.result = AsmReg {p};
 }
 
 // ── Load / Store ────────────────────────────────────────────────────────────
@@ -308,7 +307,7 @@ static bool handleReduceAddFloat(IntrinsicCallContext& ctx) {
 		// scalar result lives in xmm[0]
 		auto out = cc.newXmmSs();
 		cc.movss(out, v);
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	} else {
 		// v = [a, b]
 		auto t = cc.newXmm();
@@ -317,7 +316,7 @@ static bool handleReduceAddFloat(IntrinsicCallContext& ctx) {
 		cc.addpd(v, t);                       // [a+b, a+b]
 		auto out = cc.newXmmSd();
 		cc.movsd(out, v);
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	}
 	return true;
 }
@@ -342,7 +341,7 @@ static bool handleReduceMinMaxFloat(IntrinsicCallContext& ctx) {
 			cc.maxps(v, t);
 		auto out = cc.newXmmSs();
 		cc.movss(out, v);
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	} else {
 		auto t = cc.newXmm();
 		cc.movapd(t, v);
@@ -353,7 +352,7 @@ static bool handleReduceMinMaxFloat(IntrinsicCallContext& ctx) {
 			cc.maxpd(v, t);
 		auto out = cc.newXmmSd();
 		cc.movsd(out, v);
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	}
 	return true;
 }
@@ -385,7 +384,7 @@ static bool handleReduceAddInt(IntrinsicCallContext& ctx) {
 		cc.mov(e, x86::qword_ptr(base, 8));
 		cc.add(acc, e);
 	}
-	ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {acc});
+	ctx.result = AsmReg {acc};
 	return true;
 }
 
@@ -413,7 +412,7 @@ static bool handleReduceMinMaxInt(IntrinsicCallContext& ctx) {
 		auto out32 = cc.newInt32();
 		cc.movd(out32, v);
 		cc.movsxd(out, out32);
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 		return true;
 	}
 	(void) v;
@@ -611,21 +610,21 @@ static bool handleExtract(IntrinsicCallContext& ctx) {
 	if constexpr (std::is_same_v<ElemT, float>) {
 		auto out = cc.newXmmSs();
 		cc.movss(out, x86::dword_ptr(vecPtr, idx64, 2)); // shift=2: *4 bytes
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	} else if constexpr (std::is_same_v<ElemT, double>) {
 		auto out = cc.newXmmSd();
 		cc.movsd(out, x86::qword_ptr(vecPtr, idx64, 3)); // shift=3: *8 bytes
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	} else if constexpr (std::is_same_v<ElemT, int32_t>) {
 		auto out = cc.newInt64();
 		auto tmp32 = cc.newInt32();
 		cc.mov(tmp32, x86::dword_ptr(vecPtr, idx64, 2));
 		cc.movsxd(out, tmp32);
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	} else {
 		auto out = cc.newInt64();
 		cc.mov(out, x86::qword_ptr(vecPtr, idx64, 3));
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	}
 	return true;
 }
@@ -779,11 +778,11 @@ using namespace ::asmjit::a64;
 // --- argument / result helpers ----------------------------------------------
 
 static Gp argGp(IntrinsicCallContext& ctx, size_t idx) {
-	return std::get<Gp>(ctx.frame.getValue(ctx.call->getInputArguments()[idx]->getIdentifier()));
+	return std::get<Gp>(ctx.args[idx]);
 }
 
 static Vec argVec(IntrinsicCallContext& ctx, size_t idx) {
-	return std::get<Vec>(ctx.frame.getValue(ctx.call->getInputArguments()[idx]->getIdentifier()));
+	return std::get<Vec>(ctx.args[idx]);
 }
 
 // Returns a fresh full 128-bit Vec viewed as Q (vN.16b for raw access).
@@ -820,7 +819,7 @@ static Gp storeVecToStack(Compiler& cc, const Vec& v) {
 }
 
 static void bindPtr(IntrinsicCallContext& ctx, const Gp& p) {
-	ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {p});
+	ctx.result = AsmReg {p};
 }
 
 // NEON load/store
@@ -1017,11 +1016,11 @@ static bool handleReduceAddFloat(IntrinsicCallContext& ctx) {
 		cc.faddp(tmp.s4(), v.s4(), v.s4()); // [a+b, c+d, a+b, c+d]
 		auto out = cc.newVecS();
 		cc.faddp(out, tmp.s2()); // (a+b)+(c+d) — 2-operand scalar form
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	} else {
 		auto out = cc.newVecD();
 		cc.faddp(out, v.d2());
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	}
 	return true;
 }
@@ -1036,7 +1035,7 @@ static bool handleReduceMinMaxFloat(IntrinsicCallContext& ctx) {
 			cc.fminv(out, v.s4());
 		else
 			cc.fmaxv(out, v.s4());
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 		return true;
 	}
 	// f64 has no fminv.2d → scalar fallback.
@@ -1062,7 +1061,7 @@ static bool handleReduceAddInt(IntrinsicCallContext& ctx) {
 		cc.umov(e1, v.d(1));
 		cc.add(out, e0, e1);
 	}
-	ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+	ctx.result = AsmReg {out};
 	return true;
 }
 
@@ -1080,7 +1079,7 @@ static bool handleReduceMinMaxInt(IntrinsicCallContext& ctx) {
 		auto w = cc.newInt32();
 		cc.fmov(w, acc);
 		cc.sxtw(out, w);
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 		return true;
 	}
 	// i64 has no sminv.2d → scalar fallback.
@@ -1209,21 +1208,21 @@ static bool handleExtract(IntrinsicCallContext& ctx) {
 	if constexpr (std::is_same_v<ElemT, float>) {
 		auto out = cc.newVecS();
 		cc.ldr(out, a64::ptr(vecPtr, idx64, ::asmjit::arm::lsl(Shift)));
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	} else if constexpr (std::is_same_v<ElemT, double>) {
 		auto out = cc.newVecD();
 		cc.ldr(out, a64::ptr(vecPtr, idx64, ::asmjit::arm::lsl(Shift)));
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	} else if constexpr (std::is_same_v<ElemT, int32_t>) {
 		auto out = cc.newIntPtr();
 		auto w = cc.newInt32();
 		cc.ldr(w, a64::ptr(vecPtr, idx64, ::asmjit::arm::lsl(Shift)));
 		cc.sxtw(out, w);
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	} else {
 		auto out = cc.newIntPtr();
 		cc.ldr(out, a64::ptr(vecPtr, idx64, ::asmjit::arm::lsl(Shift)));
-		ctx.frame.setValue(ctx.call->getIdentifier(), AsmReg {out});
+		ctx.result = AsmReg {out};
 	}
 	return true;
 }

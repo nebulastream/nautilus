@@ -4,7 +4,7 @@ A backend implements `CompilationBackend` (`CompilationBackend.hpp`):
 `compile(ir, dumpHandler, options, statistics)`, its exception-propagation
 mode and the IR optimization level it needs. The engine's front end produces
 NIR: a backend that returns true from `compilesNir()` reads the module the graph
-carries (`tbc`, `cpp`, `mlir`), the others get the 0.3 IR built from it first (`compiler/NirToIR.cpp`)
+carries (`tbc`, `cpp`, `asmjit`, `mlir`), the others get the 0.3 IR built from it first (`compiler/NirToIR.cpp`)
 until their NIR port lands. Built-in backends are registered
 in `CompilationBackend.cpp`; plugins call `CompilationBackendRegistry::registerBackend`.
 A backend that reads what only the 0.3 trace carries returns true from `needs03Frontend()` (the GPU backends: the `kernel`
@@ -44,7 +44,7 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
   since the engine looks functions up by name. The generated code points into the module (data objects, bindings), which
   the executable keeps alive.
 - `tools/nir-run` (`nautilus-nir-run`) compiles a `.nir` file and runs its `; run @f(args) = result` directives;
-  ctest runs `test/data/nir-run/*.nir` on `tbc` in three modes, on `cpp` (native executables are called through dyncall) and on `mlir` (called through a typed function pointer so that exceptions unwind). Add a file there for every NIR operation a backend
+  ctest runs `test/data/nir-run/*.nir` on `tbc` in three modes, on `cpp` and `asmjit` (native executables are called through dyncall) and on `mlir` (called through a typed function pointer so that exceptions unwind). Add a file there for every NIR operation a backend
   handles.
 - `TBCBackend::compile` hands a graph that carries a NIR module and no IR to `TBCNirBackend`; the `tbc.registerAllocator`,
   `tbc.coalescing`, `tbc.superinstructions` and `tbc.immediates` options belong to the 0.3 lowering only.
@@ -79,3 +79,30 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
 - The LLVM IR tests (`ENABLE_LLVM_IR_TEST=ON`, `llvm-ir-test` job) run on the NIR pipeline; their reference IR was
   regenerated from it. `debug`, `perf` and `perf.sample` still select the 0.3 pipeline (and so `MLIRLoweringProvider` with
   the `IRLocationMap` source), see the plan's M4.5 notes.
+
+## `asmjit` on NIR (0.4, M4.4)
+
+- `asmjit/X64NirLowering.cpp` and `asmjit/A64NirLowering.cpp` lower SSA NIR to AsmJit's `Compiler`; `AsmJitNirBackend` is
+  the registered NIR backend, `AsmJitCompilationBackend` hands it a graph that carries a module and no IR. AsmJit's
+  register allocator and the post-RA peepholes are the 0.3 ones. The 0.3 providers (`X64LoweringProvider`,
+  `A64LoweringProvider`) stay for `tracing.nirTracer=false` (`legacy-asmjit`) until M4.2 deletes them.
+- Side tables are arrays indexed by the value id of the function (`Fn` in the lowering: registers, use counts, block of
+  a value, deferred constants and address parts). A virtual register is created when a value is first needed; only a
+  value that is defined and dead within one block, with a single use, hands its register to the instruction that uses
+  it (`canReuse`). Constants and traced addresses (`ptr.const`, `data.addr`, `bind.addr`) emit nothing: each consumer
+  takes an immediate or rematerialises.
+- Integers are not kept extended. x86-64 runs narrow operations on 32-bit registers, AArch64 on W registers; consumers
+  that read more extend (division, right shifts, widening casts, compares of 8 and 16 bits on AArch64, calls and
+  returns by the extension kind of the signature, 13 §4.5.1). A `bool` is kept as 0 or 1 (AArch64 re-normalises
+  parameters and call results, since `cbnz` reads the whole W register).
+- D10/D11: checked `div`/`rem` compare and branch to a cold block after the body that calls `nautilus_rt_throw_arith`
+  through its capture thunk and jumps to the pad or the exit; narrow shift amounts are masked (32- and 64-bit shifts are
+  masked by the hardware); float to integer casts are `cvtt` plus a cold fixup on x86-64 (NaN 0, overflow the extremes),
+  `fcvtzs`/`fcvtzu` (which saturate) plus a clamp for narrow results on AArch64.
+- Instruction selection kept from 0.3, with the same options and `asmjit.lowering.*` counters: compare and branch
+  fusion, loop rotation, address fusion, cmov/csel, immediates, small-callee inlining; AArch64 also tail duplication
+  (a block that is lowered twice defines its values into the same registers and reuses none).
+- Intrinsics: the plugins' handlers get an `IntrinsicCallContext` (argument registers, result register) and serve the
+  0.3 and the NIR lowering alike; the handler is found by the `IntrinsicRegistry` id of the intrinsic's fallback.
+- Test the lowering with `nir-run-asmjit-*` (the `.nir` corpus), the execution tests, and `AsmJitLoweringModeTest` /
+  `PostRAPeepholeTest`, which pin the counters and the differential behaviour of each option.

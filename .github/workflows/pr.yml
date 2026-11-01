@@ -403,6 +403,47 @@ jobs:
         with:
           name: latency-corpus-${{ github.sha }}
           path: corpus.jsonl
+  asm-diff:
+    runs-on: ubuntu-24.04
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}
+    name: asm-diff (clang-21, asmjit code size against the 0.3 corpus)
+    env:
+      CC: clang-21
+      CXX: clang++-21
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Force apt to use IPv4
+        run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-asm-diff
+      - name: Install clang + LLVM 21
+        uses: ./.github/actions/install-llvm
+        with:
+          llvm-version: "21"
+      - name: cmake
+        shell: bash
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_MLIR_BACKEND=OFF -DENABLE_BENCHMARKS=ON -G Ninja -S . -B build
+      - name: build
+        shell: bash
+        run: |
+          cmake --build build --target nautilus-latency-corpus
+      - name: compare the generated code with the 0.3 baseline
+        shell: bash
+        run: |
+          ./build/nautilus/test/benchmark/nautilus-latency-corpus 1 > corpus.jsonl
+          python3 tools/asm-diff/asm-diff.py corpus.jsonl
+      - name: upload the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asm-diff-${{ github.sha }}
+          path: corpus.jsonl
   fuzz-replay-smoke:
     runs-on: ubuntu-24.04
     if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}

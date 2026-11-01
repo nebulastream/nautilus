@@ -42,6 +42,10 @@ if (ENABLE_TBC_BACKEND)
             add_test(NAME nir-run-mlir-${name}
                     COMMAND nautilus-nir-run --backend=mlir ${file})
         endif ()
+        if (ENABLE_ASMJIT_BACKEND AND TARGET dyncall_s)
+            add_test(NAME nir-run-asmjit-${name}
+                    COMMAND nautilus-nir-run --backend=asmjit ${file})
+        endif ()
         if (ENABLE_TBC_JIT)
             add_test(NAME nir-run-tbc-jit-${name}
                     COMMAND nautilus-nir-run --backend=tbc --option=tbc.mode=jit ${file})

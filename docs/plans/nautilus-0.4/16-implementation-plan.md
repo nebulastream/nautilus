@@ -285,6 +285,14 @@ changes M4.2 and §2 step 2 as follows:
   execution test passes on it (1035 tests of `ctest --preset dev`). The loop that got there (autoresearch, metric = failing
   assertions and crashed tests): 1504 for the scaffold that throws, 20 with the lowering, 4 once every function is a
   symbol under its exact name, 0 with quoted symbols and the statistics tests told that `cpp` compiles NIR. `nautilus-nir-run` calls native executables through dyncall, so the `.nir` corpus (division, shifts, casts, exceptions) also runs on `cpp`; breaking the minimum-divided-by-minus-one check, the shift mask or the saturating NaN case in the lowering fails exactly `division`, `shifts` and `casts`.
+- **M4.4 (`asmjit` on NIR) is done in PR 7b (#579), stacked on #578.** `X64NirLowering` and `A64NirLowering` lower the SSA
+  module to AsmJit's `Compiler` without the 0.3 IR; `asmjit` returns true from `compilesNir()` and registers
+  `AsmJitNirBackend`, so `mlir` is the last backend on the bridge. Allocator, peepholes, options and `asmjit.lowering.*`
+  counters are the 0.3 ones; D10/D11 are explicit (cold block for checked `div`/`rem`, masked narrow shifts, saturating
+  casts); the plugins' intrinsic handlers take an `IntrinsicCallContext` and serve both lowerings. See the notes of
+  `backends/AGENTS.md`. Deferred: the 0.3 providers stay for `legacy-asmjit` until M4.2; the line table of 05 §4.4
+  step 3 and `perf`/`debug` come with M4.9; the callgrind ratio gate of the `latency-corpus` leg needs the pinned CI
+  container (the `asm-diff` leg compares code size against the recorded 0.3 corpus).
 - **M4.5 (`mlir` on NIR) is done in PR 8**, stacked on PR 7, by the same method (the loop: autoresearch, metric = failing assertions
   and crashed tests of `ctest --preset full`): 1582 for the scaffold that throws (1579 failed assertions, 3 crashed), 9 with the
   lowering, 0 with the intrinsic handlers on the NIR call and the ABI attributes of arguments (only below 32 bits). `mlir`
