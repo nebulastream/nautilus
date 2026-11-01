@@ -3,6 +3,7 @@
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/mlir/LLVMBackendHooks.hpp"
+#include "nautilus/compiler/backends/mlir/MLIRThreadState.hpp"
 #include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/Attributes.h>
@@ -38,24 +39,7 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		// Currently, we do not increase the sizeLevel requirement of the
 		// optimizingTransformer beyond 0.
 		constexpr int SIZE_LEVEL = 0;
-		// Create A target-specific target machine for the host. The `mlir.targetCpu`
-		// option pins the CPU (and drops the host feature set) so IR-generation and
-		// optimization decisions — most visibly the LLVM loop vectorizer's width —
-		// are deterministic across machines. This is what the LLVM IR reference
-		// tests rely on; without the pin, a runner with AVX-512 vectorizes wider
-		// than one without, so the generated IR differs run to run.
-		auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
 		const std::string pinnedCpu = options.getOptionOrDefault<std::string>("mlir.targetCpu", "");
-		if (!pinnedCpu.empty()) {
-			tmBuilderOrError->setCPU(pinnedCpu);
-			// Pin an explicit baseline feature set (rather than leaving the
-			// host's) so TTI-driven decisions are deterministic. A non-empty
-			// feature string also keeps the reference-IR normalizer's
-			// target-features stripping effective.
-			tmBuilderOrError->setFeatures("+64bit,+sse2");
-		}
-		auto targetMachine = tmBuilderOrError->createTargetMachine();
-		llvm::TargetMachine* targetMachinePtr = targetMachine->get();
 		// With debug info active, lower the codegen opt level to `Less`
 		// (-O1 equivalent) so the register allocator does not collapse
 		// separate SSA values into the same physical register.
@@ -64,8 +48,13 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		// Keyed on `enableDebug` alone: perf-only mode keeps the codegen
 		// level the IR optimizer above chose.
 		const auto debugInfoForCodegen = debugInfoOptionsFromEngineOptions(options);
-		targetMachinePtr->setOptLevel(debugInfoForCodegen.enableDebug ? llvm::CodeGenOptLevel::Less
-		                                                              : llvm::CodeGenOptLevel::Aggressive);
+		// The target machine of this thread is reused from compile to compile (M4.5); the pipeline runs
+		// synchronously on the compiling thread. The `mlir.targetCpu` option pins the CPU (and drops the host
+		// feature set) so IR-generation and optimization decisions -- most visibly the LLVM loop vectorizer's width --
+		// are deterministic across machines, which the LLVM IR reference tests rely on.
+		llvm::TargetMachine* targetMachinePtr = &MLIRThreadState::current().targetMachine(
+		    pinnedCpu,
+		    debugInfoForCodegen.enableDebug ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive);
 
 		// Add target-specific attributes to all non-declaration functions in the module.
 		for (auto& func : *llvmIRModule) {

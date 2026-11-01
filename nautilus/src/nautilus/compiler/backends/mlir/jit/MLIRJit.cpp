@@ -1,5 +1,6 @@
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
 #include "nautilus/compiler/JitSymbolRegistry.hpp"
+#include "nautilus/compiler/backends/mlir/MLIRThreadState.hpp"
 #include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
@@ -143,20 +144,13 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		return makeStringError("could not convert to LLVM IR");
 	}
 
-	auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
-	if (!tmBuilderOrError) {
-		return tmBuilderOrError.takeError();
-	}
-	tmBuilderOrError->setCodeGenOptLevel(options.codeGenOptLevel);
-
-	// Build a one-shot TargetMachine only to seed the module's data layout and
-	// triple; LLJIT constructs its own TargetMachines via the builder below.
-	auto tmOrError = tmBuilderOrError->createTargetMachine();
-	if (!tmOrError) {
-		return tmOrError.takeError();
-	}
-	llvmModule->setDataLayout((*tmOrError)->createDataLayout());
-	llvmModule->setTargetTriple((*tmOrError)->getTargetTriple());
+	// The host is detected once per process and the target machine that seeds the module's data layout and triple is
+	// kept by the thread (M4.5); LLJIT constructs its own TargetMachines via the builder below.
+	auto tmBuilder = MLIRThreadState::hostBuilder();
+	tmBuilder.setCodeGenOptLevel(options.codeGenOptLevel);
+	auto& seedMachine = MLIRThreadState::current().targetMachine("", options.codeGenOptLevel);
+	llvmModule->setDataLayout(seedMachine.createDataLayout());
+	llvmModule->setTargetTriple(seedMachine.getTargetTriple());
 
 	// Instantiate a JITLink-based object linking layer. Only machine code with
 	// reliable exception-handling unwind info (personality + LSDA) is linked;
@@ -193,7 +187,7 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 	// LLVM is compiled with -fno-rtti and exporting RTTI for its polymorphic
 	// types across TU boundaries would require us to match.
 	auto jitOrErr = llvm::orc::LLJITBuilder()
-	                    .setJITTargetMachineBuilder(std::move(*tmBuilderOrError))
+	                    .setJITTargetMachineBuilder(std::move(tmBuilder))
 	                    .setObjectLinkingLayerCreator(objectLinkingLayerCreator)
 	                    .create();
 	if (!jitOrErr) {

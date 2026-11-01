@@ -10,17 +10,22 @@ static std::mutex llvm_jit_mutex {};
 
 MLIRExecutable::MLIRExecutable(std::unique_ptr<MLIRJit> jit) : jit(std::move(jit)) {
 }
+MLIRExecutable::MLIRExecutable(std::unique_ptr<MLIRJit> jit, std::shared_ptr<const void> owner)
+    : owner(std::move(owner)), jit(std::move(jit)) {
+}
 MLIRExecutable::~MLIRExecutable() {
 	if (jit) {
 		std::scoped_lock lock(llvm_jit_mutex);
 		jit.reset();
 	}
 }
-MLIRExecutable::MLIRExecutable(MLIRExecutable&& other) noexcept : jit(std::move(other.jit)) {
+MLIRExecutable::MLIRExecutable(MLIRExecutable&& other) noexcept
+    : owner(std::move(other.owner)), jit(std::move(other.jit)) {
 }
 MLIRExecutable& MLIRExecutable::operator=(MLIRExecutable&& other) noexcept {
 	if (this == &other)
 		return *this;
+	owner = std::move(other.owner);
 	jit = std::move(other.jit);
 	return *this;
 }

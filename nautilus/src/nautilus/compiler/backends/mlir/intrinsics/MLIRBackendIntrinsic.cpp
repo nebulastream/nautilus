@@ -22,9 +22,22 @@ std::optional<IntrinsicFunction> MLIRIntrinsicManager::getIntrinsic(ir::Intrinsi
 	return std::nullopt;
 }
 
+void MLIRIntrinsicManager::addNirIntrinsic(IntrinsicTarget target, NirIntrinsicFunction function,
+                                           std::string_view /*name*/) {
+	nirIntrinsicMap[target] = std::move(function);
+}
+
+const NirIntrinsicFunction* MLIRIntrinsicManager::getNirIntrinsic(IntrinsicTarget target) const {
+	auto it = nirIntrinsicMap.find(target);
+	return it == nirIntrinsicMap.end() ? nullptr : &it->second;
+}
+
 void MLIRIntrinsicManager::merge(const MLIRIntrinsicManager& other) {
 	for (const auto& [id, function] : other.intrinsicMap) {
 		intrinsicMap[id] = function;
+	}
+	for (const auto& [target, function] : other.nirIntrinsicMap) {
+		nirIntrinsicMap[target] = function;
 	}
 }
 

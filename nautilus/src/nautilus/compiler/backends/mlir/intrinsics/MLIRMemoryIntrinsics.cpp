@@ -127,7 +127,11 @@ void MLIRMemoryIntrinsicPlugin::registerIntrinsics(MLIRIntrinsicManager& manager
 }
 
 void RegisterMLIRMemoryIntrinsicPlugin() {
-	MLIRIntrinsicPluginRegistry::instance().addPlugin(std::make_shared<MLIRMemoryIntrinsicPlugin>());
+	// both the 0.3 backend and the NIR backend ask for it: once is enough
+	static std::once_flag registered;
+	std::call_once(registered, [] {
+		MLIRIntrinsicPluginRegistry::instance().addPlugin(std::make_shared<MLIRMemoryIntrinsicPlugin>());
+	});
 }
 
 } // namespace nautilus::compiler::mlir

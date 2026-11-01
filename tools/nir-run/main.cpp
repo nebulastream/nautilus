@@ -279,6 +279,102 @@ std::string show(uint64_t v, nir::TypeId type) {
 	return std::to_string(static_cast<int64_t>(v));
 }
 
+/// Calls the machine code of a native executable whose exceptions unwind through its frames (`mlir`). dyncall's
+/// assembly kernel has no unwind information, so an exception would terminate the process there; a call through a
+/// function pointer has. On the C ABIs of x86-64 System V and AArch64 the integer-class arguments take the integer
+/// registers and the float-class ones the vector registers, each in order, whatever their interleaving, so one
+/// prototype per kind of result serves every signature of up to 6 integer and 8 float arguments.
+NAUTILUS_NO_SANITIZE_FUNCTION
+uint64_t callNativeUnwinding(void* target, const nir::Module& module, const nir::SignatureRecord& signature,
+                             const std::vector<uint64_t>& args) {
+	uint64_t ints[6] = {};
+	double floats[8] = {};
+	unsigned intCount = 0, floatCount = 0;
+	for (uint32_t i = 0; i < signature.paramCount; ++i) {
+		const auto word = module.paramType(signature, i);
+		const auto bits = args[i];
+		const bool isUnsigned = nir::extKindOf(word) == nir::ExtKind::Zext;
+		const auto type = nir::typeOf(word);
+		if (nir::isFloat(type)) {
+			if (floatCount == 8) {
+				throw std::runtime_error("more than 8 float arguments cannot be passed natively");
+			}
+			// a float travels in the low 32 bits of its register
+			uint64_t raw = type == nir::TypeId::F32 ? (bits & 0xFFFFFFFFull) : bits;
+			std::memcpy(&floats[floatCount++], &raw, sizeof(raw));
+			continue;
+		}
+		if (intCount == 6) {
+			throw std::runtime_error("more than 6 integer arguments cannot be passed natively");
+		}
+		uint64_t value = bits;
+		switch (type) {
+		case nir::TypeId::Bool:
+			value = bits != 0 ? 1 : 0;
+			break;
+		case nir::TypeId::I8:
+			value = isUnsigned ? static_cast<uint64_t>(static_cast<uint8_t>(bits))
+			                   : static_cast<uint64_t>(static_cast<int64_t>(static_cast<int8_t>(bits)));
+			break;
+		case nir::TypeId::I16:
+			value = isUnsigned ? static_cast<uint64_t>(static_cast<uint16_t>(bits))
+			                   : static_cast<uint64_t>(static_cast<int64_t>(static_cast<int16_t>(bits)));
+			break;
+		case nir::TypeId::I32:
+			value = isUnsigned ? static_cast<uint64_t>(static_cast<uint32_t>(bits))
+			                   : static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(bits)));
+			break;
+		default:
+			break;
+		}
+		ints[intCount++] = value;
+	}
+	using IntResult = uint64_t (*)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, double, double, double,
+	                               double, double, double, double, double);
+	using FloatResult = float (*)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, double, double, double,
+	                              double, double, double, double, double);
+	using DoubleResult = double (*)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, double, double, double,
+	                                double, double, double, double, double);
+	switch (nir::typeOf(signature.result)) {
+	case nir::TypeId::F32: {
+		const float value = reinterpret_cast<FloatResult>(target)(ints[0], ints[1], ints[2], ints[3], ints[4], ints[5],
+		                                                          floats[0], floats[1], floats[2], floats[3], floats[4],
+		                                                          floats[5], floats[6], floats[7]);
+		uint32_t raw;
+		std::memcpy(&raw, &value, sizeof(raw));
+		return raw;
+	}
+	case nir::TypeId::F64: {
+		const double value = reinterpret_cast<DoubleResult>(target)(ints[0], ints[1], ints[2], ints[3], ints[4],
+		                                                            ints[5], floats[0], floats[1], floats[2], floats[3],
+		                                                            floats[4], floats[5], floats[6], floats[7]);
+		uint64_t raw;
+		std::memcpy(&raw, &value, sizeof(raw));
+		return raw;
+	}
+	default:
+		break;
+	}
+	const uint64_t result =
+	    reinterpret_cast<IntResult>(target)(ints[0], ints[1], ints[2], ints[3], ints[4], ints[5], floats[0], floats[1],
+	                                        floats[2], floats[3], floats[4], floats[5], floats[6], floats[7]);
+	// the upper bits of a narrow result are not specified
+	switch (nir::typeOf(signature.result)) {
+	case nir::TypeId::Bool:
+		return (result & 0xFF) != 0 ? 1 : 0;
+	case nir::TypeId::I8:
+		return static_cast<uint8_t>(result);
+	case nir::TypeId::I16:
+		return static_cast<uint16_t>(result);
+	case nir::TypeId::I32:
+		return static_cast<uint32_t>(result);
+	case nir::TypeId::Void:
+		return 0;
+	default:
+		return result;
+	}
+}
+
 #ifdef NIR_RUN_DYNCALL
 /// Calls the machine code of a native executable (`cpp`, ...) with the raw slots of the arguments, as the C ABI of the
 /// signature wants them: a narrow integer extended the way its type word says, a float or double bit-exact.
@@ -562,12 +658,17 @@ int main(int argc, char** argv) {
 					}
 				} else if (executable->hasInvocableFunctionPtr()) {
 					// a native executable: the machine code is called through its signature
+					if (executable->getExceptionPropagationMode(d.function) == ExceptionPropagationMode::NativeUnwind) {
+						result = callNativeUnwinding(executable->getInvocableFunctionPtr(d.function), *module,
+						                             signature, args);
+					} else {
 #ifdef NIR_RUN_DYNCALL
-					result = callNative(executable->getInvocableFunctionPtr(d.function), *module, signature, args);
+						result = callNative(executable->getInvocableFunctionPtr(d.function), *module, signature, args);
 #else
-					fail("this build of nir-run cannot call a native executable (it needs dyncall)");
-					continue;
+						fail("this build of nir-run cannot call a native executable (it needs dyncall)");
+						continue;
 #endif
+					}
 				} else {
 					fail("the backend offers neither a raw invocation nor a function pointer");
 					continue;

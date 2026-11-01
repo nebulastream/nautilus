@@ -51,6 +51,8 @@ if (ENABLE_MLIR_BACKEND)
             MLIRLoweringProvider.cpp
             MLIRCompilationBackend.cpp
             MLIRNirBackend.cpp
+            MLIRNirLowering.cpp
+            MLIRThreadState.cpp
             MLIRExecutable.cpp
             MLIRPassManager.cpp
             LLVMIROptimizer.cpp
