@@ -6,16 +6,16 @@ target triple = "x86_64-unknown-linux-gnu"
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp eq i32 %0, 0
-  br i1 %2, label %._crit_edge, label %.lr.ph.preheader
+  br i1 %2, label %common.ret, label %.lr.ph.preheader
 
 .lr.ph.preheader:                                 ; preds = %1
   %3 = add i32 %0, -1
   %umin = tail call i32 @llvm.umin.i32(i32 %3, i32 9)
   %4 = mul nuw nsw i32 %umin, 10
   %5 = add nuw nsw i32 %4, 10
-  br label %._crit_edge
+  br label %common.ret
 
-._crit_edge:                                      ; preds = %.lr.ph.preheader, %1
+common.ret:                                       ; preds = %.lr.ph.preheader, %1
   %.lcssa = phi i32 [ 0, %1 ], [ %5, %.lr.ph.preheader ]
   ret i32 %.lcssa
 }

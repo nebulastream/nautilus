@@ -4,17 +4,18 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext i32 @conditionalHelper(i32 %0) local_unnamed_addr #0 {
+define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
+common.ret:
+  %1 = icmp sgt i32 %0, 10
   %2 = add i32 %0, 100
-  ret i32 %2
+  %common.ret.op = select i1 %1, i32 %2, i32 %0
+  ret i32 %common.ret.op
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
-  %2 = icmp sgt i32 %0, 10
-  %3 = add i32 %0, 100
-  %spec.select = select i1 %2, i32 %3, i32 %0
-  ret i32 %spec.select
+define signext i32 @conditionalHelper(i32 %0) local_unnamed_addr #0 {
+  %2 = add i32 %0, 100
+  ret i32 %2
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }

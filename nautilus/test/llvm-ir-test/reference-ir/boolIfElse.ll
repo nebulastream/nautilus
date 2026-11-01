@@ -5,8 +5,9 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define zeroext i1 @execute(i1 zeroext %0, i1 zeroext %1) local_unnamed_addr #0 {
-  %3 = and i1 %0, %1
-  ret i1 %3
+common.ret:
+  %2 = and i1 %0, %1
+  ret i1 %2
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }

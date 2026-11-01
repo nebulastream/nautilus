@@ -5,8 +5,9 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define zeroext i32 @execute(i32 %0, i32 %1) local_unnamed_addr #0 {
-  %3 = lshr i32 %0, %1
-  ret i32 %3
+  %3 = and i32 %1, 31
+  %4 = lshr i32 %0, %3
+  ret i32 %4
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }

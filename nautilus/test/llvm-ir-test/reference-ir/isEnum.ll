@@ -5,6 +5,7 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
+common.ret:
   %switch.selectcmp = icmp eq i32 %0, 1
   %switch.select = select i1 %switch.selectcmp, i32 2, i32 42
   %switch.selectcmp1 = icmp eq i32 %0, 0

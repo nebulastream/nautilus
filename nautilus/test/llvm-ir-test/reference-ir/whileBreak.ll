@@ -13,9 +13,9 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %5 = icmp eq i32 %3, %0
   %or.cond = select i1 %4, i1 true, i1 %5
   %6 = add nuw nsw i32 %3, 10
-  br i1 %or.cond, label %7, label %2
+  br i1 %or.cond, label %common.ret, label %2
 
-7:                                                ; preds = %2
+common.ret:                                       ; preds = %2
   ret i32 %3
 }
 

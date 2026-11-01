@@ -6,20 +6,20 @@ target triple = "x86_64-unknown-linux-gnu"
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp eq i32 %0, 1
-  br i1 %2, label %3, label %5
+  br i1 %2, label %common.ret, label %3
 
-3:                                                ; preds = %7, %5, %1
-  %4 = phi i32 [ %9, %7 ], [ 42, %5 ], [ 1, %1 ]
-  ret i32 %4
+3:                                                ; preds = %1
+  %4 = icmp slt i32 %0, 10
+  br i1 %4, label %common.ret, label %5
 
-5:                                                ; preds = %1
-  %6 = icmp slt i32 %0, 10
-  br i1 %6, label %3, label %7
+common.ret:                                       ; preds = %1, %3, %5
+  %common.ret.op = phi i32 [ %7, %5 ], [ 42, %3 ], [ 1, %1 ]
+  ret i32 %common.ret.op
 
-7:                                                ; preds = %5
-  %8 = shl nuw i32 %0, 1
-  %9 = or disjoint i32 %8, 1
-  br label %3
+5:                                                ; preds = %3
+  %6 = shl nuw i32 %0, 1
+  %7 = or disjoint i32 %6, 1
+  br label %common.ret
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }

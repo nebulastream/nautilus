@@ -11,10 +11,11 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @recursiveHelper(i32 %0, i32 %1) local_unnamed_addr #0 {
-  %3 = icmp sgt i32 %1, 0
-  %4 = zext i1 %3 to i32
-  %spec.select = add i32 %0, %4
-  ret i32 %spec.select
+common.ret:
+  %2 = icmp sgt i32 %1, 0
+  %3 = zext i1 %2 to i32
+  %common.ret.op = add i32 %0, %3
+  ret i32 %common.ret.op
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }

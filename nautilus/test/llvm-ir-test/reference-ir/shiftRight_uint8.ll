@@ -6,10 +6,11 @@ target triple = "x86_64-unknown-linux-gnu"
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define zeroext i8 @execute(i8 zeroext %0, i8 zeroext %1) local_unnamed_addr #0 {
   %3 = zext i8 %0 to i32
-  %4 = zext nneg i8 %1 to i32
-  %5 = lshr i32 %3, %4
-  %6 = trunc nuw i32 %5 to i8
-  ret i8 %6
+  %4 = and i8 %1, 31
+  %5 = zext nneg i8 %4 to i32
+  %6 = lshr i32 %3, %5
+  %7 = trunc nuw i32 %6 to i8
+  ret i8 %7
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
