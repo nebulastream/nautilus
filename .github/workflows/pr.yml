@@ -432,12 +432,13 @@ jobs:
       - name: build
         shell: bash
         run: |
-          cmake --build build --target nautilus-latency-corpus
+          cmake --build build --target nautilus-latency-corpus nautilus-asm-kernels
       - name: compare the generated code with the 0.3 baseline
         shell: bash
         run: |
           ./build/nautilus/test/benchmark/nautilus-latency-corpus 1 > corpus.jsonl
           python3 tools/asm-diff/asm-diff.py corpus.jsonl
+          python3 tools/asm-diff/loop-diff.py build/nautilus/test/benchmark/nautilus-asm-kernels
       - name: upload the results
         if: always()
         uses: actions/upload-artifact@v4

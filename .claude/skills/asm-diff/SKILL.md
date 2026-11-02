@@ -20,6 +20,14 @@ cmake --build /tmp/corpus-bld --target nautilus-latency-corpus
 python3 tools/asm-diff/asm-diff.py corpus.jsonl
 ```
 
+## 1b. The loops of the kernels against the 0.3 lowering (the CI leg too)
+
+`nautilus-asm-kernels` (`tools/asm-diff/kernels.cpp`) holds loops that run long enough for code quality to show
+(`fib`, `sum`, an internal and an external call loop). `python3 tools/asm-diff/loop-diff.py <binary>` compiles each on
+both pipelines (NIR and `tracing.nirTracer=false`) and fails when a loop of the NIR lowering has more instructions.
+`nautilus-asm-kernels run [reps]` times them (microseconds per call, best of reps); pin the CPU (`taskset`) and compare
+the two pipelines in the same process, since code placement moves a run time by tens of percent.
+
 ## 2. The instructions of one function, before and after
 
 ```bash

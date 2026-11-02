@@ -23,8 +23,17 @@ if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../src>)
     target_link_libraries(nautilus-tracing-corpus PRIVATE nautilus)
 
+    # Per-stage compile cost per operation of small and large kernels, 0.3 pipeline against the NIR tracer on one
+    # binary: nautilus-compile-bench [repetitions [kernel [backend [mode]]]]
+    add_executable(nautilus-compile-bench CompileTimeBench.cpp)
+    target_link_libraries(nautilus-compile-bench PRIVATE nautilus)
+
     # The latency corpus (docs/plans/nautilus-0.4/10-observability.md). A plain executable that replaces the global
     # operator new to count allocations; it uses only the public engine API.
     add_executable(nautilus-latency-corpus latency-corpus/LatencyCorpus.cpp)
     target_link_libraries(nautilus-latency-corpus PRIVATE nautilus)
+
+    # kernels whose loops run long enough for the quality of the generated code to show (tools/asm-diff)
+    add_executable(nautilus-asm-kernels ${PROJECT_SOURCE_DIR}/tools/asm-diff/kernels.cpp)
+    target_link_libraries(nautilus-asm-kernels PRIVATE nautilus)
 endif ()
