@@ -86,3 +86,7 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
   `nautilus-latency-corpus 1 straight 1000 asmjit` (`lowerNirModule` inclusive) and with `tools/asm-diff/loop-diff.py`.
 - Run time: integer arithmetic runs on the whole 64-bit register on x86-64 whatever the type's width (immediates are
   those of the width): a 32-bit `add` of a loop counter measured 30-50% slower than the 64-bit one in the `sum` kernel.
+- Measure compile time with `nautilus-compile-bench <reps> all asmjit` (the NIR rows run on `asmjit` natively; the
+  `lower_ms` and `final_ms` columns split the backend). On the dev machine of M4.4 (Release, clang-21, one pinned core)
+  `straight` 5000 costs 0.07 us per NIR instruction in the lowering and 0.28 in AsmJit's finalize (about 80% of the
+  backend); the lowering's own work is under 10% of the instructions executed, so what is left is AsmJit's allocator.
