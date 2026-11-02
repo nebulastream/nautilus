@@ -307,6 +307,20 @@ changes M4.2 and §2 step 2 as follows:
 - **Found on the way.** Both NIR tracers wrote cleanup lists in registration order, although 13 §3.4 says destruction
   order, so pads destroyed in construction order; fixed in its own commit. The 0.3 backends' `ir.*` options configure
   the fallback only.
+**Compile-time cost of the direct recorder (#576).** `nautilus-compile-bench` (`-DENABLE_BENCHMARKS=ON`) compiles
+`add`, `fib`, `sum`, `internalCallLoop`, `straight`, `calls`, `loopBody` and chained ifs with `tracing.nirTracer` off and
+on in one binary and reports tracing, conversion (0.3: IR generation plus passes) and backend time per traced operation;
+`nautilus-tracing-corpus function[:N] [reps [mode]]` runs the same kernels under callgrind. First measurement: the NIR
+tracer spent a third of a small trace writing the module out and most of the rest in `malloc` (tables rebuilt for every
+function, a multimap node per constant, use counts nobody reads). After keeping the per-trace tables with the thread,
+the zero-filled tag map, the open-addressing constant pool and the cheaper write-out (callgrind instructions per
+`NirTracer::Trace`): `add` 36.7 K -> 20.3 K, `fib` 62.5 K -> 38.8 K, `sum` 67.8 K -> 43.0 K, `internalCallLoop`
+89.9 K -> 56.7 K, `straight(500)` 7.34 M -> 5.35 M, `calls(500)` 3.13 M -> 2.68 M. Median `tracing.ms` of the NIR tracer is
+now at or below the 0.3 tracer's on every kernel (the earlier 1.2-1.4x on the small ones is gone), 0.12-0.17 us per
+traced operation on linear code. What is left is shared with 0.3: the tag of each operation (a frame walk plus a trie
+descent, about 20 % of a linear trace) and the `val<T>` bookkeeping. Chained `if`s trace in time quadratic in their
+number (every explored path replays the prefix before it, 0.07 / 1.6 / 11.8 ms for 10 / 100 / 300 ifs), on both
+tracers; each `if` in its own `region()` is linear (0.04 / 0.30 / 1.0 ms).
 
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 9.

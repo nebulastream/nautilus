@@ -27,6 +27,11 @@ NAUTILUS_OPTIONS="engine.logStatistics=true" ./your-binary # human-readable repo
 Keys include tracing, IR generation, each pass (`irPasses.<pass>.ms`, runs,
 changes) and backend sub-stages.
 
+The ready-made harness (`-DENABLE_BENCHMARKS=ON`) is `nautilus-compile-bench [reps [kernel [backend [mode]]]]`
+(`nautilus/test/benchmark/CompileTimeBench.cpp`): per kernel and size, tracing, conversion (or IR generation plus
+passes) and backend time and microseconds per traced operation, for the 0.3 pipeline and the NIR tracer on one binary.
+`nautilus-tracing-corpus function[:N] [reps [nir]]` runs the tracer alone for callgrind; the same kernels.
+
 ## 3. A probe for one function shape
 
 For a controlled measurement, write a temporary executable that compiles one

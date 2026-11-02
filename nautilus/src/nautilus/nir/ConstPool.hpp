@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <unordered_map>
 #include <vector>
 
 namespace nautilus::nir {
@@ -45,8 +44,13 @@ public:
 private:
 	std::vector<ConstRecord> records_;
 	std::vector<std::byte> bytes_;
-	// hash of (type, provenance, value) -> indices with that hash
-	std::unordered_multimap<uint64_t, uint32_t> index_;
+	// An open-addressing table of constant indices (a power-of-two number of slots, `EMPTY` for a free one, at most
+	// half full), probed by the hash of (type, provenance, value); the hash of each constant is kept for the rehash.
+	static constexpr uint32_t EMPTY = 0xFFFFFFFFu;
+	std::vector<uint32_t> slots_;
+	std::vector<uint64_t> hashes_;
+	void insertIndex(uint64_t hash, uint32_t index);
+	void growIndex();
 	std::vector<uint32_t> wideSizes_; // per constant: byte size, 0 for narrow
 };
 

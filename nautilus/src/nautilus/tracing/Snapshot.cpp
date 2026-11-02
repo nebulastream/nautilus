@@ -2,19 +2,6 @@
 
 namespace nautilus::tracing {
 
-Snapshot::Snapshot(Tag* tag, uint64_t staticValueHash) : staticValueHash(staticValueHash), tag(tag) {
-}
-
-Snapshot::Snapshot() : staticValueHash(), tag() {
-}
-
-bool Snapshot::operator==(const nautilus::tracing::Snapshot& rhs) const {
-	return staticValueHash == rhs.staticValueHash && tag == rhs.tag;
-}
-
-bool Snapshot::operator!=(const nautilus::tracing::Snapshot& rhs) const {
-	return !(rhs == *this);
-}
 } // namespace nautilus::tracing
 
 namespace std {
