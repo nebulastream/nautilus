@@ -31,7 +31,8 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
 
 if (ENABLE_TBC_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
-            backends/tbc/CompilationStatisticsTest.cpp)
+            backends/tbc/CompilationStatisticsTest.cpp
+            backends/tbc/TBCNirLoweringShapeTest.cpp)
 endif ()
 
 if (ENABLE_C_BACKEND)
