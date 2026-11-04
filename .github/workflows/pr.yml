@@ -348,7 +348,7 @@ jobs:
       - name: build
         shell: bash
         run: |
-          cmake --build build --target nautilus-nir-tests nautilus-nir-opt nautilus-nir-fuzz-replay
+          cmake --build build --target nautilus-nir-tests nautilus-nir-opt nautilus-nir-fuzz-replay nautilus-nir-run
       - name: unit tests
         shell: bash
         run: |

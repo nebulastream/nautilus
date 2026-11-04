@@ -7,7 +7,7 @@
 
 namespace nautilus::nir {
 
-/// Calls `f(Ref&)` for every value reference an instruction holds, in operand order: the fields a and b, then the
+/// Calls `f(Ref&)` for every value reference an instruction holds, in operand order: the fields a, b and c, then the
 /// words of its `extra` lists (call and branch arguments, and at the pre-SSA level the objects of cleanup lists).
 /// Constants are visited too; callers filter with isValueRef. NONE slots are skipped.
 /// InstT is `Inst` or `const Inst`, ExtraT is `uint32_t` or `const uint32_t`. Core opcodes only.
@@ -76,6 +76,9 @@ void forEachRef(InstT& inst, ExtraT* extra, Level level, F&& f) {
 	}
 	if (info->b == OperandKind::Value) {
 		visit(inst.b);
+	}
+	if (info->c == OperandKind::Value) { // select
+		visit(inst.c);
 	}
 	switch (static_cast<Op>(inst.op)) {
 	case Op::Div:

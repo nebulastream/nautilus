@@ -1,0 +1,151 @@
+; Exceptions: a call or a checked division that may throw names its landing pad or leaves the function. Pads run the
+; destructors in order and end in resume; the log records throws as negative codes and destructors by the value of
+; their object.
+nir 1.0
+pointer #p0 = callee symbol "rt_throw"
+pointer #p1 = thunk symbol "rt_throw$thunk"
+pointer #p2 = destructor symbol "rt_destroy"
+pointer #p3 = callee symbol "rt_double"
+pointer #p4 = thunk symbol "rt_double$thunk"
+callee #c0 = external #p0 : (i64) -> void
+callee #c1 = external #p2 : (ptr) -> void attrs(noUnwind)
+callee #c2 = internal @thrower : (i64) -> void
+callee #c3 = external #p3 : (i64) -> i64
+callee #c4 = internal @innerDiv : (i32, i32) -> i32
+
+func export @plain : (i64) -> void {
+^b0(%0: i64):
+  call #c0(%0) unwind caller thunk #p1
+  ret
+}
+; run @plain(0) = 0
+; log
+; run @plain(3) throws runtime_error
+; log -3
+
+func export @guarded : (i64) -> void {
+  alloca 8 align 8
+^b0(%0: i64):
+  %1 = alloca 0
+  store %1, 42:i64
+  call #c0(%0) unwind ^b1 thunk #p1
+  call #c1(%1)
+  ret
+^b1 pad:
+  call #c1(%1)
+  resume
+}
+; run @guarded(0) = 0
+; log 42
+; run @guarded(5) throws runtime_error
+; log -5, 42
+
+; two objects: the one constructed last is destroyed first
+func export @twoObjects : (i64, i64) -> void {
+  alloca 8 align 8
+  alloca 8 align 8
+^b0(%0: i64, %1: i64):
+  %2 = alloca 0
+  %3 = alloca 1
+  store %2, 1:i64
+  call #c0(%0) unwind ^b1 thunk #p1
+  store %3, 2:i64
+  call #c0(%1) unwind ^b2 thunk #p1
+  call #c1(%3)
+  call #c1(%2)
+  ret
+^b1 pad:
+  call #c1(%2)
+  resume
+^b2 pad:
+  call #c1(%3)
+  br ^b1
+}
+; run @twoObjects(0, 0) = 0
+; log 2, 1
+; run @twoObjects(4, 0) throws runtime_error
+; log -4, 1
+; run @twoObjects(0, 6) throws runtime_error
+; log -6, 2, 1
+
+func @thrower : (i64) -> void {
+^b0(%0: i64):
+  call #c0(%0) unwind caller thunk #p1
+  ret
+}
+
+; the exception of an internal callee reaches the pad of its caller
+func export @outer : (i64) -> void {
+  alloca 8 align 8
+^b0(%0: i64):
+  %1 = alloca 0
+  store %1, 7:i64
+  call #c2(%0) unwind ^b1
+  call #c1(%1)
+  ret
+^b1 pad:
+  call #c1(%1)
+  resume
+}
+; run @outer(0) = 0
+; log 7
+; run @outer(9) throws runtime_error
+; log -9, 7
+
+; and the exception of a checked division
+func export @divguard : (i64, i64) -> i64 {
+  alloca 8 align 8
+^b0(%0: i64, %1: i64):
+  %2 = alloca 0
+  store %2, 11:i64
+  %4 = div.s.checked %0, %1 unwind ^b1
+  call #c1(%2)
+  ret %4
+^b1 pad:
+  call #c1(%2)
+  resume
+}
+; run @divguard(10, 2) = 5
+; log 11
+; run @divguard(10, 0) throws ArithmeticException
+; log 11
+
+func export @divleave : (i32, i32) -> i32 {
+^b0(%0: i32, %1: i32):
+  %2 = rem.u.checked %0, %1 unwind caller
+  ret %2
+}
+; run @divleave(9, 4) = 1
+; run @divleave(9, 0) throws ArithmeticException
+
+; a division in a callee, no cleanup anywhere: the exception passes through both frames
+func @innerDiv : (i32, i32) -> i32 {
+^b0(%0: i32, %1: i32):
+  %2 = div.s.checked %0, %1 unwind caller
+  ret %2
+}
+func export @callsDiv : (i32, i32) -> i32 {
+^b0(%0: i32, %1: i32):
+  %2 = call #c4(%0, %1) unwind caller
+  %3 = add %2, 1:i32
+  ret %3
+}
+; run @callsDiv(9, 3) = 4
+; run @callsDiv(9, 0) throws ArithmeticException
+
+; an indirect call that may throw
+func export @indirectGuard : (i64) -> i64 {
+  alloca 8 align 8
+^b0(%0: i64):
+  %1 = alloca 0
+  store %1, 3:i64
+  %3 = funcaddr #c3
+  %4 = call.indirect %3(%0) : (i64) -> i64 unwind ^b1 thunk #p4
+  call #c1(%1)
+  ret %4
+^b1 pad:
+  call #c1(%1)
+  resume
+}
+; run @indirectGuard(21) = 42
+; log 3

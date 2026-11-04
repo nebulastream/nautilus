@@ -14,6 +14,9 @@ if (ENABLE_TBC_BACKEND)
             TBCExecutable.cpp
             TBCInterpreter.cpp
             TBCLoweringProvider.cpp
+            TBCNirBackend.cpp
+            TBCNirLowering.cpp
+            TBCProgramSetup.cpp
             TBCVm.cpp
     )
 

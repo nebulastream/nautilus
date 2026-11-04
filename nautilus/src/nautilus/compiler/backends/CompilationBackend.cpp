@@ -10,6 +10,7 @@
 #include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #endif
 #ifdef ENABLE_TBC_BACKEND
+#include "nautilus/compiler/backends/nir/NirChainBackend.hpp"
 #include "nautilus/compiler/backends/tbc/TBCBackend.hpp"
 #endif
 #include "nautilus/exceptions/RuntimeException.hpp"
@@ -26,6 +27,7 @@ CompilationBackendRegistry::CompilationBackendRegistry() {
 #endif
 #ifdef ENABLE_TBC_BACKEND
 	items["tbc"] = std::make_unique<tbc::TBCBackend>();
+	items["nirtbc"] = std::make_unique<nirbackend::NirChainBackend>();
 #endif
 #ifdef ENABLE_C_BACKEND
 	items["cpp"] = std::make_unique<cpp::CPPCompilationBackend>();

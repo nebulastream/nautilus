@@ -82,6 +82,9 @@ struct TBCProgram {
 	~TBCProgram();
 
 	std::vector<TBCFunction> functions;
+	/// Keeps what the code refers to by address alive: for a program lowered from NIR, the module with its data
+	/// objects.
+	std::shared_ptr<const void> owner;
 	/// Name -> function slot. Used by TBCExecutable to resolve a function the
 	/// *user* asks for by name; not a lowering-time predicate.
 	std::unordered_map<std::string, uint32_t> functionIndex;

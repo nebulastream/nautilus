@@ -12,6 +12,7 @@
 #include <chrono>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
+#include <fstream>
 #include <iomanip>
 #include <random>
 #include <sstream>
@@ -37,6 +38,7 @@
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
 #include "nautilus/compiler/ir/passes/StrengthReductionPass.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
+#include "nautilus/conversion/Conversion.hpp"
 #include "nautilus/nir/Printer.hpp"
 #include "nautilus/nir/Verifier.hpp"
 #include "nautilus/tracing/CopyAttribution.hpp"
@@ -259,8 +261,11 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		statistics->set("tracing.rerun.paused.ms", t.rerunPausedMs);
 	}
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
-	if (const bool verifyNir = moduleOptions.getOptionOrDefault("tracing.verifyNir", false);
-	    verifyNir || dumpHandler.shouldDump("after_nir_tracing")) {
+	const auto nirAttributesFile = moduleOptions.getOptionOrDefault<std::string>("tracing.nirAttributesFile", "");
+	const bool nirChain = moduleOptions.getOptionOrDefault("tracing.nirChain", false);
+	std::shared_ptr<const nir::Module> chainModule;
+	if (const bool verifyNir = moduleOptions.getOptionOrDefault("tracing.verifyNir", false) || nirChain;
+	    verifyNir || !nirAttributesFile.empty() || dumpHandler.shouldDump("after_nir_tracing")) {
 		try {
 			auto nirModule = tracing::nirtrace::toPreSSA(*traceModule);
 			dumpHandler.dump("after_nir_tracing", "nir", [&]() { return nir::print(nirModule); });
@@ -273,8 +278,50 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 					}
 					throw RuntimeException(message + "\n" + nir::print(nirModule));
 				}
+				// and so must its conversion to SSA
 			}
-		} catch (const RuntimeException&) {
+			if (verifyNir || !nirAttributesFile.empty() || statistics != nullptr) {
+				conversion::ConversionStatistics conversionStats;
+				const auto conversionStart = std::chrono::steady_clock::now();
+				auto ssa = conversion::convert(nirModule, {}, &conversionStats);
+				if (statistics != nullptr) {
+					statistics->recordTimingMs("conversion.ms", conversionStart);
+					statistics->set("conversion.instructions", static_cast<int64_t>(conversionStats.instructions));
+					statistics->set("conversion.phis", static_cast<int64_t>(conversionStats.phis));
+					statistics->set("conversion.removedPhis", static_cast<int64_t>(conversionStats.removedPhis));
+					statistics->set("conversion.folded", static_cast<int64_t>(conversionStats.folded));
+					statistics->set("conversion.cse", static_cast<int64_t>(conversionStats.cse));
+					statistics->set("conversion.refoldSweeps", static_cast<int64_t>(conversionStats.refoldSweeps));
+					statistics->set("conversion.refoldedInsts", static_cast<int64_t>(conversionStats.refoldedInsts));
+					statistics->set("conversion.deadBlocks", static_cast<int64_t>(conversionStats.deadBlocks));
+					statistics->set("conversion.deadValues", static_cast<int64_t>(conversionStats.deadValues));
+					statistics->set("conversion.foldedBranches", static_cast<int64_t>(conversionStats.foldedBranches));
+					statistics->set("conversion.loops", static_cast<int64_t>(conversionStats.loops));
+				}
+				if (verifyNir) {
+					auto diagnostics = nir::verify(ssa);
+					if (!diagnostics.empty()) {
+						std::string message = "the SSA NIR converted from the trace does not verify:";
+						for (const auto& d : diagnostics) {
+							message += "\n  " + d.str();
+						}
+						throw RuntimeException(message + "\n" + nir::print(ssa) + "\nfrom\n" + nir::print(nirModule));
+					}
+				}
+				if (!nirAttributesFile.empty()) {
+					// the guarantee bits the attribute pre-pass derived, one line per internal function: name, bits
+					std::ofstream out(nirAttributesFile, std::ios::app);
+					for (const auto& f : ssa.functions) {
+						if (f.visibility == static_cast<uint8_t>(nir::Visibility::Internal)) {
+							out << ssa.name(f.nameId) << '\t' << (f.attrs & nir::GUARANTEE_MASK) << '\n';
+						}
+					}
+				}
+				if (nirChain) {
+					chainModule = std::make_shared<const nir::Module>(std::move(ssa));
+				}
+			}
+		} catch (const std::exception&) {
 			// a dump must not fail a compilation; the verification exists to fail it
 			if (verifyNir) {
 				throw;
@@ -291,6 +338,9 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	auto ir = tracing::TraceToIRConversionPhase().apply(std::move(traceModule), *irArenaPool_, compilationId);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("irGeneration.ms", irGenStart);
+	}
+	if (chainModule) {
+		ir->setNirModule(std::move(chainModule));
 	}
 	if (statistics != nullptr) {
 		const auto snapshot = ir::computeStatistics(*ir);

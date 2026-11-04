@@ -1,0 +1,178 @@
+; Casts (13 §5.5): extensions, truncation, integer to float, saturating float to integer (D11), float resizing, bit
+; casts and pointer casts.
+nir 1.0
+
+func export @sext8 : (i8 sext) -> i64 {
+^b0(%0: i8):
+  %1 = cast.sext %0 : i64
+  ret %1
+}
+; run @sext8(-1) = -1
+; run @sext8(127) = 127
+
+func export @zext8 : (i8 zext) -> i64 {
+^b0(%0: i8):
+  %1 = cast.zext %0 : i64
+  ret %1
+}
+; run @zext8(255) = 255
+
+func export @sext32 : (i32) -> i64 {
+^b0(%0: i32):
+  %1 = cast.sext %0 : i64
+  ret %1
+}
+; run @sext32(-5) = -5
+
+func export @zext32 : (i32) -> i64 {
+^b0(%0: i32):
+  %1 = cast.zext %0 : i64
+  ret %1
+}
+; run @zext32(-1) = 4294967295
+
+func export @trunc : (i64) -> i16 sext {
+^b0(%0: i64):
+  %1 = cast.trunc %0 : i16
+  ret %1
+}
+; run @trunc(65537) = 1
+; run @trunc(65535) = -1
+; run @trunc(-1) = -1
+
+func export @boolext : (bool zext) -> i32 {
+^b0(%0: bool):
+  %1 = cast.sext %0 : i32
+  ret %1
+}
+; run @boolext(true) = -1
+; run @boolext(false) = 0
+
+func export @boolzext : (bool zext) -> i32 {
+^b0(%0: bool):
+  %1 = cast.zext %0 : i32
+  ret %1
+}
+; run @boolzext(true) = 1
+
+func export @sitofp : (i64) -> f64 {
+^b0(%0: i64):
+  %1 = cast.sitofp %0 : f64
+  ret %1
+}
+; run @sitofp(-3) = -3.0
+; run @sitofp(9007199254740993) = 9007199254740992.0
+
+func export @uitofp : (i64) -> f64 {
+^b0(%0: i64):
+  %1 = cast.uitofp %0 : f64
+  ret %1
+}
+; run @uitofp(-1) = 18446744073709551616.0
+
+func export @uitofp32 : (i32) -> f32 {
+^b0(%0: i32):
+  %1 = cast.uitofp %0 : f32
+  ret %1
+}
+; run @uitofp32(-1) = 4294967296.0
+
+func export @fptosi32 : (f64) -> i32 {
+^b0(%0: f64):
+  %1 = cast.fptosi %0 : i32
+  ret %1
+}
+; run @fptosi32(3.9) = 3
+; run @fptosi32(-3.9) = -3
+; run @fptosi32(3000000000.0) = 2147483647
+; run @fptosi32(-3000000000.0) = -2147483648
+; run @fptosi32(nan) = 0
+; run @fptosi32(2147483647.0) = 2147483647
+; run @fptosi32(2147483648.0) = 2147483647
+
+func export @fptosi64 : (f64) -> i64 {
+^b0(%0: f64):
+  %1 = cast.fptosi %0 : i64
+  ret %1
+}
+; run @fptosi64(1e30) = 9223372036854775807
+; run @fptosi64(-1e30) = -9223372036854775808
+; run @fptosi64(-9223372036854775808.0) = -9223372036854775808
+; run @fptosi64(nan) = 0
+
+func export @fptoui32 : (f32) -> i32 {
+^b0(%0: f32):
+  %1 = cast.fptoui %0 : i32
+  ret %1
+}
+; run @fptoui32(3.9) = 3
+; run @fptoui32(-3.9) = 0
+; run @fptoui32(5000000000.0) = -1
+; run @fptoui32(nan) = 0
+; run @fptoui32(4294967040.0) = -256
+
+func export @fptoui64 : (f64) -> i64 {
+^b0(%0: f64):
+  %1 = cast.fptoui %0 : i64
+  ret %1
+}
+; run @fptoui64(1e30) = -1
+; run @fptoui64(-1.0) = 0
+; run @fptoui64(18446744073709549568.0) = -2048
+
+func export @fptosi8 : (f64) -> i8 sext {
+^b0(%0: f64):
+  %1 = cast.fptosi %0 : i8
+  ret %1
+}
+; run @fptosi8(127.9) = 127
+; run @fptosi8(128.0) = 127
+; run @fptosi8(-129.0) = -128
+; run @fptosi8(-128.5) = -128
+
+func export @fptoui16 : (f64) -> i16 zext {
+^b0(%0: f64):
+  %1 = cast.fptoui %0 : i16
+  ret %1
+}
+; run @fptoui16(65535.9) = 65535
+; run @fptoui16(65536.0) = 65535
+; run @fptoui16(-0.5) = 0
+
+func export @fpext : (f32) -> f64 {
+^b0(%0: f32):
+  %1 = cast.fpext %0 : f64
+  ret %1
+}
+; run @fpext(1.5) = 1.5
+
+func export @fptrunc : (f64) -> f32 {
+^b0(%0: f64):
+  %1 = cast.fptrunc %0 : f32
+  ret %1
+}
+; run @fptrunc(0.1) = 0.1
+
+func export @bitcasts : (f64) -> i64 {
+^b0(%0: f64):
+  %1 = cast.bitcast %0 : i64
+  ret %1
+}
+; run @bitcasts(1.0) = 4607182418800017408
+
+func export @bitcast32 : (i32) -> f32 {
+^b0(%0: i32):
+  %1 = cast.bitcast %0 : f32
+  ret %1
+}
+; run @bitcast32(1065353216) = 1.0
+
+func export @ptrs : (ptr) -> ptr {
+^b0(%0: ptr):
+  %1 = cast.ptrtoint %0 : i64
+  %2 = add %1, 8:i64
+  %3 = cast.inttoptr %2 : ptr
+  %4 = add %3, -8:i64
+  ret %4
+}
+; run @ptrs(null) = 0

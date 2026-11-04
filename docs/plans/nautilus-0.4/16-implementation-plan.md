@@ -192,6 +192,28 @@ opened as drafts early and kept up to date with the branch.
 | 18 | GPU production features and validation: shared memory, atomics, warp ops, math; device-code caching, artifacts carrying the NIR image; Metal benchmarks and validation tooling, `docs/gpu.md` | M7.5–M7.7 | 13, 17 | 5–12 |
 | 19 | Documentation, migration guide, release validation, merge and tag | M8.1–M8.3 | 13–18 | 2.5–7 |
 
+**State and next steps (end of the autoresearch session).** PRs 1–4 are open as
+a stack (#570 ← #571 ← #572 ← #573, all drafts). Open in them: M2.1's
+direct-recording tracer (#572 maps the 0.3 trace instead), the `NirChain`
+fixture and `useCount` (#573), and the reference machine, the published CI
+image and the callgrind identity check (#571, need an owner). Continue in
+this order:
+
+1. **PR 5 (M4.0, M4.1): backend interface, `nautilus-nir-run`, `tbc` on
+   NIR.** It needs only PR 2, and it is the missing piece for everything
+   open in the stack: `NirChain` (new tracer → conversion → `tbc`) can then
+   check #572 and #573 on every execution test and in the fuzzer.
+2. **`NirChain` and the rest of PR 4** (fixture, fuzz-replay and corpus
+   modes, the `nir-chain` CI leg, `useCount` if M3.8 is near).
+3. **M2.1 proper** (`FlatTrace`, tag map, index-based replay cursor,
+   allocation-counter test), validated through `NirChain`; then M2.0's
+   remaining measurements.
+4. **PR 6 (cut-over)** only when 1–3 are green; then PRs 7–8 in parallel.
+
+Housekeeping first: check that CI is green on the four heads (the
+`baselines-0.3` workflow was fixed on PR 2), and retarget stacked PRs to
+`nautilus-0.4` as their parents merge.
+
 **PR 1 status.** M1.1–M1.6 are implemented on `claude/nir-format-pr1` (code in `nautilus/src/nautilus/nir/`,
 tests in `nautilus/test/nir-tests/`, conformance material in `nautilus/test/data/nir-conformance/`). Where the code
 differs from the work packages above:
@@ -857,6 +879,23 @@ criteria: [03 §6](03-conversion-and-passes.md).
   returns the right result on `tbc` through `NirChain` (exceptions excepted
   until M3.5); the `conversion.*` keys are reported and unit-tested.
 
+- **Status (PR 4):** built: Braun construction with the loop-aware
+  layout, loop-assigned variable sets (a header reads a variable the loop
+  never assigns from its single entry block, `invariantHeaderReads`), the
+  refold sweep (at most three sweeps over the emitted blocks,
+  `refoldSweeps`/`refoldedInsts`), the dead-value sweep and the
+  `conversion.*` keys (`.ms`, `.instructions`, `.phis`, `.removedPhis`,
+  `.folded`, `.cse`, `.refoldSweeps`, `.refoldedInsts`, `.deadBlocks`,
+  `.deadValues`, `.foldedBranches`, `.loops`; reported when the pipeline
+  builds the NIR, checked in `CompilationStatisticsTest`). Not built:
+  `useCount` during emission (nothing consumes it before M3.8), and the
+  corpus op-count mode of `NirChain`. The fuzzer replay runs the chain as the
+  peers `nir-tbc` and `nir-tbc-jit` (smoke corpus and seeds pass; it found a
+  tracer mapping and a conversion layout bug, both fixed). The execution-test mode exists:
+  the pseudo-backends `nir-tbc` and `nir-tbc-jit` (`tracing.nirChain`: 0.3
+  tracer, `toPreSSA`, conversion, `tbc` on NIR) run every execution test, and
+  all pass.
+
 #### M3.2 Folding and simplification rules · M · deps: M3.1
 - **Builds:** the rules of `ConstantFoldingAndCopyPropagationPass` and
   `AlgebraicSimplificationPass` as builder rules, IEEE-strict (D11: no
@@ -900,6 +939,13 @@ criteria: [03 §6](03-conversion-and-passes.md).
   store in one arm; a load in a loop header with a store in the body.
 - **Done when:** `.nir` tests for each CSE case pass; the fuzzer is clean
   through the `NirChain` mode (M3.1) with block-local CSE on.
+
+- **Status (PR 4):** extended-basic-block CSE for pure values, loads and
+  calls of readonly-or-pure, `willReturn`, `noUnwind` callees, keyed on a
+  memory epoch that stores and possibly-writing calls renew and that every
+  block with several predecessors starts anew (`.nir` tests for the
+  if/else join and the loop header included). Dominator-scoped CSE is not
+  built; it waits for fuzzing through `NirChain`.
 
 #### M3.5 Landing pads · M · deps: M3.1, M3.6
 - **Builds:** cleanup lists → shared landing pads keyed by ordered

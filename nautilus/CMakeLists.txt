@@ -51,6 +51,11 @@ if (ENABLE_STACKTRACE)
     target_link_libraries(nautilus PRIVATE Backward::Interface)
 endif ()
 
+if (ENABLE_TBC_BACKEND)
+    # tools/nir-run links the library, so it is added after the target is complete
+    add_subdirectory(${PROJECT_SOURCE_DIR}/tools/nir-run ${CMAKE_CURRENT_BINARY_DIR}/tools/nir-run)
+endif ()
+
 if (ENABLE_TESTS)
     enable_testing()
     add_subdirectory(test)
