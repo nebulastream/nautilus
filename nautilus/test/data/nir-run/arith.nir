@@ -1,0 +1,100 @@
+; Integer and float arithmetic, bitwise operations and logic (13 §5.1-5.3).
+nir 1.0
+
+func export @add64 : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = add %0, %1
+  ret %2
+}
+; run @add64(3, 4) = 7
+; run @add64(9223372036854775807, 1) = -9223372036854775808
+
+func export @narrow : (i8 sext, i8 sext) -> i8 sext {
+^b0(%0: i8, %1: i8):
+  %2 = add %0, %1
+  %3 = mul %2, %1
+  %4 = sub %3, %0
+  ret %4
+}
+; run @narrow(100, 100) = -68
+; run @narrow(-128, -1) = 1
+; run @narrow(127, 127) = -125
+
+func export @sub32 : (i32, i32) -> i32 {
+^b0(%0: i32, %1: i32):
+  %2 = sub %0, %1
+  ret %2
+}
+; run @sub32(0, 1) = -1
+; run @sub32(-2147483648, 1) = 2147483647
+
+func export @mulc : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = mul %0, 3:i64
+  %2 = add %1, 7:i64
+  ret %2
+}
+; run @mulc(5) = 22
+
+func export @bits : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = band %0, %1
+  %3 = bor %2, 16:i64
+  %4 = bxor %3, %1
+  %5 = bnot %4
+  ret %5
+}
+; run @bits(12, 10) = -19
+
+func export @bnot32 : (i32) -> i32 {
+^b0(%0: i32):
+  %1 = bnot %0
+  ret %1
+}
+; run @bnot32(0) = -1
+; run @bnot32(5) = -6
+
+func export @flt : (f64, f64) -> f64 {
+^b0(%0: f64, %1: f64):
+  %2 = add %0, %1
+  %3 = sub %2, 0.5:f64
+  %4 = mul %3, %0
+  %5 = div %4, %1
+  %6 = fneg %5
+  ret %6
+}
+; run @flt(2.0, 4.0) = -2.75
+
+func export @flt32 : (f32, f32) -> f32 {
+^b0(%0: f32, %1: f32):
+  %2 = mul %0, %1
+  %3 = add %2, 1:f32
+  ret %3
+}
+; run @flt32(1.5, 2.0) = 4.0
+
+func export @divzero : (f64) -> f64 {
+^b0(%0: f64):
+  %1 = div %0, 0:f64
+  ret %1
+}
+; run @divzero(0.0) = nan
+
+func export @frem : (f64, f64) -> f64 {
+^b0(%0: f64, %1: f64):
+  %2 = rem %0, %1
+  ret %2
+}
+; run @frem(7.5, 2.0) = 1.5
+; run @frem(-7.5, 2.0) = -1.5
+
+func export @logic : (bool zext, bool zext) -> bool zext {
+^b0(%0: bool, %1: bool):
+  %2 = and %0, %1
+  %3 = not %1
+  %4 = or %2, %3
+  ret %4
+}
+; run @logic(true, true) = true
+; run @logic(true, false) = true
+; run @logic(false, true) = false
