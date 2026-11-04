@@ -1,0 +1,41 @@
+; Register reuse of the tbc lowering: a block-local temporary gives its register back after its last use, which is
+; the last use over all operands of an instruction, select's third one included.
+nir 1.0
+
+; the false operand of the select is also read by the compare in front of it (the fuzzer's safe divisor)
+func export @safeDivisor : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = bor %0, 1:i64
+  %2 = cmp.eq %1, -1:i64
+  %3 = select %2, 1:i64, %1
+  ret %3
+}
+; run @safeDivisor(-2) = 1
+; run @safeDivisor(4) = 5
+; run @safeDivisor(0) = 1
+
+; the same, feeding a checked division
+func export @divBySafe : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = bor %1, 1:i64
+  %3 = cmp.eq %2, -1:i64
+  %4 = select %3, 1:i64, %2
+  %5 = div.s.checked %0, %4 unwind caller
+  ret %5
+}
+; run @divBySafe(100, 4) = 20
+; run @divBySafe(100, -2) = 100
+
+; a value whose only use in another block is the third operand of a select
+func export @selectAcrossBlocks : (i64, bool zext) -> i64 {
+^b0(%0: i64, %1: bool):
+  %2 = add %0, 7:i64
+  br ^b1
+^b1:
+  %4 = add %0, 1:i64
+  %5 = add %4, 2:i64
+  %6 = select %1, %5, %2
+  ret %6
+}
+; run @selectAcrossBlocks(10, true) = 13
+; run @selectAcrossBlocks(10, false) = 17
