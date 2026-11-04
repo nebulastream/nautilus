@@ -5,6 +5,8 @@
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/extensions/ExtensionRegistry.hpp"
 #include "nautilus/nir/Inst.hpp"
+#include "nautilus/nir/Operands.hpp"
+#include "nautilus/nir/Uses.hpp"
 #include <cstring>
 #include <functional>
 #include <map>
@@ -89,7 +91,7 @@ public:
 	Lowering(const nir::Module& module, uint32_t function, TBCProgram& program, TBCFunction& out,
 	         const nirbackend::HostEnvironment& host)
 	    : m_(module), f_(function), rec_(module.functions[function]), insts_(module.functionInsts(function)),
-	      blocks_(module.functionBlocks(function)), program_(program), out_(out), host_(host) {
+	      blocks_(module.functionBlocks(function)), program_(program), out_(out), host_(host), uses_(module, function) {
 	}
 
 	void run() {
@@ -110,6 +112,7 @@ public:
 			}
 		}
 		out_.argRegs = argRegs_[0];
+		classifyValues();
 
 		// one pinned register per alloca, laid out with its alignment; the pointers are computed at frame-push time
 		uint32_t allocaOffset = 0;
@@ -147,6 +150,7 @@ private:
 	TBCProgram& program_;
 	TBCFunction& out_;
 	const nirbackend::HostEnvironment& host_;
+	nir::UseTable uses_;
 
 	uint32_t nextRegister_ = 0;
 	std::vector<uint32_t> regOf_; // value id -> register
@@ -157,11 +161,19 @@ private:
 	std::map<std::pair<uint64_t, uint32_t>, uint16_t> constRegs_; // (bits, constant pool index or ~0) -> register
 	std::vector<uint16_t> scratch_;
 
+	// Register reuse: a value that is defined and used only inside one block (a block-local temporary) takes its
+	// register from `freeRegs_` and gives it back after its last use. Values that cross a block edge, block parameters
+	// and constants keep a register of their own, so no liveness over loops or unwind edges is needed.
+	std::vector<char> localTemp_; // value id -> block-local temporary
+	std::vector<char> pooled_;    // value id -> the register came from the pool and is not yet released
+	std::vector<uint16_t> freeRegs_;
+
 	// ---- code and labels --------------------------------------------------------------------------------------
 
 	struct Fixup {
-		uint32_t at;
-		uint32_t label;
+		uint32_t at;    // the instruction the offset is relative to
+		uint32_t label; // the branch target
+		bool loHi;      // the offset sits in the a|b words of the second word of a fused branch (at + 1)
 	};
 	std::vector<int32_t> labelPos_;
 	std::vector<Fixup> fixups_;
@@ -188,8 +200,14 @@ private:
 	}
 	/// An instruction whose b|c words hold the offset of a label, patched when all labels are bound.
 	void emitBranch(Op op, uint16_t a, uint32_t label) {
-		fixups_.push_back({static_cast<uint32_t>(out_.code.size()), label});
+		fixups_.push_back({static_cast<uint32_t>(out_.code.size()), label, false});
 		emit(op, a);
+	}
+	/// A fused compare-and-branch: two words, the second one holds the offset (as in the 0.3 lowering).
+	void emitFusedBranch(Op op, uint16_t l, uint16_t r, uint32_t label) {
+		fixups_.push_back({static_cast<uint32_t>(out_.code.size()), label, true});
+		emit(op, l, r);
+		emit(Op::TRAP);
 	}
 	void jump(uint32_t label) {
 		emitBranch(Op::JMP, 0, label);
@@ -202,8 +220,13 @@ private:
 				throw RuntimeException("tbc: a branch to a label that was never bound");
 			}
 			const auto packed = static_cast<uint32_t>(target - static_cast<int32_t>(fixup.at));
-			out_.code[fixup.at].b = static_cast<uint16_t>(packed & 0xFFFF);
-			out_.code[fixup.at].c = static_cast<uint16_t>(packed >> 16);
+			if (fixup.loHi) {
+				out_.code[fixup.at + 1].a = static_cast<uint16_t>(packed & 0xFFFF);
+				out_.code[fixup.at + 1].b = static_cast<uint16_t>(packed >> 16);
+			} else {
+				out_.code[fixup.at].b = static_cast<uint16_t>(packed & 0xFFFF);
+				out_.code[fixup.at].c = static_cast<uint16_t>(packed >> 16);
+			}
 		}
 	}
 
@@ -253,9 +276,57 @@ private:
 	}
 
 	uint16_t defineResult(uint32_t id) {
-		const auto r = newRegister();
+		uint16_t r;
+		if (localTemp_[id] && !freeRegs_.empty()) {
+			r = freeRegs_.back();
+			freeRegs_.pop_back();
+			pooled_[id] = 1;
+		} else {
+			r = newRegister();
+			pooled_[id] = localTemp_[id];
+		}
 		regOf_[id] = r;
 		return r;
+	}
+
+	/// Marks the values that are defined and used inside one block.
+	void classifyValues() {
+		const auto count = static_cast<uint32_t>(insts_.size());
+		localTemp_.assign(count, 0);
+		pooled_.assign(count, 0);
+		for (uint32_t b = 0; b < blocks_.size(); ++b) {
+			const auto& block = blocks_[b];
+			for (uint32_t id = block.first + block.argCount; id < block.first + block.count; ++id) {
+				bool local = true;
+				for (const auto user : uses_.users(id)) {
+					if (user < block.first || user >= block.first + block.count) {
+						local = false;
+						break;
+					}
+				}
+				localTemp_[id] = local;
+			}
+		}
+	}
+
+	/// Gives the registers of the temporaries back whose last use is `id`. An instruction that reads all its operands
+	/// before it writes its result calls it before `defineResult`, so that the result can take an operand's register.
+	void releaseOperands(uint32_t id) {
+		nir::forEachRef(insts_[id], m_.extra.data(), nir::Level::SSA, [&](nir::Ref r) {
+			if (nir::isValueRef(r) && pooled_[r] && uses_.users(r).back() == id) {
+				pooled_[r] = 0;
+				freeRegs_.push_back(static_cast<uint16_t>(regOf_[r]));
+			}
+		});
+	}
+
+	/// Gives the registers of the temporaries back whose last use is `id`, and the result's own when it is never used.
+	void releaseAfter(uint32_t id) {
+		releaseOperands(id);
+		if (pooled_[id] && uses_.useCount(id) == 0) {
+			pooled_[id] = 0;
+			freeRegs_.push_back(static_cast<uint16_t>(regOf_[id]));
+		}
 	}
 
 	// ---- blocks -----------------------------------------------------------------------------------------------
@@ -266,6 +337,7 @@ private:
 		const auto& block = blocks_[b];
 		for (uint32_t k = block.argCount; k < block.count; ++k) {
 			lowerInstruction(block.first + k);
+			releaseAfter(block.first + k);
 		}
 	}
 
@@ -330,6 +402,7 @@ private:
 			return lowerCast(id, inst);
 		case N::Load: {
 			const auto address = reg(inst.a);
+			releaseOperands(id);
 			const auto dst = defineResult(id);
 			emit(memoryOp(Op::LOAD_i8, static_cast<TypeId>(inst.type)), dst, address);
 			return;
@@ -392,12 +465,65 @@ private:
 
 	void lowerArithmetic(N op, uint32_t id, const nir::Inst& inst) {
 		const Op base = op == N::Add ? Op::ADD_i8 : op == N::Sub ? Op::SUB_i8 : Op::MUL_i8;
+		const auto type = static_cast<TypeId>(inst.type);
+		const int index = familyIndex(type, false);
+		// a small constant operand folds into the 16-bit immediate of the i32/i64 forms (`c` of the instruction)
+		if (index == 2 || index == 3) {
+			nir::Ref value = inst.a, constant = inst.b;
+			if (!nir::isConstRef(constant) && nir::isConstRef(value) && op != N::Sub) {
+				std::swap(value, constant); // add and mul commute
+			}
+			int64_t imm;
+			if (nir::isConstRef(constant) && !nir::isConstRef(value) && smallImmediate(constant, type, imm)) {
+				const auto l = reg(value);
+				releaseOperands(id);
+				const auto dst = defineResult(id);
+				const Op immBase = op == N::Add ? Op::ADD_imm_i32 : op == N::Sub ? Op::SUB_imm_i32 : Op::MUL_imm_i32;
+				emit(static_cast<Op>(opIndex(immBase) + (index == 3 ? 1 : 0)), dst, l, static_cast<uint16_t>(imm));
+				return;
+			}
+		}
 		const auto l = reg(inst.a), r = reg(inst.b);
+		releaseOperands(id);
 		const auto dst = defineResult(id);
-		emit(family(base, familyIndex(static_cast<TypeId>(inst.type), false)), dst, l, r);
+		emit(family(base, index), dst, l, r);
+	}
+
+	/// Whether the constant `r` of integer type `type` is representable as the sign-extended 16-bit immediate.
+	bool smallImmediate(nir::Ref r, TypeId type, int64_t& value) const {
+		const uint64_t bits = m_.consts.record(r).bits;
+		value = type == TypeId::I32 ? static_cast<int64_t>(static_cast<int32_t>(bits)) : static_cast<int64_t>(bits);
+		return value >= -32768 && value <= 32767;
+	}
+
+	/// The family index of a comparison, with the unsigned ordering of pointers and unsigned predicates applied.
+	int compareIndex(const nir::Inst& inst) const {
+		const unsigned predicate = inst.flags & 7;
+		const bool isUnsigned = (inst.flags & 8) != 0;
+		const auto type = typeOfRef(inst.a);
+		const bool unsignedOrder = isUnsigned || (type == TypeId::Ptr && predicate >= 2);
+		return familyIndex(type, unsignedOrder);
+	}
+
+	/// A comparison of i32 or i64 whose only user is the conditional branch right behind it: the branch compares and
+	/// jumps in one instruction (`tbc.superinstructions` of the 0.3 lowering).
+	bool fusesIntoBranch(uint32_t id) const {
+		const nir::Inst& inst = insts_[id];
+		if (static_cast<N>(inst.op) != N::Cmp || uses_.useCount(id) != 1 || id + 1 >= insts_.size()) {
+			return false;
+		}
+		const nir::Inst& next = insts_[id + 1];
+		if (static_cast<N>(next.op) != N::CondBr || next.a != id) {
+			return false;
+		}
+		const int index = compareIndex(inst);
+		return index == 2 || index == 3;
 	}
 
 	void lowerCompare(uint32_t id, const nir::Inst& inst) {
+		if (fusesIntoBranch(id)) {
+			return; // emitted by the branch
+		}
 		const unsigned predicate = inst.flags & 7;
 		const bool isUnsigned = (inst.flags & 8) != 0;
 		const auto type = typeOfRef(inst.a);
@@ -405,6 +531,7 @@ private:
 		const bool unsignedOrder = isUnsigned || (type == TypeId::Ptr && predicate >= 2);
 		const auto index = familyIndex(type, unsignedOrder);
 		const auto l = reg(inst.a), r = reg(inst.b);
+		releaseOperands(id);
 		const auto dst = defineResult(id);
 		emit(static_cast<Op>(opIndex(Op::EQ_i8) + static_cast<int>(predicate) * 10 + index), dst, l, r);
 	}
@@ -635,10 +762,23 @@ private:
 		const uint32_t falseBlock = list[2 + trueArgc];
 		const uint32_t falseArgc = list[3 + trueArgc];
 		std::span<const uint32_t> falseArgs(list + 4 + trueArgc, falseArgc);
-		const auto cond = reg(inst.a);
+		const bool fused = !nir::isConstRef(inst.a) && fusesIntoBranch(inst.a);
+		const nir::Inst* cmp = fused ? &insts_[inst.a] : nullptr;
+		const auto cond = fused ? uint16_t {0} : reg(inst.a);
+		// jumps to `label` when the condition holds
+		auto branchTo = [&](uint32_t label) {
+			if (fused) {
+				const unsigned predicate = cmp->flags & 7;
+				const auto op =
+				    static_cast<Op>(opIndex(Op::CJMP_EQ_i32) + predicate * 2 + (compareIndex(*cmp) == 3 ? 1 : 0));
+				emitFusedBranch(op, reg(cmp->a), reg(cmp->b), label);
+			} else {
+				emitBranch(Op::CJMP, cond, label);
+			}
+		};
 
 		if (trueArgc == 0 && falseArgc == 0) {
-			emitBranch(Op::CJMP, cond, blockLabel_[trueBlock]);
+			branchTo(blockLabel_[trueBlock]);
 			if (falseBlock != nextBlock_) {
 				jump(blockLabel_[falseBlock]);
 			}
@@ -646,7 +786,7 @@ private:
 		}
 		// arguments to pass: the true edge gets a stub after the function body, the false edge falls through
 		const auto stub = newLabel();
-		emitBranch(Op::CJMP, cond, stub);
+		branchTo(stub);
 		parallelCopy(falseBlock, falseArgs);
 		if (falseBlock != nextBlock_) {
 			jump(blockLabel_[falseBlock]);
