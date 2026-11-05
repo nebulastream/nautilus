@@ -27,7 +27,7 @@ public:
 	/// The record id, or `nir::NONE`.
 	[[nodiscard]] uint32_t find(const Snapshot& key) const {
 		size_t slot = hashOf(key) & mask_;
-		while (table_[slot].key.getTag() != nullptr) {
+		while (table_[slot].epoch == epoch_) {
 			if (table_[slot].key == key) {
 				return table_[slot].op;
 			}
@@ -36,16 +36,19 @@ public:
 		return nir::NONE;
 	}
 	void set(const Snapshot& key, uint32_t op);
-	/// Empties the map; a table that grew beyond @p keepCapacity slots is replaced by a small one.
-	void clear(size_t keepCapacity = 4096);
+	/// Empties the map in constant time (the entries of an earlier epoch count as free); a table that grew beyond
+	/// @p keepCapacity slots is replaced by a small one, so the next trace of a thread starts with the table the last
+	/// one needed and does not grow it again.
+	void clear(size_t keepCapacity = 65536);
 	[[nodiscard]] size_t size() const {
 		return size_;
 	}
 
 private:
 	struct Entry {
-		Snapshot key; // an unset snapshot (no tag) marks a free slot: a real snapshot always has a tag
+		Snapshot key;
 		uint32_t op;
+		uint32_t epoch; // a slot is in use if this is the map's current epoch
 	};
 	static size_t hashOf(const Snapshot& key) {
 		// the tag is a node of the trie (an aligned address), the static hash is already mixed
@@ -54,10 +57,11 @@ private:
 		return static_cast<size_t>(h ^ (h >> 29));
 	}
 	void grow();
-	/// Zero-filled, which is a free slot: obtained from `calloc`, so that a table no function fills costs a page
-	/// map instead of a constructor per entry.
+	/// Zero-filled, which is a free slot (epoch 0): obtained from `calloc`, so that a table no function fills costs a
+	/// page map instead of a constructor per entry.
 	Entry* table_ = nullptr;
 	size_t capacity_ = 0, mask_ = 0, size_ = 0;
+	uint32_t epoch_ = 1;
 };
 
 enum RecordFlags : uint8_t {

@@ -123,6 +123,7 @@ struct WriteScratch {
 	std::vector<uint32_t> newBlockId, order, post, position, hoistedVars, newId, slotOf;
 	std::vector<uint8_t> state, hoisted;
 	std::vector<Type> paramTypes;
+	std::vector<nir::Inst> blockInsts;
 	std::vector<nir::TypeWord> params;
 	struct Frame {
 		uint32_t block;
@@ -149,6 +150,7 @@ struct WriteScratch {
 		drop(state);
 		drop(hoisted);
 		drop(stack);
+		drop(blockInsts);
 	}
 };
 
@@ -216,6 +218,7 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 	const auto& order = scratch.order;
 
 	// the signature: the parameters in position order, and the type of what the function returns
+	auto& blockInsts = scratch.blockInsts;
 	auto& paramTypes = scratch.paramTypes;
 	paramTypes.clear();
 	for (auto record : trace.parameters) {
@@ -337,25 +340,32 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 		}
 	}
 	for (uint32_t i = 0; i < order.size(); ++i) {
-		b.beginBlock();
+		blockInsts.clear();
+		const nir::Ref blockFirst = b.instCount();
 		if (i == 0) {
 			for (uint32_t p = 0; p < trace.parameters.size(); ++p) {
 				const auto record = trace.parameters[p];
-				if (b.emit(NOp::BlockArg, typeInfo(paramTypes[p]).id, 0, p) != newId[record]) {
+				if (blockFirst + blockInsts.size() != newId[record]) {
 					throw RuntimeException("NIR trace: the instruction numbering of the parameters moved");
 				}
+				blockInsts.push_back(nir::Inst {static_cast<uint16_t>(NOp::BlockArg),
+				                                static_cast<uint8_t>(typeInfo(paramTypes[p]).id), 0, p, 0, 0});
 			}
 			for (auto v : hoistedVars) {
 				const auto type = static_cast<TypeId>(trace.recs[v].type);
 				nir::Ref init;
 				if (type == TypeId::Ptr) {
-					init = b.emit(NOp::PtrConst, TypeId::Ptr, 0, nir::NONE);
+					init = static_cast<nir::Ref>(blockFirst + blockInsts.size());
+					blockInsts.push_back(nir::Inst {static_cast<uint16_t>(NOp::PtrConst),
+					                                static_cast<uint8_t>(TypeId::Ptr), 0, nir::NONE, 0, 0});
 				} else {
 					init = module.consts.intern(type, nir::Provenance::Literal, 0);
 				}
-				if (b.emit(NOp::Var, type, 0, init) != newId[v]) {
+				if (blockFirst + blockInsts.size() != newId[v]) {
 					throw RuntimeException("NIR trace: the instruction numbering of a hoisted variable moved");
 				}
+				blockInsts.push_back(
+				    nir::Inst {static_cast<uint16_t>(NOp::Var), static_cast<uint8_t>(type), 0, init, 0, 0});
 			}
 		}
 		for (auto id : trace.blocks[order[i]].ops) {
@@ -406,10 +416,12 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 				assign.b = out.a;
 				out = assign;
 			}
-			if (b.emit(out) != slotOf[id]) {
+			if (blockFirst + blockInsts.size() != slotOf[id]) {
 				throw RuntimeException("NIR trace: the instruction numbering of a block moved");
 			}
+			blockInsts.push_back(out);
 		}
+		b.appendPreSSABlock(blockInsts);
 	}
 	b.endFunction();
 	scratch.trim();
