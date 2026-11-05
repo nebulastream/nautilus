@@ -29,6 +29,10 @@ public:
 	Ref emit(const Inst& inst);
 	/// Closes the open function.
 	void endFunction();
+	/// Appends a whole pre-SSA block: the instructions in order and the block's id list (the ids are consecutive).
+	/// Equivalent to `beginBlock` and one `emit` each, without the per-instruction bookkeeping. Returns the id of the
+	/// first instruction. No block may be open, and use counts are not kept.
+	Ref appendPreSSABlock(std::span<const Inst> insts);
 
 	/// Whether `emit` counts the uses of the values (`useCount`); on by default. A producer that never asks switches
 	/// it off and saves a walk over the operands of every instruction.
