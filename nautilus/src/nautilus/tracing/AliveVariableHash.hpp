@@ -22,8 +22,35 @@ private:
 	friend size_t getStaticVarValue(const StaticVarHolder& holder);
 };
 
-/// The hash of the values of the static variables that are alive (TraceContext.cpp).
-uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data);
+/// The hash of the values of the static variables that are alive. Inline: it runs for every traced operation, and the
+/// common sizes of a static variable are read without a call to memcpy.
+inline uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
+	constexpr uint64_t fnvPrime = 0x100000001b3;
+	uint64_t hash = 0xcbf29ce484222325;
+	for (const auto& entry : data) {
+		uint64_t val = 0;
+		switch (entry.size) {
+		case 8:
+			std::memcpy(&val, entry.ptr, 8);
+			break;
+		case 4:
+			std::memcpy(&val, entry.ptr, 4);
+			break;
+		case 2:
+			std::memcpy(&val, entry.ptr, 2);
+			break;
+		case 1:
+			std::memcpy(&val, entry.ptr, 1);
+			break;
+		default:
+			std::memcpy(&val, entry.ptr, entry.size);
+			break;
+		}
+		hash ^= val;
+		hash *= fnvPrime;
+	}
+	return hash;
+}
 
 inline size_t getStaticVarValue(const StaticVarHolder& holder) {
 	size_t result = 0;
