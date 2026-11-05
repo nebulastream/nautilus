@@ -276,6 +276,20 @@ descent, about 20 % of a linear trace) and the `val<T>` bookkeeping. Chained `if
 number (every explored path replays the prefix before it, 0.07 / 1.6 / 11.8 ms for 10 / 100 / 300 ifs), on both
 tracers; each `if` in its own `region()` is linear (0.04 / 0.30 / 1.0 ms).
 
+**Where the tag cost goes, and what is left (#576).** Upper bounds, measured by stubbing the cost away on `straight(500)`
+(5.35 M Ir per trace at the time; the stubs are only valid on straight-line code): a free tag (stack walk plus trie
+descent) saves 1.56 M (29 %), of which the walk is about 0.5 M and the descent 0.85 M (six appends of 31 instructions per
+operation); the tag map's inserts and growth 0.83 M (18 % of the time); the `val<T>` reference counts 0.25 M (4.6 %). Done:
+a stack-keyed cache in front of the trie descent (shared with 0.3, same nodes), a tag map that clears in constant time and
+keeps its table across traces, inline `inTracer` / reference counts / static-variable hash, block-wise write-out, a leaner
+replay step. `straight(500)` 5.35 M -> 3.93 M, `calls(500)` 2.67 M -> 2.22 M, `chainedIf(100)` 14.3 M -> 12.3 M; the 0.3
+tracer gains 8-9 % on the same kernels, and is 4 % slower on `distinctSites1024` (every tag misses the new cache).
+Not done, and why: recording tags only at control-flow points does not work, because a merge or loop re-entry can be
+detected at any operation (the first one after the join), so every operation needs its program-point identity when it is
+recorded; the replay already needs no tag (it follows the cursor). What remains in a linear trace is about 870
+instructions per operation: the tag (about 160), the `val<T>` machinery and reference counts (about 150), the tag map
+(about 100) and the write-out (about 250). Chained `if`s stay quadratic.
+
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 9.
 
