@@ -117,3 +117,15 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
   `lower_ms` and `final_ms` columns split the backend). On the dev machine of M4.4 (Release, clang-21, one pinned core)
   `straight` 5000 costs 0.07 us per NIR instruction in the lowering and 0.28 in AsmJit's finalize (about 80% of the
   backend); the lowering's own work is under 10% of the instructions executed, so what is left is AsmJit's allocator.
+- Code-quality gaps against the 0.3 lowering (x86-64, `loop-diff.py` instruction counts of the loop bodies, run time
+  ratio NIR/0.3 in brackets): load plus widening cast is one `movsx`/`movzx` from memory, narrow8/16 13 -> 8 [0.56];
+  blocks that only branch are threaded and the post-RA peephole skips unreferenced labels, stride3 21 -> 16 [0.97],
+  countNonZero 9+6 -> 8 [0.65]; `a+b`/`a+c` is a `lea` only when `a` is used later in the block (otherwise the
+  register allocator coalesces the two-address form, which a `lea` would not); chains of constant adds fold into one
+  (`lowerAddChain`: manyArgsLoop 11 -> 9, 0.3 has 10). Open and not worth it so far: the `mov` of a loop-carried value on
+  the back edge (the allocator's choice), `setcc` partial writes and select by flags, demanded-bits removal of
+  extensions. Passing constant call arguments as invoke immediates only moved the move into the allocator.
+- Floor: AsmJit's finalize is about 0.3 us per NIR instruction on linear code (backend total about 0.37 against the
+  0.25 target); a `[Nautilus]` fast path in `queryRWInfo` would be worth at most 11-15% of it.
+- Not mirrored in `A64NirLowering.cpp` (no way to run AArch64 code in the sessions that wrote this): load plus
+  extension fusion, block threading, the `lea` rule, constant add chains, reassociation and constant block parameters.

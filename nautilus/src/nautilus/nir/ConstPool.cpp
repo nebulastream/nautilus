@@ -7,6 +7,15 @@ namespace nautilus::nir {
 namespace {
 uint64_t mix(uint64_t h, uint64_t v) {
 	h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+	// The index is open addressing with linear probing, so the low bits must be well mixed: for the sequential values
+	// of an unrolled loop (`r * 3 + i`) the combination above gives sequential hashes, which fill one cluster of slots
+	// that every lookup of a new constant then walks (80% of the time of a 10000-iteration trace). MurmurHash3's
+	// finalizer spreads them.
+	h ^= h >> 33;
+	h *= 0xff51afd7ed558ccdull;
+	h ^= h >> 33;
+	h *= 0xc4ceb9fe1a85ec53ull;
+	h ^= h >> 33;
 	return h;
 }
 } // namespace

@@ -294,10 +294,35 @@ uint32_t jccCondition(InstId id) noexcept {
 	return 16;
 }
 
+/// The labels that an instruction names: the target of a jump, the base of a RIP-relative address.
+std::vector<uint8_t> referencedLabels(BaseBuilder* cb) {
+	std::vector<uint8_t> referenced(cb->labelNodes().size(), 0);
+	for (BaseNode* node = cb->firstNode(); node != nullptr; node = node->next()) {
+		if (!node->isInst()) {
+			continue;
+		}
+		const auto* inst = node->as<InstNode>();
+		for (uint32_t i = 0; i < inst->opCount(); ++i) {
+			const Operand& op = inst->op(i);
+			uint32_t id = Globals::kInvalidId;
+			if (op.isLabel()) {
+				id = op.id();
+			} else if (op.isMem() && op.as<Mem>().hasBaseLabel()) {
+				id = op.as<Mem>().baseId();
+			}
+			if (id < referenced.size()) {
+				referenced[id] = 1;
+			}
+		}
+	}
+	return referenced;
+}
+
 /// Rules 3 and 4 (jump simplification) over the whole node list, once.
 /// Returns the number of jumps removed.
 int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 	int64_t removed = 0;
+	const auto referenced = referencedLabels(cb);
 	BaseNode* node = cb->firstNode();
 	while (node != nullptr) {
 		BaseNode* next = node->next();
@@ -324,8 +349,15 @@ int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 		// target itself (it directly follows the jcc), so folding it into the
 		// inverted conditional jump removes one taken branch from the path
 		// that previously went through it.
-		if (const uint32_t cond = jccCondition(inst->id()); cond < 16 && next != nullptr && next->isInst()) {
-			auto* jmp = next->as<InstNode>();
+		// (labels in between that no instruction names are the heads of blocks that were emitted empty: they do not
+		// make the jmp a branch target)
+		BaseNode* afterJcc = next;
+		while (afterJcc != nullptr && afterJcc->isLabel() && afterJcc->as<LabelNode>()->labelId() < referenced.size() &&
+		       referenced[afterJcc->as<LabelNode>()->labelId()] == 0) {
+			afterJcc = afterJcc->next();
+		}
+		if (const uint32_t cond = jccCondition(inst->id()); cond < 16 && afterJcc != nullptr && afterJcc->isInst()) {
+			auto* jmp = afterJcc->as<InstNode>();
 			const Label* condTarget = jumpTarget(inst);
 			const Label* jmpTarget = jmp->id() == Inst::kIdJmp ? jumpTarget(jmp) : nullptr;
 			if (condTarget != nullptr && jmpTarget != nullptr && isBoundDirectlyAfter(jmp, condTarget->id())) {

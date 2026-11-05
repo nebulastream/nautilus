@@ -1085,20 +1085,6 @@ void TraceContext::resolveCalleeNames(ExecutionTrace& trace, const engine::Optio
 	}
 }
 
-constexpr size_t fnv_prime = 0x100000001b3;
-constexpr size_t offset_basis = 0xcbf29ce484222325;
-
-uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
-	size_t hash = offset_basis;
-	for (auto& entry : data) {
-		uint64_t val = 0;
-		std::memcpy(&val, entry.ptr, entry.size);
-		hash ^= val;
-		hash *= fnv_prime;
-	}
-	return hash;
-}
-
 Snapshot TraceContext::recordSnapshot() {
 	++session_->stats_.snapshots;
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};

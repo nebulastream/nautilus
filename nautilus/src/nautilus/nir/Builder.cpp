@@ -1,5 +1,6 @@
 #include "nautilus/nir/Builder.hpp"
 #include <cassert>
+#include <numeric>
 #include <stdexcept>
 
 namespace nautilus::nir {
@@ -78,6 +79,23 @@ Ref Builder::emit(const Inst& inst) {
 		});
 	}
 	return id;
+}
+
+Ref Builder::appendPreSSABlock(std::span<const Inst> insts) {
+	assert(fn_ != NONE && !blockOpen_ && level() == Level::PreSSA);
+	const auto first = instCount();
+	if (static_cast<uint64_t>(first) + insts.size() > static_cast<uint64_t>(MAX_VALUE_ID) + 1) {
+		throw std::length_error("function has too many instructions");
+	}
+	m_.insts.insert(m_.insts.end(), insts.begin(), insts.end());
+	BlockRecord b {};
+	b.first = static_cast<uint32_t>(m_.extra.size());
+	b.count = static_cast<uint32_t>(insts.size());
+	m_.blocks.push_back(b);
+	m_.extra.resize(m_.extra.size() + insts.size());
+	std::iota(m_.extra.end() - static_cast<std::ptrdiff_t>(insts.size()), m_.extra.end(), first);
+	fn().blockCount++;
+	return first;
 }
 
 void Builder::reserve(size_t insts, size_t extraWords) {

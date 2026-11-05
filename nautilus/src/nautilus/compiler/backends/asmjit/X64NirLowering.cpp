@@ -139,6 +139,7 @@ struct AddressParts {
 constexpr uint8_t kConstValue = 1;  ///< a constant that no code defines: consumers fold or rematerialise it
 constexpr uint8_t kAddressPart = 2; ///< an address computation that every consumer folds into its memory operand
 constexpr uint8_t kScaledIndex = 4; ///< a scaled index that every address add folds
+constexpr uint8_t kFoldedAdd = 8;   ///< an add of a constant that its only user (an add of a constant) absorbs
 
 /// The state of the function being lowered, in arrays indexed by value id (the position of the instruction within the
 /// function) or block id.
@@ -148,13 +149,19 @@ struct Fn {
 	std::span<const nir::BlockRecord> blocks;
 	std::vector<BaseReg> regs;
 	std::vector<uint32_t> useCount;
+	std::vector<uint8_t> lastUse; ///< bit 0 / bit 1: operand a / b is not used again later in the block
 	std::vector<uint32_t> blockOf;
 	std::vector<uint32_t> addressUses; ///< uses as the address of a load or store in the block that defines the value
 	std::vector<uint32_t> scaledUses;  ///< uses as the scaled index of a foldable address add in the same block
 	std::vector<uint8_t> deferred;
 	std::vector<uint64_t> constBits;
+	std::vector<uint32_t> foldRoot;    ///< for a kFoldedAdd value: the value its chain of constant adds starts from
+	std::vector<uint32_t> soleUser;    ///< for a value with one use: the instruction that uses it
+	std::vector<uint8_t> fusedLoad;    ///< a cast whose load already widened the value
 	std::vector<uint8_t> fusedCompare; ///< a `condbr` whose compare was not materialised
 	std::vector<Label> labels;
+	std::vector<uint32_t> resolved; ///< a branch to block b goes to resolved[b]: blocks that only jump are threaded
+	std::vector<uint8_t> threaded;  ///< blocks that are not emitted because every branch to them goes past them
 	std::vector<std::optional<Mem>> allocas;
 	std::vector<std::function<void()>> cold;
 	Label exitLabel;
@@ -447,12 +454,16 @@ private:
 		const auto n = f.insts.size();
 		f.regs.assign(n, BaseReg());
 		f.useCount.assign(n, 0);
+		f.lastUse.assign(n, 0);
 		f.blockOf.assign(n, 0);
 		f.addressUses.assign(n, 0);
 		f.scaledUses.assign(n, 0);
 		f.deferred.assign(n, 0);
 		f.constBits.assign(n, 0);
 		f.fusedCompare.assign(n, 0);
+		f.fusedLoad.assign(n, 0);
+		f.soleUser.assign(n, nir::NONE);
+		f.foldRoot.assign(n, nir::NONE);
 		const auto& record = m_.functions[function];
 		f.allocas.assign(record.allocaCount, std::nullopt);
 		for (uint32_t b = 0; b < f.blocks.size(); ++b) {
@@ -463,9 +474,51 @@ private:
 		for (uint32_t id = 0; id < n; ++id) {
 			nir::forEachRef(f.insts[id], m_.extra.data(), nir::Level::SSA, [&](const uint32_t& ref) {
 				if (nir::isValueRef(ref) && ref < n) {
-					++f.useCount[ref];
+					f.soleUser[ref] = ++f.useCount[ref] == 1 ? id : nir::NONE;
 				}
 			});
+		}
+		// a block without arguments that holds nothing but a jump without arguments is skipped: branches go to the
+		// block that it jumps to (`if (c) {...}` without else leaves such a block on the false edge)
+		f.resolved.resize(f.blocks.size());
+		f.threaded.assign(f.blocks.size(), 0);
+		const auto onlyJumps = [&](uint32_t b) {
+			const auto& block = f.blocks[b];
+			if (b == 0 || block.argCount != 0 || block.count != 1 || (block.flags & nir::BLOCK_LANDING_PAD) != 0) {
+				return false;
+			}
+			const auto& only = f.insts[block.first];
+			return static_cast<N>(only.op) == N::Br && m_.extra[only.c] == 0;
+		};
+		for (uint32_t b = 0; b < f.blocks.size(); ++b) {
+			uint32_t target = b;
+			for (int steps = 0; steps < 16 && onlyJumps(target); ++steps) {
+				target = f.insts[f.blocks[target].first].a;
+				if (steps == 15) {
+					target = b; // a cycle of empty blocks: leave it alone
+				}
+			}
+			f.resolved[b] = onlyJumps(target) ? b : target;
+			f.threaded[b] = f.resolved[b] != b ? 1 : 0;
+		}
+		// per block, from the end: the operands that are not used again later in the block
+		std::vector<uint32_t> seenIn(n, nir::NONE);
+		for (uint32_t b = 0; b < f.blocks.size(); ++b) {
+			for (uint32_t k = f.blocks[b].count; k-- > 0;) {
+				const uint32_t id = f.blocks[b].first + k;
+				const auto& inst = f.insts[id];
+				if (nir::isValueRef(inst.a) && inst.a < n && seenIn[inst.a] != b) {
+					f.lastUse[id] |= 1;
+				}
+				if (nir::isValueRef(inst.b) && inst.b < n && seenIn[inst.b] != b) {
+					f.lastUse[id] |= 2;
+				}
+				nir::forEachRef(inst, m_.extra.data(), nir::Level::SSA, [&](const uint32_t& ref) {
+					if (nir::isValueRef(ref) && ref < n) {
+						seenIn[ref] = b;
+					}
+				});
+			}
 		}
 	}
 
@@ -657,7 +710,16 @@ private:
 	void lowerBlock(uint32_t b) {
 		auto& f = F();
 		f.block = b;
-		f.nextBlock = b + 1 < f.blocks.size() ? b + 1 : nir::NONE;
+		if (f.threaded[b] != 0) {
+			return;
+		}
+		f.nextBlock = b + 1;
+		while (f.nextBlock < f.blocks.size() && f.threaded[f.nextBlock] != 0) {
+			++f.nextBlock;
+		}
+		if (f.nextBlock >= f.blocks.size()) {
+			f.nextBlock = nir::NONE;
+		}
 		cc.bind(f.labels[b]);
 		const auto& block = f.blocks[b];
 		for (uint32_t k = block.argCount; k < block.count; ++k) {
@@ -852,8 +914,13 @@ private:
 					F().deferred[id] |= kAddressPart;
 					return;
 				}
-				// otherwise one three-operand lea computes it, scaling included; the register of an operand that dies
-				// here takes the result
+			}
+			if (const auto parts = matchAddress(id);
+			    parts.has_value() && ((parts->scaledInput != nir::NONE && isScaledIndexDeferred(parts->offset)) ||
+			                          parts->base == nir::NONE)) {
+				// a scaled index or a doubled value: one three-operand lea computes it; the register of an operand
+				// that dies here takes the result. (A plain `a + b` or `a + c` takes the general path below: where an
+				// operand dies the register allocator coalesces the two-address form, which a lea would not.)
 				Ref dying = nir::NONE;
 				for (const Ref candidate :
 				     {parts->base, parts->scaledInput != nir::NONE && isScaledIndexDeferred(parts->offset)
@@ -883,6 +950,9 @@ private:
 		// 64-bit `add` of a loop counter is measurably faster than the 32-bit one (main's lowering never used it);
 		// immediates are those of the type's width
 		const unsigned ow = 64, iw = opBitsOf(t);
+		if ((op == N::Add || op == N::Sub) && iw >= 8 && lowerAddChain(op, id, inst, t, iw)) {
+			return;
+		}
 		Ref a = inst.a, b = inst.b;
 		const bool commutative = op != N::Sub;
 		if (commutative && !constOf(b).has_value() && constOf(a).has_value()) {
@@ -891,6 +961,26 @@ private:
 		if (op == N::Mul) {
 			if (const auto imm = immFor(b, iw)) {
 				return lowerMulImmediate(id, a, *imm, ow);
+			}
+		}
+		// an operand that stays alive cannot take the result: `a + b` and `a + c` are one `lea`, which saves the copy
+		// that `mov d, a; add d, b` needs (for the sum of two 32-bit values the upper half is garbage anyway)
+		// (an operand that dies here stays two-address: the register allocator coalesces `mov d, a; add d, b` into one
+		// `add` when a is dead afterwards, as in `s = s + v` of a loop, which a `lea` would not)
+		if (op != N::Mul && !canReuse(a) && !constOf(a).has_value() &&
+		    ((F().lastUse[id] >> (a == inst.a ? 0 : 1)) & 1) == 0) {
+			const auto imm = immFor(b, iw);
+			const int64_t disp = imm.has_value() ? (op == N::Sub ? -static_cast<int64_t>(*imm) : *imm) : 0;
+			if (disp >= INT32_MIN && disp <= INT32_MAX && (imm.has_value() || op == N::Add)) {
+				Gp av = gp(a);
+				const Mem mem = imm.has_value() ? x86::ptr(av, static_cast<int32_t>(disp)) : x86::ptr(av, gp(b));
+				Gp d = defGp(id);
+				cc.lea(d, mem);
+				if (imm.has_value()) {
+					++foldedImmediates_;
+				}
+				narrowResult(d, t);
+				return;
 			}
 		}
 		bool reused = false;
@@ -907,6 +997,62 @@ private:
 			op == N::Add ? cc.add(dv, bv) : op == N::Sub ? cc.sub(dv, bv) : cc.imul(dv, bv);
 		}
 		narrowResult(d, t);
+	}
+
+	/// `x + c1 + c2` of a narrow integer is `x + (c1 + c2)`: the sum wraps at the type's width, and the bits above it
+	/// are never read. An add of a constant whose only user is another add of a constant in the same block is deferred
+	/// (kFoldedAdd); the user adds the whole chain's constant to the chain's root in one instruction. An intermediate
+	/// with other users is emitted as usual and not folded.
+	bool lowerAddChain(N op, uint32_t id, const nir::Inst& inst, TypeId t, unsigned iw) {
+		const auto imm = immFor(inst.b, iw);
+		if (!imm.has_value() || !nir::isValueRef(inst.a) || constOf(inst.a).has_value()) {
+			return false;
+		}
+		int64_t total = op == N::Sub ? -static_cast<int64_t>(*imm) : *imm;
+		Ref root = inst.a;
+		if ((F().deferred[root] & kFoldedAdd) != 0) {
+			total += static_cast<int64_t>(F().constBits[root]);
+			root = F().foldRoot[root];
+		}
+		if (iw < 64) {
+			total = iw == 32   ? static_cast<int32_t>(total)
+			        : iw == 16 ? static_cast<int16_t>(total)
+			                   : static_cast<int8_t>(total);
+		}
+		const uint32_t user = F().soleUser[id];
+		if (user != nir::NONE && F().blockOf[user] == F().blockOf[id]) {
+			const auto& u = F().insts[user];
+			const auto uop = static_cast<N>(u.op);
+			const auto userImm = (uop == N::Add || uop == N::Sub) && u.a == id && u.b != id && u.type == inst.type
+			                         ? immFor(u.b, iw)
+			                         : std::nullopt;
+			// at 64 bits the whole chain must stay a 32-bit displacement, and the user must not fold into an address
+			const int64_t sum =
+			    userImm.has_value() ? total + (uop == N::Sub ? -static_cast<int64_t>(*userImm) : *userImm) : 0;
+			const bool fits =
+			    iw < 64 || (total >= INT32_MIN && total <= INT32_MAX && sum >= INT32_MIN && sum <= INT32_MAX &&
+			                !(addressFusion_ && F().useCount[user] > 0 && F().addressUses[user] == F().useCount[user]));
+			if (userImm.has_value() && fits) {
+				F().deferred[id] |= kFoldedAdd;
+				F().constBits[id] = static_cast<uint64_t>(total);
+				F().foldRoot[id] = root;
+				return true;
+			}
+		}
+		if (root == inst.a) {
+			return false; // no chain: the general path
+		}
+		Gp d;
+		if (canReuse(root)) {
+			d = destGp(id, root);
+			cc.add(view(d, 64), static_cast<int32_t>(total));
+		} else {
+			d = defGp(id);
+			cc.lea(d, x86::ptr(gp(root), static_cast<int32_t>(total)));
+		}
+		++foldedImmediates_;
+		narrowResult(d, t);
+		return true;
 	}
 
 	void lowerMulImmediate(uint32_t id, Ref a, int32_t imm, unsigned ow) {
@@ -1328,6 +1474,9 @@ private:
 	// ---- casts ------------------------------------------------------------------------------------------------
 
 	void lowerCast(uint32_t id, const nir::Inst& inst) {
+		if (F().fusedLoad[id] != 0) {
+			return;
+		}
 		const auto kind = inst.flags & 15;
 		const auto from = typeOfRef(inst.a);
 		const auto to = static_cast<TypeId>(inst.type);
@@ -1614,6 +1763,25 @@ private:
 		const auto mem = memOperand(inst.a, bits / 8);
 		Gp d = canReuse(inst.a) && F().regs[inst.a].isGp() && !isAddressPartDeferred(inst.a) ? destGp(id, inst.a)
 		                                                                                     : defGp(id);
+		// the load and the widening of its value are one movsx or movzx from memory (the extension is the load's only
+		// use, in the same block, so its value is the same wherever it is computed)
+		if (bits < 64 && F().soleUser[id] != nir::NONE && F().blockOf[F().soleUser[id]] == F().blockOf[id] &&
+		    t != TypeId::Bool) {
+			const uint32_t castId = F().soleUser[id];
+			const auto& cast = F().insts[castId];
+			const auto kind = cast.flags & 15;
+			if (static_cast<N>(cast.op) == N::Cast && cast.a == id && (kind == 0 || kind == 1) &&
+			    bitsOf(static_cast<TypeId>(cast.type)) > bits) {
+				F().regs[castId] = d;
+				F().fusedLoad[castId] = 1;
+				if (kind == 0) {
+					bits == 32 ? cc.movsxd(d.r64(), mem) : cc.movsx(d.r64(), mem);
+				} else {
+					bits == 32 ? cc.mov(d.r32(), mem) : cc.movzx(d.r32(), mem);
+				}
+				return;
+			}
+		}
 		switch (bits) {
 		case 8:
 			cc.movzx(d.r32(), mem);
@@ -1766,7 +1934,7 @@ private:
 	void lowerBr(const nir::Inst& inst) {
 		auto& f = F();
 		const uint32_t* list = m_.extra.data() + inst.c;
-		const uint32_t target = inst.a;
+		const uint32_t target = f.resolved[inst.a];
 		emitEdge(target, std::span<const uint32_t>(list + 1, list[0]));
 		if (tryRotateLoop(target)) {
 			return;
@@ -1798,11 +1966,11 @@ private:
 			return false;
 		}
 		const uint32_t* list = m_.extra.data() + br.c;
-		const uint32_t trueBlock = br.b, trueArgc = list[1];
+		const uint32_t trueBlock = f.resolved[br.b], trueArgc = list[1];
 		if (trueArgc != 0) {
 			return false;
 		}
-		const uint32_t falseBlock = list[2], falseArgc = list[3];
+		const uint32_t falseBlock = f.resolved[list[2]], falseArgc = list[3];
 		if (falseArgc != 0) {
 			return false;
 		}
@@ -1816,10 +1984,10 @@ private:
 	void lowerCondBr(uint32_t id, const nir::Inst& inst) {
 		auto& f = F();
 		const uint32_t* list = m_.extra.data() + inst.c;
-		const uint32_t trueBlock = inst.b;
+		const uint32_t trueBlock = f.resolved[inst.b];
 		const uint32_t trueArgc = list[1];
 		const std::span<const uint32_t> trueArgs(list + 2, trueArgc);
-		const uint32_t falseBlock = list[2 + trueArgc];
+		const uint32_t falseBlock = f.resolved[list[2 + trueArgc]];
 		const uint32_t falseArgc = list[3 + trueArgc];
 		const std::span<const uint32_t> falseArgs(list + 4 + trueArgc, falseArgc);
 

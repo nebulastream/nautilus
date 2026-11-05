@@ -16,7 +16,7 @@ std::unique_ptr<Executable> AsmJitNirBackend::compile(std::shared_ptr<const nir:
 		return nullptr;
 	}
 	const auto backendStart = std::chrono::steady_clock::now();
-	auto runtime = std::make_unique<::asmjit::JitRuntime>();
+	auto runtime = AsmJitExecutable::sharedRuntime();
 
 	const auto compileStart = std::chrono::steady_clock::now();
 	auto result =
