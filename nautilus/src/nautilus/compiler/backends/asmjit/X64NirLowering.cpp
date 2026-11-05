@@ -148,6 +148,7 @@ struct Fn {
 	std::span<const nir::BlockRecord> blocks;
 	std::vector<BaseReg> regs;
 	std::vector<uint32_t> useCount;
+	std::vector<uint8_t> lastUse; ///< bit 0 / bit 1: operand a / b is not used again later in the block
 	std::vector<uint32_t> blockOf;
 	std::vector<uint32_t> addressUses; ///< uses as the address of a load or store in the block that defines the value
 	std::vector<uint32_t> scaledUses;  ///< uses as the scaled index of a foldable address add in the same block
@@ -447,6 +448,7 @@ private:
 		const auto n = f.insts.size();
 		f.regs.assign(n, BaseReg());
 		f.useCount.assign(n, 0);
+		f.lastUse.assign(n, 0);
 		f.blockOf.assign(n, 0);
 		f.addressUses.assign(n, 0);
 		f.scaledUses.assign(n, 0);
@@ -466,6 +468,25 @@ private:
 					++f.useCount[ref];
 				}
 			});
+		}
+		// per block, from the end: the operands that are not used again later in the block
+		std::vector<uint32_t> seenIn(n, nir::NONE);
+		for (uint32_t b = 0; b < f.blocks.size(); ++b) {
+			for (uint32_t k = f.blocks[b].count; k-- > 0;) {
+				const uint32_t id = f.blocks[b].first + k;
+				const auto& inst = f.insts[id];
+				if (nir::isValueRef(inst.a) && inst.a < n && seenIn[inst.a] != b) {
+					f.lastUse[id] |= 1;
+				}
+				if (nir::isValueRef(inst.b) && inst.b < n && seenIn[inst.b] != b) {
+					f.lastUse[id] |= 2;
+				}
+				nir::forEachRef(inst, m_.extra.data(), nir::Level::SSA, [&](const uint32_t& ref) {
+					if (nir::isValueRef(ref) && ref < n) {
+						seenIn[ref] = b;
+					}
+				});
+			}
 		}
 	}
 
@@ -891,6 +912,26 @@ private:
 		if (op == N::Mul) {
 			if (const auto imm = immFor(b, iw)) {
 				return lowerMulImmediate(id, a, *imm, ow);
+			}
+		}
+		// an operand that stays alive cannot take the result: `a + b` and `a + c` are one `lea`, which saves the copy
+		// that `mov d, a; add d, b` needs (for the sum of two 32-bit values the upper half is garbage anyway)
+		// (an operand that dies here stays two-address: the register allocator coalesces `mov d, a; add d, b` into one
+		// `add` when a is dead afterwards, as in `s = s + v` of a loop, which a `lea` would not)
+		if (op != N::Mul && !canReuse(a) && !constOf(a).has_value() &&
+		    ((F().lastUse[id] >> (a == inst.a ? 0 : 1)) & 1) == 0) {
+			const auto imm = immFor(b, iw);
+			const int64_t disp = imm.has_value() ? (op == N::Sub ? -static_cast<int64_t>(*imm) : *imm) : 0;
+			if (disp >= INT32_MIN && disp <= INT32_MAX && (imm.has_value() || op == N::Add)) {
+				Gp av = gp(a);
+				const Mem mem = imm.has_value() ? x86::ptr(av, static_cast<int32_t>(disp)) : x86::ptr(av, gp(b));
+				Gp d = defGp(id);
+				cc.lea(d, mem);
+				if (imm.has_value()) {
+					++foldedImmediates_;
+				}
+				narrowResult(d, t);
+				return;
 			}
 		}
 		bool reused = false;
