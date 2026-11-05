@@ -154,8 +154,12 @@ struct Fn {
 	std::vector<uint32_t> scaledUses;  ///< uses as the scaled index of a foldable address add in the same block
 	std::vector<uint8_t> deferred;
 	std::vector<uint64_t> constBits;
+	std::vector<uint32_t> soleUser;    ///< for a value with one use: the instruction that uses it
+	std::vector<uint8_t> fusedLoad;    ///< a cast whose load already widened the value
 	std::vector<uint8_t> fusedCompare; ///< a `condbr` whose compare was not materialised
 	std::vector<Label> labels;
+	std::vector<uint32_t> resolved; ///< a branch to block b goes to resolved[b]: blocks that only jump are threaded
+	std::vector<uint8_t> threaded;  ///< blocks that are not emitted because every branch to them goes past them
 	std::vector<std::optional<Mem>> allocas;
 	std::vector<std::function<void()>> cold;
 	Label exitLabel;
@@ -455,6 +459,8 @@ private:
 		f.deferred.assign(n, 0);
 		f.constBits.assign(n, 0);
 		f.fusedCompare.assign(n, 0);
+		f.fusedLoad.assign(n, 0);
+		f.soleUser.assign(n, nir::NONE);
 		const auto& record = m_.functions[function];
 		f.allocas.assign(record.allocaCount, std::nullopt);
 		for (uint32_t b = 0; b < f.blocks.size(); ++b) {
@@ -465,9 +471,32 @@ private:
 		for (uint32_t id = 0; id < n; ++id) {
 			nir::forEachRef(f.insts[id], m_.extra.data(), nir::Level::SSA, [&](const uint32_t& ref) {
 				if (nir::isValueRef(ref) && ref < n) {
-					++f.useCount[ref];
+					f.soleUser[ref] = ++f.useCount[ref] == 1 ? id : nir::NONE;
 				}
 			});
+		}
+		// a block without arguments that holds nothing but a jump without arguments is skipped: branches go to the
+		// block that it jumps to (`if (c) {...}` without else leaves such a block on the false edge)
+		f.resolved.resize(f.blocks.size());
+		f.threaded.assign(f.blocks.size(), 0);
+		const auto onlyJumps = [&](uint32_t b) {
+			const auto& block = f.blocks[b];
+			if (b == 0 || block.argCount != 0 || block.count != 1 || (block.flags & nir::BLOCK_LANDING_PAD) != 0) {
+				return false;
+			}
+			const auto& only = f.insts[block.first];
+			return static_cast<N>(only.op) == N::Br && m_.extra[only.c] == 0;
+		};
+		for (uint32_t b = 0; b < f.blocks.size(); ++b) {
+			uint32_t target = b;
+			for (int steps = 0; steps < 16 && onlyJumps(target); ++steps) {
+				target = f.insts[f.blocks[target].first].a;
+				if (steps == 15) {
+					target = b; // a cycle of empty blocks: leave it alone
+				}
+			}
+			f.resolved[b] = onlyJumps(target) ? b : target;
+			f.threaded[b] = f.resolved[b] != b ? 1 : 0;
 		}
 		// per block, from the end: the operands that are not used again later in the block
 		std::vector<uint32_t> seenIn(n, nir::NONE);
@@ -678,7 +707,16 @@ private:
 	void lowerBlock(uint32_t b) {
 		auto& f = F();
 		f.block = b;
-		f.nextBlock = b + 1 < f.blocks.size() ? b + 1 : nir::NONE;
+		if (f.threaded[b] != 0) {
+			return;
+		}
+		f.nextBlock = b + 1;
+		while (f.nextBlock < f.blocks.size() && f.threaded[f.nextBlock] != 0) {
+			++f.nextBlock;
+		}
+		if (f.nextBlock >= f.blocks.size()) {
+			f.nextBlock = nir::NONE;
+		}
 		cc.bind(f.labels[b]);
 		const auto& block = f.blocks[b];
 		for (uint32_t k = block.argCount; k < block.count; ++k) {
@@ -873,8 +911,13 @@ private:
 					F().deferred[id] |= kAddressPart;
 					return;
 				}
-				// otherwise one three-operand lea computes it, scaling included; the register of an operand that dies
-				// here takes the result
+			}
+			if (const auto parts = matchAddress(id);
+			    parts.has_value() && ((parts->scaledInput != nir::NONE && isScaledIndexDeferred(parts->offset)) ||
+			                          parts->base == nir::NONE)) {
+				// a scaled index or a doubled value: one three-operand lea computes it; the register of an operand
+				// that dies here takes the result. (A plain `a + b` or `a + c` takes the general path below: where an
+				// operand dies the register allocator coalesces the two-address form, which a lea would not.)
 				Ref dying = nir::NONE;
 				for (const Ref candidate :
 				     {parts->base, parts->scaledInput != nir::NONE && isScaledIndexDeferred(parts->offset)
@@ -1369,6 +1412,9 @@ private:
 	// ---- casts ------------------------------------------------------------------------------------------------
 
 	void lowerCast(uint32_t id, const nir::Inst& inst) {
+		if (F().fusedLoad[id] != 0) {
+			return;
+		}
 		const auto kind = inst.flags & 15;
 		const auto from = typeOfRef(inst.a);
 		const auto to = static_cast<TypeId>(inst.type);
@@ -1655,6 +1701,25 @@ private:
 		const auto mem = memOperand(inst.a, bits / 8);
 		Gp d = canReuse(inst.a) && F().regs[inst.a].isGp() && !isAddressPartDeferred(inst.a) ? destGp(id, inst.a)
 		                                                                                     : defGp(id);
+		// the load and the widening of its value are one movsx or movzx from memory (the extension is the load's only
+		// use, in the same block, so its value is the same wherever it is computed)
+		if (bits < 64 && F().soleUser[id] != nir::NONE && F().blockOf[F().soleUser[id]] == F().blockOf[id] &&
+		    t != TypeId::Bool) {
+			const uint32_t castId = F().soleUser[id];
+			const auto& cast = F().insts[castId];
+			const auto kind = cast.flags & 15;
+			if (static_cast<N>(cast.op) == N::Cast && cast.a == id && (kind == 0 || kind == 1) &&
+			    bitsOf(static_cast<TypeId>(cast.type)) > bits) {
+				F().regs[castId] = d;
+				F().fusedLoad[castId] = 1;
+				if (kind == 0) {
+					bits == 32 ? cc.movsxd(d.r64(), mem) : cc.movsx(d.r64(), mem);
+				} else {
+					bits == 32 ? cc.mov(d.r32(), mem) : cc.movzx(d.r32(), mem);
+				}
+				return;
+			}
+		}
 		switch (bits) {
 		case 8:
 			cc.movzx(d.r32(), mem);
@@ -1807,7 +1872,7 @@ private:
 	void lowerBr(const nir::Inst& inst) {
 		auto& f = F();
 		const uint32_t* list = m_.extra.data() + inst.c;
-		const uint32_t target = inst.a;
+		const uint32_t target = f.resolved[inst.a];
 		emitEdge(target, std::span<const uint32_t>(list + 1, list[0]));
 		if (tryRotateLoop(target)) {
 			return;
@@ -1839,11 +1904,11 @@ private:
 			return false;
 		}
 		const uint32_t* list = m_.extra.data() + br.c;
-		const uint32_t trueBlock = br.b, trueArgc = list[1];
+		const uint32_t trueBlock = f.resolved[br.b], trueArgc = list[1];
 		if (trueArgc != 0) {
 			return false;
 		}
-		const uint32_t falseBlock = list[2], falseArgc = list[3];
+		const uint32_t falseBlock = f.resolved[list[2]], falseArgc = list[3];
 		if (falseArgc != 0) {
 			return false;
 		}
@@ -1857,10 +1922,10 @@ private:
 	void lowerCondBr(uint32_t id, const nir::Inst& inst) {
 		auto& f = F();
 		const uint32_t* list = m_.extra.data() + inst.c;
-		const uint32_t trueBlock = inst.b;
+		const uint32_t trueBlock = f.resolved[inst.b];
 		const uint32_t trueArgc = list[1];
 		const std::span<const uint32_t> trueArgs(list + 2, trueArgc);
-		const uint32_t falseBlock = list[2 + trueArgc];
+		const uint32_t falseBlock = f.resolved[list[2 + trueArgc]];
 		const uint32_t falseArgc = list[3 + trueArgc];
 		const std::span<const uint32_t> falseArgs(list + 4 + trueArgc, falseArgc);
 
