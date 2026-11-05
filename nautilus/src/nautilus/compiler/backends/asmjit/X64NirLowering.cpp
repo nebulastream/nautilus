@@ -139,6 +139,7 @@ struct AddressParts {
 constexpr uint8_t kConstValue = 1;  ///< a constant that no code defines: consumers fold or rematerialise it
 constexpr uint8_t kAddressPart = 2; ///< an address computation that every consumer folds into its memory operand
 constexpr uint8_t kScaledIndex = 4; ///< a scaled index that every address add folds
+constexpr uint8_t kFoldedAdd = 8;   ///< an add of a constant that its only user (an add of a constant) absorbs
 
 /// The state of the function being lowered, in arrays indexed by value id (the position of the instruction within the
 /// function) or block id.
@@ -154,6 +155,7 @@ struct Fn {
 	std::vector<uint32_t> scaledUses;  ///< uses as the scaled index of a foldable address add in the same block
 	std::vector<uint8_t> deferred;
 	std::vector<uint64_t> constBits;
+	std::vector<uint32_t> foldRoot;    ///< for a kFoldedAdd value: the value its chain of constant adds starts from
 	std::vector<uint32_t> soleUser;    ///< for a value with one use: the instruction that uses it
 	std::vector<uint8_t> fusedLoad;    ///< a cast whose load already widened the value
 	std::vector<uint8_t> fusedCompare; ///< a `condbr` whose compare was not materialised
@@ -461,6 +463,7 @@ private:
 		f.fusedCompare.assign(n, 0);
 		f.fusedLoad.assign(n, 0);
 		f.soleUser.assign(n, nir::NONE);
+		f.foldRoot.assign(n, nir::NONE);
 		const auto& record = m_.functions[function];
 		f.allocas.assign(record.allocaCount, std::nullopt);
 		for (uint32_t b = 0; b < f.blocks.size(); ++b) {
@@ -947,6 +950,9 @@ private:
 		// 64-bit `add` of a loop counter is measurably faster than the 32-bit one (main's lowering never used it);
 		// immediates are those of the type's width
 		const unsigned ow = 64, iw = opBitsOf(t);
+		if ((op == N::Add || op == N::Sub) && iw >= 8 && lowerAddChain(op, id, inst, t, iw)) {
+			return;
+		}
 		Ref a = inst.a, b = inst.b;
 		const bool commutative = op != N::Sub;
 		if (commutative && !constOf(b).has_value() && constOf(a).has_value()) {
@@ -991,6 +997,62 @@ private:
 			op == N::Add ? cc.add(dv, bv) : op == N::Sub ? cc.sub(dv, bv) : cc.imul(dv, bv);
 		}
 		narrowResult(d, t);
+	}
+
+	/// `x + c1 + c2` of a narrow integer is `x + (c1 + c2)`: the sum wraps at the type's width, and the bits above it
+	/// are never read. An add of a constant whose only user is another add of a constant in the same block is deferred
+	/// (kFoldedAdd); the user adds the whole chain's constant to the chain's root in one instruction. An intermediate
+	/// with other users is emitted as usual and not folded.
+	bool lowerAddChain(N op, uint32_t id, const nir::Inst& inst, TypeId t, unsigned iw) {
+		const auto imm = immFor(inst.b, iw);
+		if (!imm.has_value() || !nir::isValueRef(inst.a) || constOf(inst.a).has_value()) {
+			return false;
+		}
+		int64_t total = op == N::Sub ? -static_cast<int64_t>(*imm) : *imm;
+		Ref root = inst.a;
+		if ((F().deferred[root] & kFoldedAdd) != 0) {
+			total += static_cast<int64_t>(F().constBits[root]);
+			root = F().foldRoot[root];
+		}
+		if (iw < 64) {
+			total = iw == 32   ? static_cast<int32_t>(total)
+			        : iw == 16 ? static_cast<int16_t>(total)
+			                   : static_cast<int8_t>(total);
+		}
+		const uint32_t user = F().soleUser[id];
+		if (user != nir::NONE && F().blockOf[user] == F().blockOf[id]) {
+			const auto& u = F().insts[user];
+			const auto uop = static_cast<N>(u.op);
+			const auto userImm = (uop == N::Add || uop == N::Sub) && u.a == id && u.b != id && u.type == inst.type
+			                         ? immFor(u.b, iw)
+			                         : std::nullopt;
+			// at 64 bits the whole chain must stay a 32-bit displacement, and the user must not fold into an address
+			const int64_t sum =
+			    userImm.has_value() ? total + (uop == N::Sub ? -static_cast<int64_t>(*userImm) : *userImm) : 0;
+			const bool fits =
+			    iw < 64 || (total >= INT32_MIN && total <= INT32_MAX && sum >= INT32_MIN && sum <= INT32_MAX &&
+			                !(addressFusion_ && F().useCount[user] > 0 && F().addressUses[user] == F().useCount[user]));
+			if (userImm.has_value() && fits) {
+				F().deferred[id] |= kFoldedAdd;
+				F().constBits[id] = static_cast<uint64_t>(total);
+				F().foldRoot[id] = root;
+				return true;
+			}
+		}
+		if (root == inst.a) {
+			return false; // no chain: the general path
+		}
+		Gp d;
+		if (canReuse(root)) {
+			d = destGp(id, root);
+			cc.add(view(d, 64), static_cast<int32_t>(total));
+		} else {
+			d = defGp(id);
+			cc.lea(d, x86::ptr(gp(root), static_cast<int32_t>(total)));
+		}
+		++foldedImmediates_;
+		narrowResult(d, t);
+		return true;
 	}
 
 	void lowerMulImmediate(uint32_t id, Ref a, int32_t imm, unsigned ow) {
