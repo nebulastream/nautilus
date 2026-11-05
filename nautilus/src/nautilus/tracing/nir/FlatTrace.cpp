@@ -40,7 +40,7 @@ void TagMap::set(const Snapshot& key, uint32_t op) {
 		grow();
 	}
 	size_t slot = hashOf(key) & mask_;
-	while (table_[slot].key.getTag() != nullptr) {
+	while (table_[slot].epoch == epoch_) {
 		if (table_[slot].key == key) {
 			table_[slot].op = op;
 			return;
@@ -49,6 +49,7 @@ void TagMap::set(const Snapshot& key, uint32_t op) {
 	}
 	table_[slot].key = key;
 	table_[slot].op = op;
+	table_[slot].epoch = epoch_;
 	++size_;
 }
 
@@ -65,9 +66,9 @@ void TagMap::grow() {
 	}
 	mask_ = capacity_ - 1;
 	for (size_t i = 0; i < oldCapacity; ++i) {
-		if (old[i].key.getTag() != nullptr) {
+		if (old[i].epoch == epoch_) {
 			size_t slot = hashOf(old[i].key) & mask_;
-			while (table_[slot].key.getTag() != nullptr) {
+			while (table_[slot].epoch == epoch_) {
 				slot = (slot + 1) & mask_;
 			}
 			table_[slot] = old[i];
@@ -77,8 +78,9 @@ void TagMap::grow() {
 }
 
 void TagMap::clear(size_t keepCapacity) {
+	size_ = 0;
 	if (capacity_ > keepCapacity) {
-		// one large trace must not make the memset of every later small one expensive
+		// one very large trace must not leave every later small one a table it never fills
 		std::free(table_);
 		capacity_ = 64;
 		table_ = static_cast<Entry*>(std::calloc(capacity_, sizeof(Entry)));
@@ -86,10 +88,14 @@ void TagMap::clear(size_t keepCapacity) {
 			throw std::bad_alloc();
 		}
 		mask_ = capacity_ - 1;
-	} else {
-		std::memset(static_cast<void*>(table_), 0, capacity_ * sizeof(Entry));
+		epoch_ = 1;
+		return;
 	}
-	size_ = 0;
+	if (++epoch_ == 0) {
+		// the epoch wrapped: stale entries could look current again
+		std::memset(static_cast<void*>(table_), 0, capacity_ * sizeof(Entry));
+		epoch_ = 1;
+	}
 }
 
 // ---- FlatTrace ---------------------------------------------------------------------------------------------------
@@ -225,9 +231,22 @@ uint32_t FlatTrace::currentRecordId() {
 }
 
 TypedValueRef FlatTrace::consumeOperation() {
-	passJumps();
-	const auto& ops = blocks[currentBlock_].ops;
-	const auto first = ops[cursor_];
+	// the replay's hot path: look through the jumps a merge or a region boundary added, take the operation's result,
+	// and step over its records
+	const FlatBlock* block = &blocks[currentBlock_];
+	uint32_t first;
+	for (;;) {
+		if (cursor_ >= block->ops.size()) {
+			throw RuntimeException("Current operation index out of bounds: " + std::to_string(cursor_));
+		}
+		first = block->ops[cursor_];
+		if ((meta[first].flags & RecJump) == 0) {
+			break;
+		}
+		setCurrentBlock(recs[first].a);
+		block = &blocks[currentBlock_];
+	}
+	const auto& ops = block->ops;
 	const TypedValueRef result(meta[first].result, meta[first].type);
 	// the operation is the record and those after it that are not the start of another
 	++cursor_;
