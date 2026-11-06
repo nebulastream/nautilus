@@ -61,8 +61,8 @@ private:
 	/// collision costs a descent and never yields a wrong tag. Stacks deeper than MAX_CACHED_DEPTH are not cached.
 	/// The table is allocated from the arena once a recorder has made CACHE_AFTER tags, so small functions and
 	/// regions do not pay for it.
-	static constexpr size_t MAX_CACHED_DEPTH = 14;
-	static constexpr size_t CACHE_SIZE = 256;
+	static constexpr size_t MAX_CACHED_DEPTH = 10;
+	static constexpr size_t CACHE_SIZE = 64;
 	static constexpr uint32_t CACHE_AFTER = 24;
 	struct CacheEntry {
 		uint64_t hash;
