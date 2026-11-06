@@ -474,6 +474,7 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 		session.indexOf(f.getName());
 	}
 	setActiveTracer(this);
+	syncAlive();
 	ActiveTracerGuard activeTracerGuard;
 	setFoldStaticConstants(options.getOptionOrDefault("engine.foldStaticConstants", true));
 
@@ -533,6 +534,7 @@ void NirTracer::resume() {
 		activeDestructors.clear();
 	}
 	paused_ = false;
+	syncAlive();
 }
 
 void NirTracer::beginPass(bool rerun) {
@@ -1621,14 +1623,17 @@ void NirTracer::traceRegion(std::function<void()>& regionFunction, const RegionA
 	auto regionIndex = trace.addRegion(attributes, entry);
 	auto enclosingRegion = trace.setCurrentRegion(regionIndex);
 	setActiveTracer(&child);
+	child.syncAlive();
 	try {
 		child.runScope(regionFunction);
 	} catch (...) {
 		setActiveTracer(this);
+		syncAlive();
 		trace.setCurrentRegion(enclosingRegion);
 		throw;
 	}
 	setActiveTracer(this);
+	syncAlive();
 	trace.setCurrentRegion(enclosingRegion);
 
 	// the body may have released or re-keyed destructors this scope registered; take the updated list back

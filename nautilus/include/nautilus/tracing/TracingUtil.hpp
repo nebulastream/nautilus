@@ -19,12 +19,6 @@ class NautilusFunctionDefinition;
 }
 namespace nautilus::tracing {
 
-namespace detail {
-/// The active tracer of this thread. Inline so that the checks every `val<T>` makes (`inTracer`, the reference counts
-/// of temporaries) are a thread-local load and not a call.
-inline thread_local TracingInterface* activeTracer = nullptr;
-} // namespace detail
-
 inline bool inTracer() {
 	return detail::activeTracer != nullptr;
 }
@@ -39,6 +33,14 @@ inline TracingInterface* getActiveTracer() {
 /// Pass nullptr to indicate that tracing is no longer active.
 inline void setActiveTracer(TracingInterface* tracer) {
 	detail::activeTracer = tracer;
+	// the new tracer publishes the reference counts of its scope itself (publishAliveVariables)
+	detail::aliveFast = nullptr;
+}
+
+/// Lets the reference counts of values be updated inline: @p alive is the hash of the active tracer's current scope, or
+/// null if that scope must see every update (it is paused).
+inline void publishAliveVariables(AliveVariableHash* alive) {
+	detail::aliveFast = alive;
 }
 
 /// Whether the val<T> layer folds operations over values C++ already knows while tracing, e.g. the byte offset of

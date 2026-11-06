@@ -92,6 +92,11 @@ class AliveVariableHash {
 	size_t aliveCount = 0;
 	uint64_t alive_hash = 0;
 
+	// out of line so that the inline increment stays small: a vector's growth is the rare case
+	__attribute__((noinline)) void grow(uint32_t id) {
+		counts.resize(id + 1, 0);
+	}
+
 public:
 	/**
 	 * @brief Default constructor. No initialization needed as counts are zero-initialized.
@@ -107,8 +112,8 @@ public:
 	 * @param id Variable identifier (32-bit value)
 	 */
 	inline void increment(uint32_t id) noexcept {
-		if (id >= counts.size()) {
-			counts.resize(id + 1, 0);
+		if (__builtin_expect(id >= counts.size(), 0)) {
+			grow(id);
 		}
 		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
@@ -117,6 +122,18 @@ public:
 		}
 		++c;
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+	}
+
+	/**
+	 * @brief Decrements the reference count of @p id if it is alive; false (and nothing changed) if it is not.
+	 * The inline fast path of a value's release: the caller falls back to the tracer's own logic on false.
+	 */
+	inline bool tryDecrement(uint32_t id) noexcept {
+		if (id >= counts.size() || counts[id] == 0) {
+			return false;
+		}
+		decrement(id);
+		return true;
 	}
 
 	/**
