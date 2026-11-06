@@ -5,6 +5,9 @@
 #ifdef ENABLE_TBC_BACKEND
 #include "nautilus/compiler/backends/tbc/TBCNirBackend.hpp"
 #endif
+#ifdef ENABLE_C_BACKEND
+#include "nautilus/compiler/backends/cpp/CPPNirBackend.hpp"
+#endif
 
 namespace nautilus::compiler::nirbackend {
 
@@ -18,6 +21,9 @@ NirBackendRegistry& NirBackendRegistry::instance() {
 NirBackendRegistry::NirBackendRegistry() {
 #ifdef ENABLE_TBC_BACKEND
 	registerBackend("tbc", std::make_unique<tbc::TBCNirBackend>());
+#endif
+#ifdef ENABLE_C_BACKEND
+	registerBackend("cpp", std::make_unique<cpp::CPPNirBackend>());
 #endif
 }
 

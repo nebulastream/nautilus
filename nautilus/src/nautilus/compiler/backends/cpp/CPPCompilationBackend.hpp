@@ -14,6 +14,11 @@ public:
 	                                    const engine::Options& options,
 	                                    CompilationStatistics* statistics = nullptr) const override;
 
+	/// The graph of the NIR front end carries a module that this backend compiles itself (M4.3).
+	[[nodiscard]] bool compilesNir() const override {
+		return true;
+	}
+
 	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode() const override {
 		return ExceptionPropagationMode::CapturedHostRethrow;
 	}

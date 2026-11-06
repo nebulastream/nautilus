@@ -35,6 +35,9 @@
 #include <string>
 #include <variant>
 #include <vector>
+#ifdef NIR_RUN_DYNCALL
+#include <dyncall.h>
+#endif
 
 using namespace nautilus;
 using namespace nautilus::compiler;
@@ -276,6 +279,101 @@ std::string show(uint64_t v, nir::TypeId type) {
 	return std::to_string(static_cast<int64_t>(v));
 }
 
+#ifdef NIR_RUN_DYNCALL
+/// Calls the machine code of a native executable (`cpp`, ...) with the raw slots of the arguments, as the C ABI of the
+/// signature wants them: a narrow integer extended the way its type word says, a float or double bit-exact.
+uint64_t callNative(void* target, const nir::Module& module, const nir::SignatureRecord& signature,
+                    const std::vector<uint64_t>& args) {
+	DCCallVM* vm = dcNewCallVM(4096);
+	dcMode(vm, DC_CALL_C_DEFAULT);
+	dcReset(vm);
+	for (uint32_t i = 0; i < signature.paramCount; ++i) {
+		const auto word = module.paramType(signature, i);
+		const auto bits = args[i];
+		const bool isUnsigned = nir::extKindOf(word) == nir::ExtKind::Zext;
+		switch (nir::typeOf(word)) {
+		case nir::TypeId::Bool:
+			dcArgBool(vm, bits != 0);
+			break;
+		case nir::TypeId::I8:
+			dcArgInt(vm, isUnsigned ? static_cast<DCint>(static_cast<uint8_t>(bits))
+			                        : static_cast<DCint>(static_cast<int8_t>(bits)));
+			break;
+		case nir::TypeId::I16:
+			dcArgInt(vm, isUnsigned ? static_cast<DCint>(static_cast<uint16_t>(bits))
+			                        : static_cast<DCint>(static_cast<int16_t>(bits)));
+			break;
+		case nir::TypeId::I32:
+			dcArgInt(vm, static_cast<DCint>(static_cast<uint32_t>(bits)));
+			break;
+		case nir::TypeId::I64:
+			dcArgLongLong(vm, static_cast<DClonglong>(bits));
+			break;
+		case nir::TypeId::F32: {
+			const auto raw = static_cast<uint32_t>(bits);
+			float value;
+			std::memcpy(&value, &raw, sizeof(value));
+			dcArgFloat(vm, value);
+			break;
+		}
+		case nir::TypeId::F64: {
+			double value;
+			std::memcpy(&value, &bits, sizeof(value));
+			dcArgDouble(vm, value);
+			break;
+		}
+		case nir::TypeId::Ptr:
+			dcArgPointer(vm, reinterpret_cast<void*>(bits));
+			break;
+		default:
+			dcFree(vm);
+			throw std::runtime_error("an argument type that cannot be passed natively");
+		}
+	}
+	uint64_t result = 0;
+	switch (nir::typeOf(signature.result)) {
+	case nir::TypeId::Void:
+		dcCallVoid(vm, target);
+		break;
+	case nir::TypeId::Bool:
+		result = (dcCallBool(vm, target) & 0xFF) != 0 ? 1 : 0;
+		break;
+	case nir::TypeId::I8:
+		result = static_cast<uint8_t>(dcCallChar(vm, target));
+		break;
+	case nir::TypeId::I16:
+		result = static_cast<uint16_t>(dcCallShort(vm, target));
+		break;
+	case nir::TypeId::I32:
+		result = static_cast<uint32_t>(dcCallInt(vm, target));
+		break;
+	case nir::TypeId::I64:
+		result = static_cast<uint64_t>(dcCallLongLong(vm, target));
+		break;
+	case nir::TypeId::F32: {
+		const float value = dcCallFloat(vm, target);
+		uint32_t raw;
+		std::memcpy(&raw, &value, sizeof(raw));
+		result = raw;
+		break;
+	}
+	case nir::TypeId::F64: {
+		const double value = dcCallDouble(vm, target);
+		std::memcpy(&result, &value, sizeof(result));
+		break;
+	}
+	case nir::TypeId::Ptr:
+		result = reinterpret_cast<uint64_t>(dcCallPointer(vm, target));
+		break;
+	default:
+		dcFree(vm);
+		throw std::runtime_error("a result type that cannot be returned natively");
+	}
+	dcFree(vm);
+	return result;
+}
+#endif
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -457,8 +555,21 @@ int main(int argc, char** argv) {
 			ExceptionFrameScope scope(executable->getExceptionPropagationMode(d.function) ==
 			                          ExceptionPropagationMode::CapturedHostRethrow);
 			try {
-				if (!invocable->invokeRaw(args.data(), args.size(), &result)) {
-					fail("the backend has no raw invocation");
+				if (invocable != nullptr) {
+					if (!invocable->invokeRaw(args.data(), args.size(), &result)) {
+						fail("the backend has no raw invocation");
+						continue;
+					}
+				} else if (executable->hasInvocableFunctionPtr()) {
+					// a native executable: the machine code is called through its signature
+#ifdef NIR_RUN_DYNCALL
+					result = callNative(executable->getInvocableFunctionPtr(d.function), *module, signature, args);
+#else
+					fail("this build of nir-run cannot call a native executable (it needs dyncall)");
+					continue;
+#endif
+				} else {
+					fail("the backend offers neither a raw invocation nor a function pointer");
 					continue;
 				}
 				if (scope.pending()) {

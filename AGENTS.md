@@ -97,7 +97,7 @@ ctest --test-dir build/dev/plugins/std/test --output-on-failure                #
 | `nautilus/src/nautilus/compiler/` | `CompilationPipeline`, `TieredCompiler` (tier 0 / tier 1 promotion), `Engine.cpp`, dumps and statistics |
 | `nautilus/src/nautilus/compiler/ir/` | the IR (`IRGraph`, `operations/`, `blocks/`) and its passes (`passes/`, run by `IRPassManager`) |
 | `nautilus/src/nautilus/compiler/backends/` | `asmjit` (x86-64, AArch64), `tbc` (threaded bytecode, optional copy-and-patch JIT), `mlir` (MLIR → LLVM), `cpp` (C++ source + system compiler) |
-| `nautilus/src/nautilus/nir/` | NIR, the 0.4 IR: the engine's default pipeline traces to it and converts it (see its `AGENTS.md`); `compiler/NirToIR.cpp` is the temporary bridge to the 0.3 IR for `asmjit`, `mlir` and `cpp` |
+| `nautilus/src/nautilus/nir/` | NIR, the 0.4 IR: the engine's default pipeline traces to it and converts it (see its `AGENTS.md`); `compiler/NirToIR.cpp` is the temporary bridge to the 0.3 IR for `asmjit` and `mlir` (`tbc` and `cpp` compile the NIR) |
 | `third_party/asmjit/` | vendored AsmJit with Nautilus patches, marked `[Nautilus]` |
 | `third_party/xxhash/` | vendored xxHash (XXH3-128 for the NIR structural hash) |
 | `plugins/` | `std`, `simd`, `builtin`, `specialization`, `inlining`, `gpu`, `profiling`, each with its own tests |

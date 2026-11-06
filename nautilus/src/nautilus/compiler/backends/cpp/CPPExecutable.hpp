@@ -22,7 +22,8 @@ public:
 	 *        not in this set is reported as NativeUnwind: it never touches
 	 *        the ExceptionFrame machinery, so it is safe to call directly.
 	 */
-	CPPExecutable(std::shared_ptr<SharedLibrary> obj, std::unordered_set<std::string> functionsNeedingCapture);
+	CPPExecutable(std::shared_ptr<SharedLibrary> obj, std::unordered_set<std::string> functionsNeedingCapture,
+	              std::shared_ptr<const void> owner = nullptr);
 
 	~CPPExecutable() override = default;
 
@@ -43,5 +44,7 @@ public:
 private:
 	std::shared_ptr<SharedLibrary> obj;
 	std::unordered_set<std::string> functionsNeedingCapture_;
+	/// What the generated code points into: the NIR module of a compile from NIR keeps its data objects and pointers.
+	std::shared_ptr<const void> owner_;
 };
 } // namespace nautilus::compiler::cpp

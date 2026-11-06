@@ -34,6 +34,10 @@ if (ENABLE_TBC_BACKEND)
                 COMMAND nautilus-nir-run --backend=tbc ${file})
         add_test(NAME nir-run-tbc-switch-${name}
                 COMMAND nautilus-nir-run --backend=tbc --option=tbc.dispatch=switch ${file})
+        if (ENABLE_C_BACKEND AND TARGET dyncall_s)
+            add_test(NAME nir-run-cpp-${name}
+                    COMMAND nautilus-nir-run --backend=cpp ${file})
+        endif ()
         if (ENABLE_TBC_JIT)
             add_test(NAME nir-run-tbc-jit-${name}
                     COMMAND nautilus-nir-run --backend=tbc --option=tbc.mode=jit ${file})
