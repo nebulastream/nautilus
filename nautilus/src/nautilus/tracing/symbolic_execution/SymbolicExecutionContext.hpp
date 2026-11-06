@@ -62,7 +62,9 @@ public:
 	 */
 	uint64_t getIterations() const;
 
-	MODE getCurrentMode() const;
+	MODE getCurrentMode() const {
+		return currentMode;
+	}
 
 	/**
 	 * @brief Records a new cmp operation.

@@ -62,10 +62,6 @@ RecordResult SymbolicExecutionContext::follow() {
 	return {get<0>(operation), false};
 }
 
-SymbolicExecutionContext::MODE SymbolicExecutionContext::getCurrentMode() const {
-	return this->currentMode;
-}
-
 bool SymbolicExecutionContext::shouldContinue() {
 	if (iterations == 0) {
 		return true;

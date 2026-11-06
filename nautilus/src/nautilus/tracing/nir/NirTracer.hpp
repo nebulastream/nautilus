@@ -193,7 +193,13 @@ private:
 	void accountPhase(std::chrono::steady_clock::time_point now);
 	void pause() {
 		paused_ = true;
+		syncAlive();
 		enterPhase(Phase::Paused);
+	}
+	/// Publishes this scope's reference counts for the inline updates of `val<T>` while it is the active one and not
+	/// paused (a paused scope ignores them, which the slow path does).
+	void syncAlive() {
+		publishAliveVariables(paused_ ? nullptr : &aliveVars);
 	}
 	void resume();
 
