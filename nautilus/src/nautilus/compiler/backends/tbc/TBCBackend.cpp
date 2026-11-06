@@ -6,6 +6,7 @@
 #include "nautilus/compiler/backends/tbc/TBCExecutable.hpp"
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/compiler/backends/tbc/TBCLoweringProvider.hpp"
+#include "nautilus/compiler/backends/tbc/TBCNirBackend.hpp"
 #include "nautilus/compiler/backends/tbc/TBCProgramSetup.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/config.hpp"
@@ -20,6 +21,13 @@ namespace nautilus::compiler::tbc {
 std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
                                                 const engine::Options& options,
                                                 CompilationStatistics* statistics) const {
+	// The graph of the NIR front end carries the module and no IR: it compiles natively (M4.1)
+	if (ir->getNirModule() != nullptr && ir->getFunctionOperations().empty()) {
+		auto module = std::static_pointer_cast<const nir::Module>(ir->getNirModule());
+		// the traced module is process-local: its pointers are addresses, so the host resolves nothing
+		const nirbackend::CompileContext context {dumpHandler, options, statistics, nullptr, {}};
+		return TBCNirBackend().compile(std::move(module), context);
+	}
 	const auto backendStart = std::chrono::steady_clock::now();
 	const auto& functionOperations = ir->getFunctionOperations();
 

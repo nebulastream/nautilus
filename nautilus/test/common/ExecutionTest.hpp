@@ -53,21 +53,23 @@ inline std::vector<std::string> availableBackends(bool include_asmjit = true) {
 	}
 #endif
 #ifdef ENABLE_TBC_BACKEND
-	// Pseudo-backends of the chain 0.3 tracer -> NIR -> conversion -> tbc on NIR (tracing.nirChain), until the
-	// cut-over.
+	// Pseudo-backends of the chain 0.3 tracer -> NIR -> conversion -> tbc on NIR (tracing.nirChain). The other
+	// backends run the default pipeline: the direct NIR tracer and the conversion (a NIR backend, or the bridge to the
+	// 0.3 IR for the rest).
 	backends.emplace_back("nir-tbc");
-	// the same with the direct NIR recorder as the tracer (tracing.nirTracer)
-	backends.emplace_back("nir-direct");
+	// the 0.3 pipeline (tracing.nirTracer=false), the fallback of the cut-over, on tbc
+	backends.emplace_back("legacy-tbc");
 #ifdef ENABLE_TBC_JIT
 	if (compiler::tbc::jit::jitRuntimeAvailable()) {
 		backends.emplace_back("nir-tbc-jit");
-		backends.emplace_back("nir-direct-jit");
 	}
 #endif
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	if (include_asmjit) {
 		backends.emplace_back("asmjit");
+		// the 0.3 pipeline on asmjit
+		backends.emplace_back("legacy-asmjit");
 	}
 #else
 	(void) include_asmjit;
@@ -82,16 +84,18 @@ inline engine::NautilusEngine makeEngine(const std::string& backend, const Optio
 	} else if (backend == "tbc-jit") {
 		options.setOption("engine.backend", std::string("tbc"));
 		options.setOption("tbc.mode", std::string("jit"));
-	} else if (backend == "nir-tbc" || backend == "nir-tbc-jit" || backend == "nir-direct" ||
-	           backend == "nir-direct-jit") {
+	} else if (backend == "nir-tbc" || backend == "nir-tbc-jit") {
+		// the 0.3 tracer, mapped to NIR and converted
 		options.setOption("engine.backend", std::string("nirtbc"));
+		options.setOption("tracing.nirTracer", false);
 		options.setOption("tracing.nirChain", true);
-		if (backend == "nir-direct" || backend == "nir-direct-jit") {
-			options.setOption("tracing.nirTracer", true);
-		}
-		if (backend == "nir-tbc-jit" || backend == "nir-direct-jit") {
+		if (backend == "nir-tbc-jit") {
 			options.setOption("tbc.mode", std::string("jit"));
 		}
+	} else if (backend == "legacy-tbc" || backend == "legacy-asmjit") {
+		// the 0.3 pipeline: the 0.3 tracer and the IR passes
+		options.setOption("engine.backend", backend.substr(std::string("legacy-").size()));
+		options.setOption("tracing.nirTracer", false);
 	} else {
 		options.setOption("engine.backend", backend);
 	}

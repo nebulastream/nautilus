@@ -27,13 +27,27 @@ std::string getAnyBackend() {
 #endif
 }
 
+/// A backend that has no NIR port, so the NIR pipeline builds the 0.3 IR for it (the bridge), or "" if the build has
+/// none.
+std::string getBridgedBackend() {
+#if defined(ENABLE_TRACING) && defined(ENABLE_ASMJIT_BACKEND)
+	return "asmjit";
+#elif defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
+	return "mlir";
+#elif defined(ENABLE_TRACING) && defined(ENABLE_C_BACKEND)
+	return "cpp";
+#else
+	return "";
+#endif
+}
+
 val<int32_t> statsAddOne(val<int32_t> x) {
 	return x + 1;
 }
 
 } // namespace
 
-TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats") {
+TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats of the 0.3 pipeline") {
 	auto backend = getAnyBackend();
 	if (backend.empty()) {
 		SKIP("No compilation backend available");
@@ -44,6 +58,7 @@ TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats") {
 	// the active executable carry both frontend and backend keys in the
 	// same report.
 	options.setOption("engine.backend", backend);
+	options.setOption("tracing.nirTracer", false);
 
 	NautilusEngine engine(options);
 	auto fn = engine.registerFunction(statsAddOne);
@@ -105,6 +120,55 @@ TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats") {
 	// End-to-end total covers everything.
 	REQUIRE(stats->contains("compilation.totalMs"));
 	REQUIRE(stats->contains("compilation.unitId"));
+}
+
+TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats of the NIR pipeline") {
+	auto backend = getAnyBackend();
+	if (backend.empty()) {
+		SKIP("No compilation backend available");
+	}
+
+	Options options;
+	options.setOption("engine.backend", backend);
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(statsAddOne);
+	REQUIRE(fn(41) == 42);
+
+	auto stats = fn.getStatistics();
+	REQUIRE(stats != nullptr);
+
+	// The stages of the NIR pipeline: the tracer, the conversion, and for a backend without a NIR port the bridge.
+	for (const auto* key : {"tracing.ms", "conversion.ms", "frontend.totalMs"}) {
+		INFO("missing key: " << key);
+		const auto* value = stats->find(key);
+		REQUIRE(value != nullptr);
+		REQUIRE(std::holds_alternative<double>(*value));
+		REQUIRE(std::get<double>(*value) >= 0.0);
+	}
+	REQUIRE_FALSE(stats->contains("irGeneration.ms"));
+	for (const auto* key : {"tracing.iterations", "tracing.operations", "tracing.copies", "tracing.scopes",
+	                        "conversion.instructions", "conversion.phis"}) {
+		INFO("missing key: " << key);
+		const auto* value = stats->find(key);
+		REQUIRE(value != nullptr);
+		REQUIRE(std::holds_alternative<int64_t>(*value));
+	}
+	REQUIRE(std::get<int64_t>(*stats->find("tracing.iterations")) == 1);
+
+	// tbc compiles the NIR as it is; the other backends get the 0.3 IR built from it
+	if (backend == "tbc") {
+		REQUIRE_FALSE(stats->contains("bridge.ms"));
+		REQUIRE_FALSE(stats->contains("ir.operations"));
+	} else {
+		REQUIRE(stats->contains("bridge.ms"));
+		REQUIRE(std::get<int64_t>(*stats->find("ir.operations")) > 0);
+		REQUIRE(stats->contains("irPasses.exceptionRegionPreparation.ms"));
+		// the conversion has done what the optimization passes do
+		REQUIRE_FALSE(stats->contains("irPasses.ConstantFoldingAndCopyPropagation.ms"));
+	}
+	REQUIRE(std::get<std::string>(*stats->find("backend.name")) == backend);
+	REQUIRE(stats->contains("backend.totalMs"));
+	REQUIRE(stats->contains("compilation.totalMs"));
 }
 
 namespace {
@@ -222,6 +286,7 @@ TEST_CASE("CompilationStatistics: a loop traced with two headers compiles to one
 	Options options;
 	// tbc runs the whole IR pipeline, so the counts below are the final shape.
 	options.setOption("engine.backend", std::string("tbc"));
+	options.setOption("tracing.nirTracer", false);
 	options.setOption("ir.passStatistics", true);
 	NautilusEngine engine(options);
 	auto fn = engine.registerFunction(statsLowerBound);
@@ -237,16 +302,39 @@ TEST_CASE("CompilationStatistics: a loop traced with two headers compiles to one
 	// headers.
 	REQUIRE(blocksAndArgumentsAfterPasses(*stats) == std::pair<int64_t, int64_t> {5, 5});
 }
+
+TEST_CASE("CompilationStatistics: a loop traced with two headers compiles to one in the NIR pipeline") {
+	const auto backend = getBridgedBackend();
+	if (backend.empty()) {
+		SKIP("No backend that takes the bridged IR");
+	}
+	std::vector<int32_t> sorted {1, 3, 5, 7, 9, 11};
+	Options options;
+	options.setOption("engine.backend", backend);
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(statsLowerBound);
+	REQUIRE(fn(sorted.data(), 6, 7) == 3);
+	REQUIRE(fn(sorted.data(), 6, 12) == 6);
+	auto stats = fn.getStatistics();
+	REQUIRE(stats != nullptr);
+	// The IR the bridge builds is the shape the conversion gives, and no IR pass merges its single-predecessor seams
+	// (the 0.3 pipeline merged them: 5 blocks and 5 arguments). The counts are pinned to notice a change of the
+	// conversion; what must not appear is the jump-only block of the second header, which the conversion threads away.
+	CHECK(std::get<int64_t>(*stats->find("ir.functions")) == 1);
+	CHECK(std::get<int64_t>(*stats->find("ir.blocks")) == 7);
+	CHECK(std::get<int64_t>(*stats->find("ir.blockArguments")) == 6);
+}
 #endif
 
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
-TEST_CASE("CompilationStatistics: a module compiled by mlir alone gets only block-argument pruning") {
+TEST_CASE("CompilationStatistics: a module compiled by mlir alone gets only block-argument pruning (0.3 pipeline)") {
 	// LLVM's pipeline performs the other cleanups itself, so by default the
 	// graph goes to the MLIR backend with only its block arguments pruned --
 	// the exception-handling analyses still run.
 	{
 		Options options;
 		options.setOption("engine.backend", std::string("mlir"));
+		options.setOption("tracing.nirTracer", false);
 		NautilusEngine engine(options);
 		auto fn = engine.registerFunction(statsAddOne);
 		REQUIRE(fn(41) == 42);
@@ -260,6 +348,7 @@ TEST_CASE("CompilationStatistics: a module compiled by mlir alone gets only bloc
 	{
 		Options options;
 		options.setOption("engine.backend", std::string("mlir"));
+		options.setOption("tracing.nirTracer", false);
 		options.setOption("ir.runOptimizationPasses", true);
 		NautilusEngine engine(options);
 		auto fn = engine.registerFunction(statsAddOne);
@@ -276,6 +365,7 @@ TEST_CASE("CompilationStatistics: a backend that executes the IR as it is gets t
 	{
 		Options options;
 		options.setOption("engine.backend", std::string("tbc"));
+		options.setOption("tracing.nirTracer", false);
 		NautilusEngine engine(options);
 		auto fn = engine.registerFunction(statsAddOne);
 		REQUIRE(fn(41) == 42);
@@ -287,6 +377,7 @@ TEST_CASE("CompilationStatistics: a backend that executes the IR as it is gets t
 	{
 		Options options;
 		options.setOption("engine.backend", std::string("tbc"));
+		options.setOption("tracing.nirTracer", false);
 		options.setOption("ir.runOptimizationPasses", false);
 		NautilusEngine engine(options);
 		auto fn = engine.registerFunction(statsAddOne);
@@ -300,11 +391,42 @@ TEST_CASE("CompilationStatistics: a backend that executes the IR as it is gets t
 }
 #endif
 
+TEST_CASE("CompilationStatistics: the IR passes run on the bridged IR only when asked for") {
+	const auto backend = getBridgedBackend();
+	if (backend.empty()) {
+		SKIP("No backend that takes the bridged IR");
+	}
+	{
+		Options options;
+		options.setOption("engine.backend", backend);
+		NautilusEngine engine(options);
+		auto fn = engine.registerFunction(statsAddOne);
+		REQUIRE(fn(41) == 42);
+		auto stats = fn.getStatistics();
+		REQUIRE(stats != nullptr);
+		// the conversion has done what they do; the exception regions every backend needs are prepared regardless
+		REQUIRE_FALSE(ranIROptimizationPasses(*stats));
+		REQUIRE(stats->contains("irPasses.exceptionRegionPreparation.ms"));
+	}
+	{
+		Options options;
+		options.setOption("engine.backend", backend);
+		options.setOption("ir.runOptimizationPasses", true);
+		NautilusEngine engine(options);
+		auto fn = engine.registerFunction(statsAddOne);
+		REQUIRE(fn(41) == 42);
+		auto stats = fn.getStatistics();
+		REQUIRE(stats != nullptr);
+		REQUIRE(ranIROptimizationPasses(*stats));
+	}
+}
+
 #if defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
 TEST_CASE("CompilationStatistics: a two-tier compile optimizes the graph its tbc tier executes") {
 	// The graph is traced once and shared by both tiers; tier 0 executes it as
 	// it is, so it is optimized even though tier 1 is mlir.
 	Options options;
+	options.setOption("tracing.nirTracer", false);
 	options.setOption("engine.tier0.backend", std::string("tbc"));
 	options.setOption("engine.tier1.backend", std::string("mlir"));
 	options.setOption("engine.tiered.backgroundPromotion", true);

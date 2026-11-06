@@ -75,6 +75,26 @@ public:
 		return IROptimizationLevel::Full;
 	}
 
+	/**
+	 * @brief Whether this backend compiles the NIR module a graph carries (`IRGraph::getNirModule`) itself.
+	 *
+	 * The engine's front end produces NIR. A backend that returns false gets the 0.3 IR built from it first (the
+	 * temporary bridge of the cut-over, `compiler/NirToIR.hpp`), until its NIR port lands.
+	 */
+	[[nodiscard]] virtual bool compilesNir() const {
+		return false;
+	}
+
+	/**
+	 * @brief Whether this backend needs the 0.3 front end (`TraceContext`, `ExecutionTrace`, the IR passes) instead of
+	 * the NIR front end, because it reads what only the 0.3 trace carries (the GPU backends: the `kernel` attribute of
+	 * a function). The engine uses the 0.3 pipeline when it is pinned to such a backend (`engine.backend`), until the
+	 * backend's NIR port lands.
+	 */
+	[[nodiscard]] virtual bool needs03Frontend() const {
+		return false;
+	}
+
 	virtual ~CompilationBackend();
 };
 

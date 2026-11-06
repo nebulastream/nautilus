@@ -38,6 +38,8 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 
 	engine::Options options;
 	options.setOption("engine.backend", "mlir");
+	// the reference IR was generated from the 0.3 pipeline; the NIR pipeline's IR differs in value order and names
+	options.setOption("tracing.nirTracer", false);
 	options.setOption("dump.after_llvm_generation", true);
 	options.setOption("dump.all", true);
 	options.setOption("dump.console", true);

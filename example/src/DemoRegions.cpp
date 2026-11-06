@@ -60,6 +60,8 @@ val<int64_t> summarize(val<int32_t> size, val<int32_t*> values, val<int32_t> thr
 int main(int, char*[]) {
 	engine::Options options;
 	options.setOption("engine.backend", "cpp");
+	// the demo shows the 0.3 trace and IR with their regions; NIR has no region producers yet
+	options.setOption("tracing.nirTracer", false);
 	// Print the trace and the Nautilus IR to the console so the region markers are
 	// visible. `dump.file` would additionally write them to a temp folder.
 	options.setOption("dump.after_tracing", true);

@@ -129,6 +129,8 @@ std::string dumpTbcCode(bool superinstructions, bool immediates) {
 
 	engine::Options options;
 	options.setOption("engine.backend", std::string("tbc"));
+	// the superinstruction and immediate options belong to the 0.3 lowering
+	options.setOption("tracing.nirTracer", false);
 	options.setOption("tbc.superinstructions", superinstructions);
 	options.setOption("tbc.immediates", immediates);
 	options.setOption("dump.after_tbc_generation", true);
