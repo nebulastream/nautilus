@@ -11,22 +11,18 @@
 
 namespace nautilus::tracing {
 
-// Thread-local pointer to the active TracingInterface implementation.
-// Set to non-null during trace() and cleared afterwards, so all operations
-// within a single trace go through the same implementation object.
-static thread_local TracingInterface* activeTracer = nullptr;
-
-TracingInterface* getActiveTracer() {
-	return activeTracer;
+namespace detail {
+void allocateValRefSlow(ValueRef ref) {
+	if (activeTracer != nullptr) {
+		activeTracer->allocateValRef(ref);
+	}
 }
-
-void setActiveTracer(TracingInterface* tracer) {
-	activeTracer = tracer;
+void freeValRefSlow(ValueRef ref) {
+	if (activeTracer != nullptr) {
+		activeTracer->freeValRef(ref);
+	}
 }
-
-bool inTracer() {
-	return activeTracer != nullptr;
-}
+} // namespace detail
 
 // `engine.foldStaticConstants` of the function being traced on this thread.
 static thread_local bool foldStaticConstants = true;
@@ -43,155 +39,145 @@ void setFoldStaticConstants(bool fold) {
 //     that run outside a tracing context (e.g. copies, assignments, ref-counting).
 
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
-	if (activeTracer) {
-		activeTracer->traceAssignment(target, source, resultType);
+	if (detail::activeTracer) {
+		detail::activeTracer->traceAssignment(target, source, resultType);
 	}
 }
 
 TypedValueRef traceCopy(const TypedValueRef& ref) {
-	if (activeTracer) {
-		return activeTracer->traceCopy(ref);
+	if (detail::activeTracer) {
+		return detail::activeTracer->traceCopy(ref);
 	}
 	return {};
 }
 
 TypedValueRef& traceExtOp(uint16_t opcode, uint8_t resultType, const std::vector<TypedValueRef>& inputs) {
-	if (!activeTracer) {
+	if (!detail::activeTracer) {
 		throw RuntimeException("traceExtOp outside of a trace");
 	}
-	return activeTracer->traceExtOp(opcode, resultType, inputs);
+	return detail::activeTracer->traceExtOp(opcode, resultType, inputs);
 }
 
 TypedValueRef& traceData(std::span<const std::byte> bytes, size_t align) {
-	if (!activeTracer) {
+	if (!detail::activeTracer) {
 		throw RuntimeException("traceData outside of a trace");
 	}
-	return activeTracer->traceData(bytes, align);
+	return detail::activeTracer->traceData(bytes, align);
 }
 
 TypedValueRef& traceBinding(std::string_view name, size_t size, size_t align) {
-	if (!activeTracer) {
+	if (!detail::activeTracer) {
 		throw RuntimeException("traceBinding outside of a trace");
 	}
-	return activeTracer->traceBinding(name, size, align);
+	return detail::activeTracer->traceBinding(name, size, align);
 }
 
 void noteExplicitCopy() {
-	if (activeTracer) {
-		activeTracer->noteExplicitCopy();
-	}
-}
-
-void allocateValRef(ValueRef ref) {
-	if (activeTracer) {
-		activeTracer->allocateValRef(ref);
-	}
-}
-
-void freeValRef(ValueRef ref) {
-	if (activeTracer) {
-		activeTracer->freeValRef(ref);
+	if (detail::activeTracer) {
+		detail::activeTracer->noteExplicitCopy();
 	}
 }
 
 void pushStaticVal(void* ptr, size_t size) {
-	if (activeTracer) {
-		activeTracer->pushStaticVal(ptr, size);
+	if (detail::activeTracer) {
+		detail::activeTracer->pushStaticVal(ptr, size);
 	}
 }
 
 void popStaticVal() {
-	if (activeTracer) {
-		activeTracer->popStaticVal();
+	if (detail::activeTracer) {
+		detail::activeTracer->popStaticVal();
 	}
 }
 
 // --- Unguarded wrappers: only called from within SHOULD_TRACE() blocks,
-//     where activeTracer is guaranteed non-null.
+//     where detail::activeTracer is guaranteed non-null.
 
 void traceReturnOperation(Type type, const TypedValueRef& ref) {
-	activeTracer->traceReturnOperation(type, ref);
+	detail::activeTracer->traceReturnOperation(type, ref);
 }
 
 TypedValueRef& registerFunctionArgument(Type type, size_t index) {
-	return activeTracer->registerFunctionArgument(type, index);
+	return detail::activeTracer->registerFunctionArgument(type, index);
 }
 
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
-	return activeTracer->traceConstant(type, value);
+	return detail::activeTracer->traceConstant(type, value);
 }
 
 bool traceBool(const TypedValueRef& value, double probability) {
-	return activeTracer->traceBool(value, probability);
+	return detail::activeTracer->traceBool(value, probability);
 }
 
 TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
-	return activeTracer->traceBinaryOp(op, resultType, left, right);
+	return detail::activeTracer->traceBinaryOp(op, resultType, left, right);
 }
 
 TypedValueRef& traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
-	return activeTracer->traceUnaryOp(op, resultType, input);
+	return detail::activeTracer->traceUnaryOp(op, resultType, input);
 }
 
 TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
                               const TypedValueRef& third) {
-	return activeTracer->traceTernaryOp(op, resultType, first, second, third);
+	return detail::activeTracer->traceTernaryOp(op, resultType, first, second, third);
 }
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                          FunctionAttributes fnAttrs) {
-	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
+	return detail::activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
 }
 
 TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
                                               const std::vector<tracing::TypedValueRef>& arguments,
                                               FunctionAttributes fnAttrs, void* captureFunc) {
-	return activeTracer->traceCallWithExceptionHandling(fptn, resultType, arguments, fnAttrs, captureFunc);
+	return detail::activeTracer->traceCallWithExceptionHandling(fptn, resultType, arguments, fnAttrs, captureFunc);
 }
 
 void registerDestructor(const TypedValueRef& address, void* destructor) {
-	activeTracer->registerDestructor(address, destructor);
+	detail::activeTracer->registerDestructor(address, destructor);
 }
 
 void unregisterDestructor(const TypedValueRef& address) {
-	activeTracer->unregisterDestructor(address);
+	detail::activeTracer->unregisterDestructor(address);
 }
 
 void transferDestructor(const TypedValueRef& from, const TypedValueRef& to) {
-	activeTracer->transferDestructor(from, to);
+	detail::activeTracer->transferDestructor(from, to);
 }
 
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                  const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
                                  void* captureFunc) {
-	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs, captureFunc);
+	return detail::activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs, captureFunc);
 }
 
 TypedValueRef& traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrRef, Type resultType,
                                                       const std::vector<tracing::TypedValueRef>& arguments,
                                                       FunctionAttributes fnAttrs, void* captureFunc) {
-	return activeTracer->traceIndirectCallWithExceptionHandling(fnPtrRef, resultType, arguments, fnAttrs, captureFunc);
+	return detail::activeTracer->traceIndirectCallWithExceptionHandling(fnPtrRef, resultType, arguments, fnAttrs,
+	                                                                    captureFunc);
 }
 
 TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
                                  Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                                  FunctionAttributes fnAttrs) {
-	return activeTracer->traceNautilusCall(definition, fwrapper, resultType, arguments, fnAttrs);
+	return detail::activeTracer->traceNautilusCall(definition, fwrapper, resultType, arguments, fnAttrs);
 }
 
 TypedValueRef& traceNautilusCallWithExceptionHandling(const NautilusFunctionDefinition* definition,
                                                       std::function<void()> fwrapper, Type resultType,
                                                       const std::vector<tracing::TypedValueRef>& arguments,
                                                       FunctionAttributes fnAttrs) {
-	return activeTracer->traceNautilusCallWithExceptionHandling(definition, fwrapper, resultType, arguments, fnAttrs);
+	return detail::activeTracer->traceNautilusCallWithExceptionHandling(definition, fwrapper, resultType, arguments,
+	                                                                    fnAttrs);
 }
 
 TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper) {
-	return activeTracer->traceNautilusFunctionPtr(definition, std::move(fwrapper));
+	return detail::activeTracer->traceNautilusFunctionPtr(definition, std::move(fwrapper));
 }
 
 TypedValueRef& traceAlloca(size_t size, size_t align) {
-	return activeTracer->traceAlloca(size, align);
+	return detail::activeTracer->traceAlloca(size, align);
 }
 
 std::ostream& operator<<(std::ostream& os, const Op& op) {

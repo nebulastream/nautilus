@@ -245,6 +245,51 @@ conversion of PR 4 reads pre-SSA NIR from either producer, so it starts from `to
 replaces the producer in its own PR. Spec change found on the way: `NIR-V051` counts an `assign` as a write of the
 variable (13 §6.2), because the tracer's reconciling `assign` of #95 writes a variable that the other arm defined.
 
+**The direct recorder (#576, M2.1).** `NirTracer` records pre-SSA NIR into `FlatTrace` and is selected by
+`tracing.nirTracer`; the execution tests and the fuzzer run it as `nir-direct`. Evidence, from the tests in
+`nautilus/test/tracing-tests/NirTracerTest.cpp` and `NirTracerAllocationTest.cpp`: golden pre-SSA dumps of ten functions
+(`test/data/nir-trace/`, `NAUTILUS_UPDATE_GOLDEN=1` rewrites them) including a `val` initialised from a constant and
+assigned in a loop, a copy assigned in a loop and #95; the converted SSA of the direct tracer equals that of the 0.3
+tracer plus `toPreSSA` on all of them; and the allocation counter: 0.013 heap allocations per recorded operation in
+steady state (62 for a 6-operation function, 128 for `distinctSites1024`'s 5122). Callgrind instructions per trace
+(`nautilus-tracing-corpus`, Clang 21, Release; `main` at `71ce5f76`, the 0.3 tracer of this branch, and the direct
+tracer including its write-out to a `nir::Module`): `distinctSites1024` 23.2 M / 8.1 M / 8.8 M, `chainedIf100`
+15.6 M / 15.5 M / 12.4 M. So the ≥ 30 % target on `distinctSites1024` is met against `main` (−62 %), and almost all of
+it comes from PR 3's hashed trie: the direct tracer itself costs 9 % more than the 0.3 tracer there, because it also
+builds the module that the 0.3 path builds later (`toPreSSA` or the IR conversion), and 20 % less on `chainedIf100`.
+The shared tag recording (`createReferenceTagBuildin`, trie `append`) is 40 % of what is left. `traceExtOp` records
+extension operations whose operands are values (the conversion does not handle extension instructions yet, so the
+chain stops at the pre-SSA module for them). Not supported by this tracer: `dump.copySites`.
+
+**Compile-time cost of the direct recorder (#576).** `nautilus-compile-bench` (`-DENABLE_BENCHMARKS=ON`) compiles
+`add`, `fib`, `sum`, `internalCallLoop`, `straight`, `calls`, `loopBody` and chained ifs with `tracing.nirTracer` off and
+on in one binary and reports tracing, conversion (0.3: IR generation plus passes) and backend time per traced operation;
+`nautilus-tracing-corpus function[:N] [reps [mode]]` runs the same kernels under callgrind. First measurement: the NIR
+tracer spent a third of a small trace writing the module out and most of the rest in `malloc` (tables rebuilt for every
+function, a multimap node per constant, use counts nobody reads). After keeping the per-trace tables with the thread,
+the zero-filled tag map, the open-addressing constant pool and the cheaper write-out (callgrind instructions per
+`NirTracer::Trace`): `add` 36.7 K -> 20.3 K, `fib` 62.5 K -> 38.8 K, `sum` 67.8 K -> 43.0 K, `internalCallLoop`
+89.9 K -> 56.7 K, `straight(500)` 7.34 M -> 5.35 M, `calls(500)` 3.13 M -> 2.68 M. Median `tracing.ms` of the NIR tracer is
+now at or below the 0.3 tracer's on every kernel (the earlier 1.2-1.4x on the small ones is gone), 0.12-0.17 us per
+traced operation on linear code. What is left is shared with 0.3: the tag of each operation (a frame walk plus a trie
+descent, about 20 % of a linear trace) and the `val<T>` bookkeeping. Chained `if`s trace in time quadratic in their
+number (every explored path replays the prefix before it, 0.07 / 1.6 / 11.8 ms for 10 / 100 / 300 ifs), on both
+tracers; each `if` in its own `region()` is linear (0.04 / 0.30 / 1.0 ms).
+
+**Where the tag cost goes, and what is left (#576).** Upper bounds, measured by stubbing the cost away on `straight(500)`
+(5.35 M Ir per trace at the time; the stubs are only valid on straight-line code): a free tag (stack walk plus trie
+descent) saves 1.56 M (29 %), of which the walk is about 0.5 M and the descent 0.85 M (six appends of 31 instructions per
+operation); the tag map's inserts and growth 0.83 M (18 % of the time); the `val<T>` reference counts 0.25 M (4.6 %). Done:
+a stack-keyed cache in front of the trie descent (shared with 0.3, same nodes), a tag map that clears in constant time and
+keeps its table across traces, inline `inTracer` / reference counts / static-variable hash, block-wise write-out, a leaner
+replay step. `straight(500)` 5.35 M -> 3.93 M, `calls(500)` 2.67 M -> 2.22 M, `chainedIf(100)` 14.3 M -> 12.3 M; the 0.3
+tracer gains 8-9 % on the same kernels, and is 4 % slower on `distinctSites1024` (every tag misses the new cache).
+Not done, and why: recording tags only at control-flow points does not work, because a merge or loop re-entry can be
+detected at any operation (the first one after the join), so every operation needs its program-point identity when it is
+recorded; the replay already needs no tag (it follows the cursor). What remains in a linear trace is about 870
+instructions per operation: the tag (about 160), the `val<T>` machinery and reference counts (about 150), the tag map
+(about 100) and the write-out (about 250). Chained `if`s stay quadratic.
+
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 9.
 

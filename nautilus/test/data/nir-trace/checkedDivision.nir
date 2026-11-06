@@ -1,0 +1,9 @@
+nir 1.0
+
+func export pressa @execute : (i32 sext, i32 sext) -> i32 sext {
+^b0(%0: i32, %1: i32):
+  %2 = div.s.checked %0, %1 cleanup []
+  %3 = rem.s.checked %0, %1 cleanup []
+  %4 = add %2, %3
+  [5] ret %4
+}

@@ -7,17 +7,27 @@ namespace nautilus::tracing {
 
 struct Snapshot {
 public:
-	Snapshot(Tag* tag, uint64_t staticValueHash);
+	Snapshot(Tag* tag, uint64_t staticValueHash) : staticValueHash(staticValueHash), tag(tag) {
+	}
 
-	Snapshot();
+	Snapshot() : staticValueHash(), tag() {
+	}
 
 	Snapshot(const Snapshot& snapshot) = default;
 
 	Snapshot& operator=(const Snapshot& snapshot) = default;
 
-	bool operator==(const Snapshot& rhs) const;
+	bool operator==(const Snapshot& rhs) const {
+		return staticValueHash == rhs.staticValueHash && tag == rhs.tag;
+	}
 
-	bool operator!=(const Snapshot& rhs) const;
+	bool operator!=(const Snapshot& rhs) const {
+		return !(rhs == *this);
+	}
+
+	[[nodiscard]] uint64_t getStaticValueHash() const {
+		return staticValueHash;
+	}
 
 	[[nodiscard]] const Tag* getTag() const {
 		return tag;

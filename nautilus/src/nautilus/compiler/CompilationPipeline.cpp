@@ -44,6 +44,7 @@
 #include "nautilus/tracing/CopyAttribution.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/nir/NirTrace.hpp"
+#include "nautilus/tracing/nir/NirTracer.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #endif
@@ -237,12 +238,25 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	// finished, so this is safe (the IRGraph owns a separate IR arena).
 	auto traceArenaHandle = traceArenaPool_->acquire();
 	common::Arena& arena = *traceArenaHandle;
-	std::shared_ptr<tracing::TraceModule> traceModule = tracing::TraceContext::Trace(functions, moduleOptions, arena);
+	// tracing.nirTracer: the direct NIR recorder replaces the 0.3 tracer; the chain below then starts from its pre-SSA
+	// module and the graph handed on is an empty carrier of the converted module.
+	const bool nirTracer = moduleOptions.getOptionOrDefault("tracing.nirTracer", false);
+	std::shared_ptr<tracing::TraceModule> traceModule;
+	std::optional<nir::Module> directModule;
+	tracing::TracingStatistics tracingStatistics;
+	if (nirTracer) {
+		auto traced = tracing::nirtrace::NirTracer::Trace(functions, moduleOptions, arena);
+		directModule = std::move(traced.module);
+		tracingStatistics = traced.statistics;
+	} else {
+		traceModule = tracing::TraceContext::Trace(functions, moduleOptions, arena);
+		tracingStatistics = traceModule->statistics;
+	}
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 	}
 	if (statistics != nullptr) {
-		const auto& t = traceModule->statistics;
+		const auto& t = tracingStatistics;
 		statistics->set("tracing.iterations", static_cast<int64_t>(t.iterations));
 		statistics->set("tracing.replayedOperations", static_cast<int64_t>(t.replayedOperations));
 		statistics->set("tracing.snapshots", static_cast<int64_t>(t.snapshots));
@@ -260,14 +274,16 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		statistics->set("tracing.rerun.record.ms", t.rerunRecordMs);
 		statistics->set("tracing.rerun.paused.ms", t.rerunPausedMs);
 	}
-	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
+	if (traceModule) {
+		dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
+	}
 	const auto nirAttributesFile = moduleOptions.getOptionOrDefault<std::string>("tracing.nirAttributesFile", "");
-	const bool nirChain = moduleOptions.getOptionOrDefault("tracing.nirChain", false);
+	const bool nirChain = moduleOptions.getOptionOrDefault("tracing.nirChain", false) || nirTracer;
 	std::shared_ptr<const nir::Module> chainModule;
 	if (const bool verifyNir = moduleOptions.getOptionOrDefault("tracing.verifyNir", false) || nirChain;
 	    verifyNir || !nirAttributesFile.empty() || dumpHandler.shouldDump("after_nir_tracing")) {
 		try {
-			auto nirModule = tracing::nirtrace::toPreSSA(*traceModule);
+			auto nirModule = directModule ? std::move(*directModule) : tracing::nirtrace::toPreSSA(*traceModule);
 			dumpHandler.dump("after_nir_tracing", "nir", [&]() { return nir::print(nirModule); });
 			if (verifyNir) {
 				auto diagnostics = nir::verify(nirModule);
@@ -283,7 +299,15 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 			if (verifyNir || !nirAttributesFile.empty() || statistics != nullptr) {
 				conversion::ConversionStatistics conversionStats;
 				const auto conversionStart = std::chrono::steady_clock::now();
-				auto ssa = conversion::convert(nirModule, {}, &conversionStats);
+				nir::Module ssa;
+				try {
+					ssa = conversion::convert(nirModule, {}, &conversionStats);
+				} catch (const std::exception& e) {
+					if (!verifyNir) {
+						throw;
+					}
+					throw RuntimeException(std::string(e.what()) + "\nwhile converting\n" + nir::print(nirModule));
+				}
 				if (statistics != nullptr) {
 					statistics->recordTimingMs("conversion.ms", conversionStart);
 					statistics->set("conversion.instructions", static_cast<int64_t>(conversionStats.instructions));
@@ -329,7 +353,15 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		}
 	}
 	// Not part of dump.all: resolving every copy's call stack through the debug information is slow.
-	if (moduleOptions.getOptionOrDefault("dump.copySites", false)) {
+	if (nirTracer) {
+		auto carrier = std::make_shared<ir::IRGraph>(compilationId);
+		carrier->setNirModule(std::move(chainModule));
+		if (statistics != nullptr) {
+			statistics->recordTimingMs("frontend.totalMs", frontendStart);
+		}
+		return carrier;
+	}
+	if (traceModule && moduleOptions.getOptionOrDefault("dump.copySites", false)) {
 		tracing::SourceLocationResolver copySiteResolver;
 		dumpHandler.forceDump("copy_sites", "txt", tracing::formatCopySites(*traceModule, copySiteResolver));
 	}

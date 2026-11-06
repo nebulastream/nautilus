@@ -19,15 +19,29 @@ class NautilusFunctionDefinition;
 }
 namespace nautilus::tracing {
 
-bool inTracer();
+inline bool inTracer() {
+	return detail::activeTracer != nullptr;
+}
 
 /// Get the active TracingInterface for the current thread, or nullptr if not tracing.
 /// The returned pointer is valid for the lifetime of the current trace invocation.
-TracingInterface* getActiveTracer();
+inline TracingInterface* getActiveTracer() {
+	return detail::activeTracer;
+}
 
 /// Set the active TracingInterface for the current thread.
 /// Pass nullptr to indicate that tracing is no longer active.
-void setActiveTracer(TracingInterface* tracer);
+inline void setActiveTracer(TracingInterface* tracer) {
+	detail::activeTracer = tracer;
+	// the new tracer publishes the reference counts of its scope itself (publishAliveVariables)
+	detail::aliveFast = nullptr;
+}
+
+/// Lets the reference counts of values be updated inline: @p alive is the hash of the active tracer's current scope, or
+/// null if that scope must see every update (it is paused).
+inline void publishAliveVariables(AliveVariableHash* alive) {
+	detail::aliveFast = alive;
+}
 
 /// Whether the val<T> layer folds operations over values C++ already knows while tracing, e.g. the byte offset of
 /// `ptr + 2` or the `* sizeof(T)` of a byte pointer (`engine.foldStaticConstants`, see docs/options.md).
@@ -138,7 +152,15 @@ void traceReturnOperation(Type type, const TypedValueRef& ref);
 
 void pushStaticVal(void* ptr, size_t size);
 void popStaticVal();
-void allocateValRef(ValueRef ref);
-void freeValRef(ValueRef ref);
+inline void allocateValRef(ValueRef ref) {
+	if (auto* tracer = detail::activeTracer) {
+		tracer->allocateValRef(ref);
+	}
+}
+inline void freeValRef(ValueRef ref) {
+	if (auto* tracer = detail::activeTracer) {
+		tracer->freeValRef(ref);
+	}
+}
 
 } // namespace nautilus::tracing

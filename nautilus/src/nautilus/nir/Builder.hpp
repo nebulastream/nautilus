@@ -29,6 +29,18 @@ public:
 	Ref emit(const Inst& inst);
 	/// Closes the open function.
 	void endFunction();
+	/// Appends a whole pre-SSA block: the instructions in order and the block's id list (the ids are consecutive).
+	/// Equivalent to `beginBlock` and one `emit` each, without the per-instruction bookkeeping. Returns the id of the
+	/// first instruction. No block may be open, and use counts are not kept.
+	Ref appendPreSSABlock(std::span<const Inst> insts);
+
+	/// Whether `emit` counts the uses of the values (`useCount`); on by default. A producer that never asks switches
+	/// it off and saves a walk over the operands of every instruction.
+	void setTrackUses(bool on) {
+		trackUses_ = on;
+	}
+	/// Makes room for @p insts more instructions and @p extraWords more words of the extra array.
+	void reserve(size_t insts, size_t extraWords);
 
 	/// Number of uses of value `id` of the open function; constants have none.
 	uint32_t useCount(Ref id) const {
@@ -56,6 +68,7 @@ private:
 	Module& m_;
 	uint32_t fn_ = NONE;
 	bool blockOpen_ = false;
+	bool trackUses_ = true;
 	std::vector<uint32_t> useCount_;
 	std::vector<uint32_t> blockIds_; // pre-SSA: ids of the current block's instructions
 };

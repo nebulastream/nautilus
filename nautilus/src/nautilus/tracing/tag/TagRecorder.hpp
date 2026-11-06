@@ -56,6 +56,23 @@ private:
 	Tag* createReferenceTagBacktrace();
 	Tag* createReferenceTagBuildin();
 
+	/// A direct-mapped cache from a walked stack to the trie node it ended in, so that the next operation from the same
+	/// call site does not descend the trie frame by frame. An entry keeps the stack itself, which a hit compares, so a
+	/// collision costs a descent and never yields a wrong tag. Stacks deeper than MAX_CACHED_DEPTH are not cached.
+	/// The table is allocated from the arena once a recorder has made CACHE_AFTER tags, so small functions and
+	/// regions do not pay for it.
+	static constexpr size_t MAX_CACHED_DEPTH = 10;
+	static constexpr size_t CACHE_SIZE = 64;
+	static constexpr uint32_t CACHE_AFTER = 24;
+	struct CacheEntry {
+		uint64_t hash;
+		Tag* node;
+		uint64_t depth;
+		TagAddress stack[MAX_CACHED_DEPTH];
+	};
+	CacheEntry* cache = nullptr;
+	uint32_t tagsCreated = 0;
+
 	// The start address, which is used as the start to calculate tags for sub instructions.
 	const TagAddress startAddress;
 	// The tag recorder stores the individual tags in a trie of addresses, to minimize space consumption.

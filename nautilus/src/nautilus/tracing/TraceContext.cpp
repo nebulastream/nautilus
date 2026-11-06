@@ -44,6 +44,7 @@ TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace&
 	traceContext.parent_ = nullptr;
 	traceContext.session_ = &traceContext;
 	setActiveTracer(&traceContext);
+	traceContext.syncAlive();
 	return &traceContext;
 }
 
@@ -60,6 +61,7 @@ void TraceContext::resume() {
 		activeDestructors.clear();
 	}
 	paused_ = false;
+	syncAlive();
 }
 
 void TraceContext::registerDestructor(const TypedValueRef& address, void* destructor) {
@@ -814,14 +816,17 @@ void TraceContext::traceRegion(std::function<void()>& regionFunction, const Regi
 	// trace. The enclosing region (NO_REGION at function level) is restored afterwards.
 	auto enclosingRegion = trace.setCurrentRegion(regionIndex);
 	setActiveTracer(&child);
+	child.syncAlive();
 	try {
 		child.runScope(regionFunction);
 	} catch (...) {
 		setActiveTracer(this);
+		syncAlive();
 		trace.setCurrentRegion(enclosingRegion);
 		throw;
 	}
 	setActiveTracer(this);
+	syncAlive();
 	trace.setCurrentRegion(enclosingRegion);
 
 	// The body may have released or re-keyed destructors this scope registered (a
@@ -901,6 +906,7 @@ std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::Compil
 	usedFunctionNames.clear();
 	stats_ = {};
 	setActiveTracer(this);
+	syncAlive();
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// escapes the per-function loop below.
 	ActiveTracerGuard activeTracerGuard;
@@ -1083,20 +1089,6 @@ void TraceContext::resolveCalleeNames(ExecutionTrace& trace, const engine::Optio
 			}
 		}
 	}
-}
-
-constexpr size_t fnv_prime = 0x100000001b3;
-constexpr size_t offset_basis = 0xcbf29ce484222325;
-
-uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
-	size_t hash = offset_basis;
-	for (auto& entry : data) {
-		uint64_t val = 0;
-		std::memcpy(&val, entry.ptr, entry.size);
-		hash ^= val;
-		hash *= fnv_prime;
-	}
-	return hash;
 }
 
 Snapshot TraceContext::recordSnapshot() {

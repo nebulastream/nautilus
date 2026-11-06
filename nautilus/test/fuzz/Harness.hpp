@@ -110,6 +110,8 @@ inline std::vector<Config> configs() {
 	// The NIR chain (0.3 tracer -> NIR -> conversion -> tbc on NIR, tracing.nirChain). The IR passes do not run on its
 	// path, so one peer per execution mode covers it; it is checked against the same native oracle as every backend.
 	result.push_back({"nir-tbc", "default", {}});
+	// and with the direct NIR recorder as the tracer (tracing.nirTracer)
+	result.push_back({"nir-direct", "default", {}});
 #endif
 #ifdef ENABLE_TBC_JIT
 	// tbc's copy-and-patch JIT (tbc.mode=jit, strict). It shares tbc's
@@ -118,6 +120,7 @@ inline std::vector<Config> configs() {
 	if (compiler::tbc::jit::jitRuntimeAvailable()) {
 		addCompiling("tbc-jit");
 		result.push_back({"nir-tbc-jit", "default", {}});
+		result.push_back({"nir-direct-jit", "default", {}});
 	}
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
@@ -154,10 +157,14 @@ inline engine::NautilusEngine makeEngine(const std::string& backend, const Optio
 	} else if (backend == "tbc-jit") {
 		options.setOption("engine.backend", std::string("tbc"));
 		options.setOption("tbc.mode", std::string("jit"));
-	} else if (backend == "nir-tbc" || backend == "nir-tbc-jit") {
+	} else if (backend == "nir-tbc" || backend == "nir-tbc-jit" || backend == "nir-direct" ||
+	           backend == "nir-direct-jit") {
 		options.setOption("engine.backend", std::string("nirtbc"));
 		options.setOption("tracing.nirChain", true);
-		if (backend == "nir-tbc-jit") {
+		if (backend == "nir-direct" || backend == "nir-direct-jit") {
+			options.setOption("tracing.nirTracer", true);
+		}
+		if (backend == "nir-tbc-jit" || backend == "nir-direct-jit") {
 			options.setOption("tbc.mode", std::string("jit"));
 		}
 	} else {
