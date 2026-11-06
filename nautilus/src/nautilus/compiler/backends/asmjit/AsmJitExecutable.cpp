@@ -3,11 +3,18 @@
 
 namespace nautilus::compiler::asmjit {
 
-AsmJitExecutable::AsmJitExecutable(std::unique_ptr<::asmjit::JitRuntime> runtime, void* basePtr,
+AsmJitExecutable::AsmJitExecutable(std::shared_ptr<::asmjit::JitRuntime> runtime, void* basePtr,
                                    std::unordered_map<std::string, void*> jitPtrs,
-                                   std::unordered_set<std::string> functionsNeedingCapture)
-    : runtime_(std::move(runtime)), basePtr_(basePtr), jitPtrs_(std::move(jitPtrs)),
+                                   std::unordered_set<std::string> functionsNeedingCapture,
+                                   std::shared_ptr<const void> owner)
+    : owner_(std::move(owner)), runtime_(std::move(runtime)), basePtr_(basePtr), jitPtrs_(std::move(jitPtrs)),
       functionsNeedingCapture_(std::move(functionsNeedingCapture)) {
+}
+
+std::shared_ptr<::asmjit::JitRuntime> AsmJitExecutable::sharedRuntime() {
+	static const auto* const runtime =
+	    new std::shared_ptr<::asmjit::JitRuntime>(std::make_shared<::asmjit::JitRuntime>());
+	return *runtime;
 }
 
 AsmJitExecutable::~AsmJitExecutable() {

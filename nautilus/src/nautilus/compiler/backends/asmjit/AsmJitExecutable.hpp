@@ -18,14 +18,22 @@ namespace nautilus::compiler::asmjit {
  */
 class AsmJitExecutable : public Executable {
 public:
+	/// The runtime that the compiles of the NIR lowering share. Creating a runtime costs 6-12 us (the allocator maps
+	/// its pool), against 0.3 us to add code to an existing one; the allocator is thread safe, and every executable
+	/// releases its own allocation to it. It is never destroyed, so an executable may outlive the static destruction.
+	static std::shared_ptr<::asmjit::JitRuntime> sharedRuntime();
+
 	/// @param functionsNeedingCapture names of the module's functions whose
 	///        compiled body has at least one captured-exception call site (see
 	///        CapturedExceptionTransport::functionsNeedingCapture). A function
 	///        not in this set is reported as NativeUnwind: it never touches
 	///        the ExceptionFrame machinery, so it is safe to call directly.
-	AsmJitExecutable(std::unique_ptr<::asmjit::JitRuntime> runtime, void* basePtr,
+	/// @param owner what the generated code points into and so must outlive it: the NIR module of the lowering (its
+	///        data objects), null for code lowered from the 0.3 IR.
+	AsmJitExecutable(std::shared_ptr<::asmjit::JitRuntime> runtime, void* basePtr,
 	                 std::unordered_map<std::string, void*> jitPtrs,
-	                 std::unordered_set<std::string> functionsNeedingCapture);
+	                 std::unordered_set<std::string> functionsNeedingCapture,
+	                 std::shared_ptr<const void> owner = nullptr);
 	~AsmJitExecutable() override;
 
 	void* getInvocableFunctionPtr(const std::string& member) override;
@@ -41,7 +49,8 @@ public:
 	}
 
 private:
-	std::unique_ptr<::asmjit::JitRuntime> runtime_;
+	std::shared_ptr<const void> owner_;
+	std::shared_ptr<::asmjit::JitRuntime> runtime_;
 	/// Start of the single JIT memory block — released once in the destructor.
 	void* basePtr_;
 	/// Per-function pointers (offsets within the JIT block).

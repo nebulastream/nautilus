@@ -6,7 +6,7 @@ follows the spec's change control (§11): change the spec first, in the same PR.
 
 Since the cut-over (plan PR 6) the engine's default pipeline traces to NIR and converts it (`tracing/nir/`,
 `conversion/`, driven by `compiler/CompilationPipeline.cpp`); `tracing.nirTracer=false` selects the 0.3 pipeline. `tbc`
-compiles NIR natively; `asmjit`, `mlir` and `cpp` get the 0.3 IR built from it by `compiler/NirToIR.cpp` until their
+compiles NIR natively, and so do `cpp` and `asmjit`; `mlir` gets the 0.3 IR built from it by `compiler/NirToIR.cpp` until their
 ports. It is the static library `nautilus-nir`; its tests are `nautilus-nir-tests`; the tool is `nautilus-nir-opt`.
 
 ## Files

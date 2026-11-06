@@ -4,7 +4,7 @@ A backend implements `CompilationBackend` (`CompilationBackend.hpp`):
 `compile(ir, dumpHandler, options, statistics)`, its exception-propagation
 mode and the IR optimization level it needs. The engine's front end produces
 NIR: a backend that returns true from `compilesNir()` reads the module the graph
-carries (`tbc`, `cpp`), the others get the 0.3 IR built from it first (`compiler/NirToIR.cpp`)
+carries (`tbc`, `cpp`, `asmjit`), the others (`mlir`) get the 0.3 IR built from it first (`compiler/NirToIR.cpp`)
 until their NIR port lands. Built-in backends are registered
 in `CompilationBackend.cpp`; plugins call `CompilationBackendRegistry::registerBackend`.
 A backend that reads what only the 0.3 trace carries returns true from `needs03Frontend()` (the GPU backends: the `kernel`
@@ -44,7 +44,7 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
   since the engine looks functions up by name. The generated code points into the module (data objects, bindings), which
   the executable keeps alive.
 - `tools/nir-run` (`nautilus-nir-run`) compiles a `.nir` file and runs its `; run @f(args) = result` directives;
-  ctest runs `test/data/nir-run/*.nir` on `tbc` in three modes and on `cpp` (native executables are called through dyncall). Add a file there for every NIR operation a backend
+  ctest runs `test/data/nir-run/*.nir` on `tbc` in three modes and on `cpp` and `asmjit` (native executables are called through dyncall). Add a file there for every NIR operation a backend
   handles.
 - `TBCBackend::compile` hands a graph that carries a NIR module and no IR to `TBCNirBackend`; the `tbc.registerAllocator`,
   `tbc.coalescing`, `tbc.superinstructions` and `tbc.immediates` options belong to the 0.3 lowering only.
@@ -52,3 +52,53 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
   pipeline, `tracing.nirTracer=false`) and the pseudo-backends `nir-tbc` and `nir-tbc-jit`: with the 0.3 tracer,
   `tracing.nirChain=true` converts the trace to SSA NIR (`toPreSSA` -> conversion) and attaches it to the IR graph, and
   the `nirtbc` backend compiles that NIR with `tbc` on NIR. They go with the 0.3 pipeline.
+
+## `asmjit` on NIR (0.4, M4.4)
+
+- `asmjit/X64NirLowering.cpp` and `asmjit/A64NirLowering.cpp` lower SSA NIR to AsmJit's `Compiler`; `AsmJitNirBackend` is
+  the registered NIR backend, `AsmJitCompilationBackend` hands it a graph that carries a module and no IR. AsmJit's
+  register allocator and the post-RA peepholes are the 0.3 ones. The 0.3 providers (`X64LoweringProvider`,
+  `A64LoweringProvider`) stay for `tracing.nirTracer=false` (`legacy-asmjit`) until M4.2 deletes them.
+- Side tables are arrays indexed by the value id of the function (`Fn` in the lowering: registers, use counts, block of
+  a value, deferred constants and address parts). A virtual register is created when a value is first needed; only a
+  value that is defined and dead within one block, with a single use, hands its register to the instruction that uses
+  it (`canReuse`). Constants and traced addresses (`ptr.const`, `data.addr`, `bind.addr`) emit nothing: each consumer
+  takes an immediate or rematerialises.
+- Integers are not kept extended. x86-64 runs narrow operations on 32-bit registers, AArch64 on W registers; consumers
+  that read more extend (division, right shifts, widening casts, compares of 8 and 16 bits on AArch64, calls and
+  returns by the extension kind of the signature, 13 §4.5.1). A `bool` is kept as 0 or 1 (AArch64 re-normalises
+  parameters and call results, since `cbnz` reads the whole W register).
+- D10/D11: checked `div`/`rem` compare and branch to a cold block after the body that calls `nautilus_rt_throw_arith`
+  through its capture thunk and jumps to the pad or the exit; narrow shift amounts are masked (32- and 64-bit shifts are
+  masked by the hardware); float to integer casts are `cvtt` plus a cold fixup on x86-64 (NaN 0, overflow the extremes),
+  `fcvtzs`/`fcvtzu` (which saturate) plus a clamp for narrow results on AArch64.
+- Instruction selection kept from 0.3, with the same options and `asmjit.lowering.*` counters: compare and branch
+  fusion, loop rotation, address fusion, cmov/csel, immediates, small-callee inlining; AArch64 also tail duplication
+  (a block that is lowered twice defines its values into the same registers and reuses none).
+- Intrinsics: the plugins' handlers get an `IntrinsicCallContext` (argument registers, result register) and serve the
+  0.3 and the NIR lowering alike; the handler is found by the `IntrinsicRegistry` id of the intrinsic's fallback.
+- Test the lowering with `nir-run-asmjit-*` (the `.nir` corpus), the execution tests, and `AsmJitLoweringModeTest` /
+  `PostRAPeepholeTest`, which pin the counters and the differential behaviour of each option.
+- Cost: the statistics split the backend into `asmjit.lowering.ms` (the builder nodes, this file) and
+  `asmjit.finalize.ms` (AsmJit's register allocation, the peephole pass and the encoding), which is most of it. AsmJit's
+  work grows with the virtual registers and nodes it is given, so a result takes the register of an operand that dies
+  (`destGp`, `canReuse`) and a doubled value plus a constant is one `lea`. Check a change with callgrind on
+  `nautilus-latency-corpus 1 straight 1000 asmjit` (`lowerNirModule` inclusive) and with `tools/asm-diff/loop-diff.py`.
+- Run time: integer arithmetic runs on the whole 64-bit register on x86-64 whatever the type's width (immediates are
+  those of the width): a 32-bit `add` of a loop counter measured 30-50% slower than the 64-bit one in the `sum` kernel.
+- Measure compile time with `nautilus-compile-bench <reps> all asmjit` (the NIR rows run on `asmjit` natively; the
+  `lower_ms` and `final_ms` columns split the backend). On the dev machine of M4.4 (Release, clang-21, one pinned core)
+  `straight` 5000 costs 0.07 us per NIR instruction in the lowering and 0.28 in AsmJit's finalize (about 80% of the
+  backend); the lowering's own work is under 10% of the instructions executed, so what is left is AsmJit's allocator.
+- Code-quality gaps against the 0.3 lowering (x86-64, `loop-diff.py` instruction counts of the loop bodies, run time
+  ratio NIR/0.3 in brackets): load plus widening cast is one `movsx`/`movzx` from memory, narrow8/16 13 -> 8 [0.56];
+  blocks that only branch are threaded and the post-RA peephole skips unreferenced labels, stride3 21 -> 16 [0.97],
+  countNonZero 9+6 -> 8 [0.65]; `a+b`/`a+c` is a `lea` only when `a` is used later in the block (otherwise the
+  register allocator coalesces the two-address form, which a `lea` would not); chains of constant adds fold into one
+  (`lowerAddChain`: manyArgsLoop 11 -> 9, 0.3 has 10). Open and not worth it so far: the `mov` of a loop-carried value on
+  the back edge (the allocator's choice), `setcc` partial writes and select by flags, demanded-bits removal of
+  extensions. Passing constant call arguments as invoke immediates only moved the move into the allocator.
+- Floor: AsmJit's finalize is about 0.3 us per NIR instruction on linear code (backend total about 0.37 against the
+  0.25 target); a `[Nautilus]` fast path in `queryRWInfo` would be worth at most 11-15% of it.
+- Not mirrored in `A64NirLowering.cpp` (no way to run AArch64 code in the sessions that wrote this): load plus
+  extension fusion, block threading, the `lea` rule, constant add chains, reassociation and constant block parameters.

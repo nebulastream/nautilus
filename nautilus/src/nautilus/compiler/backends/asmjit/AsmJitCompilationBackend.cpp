@@ -8,6 +8,7 @@
 #include "nautilus/compiler/backends/asmjit/A64LoweringProvider.hpp"
 #endif
 #include "nautilus/compiler/backends/asmjit/AsmJitExecutable.hpp"
+#include "nautilus/compiler/backends/asmjit/AsmJitNirBackend.hpp"
 #include <chrono>
 #include <memory>
 
@@ -17,6 +18,13 @@ std::unique_ptr<Executable> AsmJitCompilationBackend::compile(const std::shared_
                                                               const DumpHandler& dumpHandler,
                                                               const engine::Options& options,
                                                               CompilationStatistics* statistics) const {
+	// The graph of the NIR front end carries the module and no IR: it compiles natively (M4.4)
+	if (ir->getNirModule() != nullptr && ir->getFunctionOperations().empty()) {
+		auto module = std::static_pointer_cast<const nir::Module>(ir->getNirModule());
+		// the traced module is process-local: its pointers are addresses, so the host resolves nothing
+		const nirbackend::CompileContext context {dumpHandler, options, statistics, nullptr, {}};
+		return AsmJitNirBackend().compile(std::move(module), context);
+	}
 	const auto backendStart = std::chrono::steady_clock::now();
 
 	auto runtime = std::make_unique<::asmjit::JitRuntime>();

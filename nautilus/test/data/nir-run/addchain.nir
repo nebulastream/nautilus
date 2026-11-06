@@ -1,0 +1,64 @@
+; Chains of adds and subtracts of constants: the asmjit lowering folds x+c1+c2 into one instruction, which wraps at the width.
+nir 1.0
+
+func export @chain8 : (i8 sext) -> i8 sext {
+^b0(%0: i8):
+  %1 = add %0, 100:i8
+  %2 = add %1, 100:i8
+  %3 = sub %2, 7:i8
+  ret %3
+}
+; run @chain8(0) = -63
+; run @chain8(100) = 37
+; run @chain8(-128) = 65
+
+func export @chain16 : (i16 sext) -> i16 sext {
+^b0(%0: i16):
+  %1 = add %0, 30000:i16
+  %2 = add %1, 30000:i16
+  %3 = sub %2, -5:i16
+  ret %3
+}
+; run @chain16(0) = -5531
+; run @chain16(10000) = 4469
+
+func export @chain32 : (i32) -> i32 {
+^b0(%0: i32):
+  %1 = add %0, 2000000000:i32
+  %2 = add %1, 2000000000:i32
+  %3 = sub %2, 1:i32
+  ret %3
+}
+; run @chain32(0) = -294967297
+; run @chain32(1) = -294967296
+
+func export @chain64 : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = add %0, 2000000000:i64
+  %2 = add %1, 2000000000:i64
+  %3 = add %2, 3000000000:i64
+  ret %3
+}
+; run @chain64(0) = 7000000000
+; run @chain64(9223372036854775807) = -9223372029854775809
+
+; the intermediate is used twice: it is computed, and the second add starts from it
+func export @shared32 : (i32) -> i32 {
+^b0(%0: i32):
+  %1 = add %0, 5:i32
+  %2 = add %1, 6:i32
+  %3 = mul %1, %2
+  ret %3
+}
+; run @shared32(1) = 72
+; run @shared32(-5) = 0
+
+func export @shared64 : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = add %0, 1:i64
+  %2 = add %1, 2:i64
+  %3 = sub %2, %1
+  %4 = add %3, %2
+  ret %4
+}
+; run @shared64(10) = 15

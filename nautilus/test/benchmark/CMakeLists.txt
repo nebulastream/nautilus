@@ -32,4 +32,8 @@ if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
     # operator new to count allocations; it uses only the public engine API.
     add_executable(nautilus-latency-corpus latency-corpus/LatencyCorpus.cpp)
     target_link_libraries(nautilus-latency-corpus PRIVATE nautilus)
+
+    # kernels whose loops run long enough for the quality of the generated code to show (tools/asm-diff)
+    add_executable(nautilus-asm-kernels ${PROJECT_SOURCE_DIR}/tools/asm-diff/kernels.cpp)
+    target_link_libraries(nautilus-asm-kernels PRIVATE nautilus)
 endif ()

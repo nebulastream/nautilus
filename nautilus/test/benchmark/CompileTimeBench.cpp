@@ -6,8 +6,8 @@
 //   nautilus-compile-bench [repetitions [kernel [backend [mode]]]]
 //
 //   kernel   a name from the table below, or "" / "all"
-//   backend  tbc, asmjit, cpp, mlir (whatever is built), or "all"; default tbc. The NIR mode runs on tbc only (the
-//            `nirtbc` chain) until the backends read NIR; the other backends get the 0.3 rows
+//   backend  tbc, asmjit, cpp, mlir (whatever is built), or "all"; default tbc. The NIR mode runs on the backends that
+//            read NIR (tbc through the `nirtbc` chain, asmjit natively); the others get the 0.3 rows
 //   mode     "03" (nirTracer=false), "nir" (nirTracer=true), "" / "both"
 //
 // One TSV row per (backend, kernel, N, mode) on stdout; medians over the repetitions. Columns:
@@ -17,6 +17,8 @@
 //   trace_ops    tracing.operations (exact, same on both modes), out_ops conversion.instructions (NIR) or
 //                ir.operations after the passes (0.3)
 //   trace_us/op, conv_us/op, total_us/op   per traced operation (front end = trace + conv; total adds the backend)
+//   lower_ms, final_ms   asmjit only: the builder nodes of the lowering, and AsmJit's finalize (register allocation,
+//                        peephole pass, encoding); backend_ms minus both is the JIT runtime and the executable
 //
 // The statistics need the pipeline to record them, which the engine does for every compilation; the NIR path only
 // converts when statistics are requested, so the harness always asks (Engine::getStatistics).
@@ -68,9 +70,9 @@ static void runKernel(const char* kernel, int n, const std::string& backend, boo
 	engine::Options options;
 	// Until the backends read NIR, the NIR tracer's chain ends in the `nirtbc` pseudo-backend, which compiles the SSA
 	// NIR with the tbc backend; the 0.3 column of tbc is the like-for-like backend stage.
-	options.setOption("engine.backend", nir ? std::string("nirtbc") : backend);
+	options.setOption("engine.backend", nir && backend == "tbc" ? std::string("nirtbc") : backend);
 	options.setOption("tracing.nirTracer", nir);
-	if (nir) {
+	if (nir && backend == "tbc") {
 		options.setOption("tracing.nirChain", true);
 	}
 	if (backend == "tbc") {
@@ -79,7 +81,7 @@ static void runKernel(const char* kernel, int n, const std::string& backend, boo
 	if (backend == "mlir") {
 		options.setOption("mlir.eager_compilation", true);
 	}
-	std::vector<double> trace, conv, back, wall;
+	std::vector<double> trace, conv, back, wall, lower, fin;
 	int64_t traceOps = 0, outOps = 0;
 	for (int rep = -1; rep < reps; rep++) { // repetition -1 is a warm-up
 		engine::NautilusEngine engine(options);
@@ -105,13 +107,16 @@ static void runKernel(const char* kernel, int n, const std::string& backend, boo
 			outOps = statInt(*stats, "ir.operations");
 		}
 		back.push_back(statMs(*stats, "backend.totalMs"));
+		lower.push_back(statMs(*stats, "asmjit.lowering.ms"));
+		fin.push_back(statMs(*stats, "asmjit.finalize.ms"));
 		traceOps = statInt(*stats, "tracing.operations");
 	}
 	const double t = median(trace), c = median(conv), b = median(back);
 	const double ops = traceOps > 0 ? static_cast<double>(traceOps) : 1.0;
-	std::printf("%s\t%s\t%d\t%s\t%.4f\t%.4f\t%.4f\t%.4f\t%lld\t%lld\t%.4f\t%.4f\t%.4f\n", backend.c_str(), kernel, n,
-	            nir ? "nir" : "03", t, c, b, median(wall), static_cast<long long>(traceOps),
-	            static_cast<long long>(outOps), t * 1e3 / ops, c * 1e3 / ops, (t + c + b) * 1e3 / ops);
+	std::printf("%s\t%s\t%d\t%s\t%.4f\t%.4f\t%.4f\t%.4f\t%lld\t%lld\t%.4f\t%.4f\t%.4f\t%.4f\t%.4f\n", backend.c_str(),
+	            kernel, n, nir ? "nir" : "03", t, c, b, median(wall), static_cast<long long>(traceOps),
+	            static_cast<long long>(outOps), t * 1e3 / ops, c * 1e3 / ops, (t + c + b) * 1e3 / ops, median(lower),
+	            median(fin));
 	std::fflush(stdout);
 }
 
@@ -164,7 +169,7 @@ int main(int argc, char** argv) {
 	corpus.push_back(entry("chainedIfRegion", {10, 100, 300}, chainedIfRegion));
 
 	std::printf("backend\tkernel\tn\tmode\ttrace_ms\tconv_ms\tbackend_ms\twall_ms\ttrace_ops\tout_ops\ttrace_us/op\t"
-	            "conv_us/op\ttotal_us/op\n");
+	            "conv_us/op\ttotal_us/op\tlower_ms\tfinal_ms\n");
 	for (const auto& backend : backends) {
 		if (!onlyBackend.empty() && onlyBackend != "all" && onlyBackend != backend) {
 			continue;
@@ -178,8 +183,8 @@ int main(int argc, char** argv) {
 					if ((mode == "03" && nir) || (mode == "nir" && !nir)) {
 						continue;
 					}
-					if (nir && backend != "tbc") {
-						continue; // only the tbc chain reads NIR so far
+					if (nir && backend != "tbc" && backend != "asmjit") {
+						continue; // only these read NIR so far
 					}
 					e.run(backend, n, nir, reps);
 				}
