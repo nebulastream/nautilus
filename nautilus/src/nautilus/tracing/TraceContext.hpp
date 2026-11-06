@@ -1,12 +1,12 @@
 #pragma once
 
-#include "AliveVariableHash.hpp"
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
 #include "TracingStatistics.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/options.hpp"
+#include "nautilus/tracing/AliveVariableHash.hpp"
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "tag/Tag.hpp"
@@ -335,7 +335,13 @@ private:
 	/// Ends the pass: the traced calls that follow do nothing but return a dummy.
 	void pause() {
 		paused_ = true;
+		syncAlive();
 		enterPhase(Phase::Paused);
+	}
+	/// Publishes this scope's reference counts for the inline updates of `val<T>` while it is the active one and not
+	/// paused (a paused scope ignores them, which the slow path does).
+	void syncAlive() {
+		publishAliveVariables(paused_ ? nullptr : &aliveVars);
 	}
 
 	// Persistent state - reset between trace iterations via resume()

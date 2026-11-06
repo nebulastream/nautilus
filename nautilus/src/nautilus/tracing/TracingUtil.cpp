@@ -11,6 +11,19 @@
 
 namespace nautilus::tracing {
 
+namespace detail {
+void allocateValRefSlow(ValueRef ref) {
+	if (activeTracer != nullptr) {
+		activeTracer->allocateValRef(ref);
+	}
+}
+void freeValRefSlow(ValueRef ref) {
+	if (activeTracer != nullptr) {
+		activeTracer->freeValRef(ref);
+	}
+}
+} // namespace detail
+
 // `engine.foldStaticConstants` of the function being traced on this thread.
 static thread_local bool foldStaticConstants = true;
 
