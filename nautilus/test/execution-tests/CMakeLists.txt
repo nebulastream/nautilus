@@ -18,6 +18,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         DumpHelperTest.cpp
         FunctionPtrExecutionTest.cpp
 		InvokeExceptionExecutionTest.cpp
+        LiteralOperandExecutionTest.cpp
         NoThrowInferenceIntegrationTest.cpp
         MemoryIntrinsicExecutionTest.cpp
         ModuleLifecycleTest.cpp

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nautilus/Engine.hpp>
+#include <nautilus/static.hpp>
 
 namespace nautilus::engine {
 
@@ -322,6 +323,18 @@ inline val<bool> compareUInt64AndLiteral(val<uint64_t> x) {
 
 inline val<double> mulDoubleAndLiteral(val<double> x) {
 	return x * 2;
+}
+
+// A static_val is a value C++ knows, like a literal: it is traced as one constant of the type the operator converts it
+// to.
+inline val<int64_t> addInt64AndStaticVal(val<int64_t> x) {
+	static_val<int32_t> i = 3;
+	return x + i;
+}
+
+inline val<bool> compareUInt32AndStaticVal(val<uint32_t> x) {
+	static_val<int32_t> i = -1;
+	return i < x;
 }
 
 // Not every int64_t is a float, so this keeps the traced CAST.

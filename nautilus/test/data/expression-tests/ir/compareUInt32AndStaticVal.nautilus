@@ -1,0 +1,8 @@
+nautilus {
+execute($1:ui32) :bool {
+Block_0($1:ui32):
+	$2 = 4294967295 :ui32
+	$3 = $2 < $1 :bool
+	return ($3) :bool
+}
+} //nautilus

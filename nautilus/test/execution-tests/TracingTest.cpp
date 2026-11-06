@@ -250,6 +250,8 @@ TEST_CASE("Expression Trace Test") {
 	    {"compareUInt64AndLiteral", details::createFunctionWrapper(compareUInt64AndLiteral)},
 	    {"mulDoubleAndLiteral", details::createFunctionWrapper(mulDoubleAndLiteral)},
 	    {"addFloatAndInt64Literal", details::createFunctionWrapper(addFloatAndInt64Literal)},
+	    {"addInt64AndStaticVal", details::createFunctionWrapper(addInt64AndStaticVal)},
+	    {"compareUInt32AndStaticVal", details::createFunctionWrapper(compareUInt32AndStaticVal)},
 	};
 	runTraceTests("expression-tests", tests);
 }
@@ -603,6 +605,18 @@ TEST_CASE("Static constant folding can be disabled") {
 	auto literalUnfolded = traceWithOptions(details::createFunctionWrapper(addInt64AndLiteral), unfolded);
 	CHECK(literalUnfolded.find("CONST\t$2\t1\t:i32") != std::string::npos);
 	CHECK(literalUnfolded.find("CAST") != std::string::npos);
+
+	// a static_val is folded like a literal
+	auto staticFolded = traceWithOptions(details::createFunctionWrapper(addInt64AndStaticVal), engine::Options());
+	CHECK(staticFolded.find("CAST") == std::string::npos);
+	CHECK(staticFolded.find("CONST\t$2\t3\t:i64") != std::string::npos);
+	auto staticUnfolded = traceWithOptions(details::createFunctionWrapper(addInt64AndStaticVal), unfolded);
+	CHECK(staticUnfolded.find("CONST\t$2\t3\t:i32") != std::string::npos);
+	CHECK(staticUnfolded.find("CAST") != std::string::npos);
+	auto staticCompareFolded =
+	    traceWithOptions(details::createFunctionWrapper(compareUInt32AndStaticVal), engine::Options());
+	CHECK(staticCompareFolded.find("CAST") == std::string::npos);
+	CHECK(staticCompareFolded.find("CONST\t$2\t4294967295\t:ui32") != std::string::npos);
 
 	// The option applies to the trace it was given to only.
 	CHECK(traceWithOptions(details::createFunctionWrapper(pointerAddConst), engine::Options()) == folded);
