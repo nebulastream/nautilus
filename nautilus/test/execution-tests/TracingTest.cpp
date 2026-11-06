@@ -250,6 +250,8 @@ TEST_CASE("Expression Trace Test") {
 	    {"compareUInt64AndLiteral", details::createFunctionWrapper(compareUInt64AndLiteral)},
 	    {"mulDoubleAndLiteral", details::createFunctionWrapper(mulDoubleAndLiteral)},
 	    {"addFloatAndInt64Literal", details::createFunctionWrapper(addFloatAndInt64Literal)},
+	    {"addInt64AndStaticVal", details::createFunctionWrapper(addInt64AndStaticVal)},
+	    {"compareUInt32AndStaticVal", details::createFunctionWrapper(compareUInt32AndStaticVal)},
 	};
 	runTraceTests("expression-tests", tests);
 }

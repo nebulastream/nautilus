@@ -1,0 +1,6 @@
+EXECUTE:
+B0($1:ui32)
+	CONST	$2	4294967295	:ui32
+	LT	$3	$2	$1	:bool
+	RETURN	$0	$3	:bool
+
