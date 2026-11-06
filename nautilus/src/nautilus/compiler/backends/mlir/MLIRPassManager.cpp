@@ -37,8 +37,9 @@ std::unique_ptr<mlir::Pass> getMLIROptimizationPass(MLIRPassManager::Optimizatio
 
 int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp>& module,
                                                 const std::vector<OptimizationPass>& optimizationPasses,
-                                                const DebugInfoOptions& debugInfo) {
+                                                const DebugInfoOptions& debugInfo, bool verifyPasses) {
 	mlir::PassManager passManager(module->getContext());
+	passManager.enableVerifier(verifyPasses);
 
 	const bool debugEnabled = debugInfo.enableDebug;
 	// Debugging wants predictable, un-inlined frames to step through, so it

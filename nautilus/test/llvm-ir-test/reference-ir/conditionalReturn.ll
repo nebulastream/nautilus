@@ -5,9 +5,10 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
-  %2 = icmp eq i32 %0, 42
-  %3 = select i1 %2, i32 1, i32 120
-  ret i32 %3
+common.ret:
+  %1 = icmp eq i32 %0, 42
+  %. = select i1 %1, i32 1, i32 120
+  ret i32 %.
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }

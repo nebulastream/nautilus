@@ -81,24 +81,24 @@ using TypeFactory = std::function<::mlir::Type(::mlir::OpBuilder&)>;
 	return b.getI64Type();
 }
 
-IntrinsicFunction makeAtomicLoadLowering(AtomicOrdering ord, TypeFactory tyFn) {
-	return [ord, tyFn](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* call,
-	                   MLIRLoweringProvider::ValueFrame& frame) -> bool {
-		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+NirIntrinsicFunction makeAtomicLoadLowering(AtomicOrdering ord, TypeFactory tyFn) {
+	return [ord, tyFn](NirIntrinsicCall& call) -> bool {
+		[[maybe_unused]] auto& b = call.builder;
+		auto ptr = call.args[0];
 		auto resultTy = tyFn(*b);
 		auto op = ::mlir::LLVM::LoadOp::create(*b, b->getUnknownLoc(), resultTy, ptr,
 		                                       /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
 		                                       /*isInvariant=*/false, /*isInvariantGroup=*/false, ord);
-		frame.setValue(call->getIdentifier(), op);
+		call.result = op;
 		return true;
 	};
 }
 
-IntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
-	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* call,
-	             MLIRLoweringProvider::ValueFrame& frame) -> bool {
-		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+NirIntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
+	return [ord](NirIntrinsicCall& call) -> bool {
+		[[maybe_unused]] auto& b = call.builder;
+		auto ptr = call.args[0];
+		auto value = call.args[1];
 		::mlir::LLVM::StoreOp::create(*b, b->getUnknownLoc(), value, ptr,
 		                              /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
 		                              /*isInvariantGroup=*/false, ord);
@@ -106,20 +106,20 @@ IntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
 	};
 }
 
-IntrinsicFunction makeAtomicRMWLowering(AtomicBinOp binOp, AtomicOrdering ord) {
-	return [binOp, ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* call,
-	                    MLIRLoweringProvider::ValueFrame& frame) -> bool {
-		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+NirIntrinsicFunction makeAtomicRMWLowering(AtomicBinOp binOp, AtomicOrdering ord) {
+	return [binOp, ord](NirIntrinsicCall& call) -> bool {
+		[[maybe_unused]] auto& b = call.builder;
+		auto ptr = call.args[0];
+		auto value = call.args[1];
 		auto op = ::mlir::LLVM::AtomicRMWOp::create(*b, b->getUnknownLoc(), binOp, ptr, value, ord);
-		frame.setValue(call->getIdentifier(), op);
+		call.result = op;
 		return true;
 	};
 }
 
-IntrinsicFunction makeFenceLowering(AtomicOrdering ord) {
-	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* /*call*/,
-	             MLIRLoweringProvider::ValueFrame& /*frame*/) -> bool {
+NirIntrinsicFunction makeFenceLowering(AtomicOrdering ord) {
+	return [ord](NirIntrinsicCall& call) -> bool {
+		[[maybe_unused]] auto& b = call.builder;
 		::mlir::LLVM::FenceOp::create(*b, b->getUnknownLoc(), ord);
 		return true;
 	};

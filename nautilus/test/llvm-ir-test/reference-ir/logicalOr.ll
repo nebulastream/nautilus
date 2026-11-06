@@ -5,11 +5,12 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
-  %2 = icmp eq i32 %0, 10
-  %3 = icmp eq i32 %0, 20
-  %4 = or i1 %2, %3
-  %5 = zext i1 %4 to i32
-  ret i32 %5
+common.ret:
+  %switch.selectcmp.case1 = icmp eq i32 %0, 20
+  %switch.selectcmp.case2 = icmp eq i32 %0, 10
+  %switch.selectcmp = or i1 %switch.selectcmp.case1, %switch.selectcmp.case2
+  %1 = zext i1 %switch.selectcmp to i32
+  ret i32 %1
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }

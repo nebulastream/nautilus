@@ -10,14 +10,14 @@ define signext i32 @execute(i32 %0, i32 %1) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: alwaysinline mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-define dso_local noundef i32 @_ZN8nautilus6engine3addEii(i32 noundef %0, i32 noundef %1) local_unnamed_addr #1 {
-  %3 = add nsw i32 %1, %0
+define dso_local noundef i32 @_ZN8nautilus6engine3subEii(i32 noundef %0, i32 noundef %1) local_unnamed_addr #1 {
+  %3 = sub nsw i32 %0, %1
   ret i32 %3
 }
 
 ; Function Attrs: alwaysinline mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-define dso_local noundef i32 @_ZN8nautilus6engine3subEii(i32 noundef %0, i32 noundef %1) local_unnamed_addr #1 {
-  %3 = sub nsw i32 %0, %1
+define dso_local noundef i32 @_ZN8nautilus6engine3addEii(i32 noundef %0, i32 noundef %1) local_unnamed_addr #1 {
+  %3 = add nsw i32 %1, %0
   ret i32 %3
 }
 

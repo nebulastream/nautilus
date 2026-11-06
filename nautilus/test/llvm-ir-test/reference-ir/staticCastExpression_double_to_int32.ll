@@ -5,11 +5,15 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(double %0) local_unnamed_addr #0 {
-  %2 = fptosi double %0 to i32
+  %2 = tail call i32 @llvm.fptosi.sat.i32.f64(double %0)
   ret i32 %2
 }
 
+; Function Attrs: mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none)
+declare i32 @llvm.fptosi.sat.i32.f64(double) #1
+
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
+attributes #1 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
 
 !llvm.module.flags = !{!0}
 

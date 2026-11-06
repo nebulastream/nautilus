@@ -20,11 +20,11 @@ public:
 // ============================================================================
 
 /// Helper for memcpy intrinsic (3 arguments: dest, src, count)
-bool replaceWithMemcpyIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                MLIRLoweringProvider::ValueFrame& frame) {
-	auto dest = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto src = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+bool replaceWithMemcpyIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto dest = call.args[0];
+	auto src = call.args[1];
+	auto count = call.args[2];
 
 	// Create memcpy intrinsic: llvm.memcpy(dest, src, len, isVolatile)
 	auto isVolatile = ::mlir::LLVM::ConstantOp::create(*builder, builder->getUnknownLoc(), builder->getI1Type(),
@@ -33,16 +33,16 @@ bool replaceWithMemcpyIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, con
 	::mlir::LLVM::MemcpyOp::create(*builder, builder->getUnknownLoc(), dest, src, count, isVolatile);
 
 	// memcpy returns the destination pointer
-	frame.setValue(call->getIdentifier(), dest);
+	call.result = dest;
 	return true;
 }
 
 /// Helper for memmove intrinsic (3 arguments: dest, src, count)
-bool replaceWithMemmoveIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                 MLIRLoweringProvider::ValueFrame& frame) {
-	auto dest = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto src = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+bool replaceWithMemmoveIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto dest = call.args[0];
+	auto src = call.args[1];
+	auto count = call.args[2];
 
 	// Create memmove intrinsic: llvm.memmove(dest, src, len, isVolatile)
 	auto isVolatile = ::mlir::LLVM::ConstantOp::create(*builder, builder->getUnknownLoc(), builder->getI1Type(),
@@ -51,16 +51,16 @@ bool replaceWithMemmoveIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, co
 	::mlir::LLVM::MemmoveOp::create(*builder, builder->getUnknownLoc(), dest, src, count, isVolatile);
 
 	// memmove returns the destination pointer
-	frame.setValue(call->getIdentifier(), dest);
+	call.result = dest;
 	return true;
 }
 
 /// Helper for memset intrinsic (3 arguments: dest, value, count)
-bool replaceWithMemsetIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                MLIRLoweringProvider::ValueFrame& frame) {
-	auto dest = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+bool replaceWithMemsetIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto dest = call.args[0];
+	auto value = call.args[1];
+	auto count = call.args[2];
 
 	// LLVM memset intrinsic requires the value to be i8, so truncate from i32 to i8
 	auto i8Type = builder->getIntegerType(8);
@@ -73,7 +73,7 @@ bool replaceWithMemsetIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, con
 	::mlir::LLVM::MemsetOp::create(*builder, builder->getUnknownLoc(), dest, truncatedValue, count, isVolatile);
 
 	// memset returns the destination pointer
-	frame.setValue(call->getIdentifier(), dest);
+	call.result = dest;
 	return true;
 }
 
@@ -82,8 +82,8 @@ bool replaceWithMemsetIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, con
 /// of a constant length, or an equality test against zero (via bcmp), into loads and compares.
 /// A call through the runtime address (the default lowering) would hide the function from it.
 /// The JIT resolves the symbol from the process.
-bool replaceWithMemcmpCall(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                           MLIRLoweringProvider::ValueFrame& frame) {
+bool replaceWithMemcmpCall(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
 	auto loc = builder->getUnknownLoc();
 	auto* block = builder->getInsertionBlock();
 	auto module = block->getParentOp()->getParentOfType<::mlir::ModuleOp>();
@@ -96,11 +96,11 @@ bool replaceWithMemcmpCall(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 		builder->setInsertionPointToStart(module.getBody());
 		::mlir::LLVM::LLVMFuncOp::create(*builder, loc, "memcmp", fnType, ::mlir::LLVM::Linkage::External);
 	}
-	auto s1 = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto s2 = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+	auto s1 = call.args[0];
+	auto s2 = call.args[1];
+	auto count = call.args[2];
 	auto result = ::mlir::LLVM::CallOp::create(*builder, loc, fnType, "memcmp", ::mlir::ValueRange {s1, s2, count});
-	frame.setValue(call->getIdentifier(), result.getResult());
+	call.result = result.getResult();
 	return true;
 }
 
@@ -127,7 +127,11 @@ void MLIRMemoryIntrinsicPlugin::registerIntrinsics(MLIRIntrinsicManager& manager
 }
 
 void RegisterMLIRMemoryIntrinsicPlugin() {
-	MLIRIntrinsicPluginRegistry::instance().addPlugin(std::make_shared<MLIRMemoryIntrinsicPlugin>());
+	// both the 0.3 backend and the NIR backend ask for it: once is enough
+	static std::once_flag registered;
+	std::call_once(registered, [] {
+		MLIRIntrinsicPluginRegistry::instance().addPlugin(std::make_shared<MLIRMemoryIntrinsicPlugin>());
+	});
 }
 
 } // namespace nautilus::compiler::mlir

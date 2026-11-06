@@ -4,7 +4,7 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define zeroext i64 @execute(i64 %0) local_unnamed_addr #0 {
+define i64 @execute(i64 %0) local_unnamed_addr #0 {
   %2 = tail call i64 @llvm.ctlz.i64(i64 %0, i1 false)
   ret i64 %2
 }

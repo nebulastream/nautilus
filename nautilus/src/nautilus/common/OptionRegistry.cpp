@@ -55,7 +55,7 @@ const std::vector<OptionSpec>& optionRegistry() {
 	    {"debug", OptionType::Bool, "false", true, {}},
 	    {"perf", OptionType::Bool, "false", false, {}},
 	    {"perf.sample", OptionType::Bool, "false", false, {}},
-	    {"mlir.enableMultithreading", OptionType::Bool, "true", false, {}},
+	    {"mlir.enableMultithreading", OptionType::Bool, "false", false, {}},
 	    {"mlir.enableIntrinsics", OptionType::Bool, "true", true, {}},
 	    {"mlir.inline_invoke_calls", OptionType::Bool, "false", true, {}},
 	    {"mlir.eager_compilation", OptionType::Bool, "false", false, {}},

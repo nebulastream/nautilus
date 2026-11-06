@@ -27,18 +27,18 @@ std::string getAnyBackend() {
 #endif
 }
 
-/// A backend that has no NIR port (`tbc`, `cpp` and `asmjit` have one), so the NIR pipeline builds the 0.3 IR
-/// for it (the bridge), or "" if the build has none.
+/// A backend that has no NIR port (`tbc`, `cpp`, `asmjit` and `mlir` all have one), so no backend goes through the
+/// bridge (the NIR-to-0.3-IR conversion) any more: "".
 std::string getBridgedBackend() {
-#if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
-	return "mlir";
-#else
 	return "";
-#endif
 }
 
 val<int32_t> statsAddOne(val<int32_t> x) {
 	return x + 1;
+}
+
+[[maybe_unused]] val<int32_t> statsAddTwo(val<int32_t> x) {
+	return x + 2;
 }
 
 } // namespace
@@ -151,10 +151,14 @@ TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats of the 
 	}
 	REQUIRE(std::get<int64_t>(*stats->find("tracing.iterations")) == 1);
 
-	// tbc and cpp compile the NIR as it is; the other backends get the 0.3 IR built from it
-	if (backend == "tbc" || backend == "cpp") {
+	// tbc, cpp and mlir compile the NIR as it is; the other backends get the 0.3 IR built from it
+	if (backend == "tbc" || backend == "cpp" || backend == "mlir") {
 		REQUIRE_FALSE(stats->contains("bridge.ms"));
 		REQUIRE_FALSE(stats->contains("ir.operations"));
+		if (backend == "mlir") {
+			REQUIRE(stats->contains("mlir.loweringFromNir.ms"));
+			REQUIRE_FALSE(stats->contains("mlir.loweringFromIR.ms"));
+		}
 	} else {
 		REQUIRE(stats->contains("bridge.ms"));
 		REQUIRE(std::get<int64_t>(*stats->find("ir.operations")) > 0);
@@ -323,6 +327,30 @@ TEST_CASE("CompilationStatistics: a loop traced with two headers compiles to one
 #endif
 
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
+TEST_CASE("CompilationStatistics: mlir reuses the context and the target machines of the compiling thread") {
+	// #561: building the MLIRContext and the TargetMachines is most of the fixed cost of a small compile, so a thread
+	// that compiles again must not build them again
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	NautilusEngine engine(options);
+	auto first = engine.registerFunction(statsAddOne);
+	REQUIRE(first(41) == 42);
+	auto firstStats = first.getStatistics();
+	REQUIRE(firstStats != nullptr);
+	REQUIRE(firstStats->contains("mlir.contextsCreated"));
+	const auto contexts = std::get<int64_t>(*firstStats->find("mlir.contextsCreated"));
+	const auto machines = std::get<int64_t>(*firstStats->find("mlir.targetMachinesCreated"));
+	REQUIRE(contexts >= 1);
+	REQUIRE(machines >= 1);
+
+	auto second = engine.registerFunction(statsAddTwo);
+	REQUIRE(second(40) == 42);
+	auto secondStats = second.getStatistics();
+	REQUIRE(secondStats != nullptr);
+	CHECK(std::get<int64_t>(*secondStats->find("mlir.contextsCreated")) == contexts);
+	CHECK(std::get<int64_t>(*secondStats->find("mlir.targetMachinesCreated")) == machines);
+}
+
 TEST_CASE("CompilationStatistics: a module compiled by mlir alone gets only block-argument pruning (0.3 pipeline)") {
 	// LLVM's pipeline performs the other cleanups itself, so by default the
 	// graph goes to the MLIR backend with only its block arguments pruned --

@@ -131,7 +131,7 @@ unchanged from the cut-over on, on every enabled backend.
    | `stencil-check` | PR 5 | `tools/stencils/build_stencils.py` output matches the checked-in `tbc` stencil tables for all three targets | always |
    | `asm-diff` | PR 7 | `asmjit` assembly of the corpus against the 0.3 baseline | from PR 7 or PR 6, whichever is later (before the cut-over it would diff 0.3 against itself) |
    | `nebulastream-cache` | PR 13 | the NebulaStream suite cold, then warm, with `ENABLE_CACHE_PLUGIN=ON` (M5.7, [08 §5.1](08-caching.md)), manual or nightly | reports; the M5 exit is checked on the reference machine |
-   | `llvm-ir-test` and the inlining-plugin step (existing) | — | MLIR reference IR and the `inlining` plugin suite | off from PR 6 to PR 8 (M4.5), while MLIR is switched off |
+   | `llvm-ir-test` and the inlining-plugin step (existing) | — | MLIR reference IR and the `inlining` plugin suite | never switched off: MLIR stayed on through the bridge (PR 6), the LLVM IR tests pinned `tracing.nirTracer=false`; on the NIR pipeline with regenerated reference IR from PR 8 (M4.5) |
    | `doc-check` | PR 2 | paths, targets, options and skills named in `AGENTS.md` and skills exist | always |
    | GPU legs (existing) | — | the three `-DENABLE_GPU_PLUGIN=ON` legs | build without the plugin from PR 6 to PR 17 ([17 §3](17-gpu.md)) |
    | `gpu-metal` (existing macOS leg) | PR 17 | the Metal suite on the hosted macOS runner, with Metal API and shader validation | from PR 17 |
@@ -293,6 +293,33 @@ changes M4.2 and §2 step 2 as follows:
   `backends/AGENTS.md`. Deferred: the 0.3 providers stay for `legacy-asmjit` until M4.2; the line table of 05 §4.4
   step 3 and `perf`/`debug` come with M4.9; the callgrind ratio gate of the `latency-corpus` leg needs the pinned CI
   container (the `asm-diff` leg compares code size against the recorded 0.3 corpus).
+- **M4.5 (`mlir` on NIR) is done in PR 8**, stacked on PR 7, by the same method (the loop: autoresearch, metric = failing assertions
+  and crashed tests of `ctest --preset full`): 1582 for the scaffold that throws (1579 failed assertions, 3 crashed), 9 with the
+  lowering, 0 with the intrinsic handlers on the NIR call and the ABI attributes of arguments (only below 32 bits). `mlir`
+  returns true from `compilesNir()`; `MLIRNirLowering` lowers SSA NIR to `func`/`cf`/`arith`/`llvm` with the checks of D10 (a cold
+  block that calls `nautilus_rt_throw_arith`, masked shifts) and `llvm.fptosi.sat`/`fptoui.sat` (D11); a landing pad is an
+  `llvm.landingpad` block in front of the pad body, which receives the exception as a block argument. The plugins' intrinsic
+  handlers (`std`, `simd`, `builtin`, `specialization`, and the memory ones of the core) take a `NirIntrinsicCall` and are
+  registered once; the 0.3 lowering reaches them through an adapter, so there is one body, not two. They are keyed by the
+  address of the native function, for external callees as for intrinsic ones. `MLIRThreadState` keeps the `MLIRContext`
+  (without a thread pool, `mlir.enableMultithreading` now defaults to false) and the `TargetMachine`s of a thread, the host is
+  detected once; the MLIR pass pipeline verifies once, after the lowering (`NAUTILUS_IR_VERIFY=1` verifies after every pass).
+  `NirExtensionHooks` is the hook for extension types and operations (M6.5). The corpus runs on `mlir` (`nir-run-mlir-*`; nir-run
+  calls a natively unwinding executable through a typed function pointer, because dyncall's kernel has no unwind info);
+  the mutation check fails exactly `division`, `shifts` and `casts`. The LLVM IR tests no longer pin the 0.3 pipeline and their
+  reference IR is regenerated, in a commit of its own (saturating casts, masked shifts, cold division checks, the value order
+  of the conversion; `engine.normalizeFunctionNames` gives `runtimeFunc<N>` names in the lowering since the NIR tracer does not
+  normalize); the `inlining` suite passes on NIR.
+  **Not done, and why:** (1) DWARF and the instruction -> line map of the NIR printer (the replacement of `IRLocationPass`), and
+  `DebugInfoExecutionTest` on the NIR text form: `debug`, `perf` and `perf.sample` still select the 0.3 pipeline because the NIR
+  tracer produces no source tags or region tables until the debug producers (M4.9); `MLIRNirBackend` throws for them rather than
+  emit DWARF without lines, and `DebugInfoExecutionTest`, `PerfJitDumpExecutionTest` stay on `MLIRLoweringProvider`. (2) The
+  engine-owned worker pool sized by `engine.tiered.promotionThreads` (M4.7): contexts are per thread and have no pool. LLJIT
+  still builds a `TargetMachine` per module for code generation, as ORC may generate code on any thread at the first call.
+  (3) `MLIRLoweringProvider`, the `IRLocationMap` source and `MLIRCompilationBackend`'s IR path stay for the 0.3 pipeline, like
+  `CPPLoweringProvider`; they go with it. (4) Imported callees (M4.6). (5) Not measured against the 0.3 path on the reference
+  machine: the fixed cost per compile is covered by a test that a second compile on a thread builds no context and no target
+  machine, not by a microsecond figure.
 - **Tests.** Every execution test, plugin test and the fuzzer run each backend on the default pipeline; `legacy-tbc` and
   `legacy-asmjit` run the fallback. Tests of the 0.3 pass statistics, dumps and tbc lowering options pin
   `tracing.nirTracer=false`; `CompilationStatisticsTest` has the NIR counterparts. Not ported from M4.2's list:

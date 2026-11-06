@@ -21,6 +21,18 @@ using IntrinsicTarget = void*;
 using IntrinsicFunction = std::function<bool(std::unique_ptr<::mlir::OpBuilder>&, const ir::CallOperation*,
                                              MLIRLoweringProvider::ValueFrame&)>;
 
+/// One call of an intrinsic as the NIR lowering presents it to a handler (M4.5): the builder positioned at the call,
+/// the operands already lowered, and the MLIR type of the result (null for `void`). A handler that expands the call
+/// sets `result` (when there is one) and returns true; returning false leaves the call to the native fallback.
+struct NirIntrinsicCall {
+	std::unique_ptr<::mlir::OpBuilder>& builder;
+	::mlir::Location loc;
+	llvm::ArrayRef<::mlir::Value> args;
+	::mlir::Type resultType;
+	::mlir::Value result;
+};
+using NirIntrinsicFunction = std::function<bool(NirIntrinsicCall&)>;
+
 /**
  * @brief The MLIR backend's intrinsic handlers, keyed by IntrinsicId.
  *
@@ -40,6 +52,18 @@ public:
 	/// -- in which case the caller emits the ordinary call to its address.
 	std::optional<IntrinsicFunction> getIntrinsic(ir::IntrinsicId id) const;
 
+	/// The NIR counterpart of `addIntrinsic` (M4.5): the intrinsic is identified by the address of its native fallback,
+	/// which is what the `ExtensionRegistry` records for an intrinsic callee of a NIR module. A plugin registers its
+	/// handler on both interfaces until the 0.3 pipeline goes.
+	void addNirIntrinsic(IntrinsicTarget target, NirIntrinsicFunction function, std::string_view name = {});
+
+	/// Registers a handler written on the NIR interface with both pipelines: the 0.3 lowering reaches it through an
+	/// adapter that reads the operands from its value frame. The plugins use this one.
+	void addIntrinsic(IntrinsicTarget target, NirIntrinsicFunction function, std::string_view name = {});
+
+	/// The NIR handler of the intrinsic whose fallback is at @p target, or null.
+	[[nodiscard]] const NirIntrinsicFunction* getNirIntrinsic(IntrinsicTarget target) const;
+
 	/// Copies every handler in @p other into this manager, overwriting on
 	/// collision -- the last plugin to claim an intrinsic wins, which is the
 	/// behaviour registerAllIntrinsics had when it re-ran each plugin in turn.
@@ -47,6 +71,7 @@ public:
 
 private:
 	std::unordered_map<ir::IntrinsicId, IntrinsicFunction> intrinsicMap;
+	std::unordered_map<IntrinsicTarget, NirIntrinsicFunction> nirIntrinsicMap;
 };
 
 class MLIRIntrinsicPlugin {

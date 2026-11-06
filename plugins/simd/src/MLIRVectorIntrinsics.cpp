@@ -1,7 +1,6 @@
 
 #include "MLIRVectorIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
-#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "vector_impl.hpp"
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
@@ -86,10 +85,10 @@ static ::mlir::Value storeVecToAlloca(std::unique_ptr<::mlir::OpBuilder>& builde
 
 /// Binary vector operation: load two vectors, apply op, store result
 template <typename MLIROp, typename ElemT, int64_t N>
-bool vectorBinaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                           MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool vectorBinaryIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
+	auto ptrB = call.args[1];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -107,15 +106,15 @@ bool vectorBinaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	auto b = loadVecFromPtr(builder, ptrB, vecTy);
 	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), a, b);
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
 /// Unary vector operation
 template <typename MLIROp, typename ElemT, int64_t N>
-bool vectorUnaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                          MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool vectorUnaryIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -132,17 +131,17 @@ bool vectorUnaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const com
 	auto a = loadVecFromPtr(builder, ptrA, vecTy);
 	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), a);
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
 /// Ternary vector operation (fma, blend)
 template <typename MLIROp, typename ElemT, int64_t N>
-bool vectorTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                            MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto ptrC = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+bool vectorTernaryIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
+	auto ptrB = call.args[1];
+	auto ptrC = call.args[2];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -161,15 +160,15 @@ bool vectorTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 	auto c = loadVecFromPtr(builder, ptrC, vecTy);
 	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), a, b, c);
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
 /// Load: read from raw T* pointer into vector, return vector pointer
 template <typename ElemT, int64_t N>
-bool vectorLoadIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                         MLIRLoweringProvider::ValueFrame& frame) {
-	auto srcPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool vectorLoadIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto srcPtr = call.args[0];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -190,16 +189,16 @@ bool vectorLoadIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const comp
 	// alignof(T), not to the full SIMD register width.
 	auto vec = ::mlir::LLVM::LoadOp::create(*builder, builder->getUnknownLoc(), vecTy, srcPtr, sizeof(ElemT));
 	auto resultPtr = storeVecToAlloca(builder, vec, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
 /// Store: write vector data to raw T* pointer
 template <typename ElemT, int64_t N>
-bool vectorStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                          MLIRLoweringProvider::ValueFrame& frame) {
-	auto destPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto vecPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool vectorStoreIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto destPtr = call.args[0];
+	auto vecPtr = call.args[1];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -221,15 +220,15 @@ bool vectorStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const com
 	// Store returns void, but we still need to set a value for the frame.
 	// The store_impl returns void, so the CallOp result may not be used.
 	// We pass destPtr as the output so the frame has something valid.
-	frame.setValue(call->getIdentifier(), destPtr);
+	call.result = destPtr;
 	return true;
 }
 
 /// Negate for float: 0 - x
 template <typename ElemT, int64_t N>
-bool vectorNegFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                             MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool vectorNegFloatIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -242,15 +241,15 @@ bool vectorNegFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const 
 	auto a = loadVecFromPtr(builder, ptrA, vecTy);
 	auto result = ::mlir::LLVM::FNegOp::create(*builder, builder->getUnknownLoc(), a);
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
 /// Negate for int: 0 - x
 template <typename ElemT, int64_t N>
-bool vectorNegIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                           MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool vectorNegIntIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
@@ -266,15 +265,15 @@ bool vectorNegIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	    ::mlir::arith::ConstantOp::create(*builder, builder->getUnknownLoc(), vecTy, builder->getZeroAttr(vecTy));
 	auto result = ::mlir::LLVM::SubOp::create(*builder, builder->getUnknownLoc(), zero, a);
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
 /// Reduce add for float types: llvm.vector.reduce.fadd
 template <typename ElemT, int64_t N>
-bool vectorReduceAddFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                   MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool vectorReduceAddFloatIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -290,15 +289,15 @@ bool vectorReduceAddFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, 
 	                                              builder->getFloatAttr(elemTy, 0.0));
 	auto result = ::mlir::LLVM::vector_reduce_fadd::create(*builder, builder->getUnknownLoc(), elemTy, zero, a,
 	                                                       ::mlir::LLVM::FastmathFlags::reassoc);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Reduce add for int types: llvm.vector.reduce.add
 template <typename ElemT, int64_t N>
-bool vectorReduceAddIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                 MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool vectorReduceAddIntIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
@@ -310,15 +309,15 @@ bool vectorReduceAddIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, co
 
 	auto a = loadVecFromPtr(builder, ptrA, vecTy);
 	auto result = ::mlir::LLVM::vector_reduce_add::create(*builder, builder->getUnknownLoc(), elemTy, a);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Reduce min/max for float types
 template <typename ReduceOp, typename ElemT, int64_t N>
-bool vectorReduceFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool vectorReduceFloatIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -330,15 +329,15 @@ bool vectorReduceFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, con
 
 	auto a = loadVecFromPtr(builder, ptrA, vecTy);
 	auto result = ReduceOp::create(*builder, builder->getUnknownLoc(), elemTy, a, ::mlir::LLVM::FastmathFlags::nnan);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Reduce min/max for int types
 template <typename ReduceOp, typename ElemT, int64_t N>
-bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                              MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool vectorReduceIntIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
@@ -350,16 +349,16 @@ bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 
 	auto a = loadVecFromPtr(builder, ptrA, vecTy);
 	auto result = ReduceOp::create(*builder, builder->getUnknownLoc(), elemTy, a);
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
 /// Float comparison: FCmpOp → vector<NxI1> → sext to all-ones/zeros → bitcast to float
 template <::mlir::LLVM::FCmpPredicate Pred, typename ElemT, int64_t N>
-bool vectorFCmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                         MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool vectorFCmpIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
+	auto ptrB = call.args[1];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -384,16 +383,16 @@ bool vectorFCmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const comp
 	auto result = ::mlir::LLVM::BitcastOp::create(*builder, builder->getUnknownLoc(), vecTy, extended);
 
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
 /// Integer comparison: ICmpOp → vector<NxI1> → sext to all-ones/zeros
 template <::mlir::LLVM::ICmpPredicate Pred, typename ElemT, int64_t N>
-bool vectorICmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                         MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool vectorICmpIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
+	auto ptrB = call.args[1];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
@@ -413,16 +412,16 @@ bool vectorICmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const comp
 	auto extended = ::mlir::LLVM::SExtOp::create(*builder, builder->getUnknownLoc(), vecTy, cmp);
 
 	auto resultPtr = storeVecToAlloca(builder, extended, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
 /// Float bitwise: bitcast to int, apply op, bitcast back
 template <typename MLIROp, typename ElemT, int64_t N>
-bool vectorBitwiseFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                 MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool vectorBitwiseFloatIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrA = call.args[0];
+	auto ptrB = call.args[1];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -448,17 +447,17 @@ bool vectorBitwiseFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, co
 	auto result = ::mlir::LLVM::BitcastOp::create(*builder, builder->getUnknownLoc(), vecTy, ri);
 
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
 /// Blend: mask != 0 → i1 vector → select(mask, a, b)
 template <typename ElemT, int64_t N>
-bool vectorBlendIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                          MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrMask = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto ptrA = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+bool vectorBlendIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto ptrMask = call.args[0];
+	auto ptrA = call.args[1];
+	auto ptrB = call.args[2];
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -499,7 +498,7 @@ bool vectorBlendIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const com
 	auto result = ::mlir::LLVM::SelectOp::create(*builder, builder->getUnknownLoc(), maskI1, a, b);
 
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
@@ -525,9 +524,9 @@ static ::mlir::Type getElemType(::mlir::OpBuilder& builder) {
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorBroadcastIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                              MLIRLoweringProvider::ValueFrame& frame) {
-	auto scalar = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+bool vectorBroadcastIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto scalar = call.args[0];
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);
@@ -543,7 +542,7 @@ bool vectorBroadcastIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 	auto result = ::mlir::LLVM::ShuffleVectorOp::create(*builder, loc, inserted, undef, mask);
 
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
@@ -552,10 +551,10 @@ bool vectorBroadcastIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorGatherIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                           MLIRLoweringProvider::ValueFrame& frame) {
-	auto basePtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto idxPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool vectorGatherIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto basePtr = call.args[0];
+	auto idxPtr = call.args[1];
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);
@@ -581,7 +580,7 @@ bool vectorGatherIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	                                        builder->getI32IntegerAttr(static_cast<int32_t>(sizeof(ElemT))));
 
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
@@ -590,11 +589,11 @@ bool vectorGatherIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                            MLIRLoweringProvider::ValueFrame& frame) {
-	auto basePtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto idxPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto dataPtr = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+bool vectorScatterIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto basePtr = call.args[0];
+	auto idxPtr = call.args[1];
+	auto dataPtr = call.args[2];
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);
@@ -617,7 +616,7 @@ bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 		::mlir::LLVM::StoreOp::create(*builder, loc, elem, elemPtr);
 	}
 
-	frame.setValue(call->getIdentifier(), basePtr);
+	call.result = basePtr;
 	return true;
 }
 
@@ -630,14 +629,28 @@ bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 // C++ implementation remains).
 // ============================================================================
 
+/// The address a pointer operand denotes if it is a constant of the trace: both pipelines lower a traced address to
+/// `llvm.inttoptr` of an `arith.constant`. Null otherwise.
+const int32_t* constantPointer(::mlir::Value value) {
+	auto cast = value.getDefiningOp<::mlir::LLVM::IntToPtrOp>();
+	if (!cast) {
+		return nullptr;
+	}
+	auto constant = cast.getArg().getDefiningOp<::mlir::arith::ConstantOp>();
+	if (!constant) {
+		return nullptr;
+	}
+	auto integer = ::mlir::dyn_cast<::mlir::IntegerAttr>(constant.getValue());
+	return integer ? reinterpret_cast<const int32_t*>(static_cast<uintptr_t>(integer.getInt())) : nullptr;
+}
+
 template <typename ElemT, int64_t N>
-bool vectorShuffleIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                            MLIRLoweringProvider::ValueFrame& frame) {
-	const auto* table = compiler::ir::dyn_cast<compiler::ir::ConstPtrOperation>(call->getInputArguments()[2]);
-	if (table == nullptr || table->getValue() == nullptr) {
+bool vectorShuffleIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	const auto* idx = constantPointer(call.args[2]);
+	if (idx == nullptr) {
 		return false;
 	}
-	const auto* idx = static_cast<const int32_t*>(table->getValue());
 	llvm::SmallVector<int32_t, 64> mask;
 	for (int64_t i = 0; i < N; i++) {
 		if (idx[i] < 0 || idx[i] >= 2 * N) {
@@ -645,14 +658,14 @@ bool vectorShuffleIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 		}
 		mask.push_back(idx[i]);
 	}
-	auto aPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto bPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto aPtr = call.args[0];
+	auto bPtr = call.args[1];
 	auto loc = builder->getUnknownLoc();
 	auto vecTy = getVecType(getElemType<ElemT>(*builder), N);
 	auto a = loadVecFromPtr(builder, aPtr, vecTy);
 	auto b = loadVecFromPtr(builder, bPtr, vecTy);
 	auto result = ::mlir::LLVM::ShuffleVectorOp::create(*builder, loc, a, b, mask);
-	frame.setValue(call->getIdentifier(), storeVecToAlloca(builder, result, vecTy));
+	call.result = storeVecToAlloca(builder, result, vecTy);
 	return true;
 }
 
@@ -667,11 +680,11 @@ bool vectorShuffleIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorCompressStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                                  MLIRLoweringProvider::ValueFrame& frame) {
-	auto dstPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto maskPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto dataPtr = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+bool vectorCompressStoreIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto dstPtr = call.args[0];
+	auto maskPtr = call.args[1];
+	auto dataPtr = call.args[2];
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);
@@ -703,7 +716,7 @@ bool vectorCompressStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, c
 	auto maskExt = ::mlir::LLVM::ZExtOp::create(*builder, loc, i32VecTy, maskI1);
 	auto count = ::mlir::LLVM::vector_reduce_add::create(*builder, loc, i32Ty, maskExt);
 
-	frame.setValue(call->getIdentifier(), count);
+	call.result = count;
 	return true;
 }
 
@@ -712,10 +725,10 @@ bool vectorCompressStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, c
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorExtractIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                            MLIRLoweringProvider::ValueFrame& frame) {
-	auto vecPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto idx = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+bool vectorExtractIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto vecPtr = call.args[0];
+	auto idx = call.args[1];
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);
@@ -724,7 +737,7 @@ bool vectorExtractIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 	auto vec = loadVecFromPtr(builder, vecPtr, vecTy);
 	auto result = ::mlir::LLVM::ExtractElementOp::create(*builder, loc, vec, idx);
 
-	frame.setValue(call->getIdentifier(), result);
+	call.result = result;
 	return true;
 }
 
@@ -733,11 +746,11 @@ bool vectorExtractIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
-                           MLIRLoweringProvider::ValueFrame& frame) {
-	auto vecPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto idx = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+bool vectorInsertIntrinsic(NirIntrinsicCall& call) {
+	[[maybe_unused]] auto& builder = call.builder;
+	auto vecPtr = call.args[0];
+	auto value = call.args[1];
+	auto idx = call.args[2];
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);
@@ -747,7 +760,7 @@ bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	auto result = ::mlir::LLVM::InsertElementOp::create(*builder, loc, vec, value, idx);
 
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
-	frame.setValue(call->getIdentifier(), resultPtr);
+	call.result = resultPtr;
 	return true;
 }
 
