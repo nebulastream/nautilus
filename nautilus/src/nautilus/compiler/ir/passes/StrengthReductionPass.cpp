@@ -285,7 +285,8 @@ bool StrengthReductionPass::apply(IRGraph& ir) {
 		// collide with anything already in that function; a fresh session
 		// per function (rather than one global counter reused across
 		// functions) gives that guarantee via `freshId()`.
-		FunctionRewriter rewriter(*fn, arena);
+		ScopedRewriter scopedRewriter(*fn, arena);
+		FunctionRewriter& rewriter = *scopedRewriter;
 		for (const auto& c : candidates) {
 			applyCandidate(rewriter, arena, c);
 		}

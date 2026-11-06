@@ -139,6 +139,10 @@ std::vector<Block*>& ExecutionTrace::getBlocks() {
 	return blocks;
 }
 
+const std::vector<Block*>& ExecutionTrace::getBlocks() const {
+	return blocks;
+}
+
 Arena& ExecutionTrace::getArena() {
 	return *arena;
 }

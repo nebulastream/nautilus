@@ -627,4 +627,43 @@ void FunctionRewriter::mergeIntoPredecessor(BasicBlock* pred, BasicBlock* succ) 
 	fn_.detachBasicBlock(succ);
 }
 
+namespace {
+thread_local RewriterSession* openSession = nullptr;
+} // namespace
+
+RewriterSession::RewriterSession() : enclosing_(openSession) {
+	openSession = this;
+}
+
+RewriterSession::~RewriterSession() {
+	openSession = enclosing_;
+}
+
+RewriterSession* RewriterSession::current() {
+	return openSession;
+}
+
+FunctionRewriter& RewriterSession::rewriterFor(FunctionOperation& fn, common::Arena& arena) {
+	auto& rewriter = rewriters_[&fn];
+	if (rewriter == nullptr) {
+		rewriter = std::make_unique<FunctionRewriter>(fn, arena);
+	}
+	return *rewriter;
+}
+
+ScopedRewriter::ScopedRewriter(FunctionOperation& fn, common::Arena& arena, const IRGraph* ir) {
+	if (auto* session = RewriterSession::current()) {
+		rewriter_ = &session->rewriterFor(fn, arena);
+		rewriter_->setModule(ir);
+	} else {
+		rewriter_ = &owned_.emplace(fn, arena, ir);
+	}
+}
+
+ScopedRewriter::~ScopedRewriter() {
+	if (!owned_) {
+		rewriter_->compactErasedOperations();
+	}
+}
+
 } // namespace nautilus::compiler::ir

@@ -228,6 +228,7 @@ These options control the output of intermediate representations at various stag
 |--------|---------|-------------|
 | `optimizationLevel` | `3` | Sets the optimization level for MLIR code generation (0--3). |
 | `mlir.enableMultithreading` | `true` | Allows the MLIR backend to use multiple threads during compilation. |
+| `mlir.verifyEachPass` | `false` | Verifies the MLIR module after every lowering pass, not only once as the lowering produced it. |
 | `mlir.inline_invoke_calls` | `false` | Allows the MLIR backend to inline functions tagged with `NAUTILUS_INLINE`. |
 
 ## Debugging with Dump Options

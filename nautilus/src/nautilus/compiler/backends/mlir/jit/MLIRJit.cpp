@@ -1,5 +1,6 @@
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
 #include "nautilus/compiler/JitSymbolRegistry.hpp"
+#include <llvm/ExecutionEngine/Orc/CompileUtils.h>
 #include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
@@ -9,7 +10,9 @@
 #include <llvm/Support/Error.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/TargetParser/Triple.h>
+#include <map>
 #include <mlir/Target/LLVMIR/Export.h>
+#include <optional>
 #include <utility>
 
 #if defined(__linux__)
@@ -96,7 +99,71 @@ void installJitSymbolRegistration([[maybe_unused]] llvm::orc::ObjectLinkingLayer
 #endif
 }
 
+// The host's target description, detected once per process: detecting it
+// reads the CPU name and feature set anew on every call.
+llvm::Expected<llvm::orc::JITTargetMachineBuilder> detectHostOnce() {
+	static const auto host = []() -> std::pair<std::optional<llvm::orc::JITTargetMachineBuilder>, std::string> {
+		auto builder = llvm::orc::JITTargetMachineBuilder::detectHost();
+		if (!builder) {
+			return {std::nullopt, llvm::toString(builder.takeError())};
+		}
+		return {std::move(*builder), ""};
+	}();
+	if (!host.first) {
+		return makeStringError(host.second);
+	}
+	return *host.first;
+}
+
+// Emits object code with the compiling thread's TargetMachine (see
+// threadLocalHostTargetMachine) rather than a TargetMachine of its own, the
+// way LLJIT's default compiler does for every module. ORC runs a
+// materialization on the thread that looks the symbol up, so the
+// TargetMachine is fetched per module, on that thread.
+class ThreadLocalTargetMachineCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
+public:
+	ThreadLocalTargetMachineCompiler(llvm::orc::IRSymbolMapper::ManglingOptions manglingOptions,
+	                                 llvm::CodeGenOptLevel level)
+	    : IRCompiler(std::move(manglingOptions)), level_(level) {
+	}
+
+	llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(llvm::Module& module) override {
+		auto targetMachine = threadLocalHostTargetMachine(level_);
+		if (!targetMachine) {
+			return targetMachine.takeError();
+		}
+		return llvm::orc::SimpleCompiler(**targetMachine)(module);
+	}
+
+private:
+	llvm::CodeGenOptLevel level_;
+};
+
 } // namespace
+
+llvm::Expected<llvm::TargetMachine*> threadLocalHostTargetMachine(llvm::CodeGenOptLevel level, const std::string& cpu) {
+	thread_local std::map<std::pair<std::string, llvm::CodeGenOptLevel>, std::unique_ptr<llvm::TargetMachine>> machines;
+	auto& machine = machines[{cpu, level}];
+	if (machine == nullptr) {
+		auto builder = detectHostOnce();
+		if (!builder) {
+			return builder.takeError();
+		}
+		if (!cpu.empty()) {
+			builder->setCPU(cpu);
+			// An explicit baseline feature set rather than the host's, so
+			// TTI-driven decisions do not depend on the machine.
+			builder->setFeatures("+64bit,+sse2");
+		}
+		builder->setCodeGenOptLevel(level);
+		auto created = builder->createTargetMachine();
+		if (!created) {
+			return created.takeError();
+		}
+		machine = std::move(*created);
+	}
+	return machine.get();
+}
 
 MLIRJit::MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit, ModuleIndex moduleIndex)
     : jit_(std::move(jit)), moduleIndex_(moduleIndex) {
@@ -143,15 +210,15 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		return makeStringError("could not convert to LLVM IR");
 	}
 
-	auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
+	auto tmBuilderOrError = detectHostOnce();
 	if (!tmBuilderOrError) {
 		return tmBuilderOrError.takeError();
 	}
 	tmBuilderOrError->setCodeGenOptLevel(options.codeGenOptLevel);
 
-	// Build a one-shot TargetMachine only to seed the module's data layout and
-	// triple; LLJIT constructs its own TargetMachines via the builder below.
-	auto tmOrError = tmBuilderOrError->createTargetMachine();
+	// The module's data layout and triple come from the TargetMachine that
+	// emits it.
+	auto tmOrError = threadLocalHostTargetMachine(options.codeGenOptLevel);
 	if (!tmOrError) {
 		return tmOrError.takeError();
 	}
@@ -188,12 +255,21 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		return layer;
 	};
 
-	// Let LLJIT build its own ConcurrentIRCompiler from the JITTargetMachineBuilder.
-	// We avoid constructing llvm::orc::TMOwningSimpleCompiler directly because
-	// LLVM is compiled with -fno-rtti and exporting RTTI for its polymorphic
-	// types across TU boundaries would require us to match.
+	// Emit with the thread's reused TargetMachine instead of LLJIT's default
+	// ConcurrentIRCompiler, which builds a TargetMachine (and its subtarget)
+	// for every module. This TU is built with -fno-rtti, like LLVM, so it can
+	// subclass ORC's compiler interface.
+	auto compileFunctionCreator = [level = options.codeGenOptLevel](llvm::orc::JITTargetMachineBuilder builder)
+	    -> llvm::Expected<std::unique_ptr<llvm::orc::IRCompileLayer::IRCompiler>> {
+		return std::make_unique<ThreadLocalTargetMachineCompiler>(
+		    llvm::orc::irManglingOptionsFromTargetOptions(builder.getOptions()), level);
+	};
+	// The data layout is passed along too: LLJIT otherwise builds a
+	// TargetMachine of its own just to ask it for one.
 	auto jitOrErr = llvm::orc::LLJITBuilder()
 	                    .setJITTargetMachineBuilder(std::move(*tmBuilderOrError))
+	                    .setDataLayout(llvmModule->getDataLayout())
+	                    .setCompileFunctionCreator(compileFunctionCreator)
 	                    .setObjectLinkingLayerCreator(objectLinkingLayerCreator)
 	                    .create();
 	if (!jitOrErr) {

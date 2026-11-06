@@ -33,6 +33,14 @@ val<int32_t> statsAddOne(val<int32_t> x) {
 	return x + 1;
 }
 
+val<int32_t> statsAbs(val<int32_t> x) {
+	val<int32_t> result = x;
+	if (x < 0) {
+		result = 0 - x;
+	}
+	return result;
+}
+
 } // namespace
 
 TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats") {
@@ -330,5 +338,52 @@ TEST_CASE("CompilationStatistics: interpreted module has no stats") {
 // Backend-internal statistics keys (bc.*, tbc.*) are covered by
 // backends/bc/CompilationStatisticsTest.cpp and
 // backends/tbc/CompilationStatisticsTest.cpp instead of here.
+
+TEST_CASE("CompilationStatistics: tracing records its scopes, runs and trace size") {
+	auto backend = getAnyBackend();
+	if (backend.empty()) {
+		SKIP("No compilation backend available");
+	}
+
+	Options options;
+	options.setOption("engine.backend", backend);
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(statsAbs);
+	REQUIRE(fn(-3) == 3);
+
+	auto stats = fn.getStatistics();
+	REQUIRE(stats != nullptr);
+	auto count = [&](const char* key) {
+		INFO("missing key: " << key);
+		const auto* value = stats->find(key);
+		REQUIRE(value != nullptr);
+		return std::get<int64_t>(*value);
+	};
+	CHECK(count("tracing.functions") == 1);
+	CHECK(count("tracing.scopes") == 1);
+	// One run per path through the branch.
+	CHECK(count("tracing.iterations") == 2);
+	CHECK(count("tracing.blocks") >= 3);
+	CHECK(count("tracing.operations") > count("tracing.blocks"));
+	// `result = x` and `result = 0 - x` record ASSIGNs.
+	CHECK(count("tracing.copies") >= 2);
+	// The second run replays the path to the branch before recording the other arm.
+	CHECK(count("tracing.replayedOperations") > 0);
+	CHECK(count("tracing.snapshots") >= count("tracing.operations") / 2);
+
+	auto milliseconds = [&](const char* key) {
+		INFO("missing key: " << key);
+		const auto* value = stats->find(key);
+		REQUIRE(value != nullptr);
+		return std::get<double>(*value);
+	};
+	const auto firstRun = milliseconds("tracing.firstRun.ms");
+	const auto rerun = milliseconds("tracing.rerun.ms");
+	const auto finalize = milliseconds("tracing.finalize.ms");
+	CHECK(firstRun > 0.0);
+	CHECK(rerun > 0.0);
+	CHECK(finalize >= 0.0);
+	CHECK(firstRun + rerun + finalize <= milliseconds("tracing.ms"));
+}
 
 } // namespace nautilus::engine

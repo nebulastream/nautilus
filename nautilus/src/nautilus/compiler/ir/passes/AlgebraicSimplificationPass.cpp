@@ -408,7 +408,8 @@ Operation* trySimplify(FunctionRewriter& rewriter, Operation* op) {
 /// (canonicalized/collapsed ops are re-enqueued too, since one round can
 /// otherwise miss a rule that a canonicalization just exposed).
 bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+	ScopedRewriter scopedRewriter(fn, arena);
+	FunctionRewriter& rewriter = *scopedRewriter;
 	bool changed = false;
 
 	std::deque<Operation*> worklist;

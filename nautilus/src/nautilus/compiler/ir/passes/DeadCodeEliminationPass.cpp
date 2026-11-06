@@ -8,7 +8,8 @@ namespace nautilus::compiler::ir {
 namespace {
 
 bool applyToFunction(const IRGraph& ir, FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena, &ir);
+	ScopedRewriter scopedRewriter(fn, arena, &ir);
+	FunctionRewriter& rewriter = *scopedRewriter;
 	size_t erased = 0;
 	for (auto* block : fn.getBasicBlocks()) {
 		// Snapshot: `eraseIfDead` mutates the block's operation list as it

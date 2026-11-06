@@ -37,8 +37,13 @@ std::unique_ptr<mlir::Pass> getMLIROptimizationPass(MLIRPassManager::Optimizatio
 
 int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp>& module,
                                                 const std::vector<OptimizationPass>& optimizationPasses,
-                                                const DebugInfoOptions& debugInfo) {
+                                                const DebugInfoOptions& debugInfo, bool verifyEachPass) {
 	mlir::PassManager passManager(module->getContext());
+	// The module is verified once, as the lowering produced it (see
+	// MLIRCompilationBackend). Verifying it again after every upstream
+	// conversion pass checks MLIR rather than Nautilus, at the cost of a
+	// walk over the module per pass.
+	passManager.enableVerifier(verifyEachPass);
 
 	const bool debugEnabled = debugInfo.enableDebug;
 	// Debugging wants predictable, un-inlined frames to step through, so it

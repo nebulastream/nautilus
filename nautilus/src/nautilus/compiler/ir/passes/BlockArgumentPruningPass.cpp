@@ -64,7 +64,8 @@ Operation* agreedPassThroughValue(const BasicBlockArgument* arg, size_t index,
 }
 
 bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+	ScopedRewriter scopedRewriter(fn, arena);
+	FunctionRewriter& rewriter = *scopedRewriter;
 	// This pass never adds or removes CFG edges, so dominators stay valid
 	// across every mutation it makes.
 	const Dominators dominators(fn);
