@@ -433,3 +433,34 @@ TEST_CASE("inspect describes an image without materializing it", "[nir][image]")
 	REQUIRE(dump.find("; magic") != std::string::npos);
 	REQUIRE(dump.find("functions (1 x 40 bytes)") != std::string::npos);
 }
+
+TEST_CASE("copyTables copies every section but the bodies", "[nir][module]") {
+	Module m;
+	test::buildAllSSA(m);
+	m.module.processToken = currentProcessToken();
+	// one record in every debug section, so that a section the copy forgets shows in the image
+	m.debugLocations.emplace_back();
+	m.debugInstLocations.push_back(1);
+	m.debugRegions.emplace_back();
+	m.debugInstRegions.push_back(2);
+	m.debugNames.emplace_back();
+	m.debugNameBytes.push_back('x');
+	m.debugFunctions.emplace_back();
+	m.debugParamNames.push_back(3);
+
+	Module expected = m;
+	expected.insts.clear();
+	expected.extra.clear();
+	expected.blocks.clear();
+	expected.functions.clear();
+	expected.allocas.clear();
+	WriteOptions o;
+	o.debug = true;
+	const auto copy = m.copyTables();
+	REQUIRE(copy.insts.empty());
+	REQUIRE(copy.extra.empty());
+	REQUIRE(copy.blocks.empty());
+	REQUIRE(copy.functions.empty());
+	REQUIRE(copy.allocas.empty());
+	REQUIRE(writeImage(copy, o) == writeImage(expected, o));
+}

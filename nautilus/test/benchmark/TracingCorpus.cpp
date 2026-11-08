@@ -1,6 +1,7 @@
 // Traces one function of the tracing corpus a number of times and does nothing else, so that a profiler (callgrind)
 // sees the tracer alone: `nautilus-tracing-corpus [function[:N] [reps [mode]]]`; mode `nir` drives the direct NIR
-// tracer, `ir` and `nirconv` add the IR generation of 0.3 and the conversion to SSA of 0.4 to the respective tracer.
+// tracer, `ir` and `nirconv` add the IR generation of 0.3 and the conversion to SSA of 0.4 to the respective tracer;
+// `conv` traces once and converts `reps` times, so that a profiler sees the conversion alone.
 #include "CompileKernels.hpp"
 #include "DistinctSitesFunctions.hpp"
 #include "NestedIfBenchmarks.hpp"
@@ -8,10 +9,13 @@
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/conversion/Conversion.hpp"
+#include "nautilus/nir/Printer.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/nir/NirTracer.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -19,6 +23,7 @@
 #include <list>
 #include <map>
 #include <string>
+#include <vector>
 
 using namespace nautilus;
 using namespace nautilus::engine;
@@ -59,6 +64,34 @@ int main(int argc, char** argv) {
 	// to a module); "nirconv" the NIR tracer and the conversion to SSA
 	const std::string mode = argc > 3 ? argv[3] : "";
 	const bool direct = mode == "nir" || mode == "nirconv";
+	if (mode == "conv") {
+		common::Arena arena;
+		std::list<compiler::CompilableFunction> functions;
+		functions.emplace_back("execute", it->second);
+		auto traced = tracing::nirtrace::NirTracer::Trace(functions, engine::Options {}, arena);
+		size_t emitted = 0;
+		uint64_t hash = 0xcbf29ce484222325ull; // FNV-1a of the printed result: the output must not change
+		std::vector<double> microseconds;
+		for (int i = 0; i < reps; ++i) {
+			const auto start = std::chrono::steady_clock::now();
+			auto ssa = conversion::convert(traced.module);
+			microseconds.push_back(
+			    std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count());
+			emitted += ssa.insts.size();
+			if (i + 1 == reps) {
+				for (const unsigned char c : nir::print(ssa)) {
+					hash = (hash ^ c) * 0x100000001b3ull;
+				}
+			}
+		}
+		std::sort(microseconds.begin(), microseconds.end());
+		std::printf(
+		    "%s: %llu operations, %zu instructions converted, min %.1f us, median %.1f us, output hash %016llx\n",
+		    name.c_str(), static_cast<unsigned long long>(traced.statistics.operations),
+		    emitted / (reps > 0 ? reps : 1), microseconds.empty() ? 0.0 : microseconds.front(),
+		    microseconds.empty() ? 0.0 : microseconds[microseconds.size() / 2], static_cast<unsigned long long>(hash));
+		return 0;
+	}
 	common::ArenaPool irPool;
 	uint64_t operations = 0, snapshots = 0;
 	for (int i = 0; i < reps; ++i) {
