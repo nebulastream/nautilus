@@ -28,6 +28,11 @@ if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
     add_executable(nautilus-compile-bench CompileTimeBench.cpp)
     target_link_libraries(nautilus-compile-bench PRIVATE nautilus)
 
+    # The fixed cost of a compile: registerFunction of tiny kernels on one engine, wall time against the stages
+    # nautilus-fixed-cost-bench [repetitions [kernel [backend]]]
+    add_executable(nautilus-fixed-cost-bench FixedCostBench.cpp)
+    target_link_libraries(nautilus-fixed-cost-bench PRIVATE nautilus)
+
     # The latency corpus (docs/plans/nautilus-0.4/10-observability.md). A plain executable that replaces the global
     # operator new to count allocations; it uses only the public engine API.
     add_executable(nautilus-latency-corpus latency-corpus/LatencyCorpus.cpp)
