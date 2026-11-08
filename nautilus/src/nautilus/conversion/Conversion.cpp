@@ -200,6 +200,7 @@ private:
 
 	std::vector<Temp> temps_;
 	std::vector<uint32_t> fwd_;
+	uint32_t phisForwarded_ = 0; // the phis that tryRemoveTrivialPhi forwarded to another value
 	std::vector<std::vector<uint32_t>> phis_; // per block, in creation order (block 0: the parameters first)
 	std::vector<std::vector<uint32_t>> body_; // per block: the temporaries of the instructions, terminator last
 	std::vector<std::unordered_map<uint32_t, Ref>> currentDef_;
@@ -675,6 +676,7 @@ Ref FunctionConverter::tryRemoveTrivialPhi(uint32_t phi) {
 			continue; // merges two values, or only ever sees itself
 		}
 		fwd_[p] = same;
+		++phisForwarded_;
 		++stats_.removedPhis;
 		if (first) {
 			result = same;
@@ -1108,6 +1110,7 @@ void FunctionConverter::convertBlock(uint32_t b) {
 
 void FunctionConverter::emit() {
 	Builder builder(out_);
+	builder.setTrackUses(false); // nobody asks for the use counts here
 	emitOrder_.clear();
 	if (foldBranches_) {
 		// Folded branches and dropped blocks changed the graph: a block that the static graph put into a loop may no
@@ -1130,8 +1133,10 @@ void FunctionConverter::emit() {
 	}
 
 	// ---- the refold sweep: phis that became trivial when their loop was sealed leave instructions behind that now
-	// have constant or equal operands; a few sweeps over the emitted blocks fold them
-	if (optimize_) {
+	// have constant or equal operands; a few sweeps over the emitted blocks fold them. Without a forwarded phi no
+	// operand resolves to anything but what the instruction saw when it was made, so there is nothing to refold; and
+	// an instruction whose operands still resolve to themselves simplifies to what it simplified to then.
+	if (optimize_ && phisForwarded_ != 0) {
 		for (uint32_t sweep = 0; sweep < MaxRefoldSweeps; ++sweep) {
 			uint32_t changed = 0;
 			for (auto b : emitOrder_) {
@@ -1153,6 +1158,9 @@ void FunctionConverter::emit() {
 					}
 					if (info->c == OperandKind::Value) {
 						ni.c = resolve(ni.c);
+					}
+					if (ni.a == temp.inst.a && ni.b == temp.inst.b && ni.c == temp.inst.c) {
+						continue;
 					}
 					if (Ref folded = simplify(ni); folded != NONE && folded != t) {
 						fwd_[t] = folded;
