@@ -375,31 +375,48 @@ TEST_CASE("Literal operands: division and modulo") {
 
 TEST_CASE("Literal operands: shifts") {
 	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) {
-		// the shifted value is the val, with literal shift amounts of other types than the value. Shifts to the left
-		// stay small: 0.3's tbc does not wrap an int32_t shifted out of 32 bits, with a literal or with a val alike.
+		// the shifted value is the val, with literal shift amounts of other types than the value. The result has the
+		// type of the shifted value, promoted, and wraps at its width: the amount is masked, whatever its type is.
 		checkLiteral<int32_t, int, 3, ShiftRight, RightForms>(engine);
-		checkLiteral<int32_t, int, 3, ShiftLeft, RightForms>(engine, Inputs::SmallNonNegative);
+		checkLiteral<int32_t, int, 3, ShiftLeft, RightForms>(engine);
+		checkLiteral<int32_t, int, 31, Shifts, RightForms>(engine);
 		checkLiteral<int32_t, uint8_t, 31, ShiftRight, RightForms>(engine);
-		checkLiteral<int32_t, uint8_t, 31, ShiftLeft, RightForms>(engine, Inputs::SmallNonNegative);
+		checkLiteral<int32_t, uint8_t, 31, ShiftLeft, RightForms>(engine);
 		checkLiteral<uint32_t, int8_t, 1, ShiftRight, RightForms>(engine);
-		checkLiteral<uint32_t, int8_t, 1, ShiftLeft, RightForms>(engine, Inputs::SmallNonNegative);
+		checkLiteral<uint32_t, int8_t, 1, ShiftLeft, RightForms>(engine);
+		checkLiteral<uint32_t, int, 17, Shifts, RightForms>(engine);
 		checkLiteral<int64_t, int, 63, ShiftRight, RightForms>(engine);
-		checkLiteral<int64_t, int, 63, ShiftLeft, RightForms>(engine, Inputs::SmallNonNegative);
+		checkLiteral<int64_t, int, 63, ShiftLeft, RightForms>(engine);
 		checkLiteral<int64_t, uint32_t, 40, ShiftRight, RightForms>(engine);
-		checkLiteral<int64_t, uint32_t, 40, ShiftLeft, RightForms>(engine, Inputs::SmallNonNegative);
+		checkLiteral<int64_t, uint32_t, 40, ShiftLeft, RightForms>(engine);
 		checkLiteral<uint64_t, uint8_t, 7, ShiftRight, RightForms>(engine);
-		checkLiteral<uint64_t, uint8_t, 7, ShiftLeft, RightForms>(engine, Inputs::SmallNonNegative);
+		checkLiteral<uint64_t, uint8_t, 7, ShiftLeft, RightForms>(engine);
 		checkLiteral<int8_t, int, 7, ShiftRight, RightForms>(engine);
-		checkLiteral<int8_t, int, 7, ShiftLeft, RightForms>(engine, Inputs::SmallNonNegative);
-		// (a shift amount wider than the shifted value is not covered: the 0.3 tracer records such a shift with both
-		// operands converted to the wider type and a result of the narrower one, which the NIR verifier rejects, with
-		// a literal or with a val alike)
+		checkLiteral<int8_t, int, 7, ShiftLeft, RightForms>(engine);
+		checkLiteral<int16_t, int, 9, Shifts, RightForms>(engine);
+		checkLiteral<uint16_t, uint8_t, 15, Shifts, RightForms>(engine);
+		// a shift amount wider than the shifted value: the result still has the type of the shifted value
+		checkLiteral<int32_t, int64_t, 3, Shifts, RightForms>(engine);
+		checkLiteral<int32_t, int64_t, 31, Shifts, RightForms>(engine);
+		checkLiteral<int32_t, uint64_t, 5, Shifts, RightForms>(engine);
+		checkLiteral<uint32_t, int64_t, 1, Shifts, RightForms>(engine);
+		checkLiteral<uint32_t, uint64_t, 31, Shifts, RightForms>(engine);
+		checkLiteral<uint8_t, int, 3, Shifts, RightForms>(engine);
+		checkLiteral<uint8_t, int64_t, 7, Shifts, RightForms>(engine);
+		checkLiteral<int8_t, int64_t, 6, Shifts, RightForms>(engine);
+		checkLiteral<int8_t, int, 7, Shifts, RightForms>(engine);
+		checkLiteral<int16_t, int64_t, 15, Shifts, RightForms>(engine);
+		checkLiteral<uint16_t, int, 12, Shifts, RightForms>(engine);
 		// ... and the val is the shift amount
 		checkLiteral<int32_t, int, 3, Shifts, LeftForms>(engine, Inputs::SmallNonNegative);
 		checkLiteral<uint8_t, uint8_t, 255, Shifts, LeftForms>(engine, Inputs::SmallNonNegative);
 		checkLiteral<int8_t, int, -5, Shifts, LeftForms>(engine, Inputs::SmallNonNegative);
 		checkLiteral<uint32_t, int, 1000, Shifts, LeftForms>(engine, Inputs::SmallNonNegative);
 		checkLiteral<int64_t, uint64_t, 0x8000000000000000ull, Shifts, LeftForms>(engine, Inputs::SmallNonNegative);
+		// the amount (the val) wider than the literal that is shifted
+		checkLiteral<int64_t, int, 3, Shifts, LeftForms>(engine, Inputs::SmallNonNegative);
+		checkLiteral<int64_t, uint8_t, 200, Shifts, LeftForms>(engine, Inputs::SmallNonNegative);
+		checkLiteral<int32_t, int8_t, -3, Shifts, LeftForms>(engine, Inputs::SmallNonNegative);
 	});
 }
 
@@ -459,7 +476,8 @@ TEST_CASE("Literal operands: without static constant folding") {
 		    checkLiteral<float, int, 16777217, Basic>(engine);
 		    checkLiteral<double, uint64_t, U64Max, Basic>(engine);
 		    checkLiteral<int32_t, uint8_t, 31, ShiftRight, RightForms>(engine);
-		    checkLiteral<int32_t, uint8_t, 31, ShiftLeft, RightForms>(engine, Inputs::SmallNonNegative);
+		    checkLiteral<int32_t, uint8_t, 31, ShiftLeft, RightForms>(engine);
+		    checkLiteral<int32_t, int64_t, 3, Shifts, RightForms>(engine);
 	    },
 	    true, [](engine::Options& options) { options.setOption("engine.foldStaticConstants", false); });
 }

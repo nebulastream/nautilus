@@ -300,19 +300,29 @@ constexpr T wrappingMul(T a, T b) {
 #define NAUTILUS_EVAL_SHR(a, b) ((a) >> (b))
 #define NAUTILUS_EVAL_SHL(a, b) ((a) << (b))
 
-/// Binary operator helper for arithmetic operations with integer promotion
-#define DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(OP, OP_NAME, OP_TRACE, EVAL)                                      \
+/// The type a shift converts its operands to: the promoted type of the shifted (left) operand. The type of `a << b` is
+/// the promoted type of `a` alone, so a wider amount must not widen the shift: a shift recorded with the type of its
+/// amount is a shift at the wrong width, and does not wrap where the shifted value does. The amount takes the type of
+/// the shifted value too, where it is masked (an amount of 2^32 + 3 and one of 3 shift an int by the same), and the
+/// operands of the trace have one type, as NIR requires.
+template <typename LBase, typename>
+using ShiftOperandType = decltype(+std::declval<LBase>());
+
+/// Binary operator helper for arithmetic operations with integer promotion. LEFT_T is the type the left operand is
+/// converted to, RIGHT_T the one of the right operand, RIGHT_CONVERT how it gets there.
+#define DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(OP, OP_NAME, OP_TRACE, EVAL, LEFT_T, RIGHT_T, RIGHT_CONVERT)      \
 	template <typename LHS, typename RHS>                                                                              \
 	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
 		using LHSVal = std::remove_cvref_t<LHS>;                                                                       \
 		using RHSVal = std::remove_cvref_t<RHS>;                                                                       \
 		using LBase = typename LHSVal::basic_type;                                                                     \
 		using RBase = typename RHSVal::basic_type;                                                                     \
-		using commonType = ArithmeticResultType<LBase, RBase>;                                                         \
+		using leftType = LEFT_T<LBase, RBase>;                                                                         \
+		using rightType = RIGHT_T<LBase, RBase>;                                                                       \
 		using resultType = decltype(std::declval<LBase>() OP std::declval<RBase>());                                   \
                                                                                                                        \
-		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
-		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
+		auto&& lValue = cast_value<LHS, leftType>(std::forward<LHS>(left));                                            \
+		auto&& rValue = RIGHT_CONVERT<RHS, rightType>(std::forward<RHS>(right));                                       \
                                                                                                                        \
 		if SHOULD_TRACE () {                                                                                           \
 			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<resultType>::to_type(),          \
@@ -327,24 +337,31 @@ constexpr T wrappingMul(T a, T b) {
 	}                                                                                                                  \
 	/* The type OP_NAME converts both operands to. */                                                                  \
 	template <typename LBase, typename RBase>                                                                          \
-	using OP_NAME##_operand_t = ArithmeticResultType<LBase, RBase>;                                                    \
+	using OP_NAME##_operand_t = RIGHT_T<LBase, RBase>;                                                                 \
 	/* The type of `a OP b` in C++, for operands of type A and B. */                                                   \
 	template <typename A, typename B>                                                                                  \
 	using OP_NAME##_result_t = decltype(std::declval<A>() OP std::declval<B>());
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(+, add, ADD, NAUTILUS_EVAL_ADD)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(+, add, ADD, NAUTILUS_EVAL_ADD, ArithmeticResultType, ArithmeticResultType,
+                                             cast_value)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(-, sub, SUB, NAUTILUS_EVAL_SUB)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(-, sub, SUB, NAUTILUS_EVAL_SUB, ArithmeticResultType, ArithmeticResultType,
+                                             cast_value)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(*, mul, MUL, NAUTILUS_EVAL_MUL)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(*, mul, MUL, NAUTILUS_EVAL_MUL, ArithmeticResultType, ArithmeticResultType,
+                                             cast_value)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(/, div, DIV, NAUTILUS_EVAL_DIV)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(/, div, DIV, NAUTILUS_EVAL_DIV, ArithmeticResultType, ArithmeticResultType,
+                                             cast_value)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(%, mod, MOD, NAUTILUS_EVAL_MOD)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(%, mod, MOD, NAUTILUS_EVAL_MOD, ArithmeticResultType, ArithmeticResultType,
+                                             cast_value)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(>>, shr, RSH, NAUTILUS_EVAL_SHR)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(>>, shr, RSH, NAUTILUS_EVAL_SHR, ShiftOperandType, ShiftOperandType,
+                                             convert_value)
 
-DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH, NAUTILUS_EVAL_SHL)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH, NAUTILUS_EVAL_SHL, ShiftOperandType, ShiftOperandType,
+                                             convert_value)
 
 /// Binary operator helper for comparison operations (no promotion)
 #define DEFINE_BINARY_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE, RES_TYPE)                                                 \
