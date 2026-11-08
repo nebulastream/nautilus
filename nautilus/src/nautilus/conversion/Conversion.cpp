@@ -56,18 +56,29 @@ private:
 
 	enum class Kind : uint8_t { Inst, Phi, Param };
 
+	/// What a temporary is. The hot data in 32 bytes; the variable-length parts live in `words_` and the side tables.
 	struct Temp {
+		Inst inst {}; // Inst: the instruction, operands as Refs
+		uint32_t block = NONE;
+		/// Inst: the index in `calls_` for a call and a checked division, the first of the (consecutive) edges of a
+		/// terminator; Phi, Param: the index in `phiInfo_`.
+		uint32_t aux = NONE;
 		Kind kind = Kind::Inst;
-		Inst inst {};                // Inst: the instruction, operands as Refs
-		std::vector<uint32_t> list;  // Inst: the values of a call's argument list
-		std::vector<uint32_t> tail;  // Inst: the words of a call's list after the unwind entry
-		uint32_t unwind = NO_UNWIND; // Inst: NO_UNWIND, NO_CLEANUP or a pad (padBase + index, resolved when emitted)
-		bool usesPad = false;
-		uint32_t variable = NONE;  // Phi: the variable
-		uint32_t block = NONE;     // Phi, Param: the block
-		std::vector<uint32_t> ops; // Phi: one value per incoming edge, in registration order
 		TypeId type = TypeId::Void;
-		uint32_t edgeTrue = NONE, edgeFalse = NONE; // terminators: the edges
+	};
+	/// A call's operand list and the words after its unwind entry (in `words_`), and the unwind of a call or a checked
+	/// division: NO_UNWIND, NO_CLEANUP or a pad (padBase + index, resolved when emitted).
+	struct CallInfo {
+		uint32_t list = 0, listCount = 0, tail = 0, tailCount = 0;
+		uint32_t unwind = NO_UNWIND;
+		bool usesPad = false;
+	};
+	/// A phi or entry parameter: the variable, one operand per incoming edge in registration order (a slice of `words_`
+	/// reserved when the block is sealed), and the phis that use it.
+	struct PhiInfo {
+		uint32_t variable = NONE;
+		uint32_t ops = 0, opsCount = 0;
+		std::vector<uint32_t> users;
 	};
 
 	struct Pad {
@@ -75,13 +86,16 @@ private:
 	};
 
 	uint32_t newTemp(Kind kind, TypeId type, uint32_t block) {
-		temps_.push_back(Temp {});
-		auto& t = temps_.back();
+		Temp t;
 		t.kind = kind;
 		t.type = type;
 		t.block = block;
+		if (kind != Kind::Inst) {
+			t.aux = static_cast<uint32_t>(phiInfo_.size());
+			phiInfo_.emplace_back();
+		}
+		temps_.push_back(t);
 		fwd_.push_back(NONE);
-		phiUsers_.resize(temps_.size());
 		return static_cast<uint32_t>(temps_.size() - 1);
 	}
 	bool isTemp(Ref r) const {
@@ -92,6 +106,25 @@ private:
 			r = fwd_[r];
 		}
 		return r;
+	}
+	PhiInfo& phiOf(uint32_t phi) {
+		return phiInfo_[temps_[phi].aux];
+	}
+	/// The operands of a phi so far.
+	std::span<const uint32_t> opsOf(uint32_t phi) const {
+		const auto& info = phiInfo_[temps_[phi].aux];
+		return {words_.data() + info.ops, info.opsCount};
+	}
+	/// Makes room for `count` operands of the phi.
+	void reserveOps(uint32_t phi, size_t count) {
+		auto& info = phiOf(phi);
+		info.ops = static_cast<uint32_t>(words_.size());
+		info.opsCount = 0;
+		words_.resize(words_.size() + count);
+	}
+	void pushOp(uint32_t phi, Ref value) {
+		auto& info = phiOf(phi);
+		words_[info.ops + info.opsCount++] = value;
 	}
 	Ref getDef(uint32_t variable, uint32_t block) const {
 		auto& defs = currentDef_[block];
@@ -166,6 +199,11 @@ private:
 	// ---- emission ----------------------------------------------------------------------------------------------
 
 	void emit();
+	/// Whether the temporary's `aux` is an index in `calls_`.
+	static bool hasCallInfo(const Temp& t) {
+		const auto op = static_cast<Op>(t.inst.op);
+		return t.aux != NONE && (op == Op::Call || op == Op::CallIndirect || op == Op::Div || op == Op::Rem);
+	}
 	Ref finalRef(Ref r) const {
 		r = resolve(r);
 		return isTemp(r) ? finalId_[r] : r;
@@ -209,7 +247,10 @@ private:
 	std::vector<std::vector<uint32_t>> incoming_; // per block: dynamic edge ids in registration order
 	std::vector<std::vector<uint32_t>> incomplete_;
 	std::vector<Ref> valueOf_; // pre-SSA instruction id -> value, for ids that are never assigned
-	std::vector<std::vector<uint32_t>> phiUsers_;
+	std::vector<PhiInfo> phiInfo_;
+	std::vector<CallInfo> calls_;
+	std::vector<uint32_t> words_;               // the lists of calls and the operands of phis
+	std::vector<uint32_t> args_, argsResolved_; // scratch: the operands of the call being converted
 	std::vector<Pad> pads_;
 	std::map<std::vector<std::pair<uint32_t, Ref>>, uint32_t> padIndex_;
 	std::vector<Edge> dynEdges_;
@@ -536,7 +577,7 @@ void FunctionConverter::orderBlocks() {
 uint32_t FunctionConverter::newPhi(uint32_t variable, uint32_t block) {
 	auto type = static_cast<TypeId>(insts_[variable].type);
 	auto id = newTemp(Kind::Phi, type, block);
-	temps_[id].variable = variable;
+	phiOf(id).variable = variable;
 	phis_[block].push_back(id);
 	return id;
 }
@@ -597,6 +638,7 @@ Ref FunctionConverter::startRead(uint32_t variable, uint32_t block, std::vector<
 			fail(f_, "%" + std::to_string(variable) + " is read before it is defined");
 		}
 		auto phi = newPhi(variable, block);
+		reserveOps(phi, inc.size());
 		setDef(variable, block, phi);
 		stack.push_back(Frame {phi, block, 0, std::move(chain)});
 		return NONE;
@@ -616,9 +658,9 @@ Ref FunctionConverter::readVariable(uint32_t variable, uint32_t block) {
 	while (!stack.empty()) {
 		if (delivered != NONE) {
 			auto& parent = stack.back();
-			temps_[parent.phi].ops.push_back(delivered);
+			pushOp(parent.phi, delivered);
 			if (isTemp(delivered) && temps_[delivered].kind == Kind::Phi) {
-				phiUsers_[delivered].push_back(parent.phi);
+				phiOf(delivered).users.push_back(parent.phi);
 			}
 			++parent.next;
 			delivered = NONE;
@@ -627,7 +669,7 @@ Ref FunctionConverter::readVariable(uint32_t variable, uint32_t block) {
 		const auto count = incoming_[f.block].size();
 		if (f.next < count) {
 			const auto from = dynEdges_[incoming_[f.block][f.next]].from;
-			const auto var = temps_[f.phi].variable;
+			const auto var = phiOf(f.phi).variable;
 			if (Ref v = startRead(var, from, stack); v != NONE) {
 				delivered = v;
 			}
@@ -635,7 +677,7 @@ Ref FunctionConverter::readVariable(uint32_t variable, uint32_t block) {
 		}
 		Frame done = std::move(f);
 		stack.pop_back();
-		const auto var = temps_[done.phi].variable;
+		const auto var = phiOf(done.phi).variable;
 		Ref value = tryRemoveTrivialPhi(done.phi);
 		setDef(var, done.block, value);
 		for (auto b : done.chain) {
@@ -661,7 +703,7 @@ Ref FunctionConverter::tryRemoveTrivialPhi(uint32_t phi) {
 		}
 		Ref same = NONE;
 		bool trivial = true;
-		for (auto op : temps_[p].ops) {
+		for (auto op : opsOf(p)) {
 			op = resolve(op);
 			if (op == same || op == p) {
 				continue;
@@ -681,14 +723,15 @@ Ref FunctionConverter::tryRemoveTrivialPhi(uint32_t phi) {
 		if (first) {
 			result = same;
 		}
-		for (auto user : phiUsers_[p]) {
+		for (auto user : phiOf(p).users) {
 			if (user != p) {
 				work.push_back(user);
 			}
 		}
 		if (isTemp(same) && temps_[same].kind == Kind::Phi) {
-			for (auto user : phiUsers_[p]) {
-				phiUsers_[same].push_back(user);
+			auto& to = phiOf(same).users;
+			for (auto user : phiOf(p).users) {
+				to.push_back(user);
 			}
 		}
 		first = false;
@@ -699,14 +742,14 @@ Ref FunctionConverter::tryRemoveTrivialPhi(uint32_t phi) {
 void FunctionConverter::addPhiOperands(uint32_t phi) {
 	// the operands, one per incoming edge, in the order the edges were registered
 	const auto block = temps_[phi].block;
-	const auto variable = temps_[phi].variable;
-	temps_[phi].ops.clear();
+	const auto variable = phiOf(phi).variable;
+	reserveOps(phi, incoming_[block].size());
 	for (size_t i = 0; i < incoming_[block].size(); ++i) {
 		auto from = dynEdges_[incoming_[block][i]].from;
 		Ref v = readVariable(variable, from);
-		temps_[phi].ops.push_back(v);
+		pushOp(phi, v);
 		if (isTemp(v) && temps_[v].kind == Kind::Phi) {
-			phiUsers_[v].push_back(phi);
+			phiOf(v).users.push_back(phi);
 		}
 	}
 	tryRemoveTrivialPhi(phi);
@@ -964,8 +1007,8 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 	case Op::Rem:
 		if (ni.flags & 2) {
 			auto pad = convertUnwind(b, inst.c);
-			temps_[t].unwind = pad;
-			temps_[t].usesPad = pad != NO_CLEANUP;
+			temps_[t].aux = static_cast<uint32_t>(calls_.size());
+			calls_.push_back(CallInfo {0, 0, 0, 0, pad, pad != NO_CLEANUP});
 		}
 		temps_[t].inst.c = 0;
 		break;
@@ -973,33 +1016,43 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 	case Op::CallIndirect: {
 		const uint32_t* list = pre_.extra.data() + inst.c;
 		const uint32_t argc = list[0];
+		args_.clear();
 		for (uint32_t i = 0; i < argc; ++i) {
-			auto value = operand(list[1 + i], b); // may grow temps_
-			temps_[t].list.push_back(value);
+			args_.push_back(operand(list[1 + i], b)); // may grow temps_ and words_
 		}
 		const uint32_t unwind = list[1 + argc];
 		// a callee that cannot throw needs no unwind entry and no cleanup (M3.5: only where the final noUnwind is
 		// clear)
 		const bool cannotThrow = optimize_ && op == Op::Call && inst.a < pre_.callees.size() &&
 		                         (pre_.callees[inst.a].attrs & AttrNoUnwind) != 0;
+		CallInfo call;
 		if (unwind == NO_UNWIND) {
-			temps_[t].unwind = NO_UNWIND;
+			call.unwind = NO_UNWIND;
 		} else if (cannotThrow) {
-			temps_[t].unwind = NO_UNWIND;
+			call.unwind = NO_UNWIND;
 			++stats_.droppedUnwinds;
 		} else {
 			auto pad = convertUnwind(b, unwind);
-			temps_[t].unwind = pad;
-			temps_[t].usesPad = pad != NO_CLEANUP;
+			call.unwind = pad;
+			call.usesPad = pad != NO_CLEANUP;
 		}
-		temps_[t].tail.assign(list + 2 + argc, list + (op == Op::Call ? 3 : 4) + argc);
+		const uint32_t* tail = list + 2 + argc;
+		const uint32_t tailCount = op == Op::Call ? 1 : 2;
+		call.list = static_cast<uint32_t>(words_.size());
+		call.listCount = argc;
+		words_.insert(words_.end(), args_.begin(), args_.end());
+		call.tail = static_cast<uint32_t>(words_.size());
+		call.tailCount = tailCount;
+		words_.insert(words_.end(), tail, tail + tailCount);
+		temps_[t].aux = static_cast<uint32_t>(calls_.size());
+		calls_.push_back(call);
 		temps_[t].inst.c = 0;
 		if (optimize_ && op == Op::Call) {
-			std::vector<uint32_t> args;
-			for (auto v : temps_[t].list) {
-				args.push_back(resolve(v));
+			argsResolved_.clear();
+			for (auto v : args_) {
+				argsResolved_.push_back(resolve(v));
 			}
-			shareable = availKey(ni, b, args, key);
+			shareable = availKey(ni, b, argsResolved_, key);
 			if (shareable) {
 				if (Ref hit = findAvailable(key, b); hit != NONE) {
 					// the temporary stays out of the block's body and is never emitted
@@ -1084,7 +1137,9 @@ void FunctionConverter::convertTerminator(uint32_t b, const Inst& inst) {
 	// register the live edges; a block whose last incoming edge this was can be sealed
 	for (size_t i = 0; i < targets.size(); ++i) {
 		auto e = makeEdge(b, targets[i]);
-		(i == 0 ? temps_[t].edgeTrue : temps_[t].edgeFalse) = e;
+		if (i == 0) {
+			temps_[t].aux = e; // the false edge, if any, is the next one
+		}
 	}
 	for (auto to : targets) {
 		if (--pending_[to] == 0) {
@@ -1211,7 +1266,7 @@ void FunctionConverter::emit() {
 			work.pop_back();
 			const auto& temp = temps_[x];
 			if (temp.kind == Kind::Phi) {
-				for (auto op : temp.ops) {
+				for (auto op : opsOf(x)) {
 					mark(op);
 				}
 				continue;
@@ -1229,12 +1284,15 @@ void FunctionConverter::emit() {
 			if (info->c == OperandKind::Value) {
 				mark(temp.inst.c);
 			}
-			for (auto v : temp.list) {
-				mark(v);
-			}
-			if (temp.usesPad) {
-				for (const auto& entry : pads_[temp.unwind].entries) {
-					mark(entry.second);
+			if (hasCallInfo(temp)) {
+				const auto& call = calls_[temp.aux];
+				for (uint32_t i = 0; i < call.listCount; ++i) {
+					mark(words_[call.list + i]);
+				}
+				if (call.usesPad) {
+					for (const auto& entry : pads_[call.unwind].entries) {
+						mark(entry.second);
+					}
 				}
 			}
 		}
@@ -1281,7 +1339,7 @@ void FunctionConverter::emit() {
 		std::vector<uint32_t> args;
 		const auto to = dynEdges_[edge].to;
 		for (auto phi : finalPhis[to]) {
-			const auto& ops = temps_[phi].ops;
+			const auto ops = opsOf(phi);
 			uint32_t slot = edgeSlot[edge];
 			args.push_back(slot < ops.size() ? finalRef(ops[slot]) : NONE);
 		}
@@ -1332,7 +1390,8 @@ void FunctionConverter::emit() {
 				inst.c = finalRef(inst.c);
 			}
 			auto unwindWord = [&](const Temp& tmp) {
-				return tmp.usesPad ? padOf(tmp.unwind) : tmp.unwind;
+				const auto& call = calls_[tmp.aux];
+				return call.usesPad ? padOf(call.unwind) : call.unwind;
 			};
 			switch (op) {
 			case Op::Div:
@@ -1343,19 +1402,20 @@ void FunctionConverter::emit() {
 				break;
 			case Op::Call:
 			case Op::CallIndirect: {
+				const auto& call = calls_[temp.aux];
 				std::vector<uint32_t> list;
-				list.push_back(static_cast<uint32_t>(temp.list.size()));
-				for (auto v : temp.list) {
-					list.push_back(finalRef(v));
+				list.push_back(call.listCount);
+				for (uint32_t i = 0; i < call.listCount; ++i) {
+					list.push_back(finalRef(words_[call.list + i]));
 				}
 				list.push_back(unwindWord(temp));
-				list.insert(list.end(), temp.tail.begin(), temp.tail.end());
+				list.insert(list.end(), words_.begin() + call.tail, words_.begin() + call.tail + call.tailCount);
 				inst.c = out_.addExtra(list);
 				break;
 			}
 			case Op::Br: {
 				auto target = layoutIndex_[inst.a];
-				auto args = branchArgs(temp.edgeTrue);
+				auto args = branchArgs(temp.aux);
 				std::vector<uint32_t> list {static_cast<uint32_t>(args.size())};
 				list.insert(list.end(), args.begin(), args.end());
 				inst.a = target;
@@ -1364,8 +1424,8 @@ void FunctionConverter::emit() {
 			}
 			case Op::CondBr: {
 				auto probability = inst.c;
-				auto trueArgs = branchArgs(temp.edgeTrue);
-				auto falseArgs = branchArgs(temp.edgeFalse);
+				auto trueArgs = branchArgs(temp.aux);
+				auto falseArgs = branchArgs(temp.aux + 1);
 				std::vector<uint32_t> list {probability, static_cast<uint32_t>(trueArgs.size())};
 				list.insert(list.end(), trueArgs.begin(), trueArgs.end());
 				list.push_back(layoutIndex_[succEdgesStatic_[b][1]]);
@@ -1407,6 +1467,11 @@ void FunctionConverter::run() {
 	buildCfg();
 	orderBlocks();
 
+	temps_.clear();
+	fwd_.clear();
+	phiInfo_.clear();
+	calls_.clear();
+	words_.clear();
 	phis_.assign(n_, {});
 	body_.assign(n_, {});
 	currentDef_.assign(n_, {});
