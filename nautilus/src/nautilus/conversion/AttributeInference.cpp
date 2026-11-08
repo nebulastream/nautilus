@@ -91,7 +91,9 @@ Local analyze(const Module& m, uint32_t f, Scratch& scratch) {
 			}
 			const auto& callee = m.callees[inst.a];
 			if (callee.kind == static_cast<uint8_t>(CalleeKind::Internal)) {
-				local.callees.push_back(callee.target);
+				if (local.callees.empty() || local.callees.back() != callee.target) {
+					local.callees.push_back(callee.target); // a repeated call adds nothing to the call graph
+				}
 			} else {
 				// external, imported and intrinsic callees are as declared
 				local.reads |= (callee.attrs & NO_READ) != NO_READ;

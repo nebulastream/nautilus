@@ -84,6 +84,15 @@ private:
 	size_t count_ = 0;
 };
 
+/// Appends `count` words; for the short lists of calls and branches this is cheaper than vector::insert.
+inline void appendWords(std::vector<uint32_t>& to, const uint32_t* words, size_t count) {
+	const auto at = to.size();
+	to.resize(at + count);
+	for (size_t i = 0; i < count; ++i) {
+		to[at + i] = words[i];
+	}
+}
+
 /// Lists of block ids, one per block, in one array.
 struct Csr {
 	std::vector<uint32_t> start, items;
@@ -649,26 +658,22 @@ void FunctionConverter::addAvailable(const AvailKey& key, uint32_t b, Ref value)
 	}
 	auto& bucket = availHead_[key.hash & (availHead_.size() - 1)];
 	const auto listOffset = static_cast<uint32_t>(words_.size());
-	words_.insert(words_.end(), key.list.begin(), key.list.end());
+	appendWords(words_, key.list.data(), key.list.size());
 	availEntries_.push_back(AvailEntry {key.hash, key.a, key.b, key.c, key.epoch, b, value, bucket, listOffset,
 	                                    static_cast<uint32_t>(key.list.size()), key.op, key.type, key.flags});
 	bucket = static_cast<uint32_t>(availEntries_.size() - 1);
 }
 
 uint64_t FunctionConverter::hashOf(const AvailKey& k) {
-	uint64_t h = k.op * 0x9E3779B97F4A7C15ull ^ (uint64_t(k.type) << 8 | k.flags);
-	for (uint32_t v : {k.a, k.b, k.c, k.epoch}) {
-		h = (h ^ v) * 0x100000001B3ull;
-		h ^= h >> 29;
-	}
+	constexpr uint64_t M1 = 0x9E3779B97F4A7C15ull, M2 = 0xC2B2AE3D27D4EB4Full;
+	uint64_t h = (uint64_t(k.op) << 16 | uint64_t(k.type) << 8 | k.flags) * M1;
+	h = (h ^ (uint64_t(k.a) << 32 | k.b)) * M2;
+	h = (h ^ (uint64_t(k.c) << 32 | k.epoch)) * M1;
 	for (uint32_t v : k.list) {
-		h = (h ^ v) * 0x100000001B3ull;
-		h ^= h >> 29;
+		h = (h ^ v) * M2;
 	}
 	// the low bits pick the bucket
-	h ^= h >> 32;
-	h *= 0x9E3779B97F4A7C15ull;
-	return h ^ (h >> 29);
+	return h ^ (h >> 32);
 }
 
 bool FunctionConverter::availKey(const Inst& ni, uint32_t b, std::span<const uint32_t> args, AvailKey& key) const {
@@ -1302,10 +1307,10 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 		const uint32_t tailCount = op == Op::Call ? 1 : 2;
 		call.list = static_cast<uint32_t>(words_.size());
 		call.listCount = argc;
-		words_.insert(words_.end(), args_.begin(), args_.end());
+		appendWords(words_, args_.data(), args_.size());
 		call.tail = static_cast<uint32_t>(words_.size());
 		call.tailCount = tailCount;
-		words_.insert(words_.end(), tail, tail + tailCount);
+		appendWords(words_, tail, tailCount);
 		temps_[t].aux = static_cast<uint32_t>(calls_.size());
 		calls_.push_back(call);
 		temps_[t].inst.c = 0;
@@ -1700,7 +1705,7 @@ void FunctionConverter::emit() {
 					list_.push_back(finalRef(words_[call.list + i]));
 				}
 				list_.push_back(unwindWord(temp));
-				list_.insert(list_.end(), words_.begin() + call.tail, words_.begin() + call.tail + call.tailCount);
+				appendWords(list_, words_.data() + call.tail, call.tailCount);
 				inst.c = out().addExtra(list_);
 				break;
 			}
