@@ -27,11 +27,6 @@ void shiftKernel(val<T> x, val<A> amount, val<int64_t*> out) {
 
 template <typename T, typename A>
 void checkShifts(NautilusEngine& engine) {
-	// the NIR verifier rejects a shift whose amount has another type than the shifted value; the amount is converted
-	// to that type in a later change
-	if (engine.getNameOfBackend() == "nirtbc" && sizeof(A) > sizeof(T)) {
-		return;
-	}
 	using Promoted = decltype(+std::declval<T>());
 	using UnsignedPromoted = std::make_unsigned_t<Promoted>;
 	constexpr int bits = sizeof(Promoted) * 8;

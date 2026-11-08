@@ -117,6 +117,19 @@ decltype(auto) inline cast_value(LeftType&& value) {
 	}
 }
 
+/// Converts val<LeftType> to exactly val<To> if it is not one yet, narrowing included. cast_value only widens (it
+/// converts to the common type of both), which is not what a shift needs for its amount: the amount takes the type of
+/// the shifted value, whatever its own width.
+template <typename LeftType, is_fundamental To>
+decltype(auto) inline convert_value(LeftType&& value) {
+	using basic_type = typename std::remove_reference_t<LeftType>::basic_type;
+	if constexpr (tracing::same_nautilus_type<basic_type, To>::value) {
+		return std::forward<LeftType>(value);
+	} else {
+		return static_cast<val<To>>(value);
+	}
+}
+
 /// Specialization of cast_value for bool types (no conversion needed).
 template <typename LeftType, is_bool RightType>
 auto&& cast_value(LeftType&& value) {
