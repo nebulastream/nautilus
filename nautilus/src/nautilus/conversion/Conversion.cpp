@@ -156,39 +156,37 @@ private:
 	Ref simplify(Inst& inst);
 
 	// ---- common subexpressions (M3.4) --------------------------------------------------------------------------
-	// Available values are kept per block and chained to the block's only static predecessor (an extended basic
-	// block): a value computed there dominates this block. Loads and calls that read memory are keyed on the memory
-	// epoch, a number that every store and every call that may write takes anew; a block with several predecessors
-	// starts a new epoch, so a store in one arm of an if never lets the join reuse a load from before it.
+	// Available values are recorded with the block that computed them, and the blocks are chained to their only static
+	// predecessor (an extended basic block): a value computed in an ancestor dominates the block. Loads and calls that
+	// read memory are keyed on the memory epoch, a number that every store and every call that may write takes anew; a
+	// block with several predecessors starts a new epoch, so a store in one arm of an if never lets the join reuse a
+	// load from before it. All entries of the function are in one hash table; of the entries with the key that were
+	// computed in an ancestor, the nearest one wins.
 	struct AvailKey {
 		uint16_t op;
 		uint8_t type, flags;
 		uint32_t a, b, c, epoch;
-		std::vector<uint32_t> list;
-		bool operator==(const AvailKey&) const = default;
+		std::span<const uint32_t> list;
+		uint64_t hash;
 	};
-	struct AvailHash {
-		size_t operator()(const AvailKey& k) const {
-			uint64_t h = k.op * 0x9E3779B97F4A7C15ull ^ (uint64_t(k.type) << 8 | k.flags);
-			for (uint32_t v : {k.a, k.b, k.c, k.epoch}) {
-				h = (h ^ v) * 0x100000001B3ull;
-				h ^= h >> 29;
-			}
-			for (uint32_t v : k.list) {
-				h = (h ^ v) * 0x100000001B3ull;
-				h ^= h >> 29;
-			}
-			return static_cast<size_t>(h);
-		}
+	struct AvailEntry {
+		uint64_t hash;
+		uint32_t a, b, c, epoch;
+		uint32_t block, value, next;
+		uint32_t list, listCount; // in words_
+		uint16_t op;
+		uint8_t type, flags;
 	};
-	using AvailMap = std::unordered_map<AvailKey, Ref, AvailHash>;
 	static constexpr uint32_t MaxAvailDepth = 32;
 	static constexpr uint32_t MaxRefoldSweeps = 3;
 	void enterBlockForCse(uint32_t b);
+	static uint64_t hashOf(const AvailKey& k);
 	Ref findAvailable(const AvailKey& key, uint32_t b) const;
+	void addAvailable(const AvailKey& key, uint32_t b, Ref value);
 	/// Whether `ni` may be shared, and the key that says so; calls are keyed on their argument list.
 	bool availKey(const Inst& ni, uint32_t b, std::span<const uint32_t> args, AvailKey& key) const;
-	std::vector<AvailMap> avail_;
+	std::vector<AvailEntry> availEntries_;
+	std::vector<uint32_t> availHead_; // the buckets: the first entry, NONE for none
 	std::vector<uint32_t> ebbParent_, ebbDepth_, epochAtEnd_;
 	uint32_t nextEpoch_ = 1;
 
@@ -272,29 +270,84 @@ void FunctionConverter::enterBlockForCse(uint32_t b) {
 }
 
 Ref FunctionConverter::findAvailable(const AvailKey& key, uint32_t b) const {
-	for (uint32_t at = b; at != NONE; at = ebbParent_[at]) {
-		auto it = avail_[at].find(key);
-		if (it != avail_[at].end()) {
-			return resolve(it->second);
+	Ref best = NONE;
+	uint32_t bestDepth = 0;
+	const uint32_t depthOfB = ebbDepth_[b];
+	for (uint32_t e = availHead_[key.hash & (availHead_.size() - 1)]; e != NONE; e = availEntries_[e].next) {
+		const auto& entry = availEntries_[e];
+		if (entry.hash != key.hash || entry.op != key.op || entry.type != key.type || entry.flags != key.flags ||
+		    entry.a != key.a || entry.b != key.b || entry.c != key.c || entry.epoch != key.epoch ||
+		    entry.listCount != key.list.size() ||
+		    !std::equal(key.list.begin(), key.list.end(), words_.begin() + entry.list)) {
+			continue;
+		}
+		// the entry counts if its block is b or an ancestor of b; the depth drops by one per step up
+		const uint32_t depth = ebbDepth_[entry.block];
+		if (depth > depthOfB || (best != NONE && depth <= bestDepth)) {
+			continue;
+		}
+		uint32_t at = b;
+		for (uint32_t steps = depthOfB - depth; steps != 0; --steps) {
+			at = ebbParent_[at];
+		}
+		if (at == entry.block) {
+			best = entry.value;
+			bestDepth = depth;
 		}
 	}
-	return NONE;
+	return best == NONE ? NONE : resolve(best);
+}
+
+void FunctionConverter::addAvailable(const AvailKey& key, uint32_t b, Ref value) {
+	if (availEntries_.size() >= availHead_.size()) {
+		// the table is at most full: twice the buckets, and every entry chained again
+		availHead_.assign(availHead_.size() * 2, NONE);
+		for (uint32_t e = 0; e < availEntries_.size(); ++e) {
+			auto& bucket = availHead_[availEntries_[e].hash & (availHead_.size() - 1)];
+			availEntries_[e].next = bucket;
+			bucket = e;
+		}
+	}
+	auto& bucket = availHead_[key.hash & (availHead_.size() - 1)];
+	const auto listOffset = static_cast<uint32_t>(words_.size());
+	words_.insert(words_.end(), key.list.begin(), key.list.end());
+	availEntries_.push_back(AvailEntry {key.hash, key.a, key.b, key.c, key.epoch, b, value, bucket, listOffset,
+	                                    static_cast<uint32_t>(key.list.size()), key.op, key.type, key.flags});
+	bucket = static_cast<uint32_t>(availEntries_.size() - 1);
+}
+
+uint64_t FunctionConverter::hashOf(const AvailKey& k) {
+	uint64_t h = k.op * 0x9E3779B97F4A7C15ull ^ (uint64_t(k.type) << 8 | k.flags);
+	for (uint32_t v : {k.a, k.b, k.c, k.epoch}) {
+		h = (h ^ v) * 0x100000001B3ull;
+		h ^= h >> 29;
+	}
+	for (uint32_t v : k.list) {
+		h = (h ^ v) * 0x100000001B3ull;
+		h ^= h >> 29;
+	}
+	// the low bits pick the bucket
+	h ^= h >> 32;
+	h *= 0x9E3779B97F4A7C15ull;
+	return h ^ (h >> 29);
 }
 
 bool FunctionConverter::availKey(const Inst& ni, uint32_t b, std::span<const uint32_t> args, AvailKey& key) const {
 	const auto op = static_cast<Op>(ni.op);
 	const auto* info = coreOpInfo(ni.op);
-	key = AvailKey {ni.op, ni.type, ni.flags, ni.a, ni.b, ni.c, 0, {}};
+	key = AvailKey {ni.op, ni.type, ni.flags, ni.a, ni.b, ni.c, 0, {}, 0};
 	if (info->flags & OpPure) {
 		const bool commutative = op == Op::Add || op == Op::Mul || op == Op::BAnd || op == Op::BOr || op == Op::BXor ||
 		                         op == Op::And || op == Op::Or;
 		if (commutative && !semantics::isFloatType(static_cast<TypeId>(ni.type)) && key.a > key.b) {
 			std::swap(key.a, key.b);
 		}
+		key.hash = hashOf(key);
 		return true;
 	}
 	if (op == Op::Load) {
 		key.epoch = epochAtEnd_[b];
+		key.hash = hashOf(key);
 		return true;
 	}
 	if (op == Op::Call && ni.a < pre_.callees.size()) {
@@ -307,7 +360,8 @@ bool FunctionConverter::availKey(const Inst& ni, uint32_t b, std::span<const uin
 		const bool reads = (attrs & (AttrNoArgRead | AttrNoOtherRead)) != (AttrNoArgRead | AttrNoOtherRead);
 		key.c = 0;
 		key.epoch = reads ? epochAtEnd_[b] : 0;
-		key.list.assign(args.begin(), args.end());
+		key.list = args;
+		key.hash = hashOf(key);
 		return true;
 	}
 	return false;
@@ -1081,7 +1135,7 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 		}
 	}
 	if (shareable && inst.type != static_cast<uint8_t>(TypeId::Void)) {
-		avail_[b].emplace(std::move(key), t);
+		addAvailable(key, b, t);
 	}
 	body_[b].push_back(t);
 	if (inst.type != static_cast<uint8_t>(TypeId::Void)) {
@@ -1504,7 +1558,8 @@ void FunctionConverter::run() {
 
 	foldBranches_ = optimize_ && irreducibleHere_ == 0;
 	visited_.assign(n_, 0);
-	avail_.assign(n_, {});
+	availEntries_.clear();
+	availHead_.assign(16, NONE);
 	ebbParent_.assign(n_, NONE);
 	ebbDepth_.assign(n_, 0);
 	epochAtEnd_.assign(n_, 0);
