@@ -94,6 +94,54 @@ How it is measured (D9):
   and records the results ([16 §2](16-implementation-plan.md)). No job or
   driver is added to `main`, which takes only fixes.
 
+### 2.1 The callgrind gate, as built (M1.10, M1.11)
+
+The `callgrind-gate` job of `pr.yml` is the instruction-count gate of D9; `tools/latency/run-callgrind-local.sh` runs the
+same measurements without the image.
+
+- **What is counted.** For every (function, N, backend) case of the corpus on `tbc` and `asmjit`, the instructions (Ir)
+  of the one call that compiles, `registerFunction` through tracing, conversion, passes and the backend: the driver's
+  `nautilusCorpusCompile`, selected with `--toggle-collect`. Process start-up, the run of the compiled code and the
+  reporting are not counted. Besides the total, the inclusive cost of the tracer, of the rest of the front end
+  (conversion and passes) and of the backend (`compileIR`) are taken from the same profile, so that the stage budgets
+  of the plan have a ratio of their own. `mlir` and `cpp` are not gated: their cost is LLVM's and the system compiler's.
+- **The reference.** The same driver built from `main` in the same job and image and run under the same setup. The
+  in-binary 0.3 pipeline (`tracing.nirTracer=false`) is no substitute: it shares the compiler and library code this
+  branch has since made cheaper and counts 1% to 30% fewer instructions than `main` on the corpus.
+- **Pinned dispatch.** `env -i`, `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX...` (glibc's ifunc selection of the string
+  functions then takes the x86-64 baseline variants whatever the host's CPUID, which valgrind passes through),
+  `LD_BIND_NOW=1` (lazy binding is CPU-dependent), `NAUTILUS_DETERMINISTIC=1` (below), single tier (the driver pins the
+  backend, so no promotion thread), ASLR off when the container allows `setarch -R`. XXH3 (`XXH_INLINE_ALL`) and the
+  CRC-32C of NIR images (a table) choose their code when the library is built, not by CPUID, so the library has no
+  dispatch to pin.
+- **Sources of non-determinism found and fixed.** The compilation unit id read the clock and the entropy source: the
+  per-second cache of the formatted date made the count depend on when a second ended (a few thousand instructions in a
+  0.2 s profile), `std::random_device` costs differ with RDRAND, and the process token of NIR modules is random too.
+  `NAUTILUS_DETERMINISTIC=1` replaces them by counters and a constant (`common/Deterministic.hpp`, `docs/options.md`); the
+  clock and random reads of the normal path are unchanged. What is left of it on the 0.3 side is the unit id's clock
+  (about 0.004% of a count), far below the margin. The size of the environment moved the stack and with it a few dozen
+  instructions of address-dependent paths: `env -i` removes that.
+- **The gate.** Ratios (NIR over 0.3) per case and metric against `nautilus/test/baselines/callgrind-gates.json`. Each
+  entry has a `threshold`, a ratchet at the recorded ratio plus 3% for build differences, which fails the job when
+  exceeded and only moves down (`callgrind-gate.py update`; raising it needs `--allow-raise` and a reason in the PR),
+  and a `target`, the plan's budget as a fraction of 0.3's cost: 0.75 µs/op end to end and 0.25 µs/op for tracing,
+  conversion and `asmjit`'s backend on linear code (`straight` and `loopBody` from N = 1000, the fraction taken from the
+  recorded 0.3 µs/op), at least 30% cheaper tracing on `distinctSites1024`, and 1.0 everywhere else ("no case slower
+  than 0.3"). A ratio above its target is a `WARN` in every run until it is met; targets are never relaxed to what is
+  measured. A target that is met is enforced through the threshold.
+- **The identity check.** The job runs this branch's corpus twice in the same container and requires every count of
+  every metric to be equal; any difference names the cases and fails the job. A changed environment fingerprint
+  (valgrind, libc, libstdc++, the compiler, the pinned tunables) fails it too, with the instruction to re-record the
+  thresholds in the new image.
+- **The image.** The job builds `.github/docker/ci-0.4` itself (`docker build`, cached by GitHub): the base image by
+  digest, Ubuntu packages from a dated snapshot of the archive, Clang 21 by exact version. Publishing and naming a digest
+  is the owners' follow-up (`.github/docker/README.md`).
+
+Status of the targets at the first recording: end to end, every case is far inside its budget (ratios 0.13 to 0.66,
+`calls` the highest); the unmet targets are the tracer on linear code (0.63 to 0.78 of 0.3's cost against targets of 0.58 and 0.67),
+`asmjit`'s backend on `loopBody` (0.52 against 0.43) and the tracer on `calls`, which is 13% to 19% more expensive than
+0.3's (target: not slower). They are reported by every run and ratcheted at today's value.
+
 ## 3. Statistics
 
 `CompilationStatistics` keys, extended per component:

@@ -19,18 +19,7 @@ here=$(cd "$(dirname "$0")/../.." && pwd)
 mkdir -p "$out" "$build"
 git -C "$main" rev-parse HEAD > "$out/main-commit.txt"
 
-# add the driver to main; the target is appended to main's benchmark CMake file, which does not know it
-mkdir -p "$main/nautilus/test/benchmark/latency-corpus"
-cp "$here/nautilus/test/benchmark/latency-corpus/LatencyCorpus.cpp" "$main/nautilus/test/benchmark/latency-corpus/"
-if ! grep -q nautilus-latency-corpus "$main/nautilus/test/benchmark/CMakeLists.txt"; then
-	cat >> "$main/nautilus/test/benchmark/CMakeLists.txt" <<'CMAKE'
-
-if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
-    add_executable(nautilus-latency-corpus latency-corpus/LatencyCorpus.cpp)
-    target_link_libraries(nautilus-latency-corpus PRIVATE nautilus)
-endif ()
-CMAKE
-fi
+"$here/tools/baselines/add-corpus-driver.sh" "$main"
 
 cmake -G Ninja -S "$main" -B "$build" -DCMAKE_BUILD_TYPE=Release -DENABLE_MLIR_BACKEND=OFF -DENABLE_BENCHMARKS=ON \
 	-DENABLE_TESTS=ON ${CMAKE_EXTRA_ARGS:-} > /dev/null

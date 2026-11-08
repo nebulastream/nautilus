@@ -403,6 +403,78 @@ jobs:
         with:
           name: latency-corpus-${{ github.sha }}
           path: corpus.jsonl
+  callgrind-gate:
+    runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || ((github.event.action != 'labeled' || github.event.label.name == '0.4') && (github.base_ref == 'main' || github.base_ref == 'nautilus-0.4' || contains(github.event.pull_request.labels.*.name, '0.4'))) }}
+    name: Callgrind gate (pinned image, NIR against 0.3 instruction counts)
+    # D9 (docs/plans/nautilus-0.4/10-observability.md §2): the compile cost of every latency-corpus case as callgrind
+    # instruction counts, as a ratio against the same driver built from `main`, both in the pinned image
+    # (.github/docker/ci-0.4, built here). Non-blocking until the first runs on the branch show it stable; then drop
+    # `continue-on-error` and add the job to the required checks.
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository code (nautilus-0.4)
+        uses: actions/checkout@v4
+        with:
+          path: src
+      - name: Check out main (0.3)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+          submodules: recursive
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build the pinned image
+        uses: docker/build-push-action@v6
+        with:
+          context: src/.github/docker/ci-0.4
+          load: true
+          push: false
+          tags: nautilus-ci-0.4:local
+          cache-from: type=gha,scope=ci-0.4
+          cache-to: type=gha,scope=ci-0.4,mode=max
+      - name: Name the image
+        id: image
+        shell: bash
+        run: |
+          id=$(docker image inspect nautilus-ci-0.4:local --format '{{.Id}}')
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Image"
+            echo "id: \`$id\` (built from \`.github/docker/ci-0.4\`; counts are compared only within one image)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: ccache
+        uses: actions/cache@v4
+        with:
+          path: ccache
+          key: ccache-callgrind-gate-${{ github.sha }}
+          restore-keys: ccache-callgrind-gate-
+      - name: Measure and gate
+        shell: bash
+        run: |
+          mkdir -p ccache out
+          docker run --rm \
+            -v "$PWD/src:/src" -v "$PWD/main:/main" -v "$PWD/ccache:/ccache" -v "$PWD/out:/out" \
+            -e NAUTILUS_CI_IMAGE="${{ steps.image.outputs.id }}" -e GITHUB_STEP_SUMMARY=/out/summary.md \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            -w /src nautilus-ci-0.4:local \
+            tools/latency/run-callgrind-local.sh --ci --main /main --out /out
+      - name: Report
+        if: always()
+        shell: bash
+        run: |
+          if [ -f out/summary.md ]; then cat out/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: upload the counts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: callgrind-gate-${{ github.sha }}
+          path: |
+            out/*.tsv
+            out/*.tsv.meta
+            out/report.txt
   asm-diff:
     runs-on: ubuntu-24.04
     if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}

@@ -3,6 +3,7 @@
 // produced and the heap allocations it made.
 //
 //   nautilus-latency-corpus [repetitions [function [N [backend]]]] > results.jsonl
+//   nautilus-latency-corpus --list          the cases, one "function N backend" per line (tools/latency)
 //
 // One JSON object per (function, size, backend) on stdout; a table on stderr. It uses only the public engine API, so
 // the same driver builds against 0.3 (`main`) and 0.4 and their numbers can be compared.
@@ -156,6 +157,14 @@ struct CorpusEntry {
 };
 
 // ---- driver -----------------------------------------------------------------
+// The one call that compiles: kept out of line under a fixed name so that callgrind can measure exactly it
+// (`--toggle-collect=nautilusCorpusCompile`, tools/latency/callgrind-corpus.sh): tracing, conversion, passes and the
+// backend, without process start-up, the run of the compiled code or the reporting.
+__attribute__((noinline, used)) static auto nautilusCorpusCompile(const engine::NautilusEngine& engine,
+                                                                  val<int64_t> (*fn)(val<int64_t>)) {
+	return engine.registerFunction(fn);
+}
+
 static double statMs(const compiler::CompilationStatistics& s, const char* key) {
 	if (auto* v = s.find(key)) {
 		if (auto* d = std::get_if<double>(v)) {
@@ -175,6 +184,7 @@ static int64_t statInt(const compiler::CompilationStatistics& s, const char* key
 }
 
 int main(int argc, char** argv) {
+	const bool listOnly = argc > 1 && std::string(argv[1]) == "--list";
 	int repetitions = argc > 1 ? std::atoi(argv[1]) : 5;
 	std::string onlyFunction = argc > 2 ? argv[2] : "";
 	int onlySize = argc > 3 ? std::atoi(argv[3]) : 0;
@@ -200,6 +210,16 @@ int main(int argc, char** argv) {
 	    {"distinctSites1024", distinctSites1024, {1}},
 	};
 
+	if (listOnly) {
+		for (auto& entry : corpus) {
+			for (int size : entry.sizes) {
+				for (auto& backend : backends) {
+					std::printf("%s %d %s\n", entry.name, size, backend.c_str());
+				}
+			}
+		}
+		return 0;
+	}
 	std::fprintf(stderr, "%-18s %6s %-7s %9s %9s %9s %9s %9s %8s %9s %8s\n", "function", "N", "backend", "total_ms",
 	             "trace_ms", "irgen_ms", "passes_ms", "backend_ms", "ir_ops", "allocs", "ns/op");
 	for (auto& entry : corpus) {
@@ -228,7 +248,7 @@ int main(int argc, char** argv) {
 					engine::NautilusEngine engine(options);
 					auto before = allocationCount.load();
 					auto start = std::chrono::steady_clock::now();
-					auto fn = engine.registerFunction(entry.fn);
+					auto fn = nautilusCorpusCompile(engine, entry.fn);
 					auto wall =
 					    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 					allocs.push_back(allocationCount.load() - before);
