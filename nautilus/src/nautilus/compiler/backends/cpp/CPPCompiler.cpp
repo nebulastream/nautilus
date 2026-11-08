@@ -4,11 +4,25 @@
 #include "nautilus/compiler/backends/cpp/CPPCompilerFlags.hpp"
 #include "nautilus/compiler/backends/cpp/ExecutablePath.hpp"
 #include "nautilus/compiler/backends/cpp/SharedLibrary.hpp"
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
 #include <filesystem>
 #include <iostream>
+#include <spawn.h>
 #include <sstream>
 #include <string>
+#include <sys/wait.h>
 #include <system_error>
+#include <unistd.h>
+
+#if defined(__APPLE__)
+#include <crt_externs.h>
+#define NAUTILUS_ENVIRON (*_NSGetEnviron())
+#else
+extern char** environ;
+#define NAUTILUS_ENVIRON environ
+#endif
 
 using namespace std::string_literals;
 namespace nautilus::compiler::cpp {
@@ -68,6 +82,9 @@ SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::
 	// }
 	compilationFlags.addFlag("-shared");
 	compilationFlags.addFlag("-g");
+	// compiler, assembler and linker run concurrently, connected by pipes, instead of one after the other through
+	// temporary files
+	compilationFlags.addFlag("-pipe");
 
 	// add header
 	for (auto libPaths : runtimePathConfig.libPaths) {
@@ -97,43 +114,77 @@ void CPPCompiler::compileSharedLib(CPPCompilerFlags flags, std::shared_ptr<commo
 	// lock file, such that no one can operate on the file at the same time
 	const std::lock_guard<std::mutex> fileLock(sourceFile->getFileMutex());
 
-	std::stringstream compilerCall;
-	compilerCall << " cc ";
-	for (const auto& arg : flags.getFlags()) {
-		compilerCall << arg << " ";
+	// The arguments as a shell would have split them: a flag may hold several words (`-std=c++20 -stdlib=libc++`).
+	// Starting the compiler directly saves the `sh` that popen runs between this process and `cc`, about 2 ms of a
+	// compile that takes 30.
+	std::vector<std::string> arguments {"cc"};
+	for (const auto& flag : flags.getFlags()) {
+		std::istringstream words(flag);
+		for (std::string word; words >> word;) {
+			arguments.push_back(std::move(word));
+		}
 	}
-	// NES_ERROR("Compiler: compile with: '" << compilerCall.str() << "'");
-	//  Creating a pointer to an open stream and a buffer, to read the output of
-	//  the compiler
-	FILE* fp = nullptr;
+	std::vector<char*> argv;
+	argv.reserve(arguments.size() + 1);
+	for (auto& argument : arguments) {
+		argv.push_back(argument.data());
+	}
+	argv.push_back(nullptr);
+
+	// Standard output and standard error of the compiler go through one pipe, to be able to report its messages
+	// The pipe is close-on-exec: another thread compiling at the same time must not hand our write end to its compiler,
+	// or the read below would not see the end of the output before that one had finished. dup2 clears the flag on the
+	// two descriptors the compiler gets.
+	int output[2];
+#if defined(__linux__)
+	const bool piped = ::pipe2(output, O_CLOEXEC) == 0;
+#else
+	const bool piped = ::pipe(output) == 0;
+	if (piped) {
+		::fcntl(output[0], F_SETFD, FD_CLOEXEC);
+		::fcntl(output[1], F_SETFD, FD_CLOEXEC);
+	}
+#endif
+	if (!piped) {
+		throw std::runtime_error("cannot start the compiler: " + std::string(std::strerror(errno)));
+	}
+	posix_spawn_file_actions_t actions;
+	posix_spawn_file_actions_init(&actions);
+	posix_spawn_file_actions_adddup2(&actions, output[1], STDOUT_FILENO);
+	posix_spawn_file_actions_adddup2(&actions, output[1], STDERR_FILENO);
+	pid_t child = 0;
+	const int spawned = ::posix_spawnp(&child, "cc", &actions, nullptr, argv.data(), NAUTILUS_ENVIRON);
+	posix_spawn_file_actions_destroy(&actions);
+	::close(output[1]);
+	if (spawned != 0) {
+		::close(output[0]);
+		throw std::runtime_error("cannot start the compiler 'cc': " + std::string(std::strerror(spawned)));
+	}
+
+	// Collecting the output of the compiler
+	std::string messages;
 	char buffer[8192];
-
-	// Redirecting stderr to stdout, to be able to read error messages
-	compilerCall << " 2>&1";
-
-	// Calling the compiler in a new process
-	fp = popen(compilerCall.str().c_str(), "r");
-
-	if (fp == nullptr) {
-		// NES_ERROR("Compiler: failed to run command\n");
-		return;
+	for (;;) {
+		const auto count = ::read(output[0], buffer, sizeof(buffer));
+		if (count > 0) {
+			messages.append(buffer, static_cast<size_t>(count));
+		} else if (count == 0 || errno != EINTR) {
+			break;
+		}
 	}
+	::close(output[0]);
 
-	// Collecting the output of the compiler to a string stream
-	std::ostringstream strstream;
-	while (fgets(buffer, sizeof(buffer), fp) != nullptr) {
-		strstream << buffer;
+	int status = 0;
+	while (::waitpid(child, &status, 0) < 0) {
+		if (errno != EINTR) {
+			throw std::runtime_error("cannot wait for the compiler: " + std::string(std::strerror(errno)));
+		}
 	}
-
-	// Closing the stream, which also gives us the exit status of the compiler
-	// call
-	auto ret = pclose(fp);
 
 	// If the compilation didn't return with 0, we throw an exception containing
 	// the compiler output
-	if (ret != 0) {
-		// NES_ERROR("Compiler: compilation of " << libraryFileName << " failed.");
-		throw std::runtime_error(strstream.str());
+	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+		throw std::runtime_error(messages);
 	}
 }
 
