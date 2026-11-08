@@ -80,6 +80,8 @@ SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::
 			std::error_code ignored;
 			std::filesystem::remove(source, ignored);
 			std::filesystem::remove(library, ignored);
+			// macOS: the compiler leaves the debug information of the library in a bundle next to it
+			std::filesystem::remove_all(library + ".dSYM", ignored);
 		}
 	} removeOnExit {sourceFileName, libraryFileName};
 

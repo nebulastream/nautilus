@@ -51,6 +51,7 @@ TEST_CASE("CPP backend removes its temporary files after compiling") {
 	// The file names carry a suffix that makes them unique, so look for the prefix.
 	const std::string prefix = "nautilus_" + std::get<std::string>(*unitId);
 	for (const auto& entry : std::filesystem::directory_iterator(std::filesystem::temp_directory_path())) {
+		INFO("left behind: " << entry.path());
 		CHECK(entry.path().filename().string().rfind(prefix, 0) != 0);
 	}
 }
