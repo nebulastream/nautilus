@@ -6,6 +6,10 @@
 //
 //   nautilus-fixed-cost-bench [repetitions [kernel [backend]]]
 //
+// With FIXED_COST_CALL=1 every function is also called once, and the row `first_call_us` gives that call (the
+// executable's symbol lookup, the function handle, and for mlir, whose code is generated on the first lookup unless
+// `mlir.eager_compilation` is set, the code generation itself; the harness then leaves the option off).
+//
 //   kernel   add, fib, sum, internalCallLoop, or "" / "all"
 //   backend  tbc, asmjit, mlir, cpp, or "" / "all" (whatever is built); default tbc and asmjit
 //
@@ -42,21 +46,30 @@ static bool isDurationKey(const std::string& key) {
 	return ends(".ms") || ends("Ms");
 }
 
-template <typename F>
-static void run(const std::string& kernel, const std::string& backend, int reps, F f) {
+template <typename F, typename C>
+static void run(const std::string& kernel, const std::string& backend, int reps, F f, C call) {
+	const bool callFirst = std::getenv("FIXED_COST_CALL") != nullptr;
 	engine::Options options;
 	options.setOption("engine.backend", backend);
-	if (backend == "mlir") {
+	if (backend == "mlir" && !callFirst) {
 		options.setOption("mlir.eager_compilation", true);
 	}
 	engine::NautilusEngine engine(options);
-	std::vector<double> wall;
+	std::vector<double> wall, firstCall;
 	std::map<std::string, std::vector<double>> stages;
 	for (int rep = -1; rep < reps; rep++) {
 		const auto start = std::chrono::steady_clock::now();
 		auto fn = f(engine);
 		const auto elapsed =
 		    std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+		if (callFirst) {
+			const auto callStart = std::chrono::steady_clock::now();
+			call(fn);
+			if (rep >= 0) {
+				firstCall.push_back(
+				    std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - callStart).count());
+			}
+		}
 		if (rep < 0) {
 			continue;
 		}
@@ -71,6 +84,9 @@ static void run(const std::string& kernel, const std::string& backend, int reps,
 	}
 	const double total = stages.count("compilation.totalMs") ? median(stages["compilation.totalMs"]) : 0;
 	std::printf("%s\t%s\twall_us\t%.1f\n", backend.c_str(), kernel.c_str(), median(wall));
+	if (callFirst) {
+		std::printf("%s\t%s\tfirst_call_us\t%.1f\n", backend.c_str(), kernel.c_str(), median(firstCall));
+	}
 	std::printf("%s\t%s\tunaccounted_us\t%.1f\n", backend.c_str(), kernel.c_str(), median(wall) - total);
 	for (auto& [key, values] : stages) {
 		std::printf("%s\t%s\t%s\t%.1f\n", backend.c_str(), kernel.c_str(), key.c_str(), median(values));
@@ -105,17 +121,25 @@ int main(int argc, char** argv) {
 		}
 		const int n = (backend == "cpp") ? std::max(3, reps / 20) : (backend == "mlir" ? std::max(5, reps / 4) : reps);
 		if (only.empty() || only == "add") {
-			run("add", backend, n, [](engine::NautilusEngine& e) { return e.registerFunction(addExpression); });
+			run(
+			    "add", backend, n, [](engine::NautilusEngine& e) { return e.registerFunction(addExpression); },
+			    [](auto& fn) { return fn(1); });
 		}
 		if (only.empty() || only == "fib") {
-			run("fib", backend, n, [](engine::NautilusEngine& e) { return e.registerFunction(fib); });
+			run(
+			    "fib", backend, n, [](engine::NautilusEngine& e) { return e.registerFunction(fib); },
+			    [](auto& fn) { return fn(5); });
 		}
 		if (only.empty() || only == "sum") {
-			run("sum", backend, n, [](engine::NautilusEngine& e) { return e.registerFunction(sumArr); });
+			run(
+			    "sum", backend, n, [](engine::NautilusEngine& e) { return e.registerFunction(sumArr); },
+			    [](auto& fn) { return fn(nullptr, 0); });
 		}
 		if (only.empty() || only == "internalCallLoop") {
-			run("internalCallLoop", backend, n,
-			    [](engine::NautilusEngine& e) { return e.registerFunction(internalCallLoop); });
+			run(
+			    "internalCallLoop", backend, n,
+			    [](engine::NautilusEngine& e) { return e.registerFunction(internalCallLoop); },
+			    [](auto& fn) { return fn(3); });
 		}
 	}
 	return 0;
