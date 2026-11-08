@@ -3,6 +3,7 @@
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <algorithm>
 #include <fmt/format.h>
+#include <functional>
 #include <string_view>
 #include <type_traits>
 #include <variant>
@@ -104,51 +105,137 @@ void appendJsonString(std::string& out, std::string_view text) {
 
 } // namespace
 
-void CompilationStatistics::set(std::string key, StatValue value) {
-	auto it = index_.find(key);
-	if (it != index_.end()) {
-		entries_[it->second].second = std::move(value);
-		return;
+std::size_t CompilationStatistics::indexOf(std::string_view key, std::size_t hash) const {
+	if (table_.empty()) {
+		return NOT_FOUND;
 	}
-	index_.emplace(key, entries_.size());
-	entries_.emplace_back(std::move(key), std::move(value));
+	const std::size_t mask = table_.size() - 1;
+	for (std::size_t slot = hash & mask;; slot = (slot + 1) & mask) {
+		const auto position = table_[slot];
+		if (position == 0) {
+			return NOT_FOUND;
+		}
+		if (hashes_[position - 1] == static_cast<uint32_t>(hash) && entries_[position - 1].first == key) {
+			return position - 1;
+		}
+	}
 }
 
-void CompilationStatistics::add(const std::string& key, int64_t delta) {
-	auto it = index_.find(key);
-	if (it == index_.end()) {
-		index_.emplace(key, entries_.size());
-		entries_.emplace_back(key, StatValue {delta});
+StatValue& CompilationStatistics::append(std::string_view key, std::size_t hash, StatValue value) const {
+	if (entries_.empty()) {
+		// most compiles record between 40 and 60 entries: one allocation each instead of a series of regrowths
+		entries_.reserve(64);
+		hashes_.reserve(64);
+		table_.assign(128, 0);
+	} else if ((entries_.size() + 1) * 2 > table_.size()) {
+		table_.assign(table_.size() * 2, 0);
+		const std::size_t mask = table_.size() - 1;
+		for (std::size_t i = 0; i < entries_.size(); ++i) {
+			std::size_t slot = hashes_[i] & mask;
+			while (table_[slot] != 0) {
+				slot = (slot + 1) & mask;
+			}
+			table_[slot] = static_cast<uint32_t>(i + 1);
+		}
+	}
+	const std::size_t mask = table_.size() - 1;
+	std::size_t slot = hash & mask;
+	while (table_[slot] != 0) {
+		slot = (slot + 1) & mask;
+	}
+	entries_.emplace_back(std::string(key), std::move(value));
+	hashes_.push_back(static_cast<uint32_t>(hash));
+	table_[slot] = static_cast<uint32_t>(entries_.size());
+	return entries_.back().second;
+}
+
+void CompilationStatistics::set(std::string_view key, StatValue value) {
+	const auto hash = std::hash<std::string_view> {}(key);
+	if (const auto index = indexOf(key, hash); index != NOT_FOUND) {
+		entries_[index].second = std::move(value);
 		return;
 	}
-	auto& slot = entries_[it->second].second;
+	append(key, hash, std::move(value));
+}
+
+void CompilationStatistics::add(std::string_view key, int64_t delta) {
+	const auto hash = std::hash<std::string_view> {}(key);
+	const auto index = indexOf(key, hash);
+	if (index == NOT_FOUND) {
+		append(key, hash, StatValue {delta});
+		return;
+	}
+	auto& slot = entries_[index].second;
 	if (!std::holds_alternative<int64_t>(slot)) {
-		throw RuntimeException("CompilationStatistics::add on non-integer key '" + key + "'");
+		throw RuntimeException("CompilationStatistics::add on non-integer key '" + std::string(key) + "'");
 	}
 	std::get<int64_t>(slot) += delta;
 }
 
-void CompilationStatistics::recordTimingMs(const std::string& key, std::chrono::steady_clock::time_point start) {
+void CompilationStatistics::recordTimingMs(std::string_view key, std::chrono::steady_clock::time_point start) {
 	auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 	set(key, StatValue {elapsed});
 }
 
 void CompilationStatistics::merge(const std::string& prefix, const CompilationStatistics& other) {
+	other.expandDeferred();
 	for (const auto& [k, v] : other.entries_) {
 		set(prefix + "." + k, v);
 	}
 }
 
-bool CompilationStatistics::contains(const std::string& key) const {
-	return index_.contains(key);
+void CompilationStatistics::defer(std::function<void(CompilationStatistics&)> fill) {
+	deferred_.push_back({entries_.size(), std::move(fill)});
+	hasDeferred_.store(true, std::memory_order_release);
 }
 
-const StatValue* CompilationStatistics::find(const std::string& key) const {
-	auto it = index_.find(key);
-	if (it == index_.end()) {
-		return nullptr;
+void CompilationStatistics::expandDeferredSlow() const {
+	const std::lock_guard<std::mutex> lock(expandMutex_);
+	if (!hasDeferred_.load(std::memory_order_acquire)) {
+		return; // another reader expanded them
 	}
-	return &entries_[it->second].second;
+	// Each group lands where it was deferred: the positions refer to the entries of the writer, so the entries of the
+	// groups before this one shift it. A key that was set directly as well keeps its direct value.
+	auto groups = std::move(deferred_);
+	deferred_.clear();
+	std::vector<Entry> merged;
+	merged.reserve(64);
+	std::size_t copied = 0;
+	for (auto& group : groups) {
+		for (; copied < group.position && copied < entries_.size(); ++copied) {
+			merged.push_back(std::move(entries_[copied]));
+		}
+		CompilationStatistics scratch;
+		group.fill(scratch);
+		for (auto& entry : scratch.entries_) {
+			merged.push_back(std::move(entry));
+		}
+	}
+	for (; copied < entries_.size(); ++copied) {
+		merged.push_back(std::move(entries_[copied]));
+	}
+	// rebuild the index over the merged order, dropping a duplicate key (the first one, a direct set, wins)
+	entries_.clear();
+	hashes_.clear();
+	table_.clear();
+	for (auto& entry : merged) {
+		const auto hash = std::hash<std::string_view> {}(entry.first);
+		if (indexOf(entry.first, hash) == NOT_FOUND) {
+			append(entry.first, hash, std::move(entry.second));
+		}
+	}
+	hasDeferred_.store(false, std::memory_order_release);
+}
+
+bool CompilationStatistics::contains(std::string_view key) const {
+	expandDeferred();
+	return indexOf(key, std::hash<std::string_view> {}(key)) != NOT_FOUND;
+}
+
+const StatValue* CompilationStatistics::find(std::string_view key) const {
+	expandDeferred();
+	const auto index = indexOf(key, std::hash<std::string_view> {}(key));
+	return index == NOT_FOUND ? nullptr : &entries_[index].second;
 }
 
 std::string CompilationStatistics::formatValue(std::string_view key, const StatValue& value) {
@@ -170,6 +257,7 @@ std::string CompilationStatistics::formatValue(std::string_view key, const StatV
 }
 
 std::string CompilationStatistics::toString() const {
+	expandDeferred();
 	std::string out;
 	for (const auto& [k, v] : entries_) {
 		out += fmt::format("{} = {}\n", k, formatValue(k, v));
@@ -178,6 +266,7 @@ std::string CompilationStatistics::toString() const {
 }
 
 std::string CompilationStatistics::toJson() const {
+	expandDeferred();
 	std::string out = "{";
 	for (const auto& [k, v] : entries_) {
 		if (out.size() > 1) {
@@ -201,6 +290,7 @@ std::string CompilationStatistics::toJson() const {
 }
 
 std::string CompilationStatistics::formatReport(std::string_view compilationId, std::string_view backendName) const {
+	expandDeferred();
 	// Collect entries into insertion-ordered groups. Preserving the
 	// encounter order keeps the report layout predictable for tests and
 	// humans alike (e.g. `tracing` before `ir` before `mlir`).
