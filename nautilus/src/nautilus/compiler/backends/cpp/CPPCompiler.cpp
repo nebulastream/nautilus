@@ -4,11 +4,14 @@
 #include "nautilus/compiler/backends/cpp/CPPCompilerFlags.hpp"
 #include "nautilus/compiler/backends/cpp/ExecutablePath.hpp"
 #include "nautilus/compiler/backends/cpp/SharedLibrary.hpp"
+#include <atomic>
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
 #include <iostream>
+#include <random>
 #include <spawn.h>
 #include <sstream>
 #include <string>
@@ -36,10 +39,27 @@ CPPCompiler::CPPCompiler() : runtimePathConfig(ExecutablePath::loadRuntimePathCo
 
 CPPCompiler::~CPPCompiler() noexcept = default;
 
+namespace {
+
+// The file name of one compile. The identifier names the unit for a human reading the temp directory, but it is
+// not unique: a graph without a compilation unit id has an empty one, and two engines may use the same id. Two
+// compiles then wrote the same source, library and object files, and one dlopen-ed the library of the other. The
+// suffix makes every call distinct: the counter within the process, the process id and a per-process random nonce
+// for processes that share the temp directory but not the pid space (containers).
+std::string uniqueFileName(const std::string& identifier) {
+	static std::atomic<uint64_t> counter {0};
+	static const uint64_t nonce = std::random_device {}();
+	std::ostringstream name;
+	name << identifier << '_' << ::getpid() << '_' << std::hex << nonce << '_' << std::dec << counter.fetch_add(1);
+	return name.str();
+}
+
+} // namespace
+
 SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::string& code) const {
 	// Timer timer("CPPCompiler");
 	// timer.start();
-	std::string fileName = (std::filesystem::temp_directory_path() / identifier);
+	std::string fileName = (std::filesystem::temp_directory_path() / uniqueFileName(identifier));
 	auto sourceFileName = fileName + ".cpp";
 	auto libraryFileName = fileName +
 #ifdef __linux__
