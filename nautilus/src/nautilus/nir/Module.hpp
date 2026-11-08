@@ -75,6 +75,13 @@ public:
 	/// parser, the image loader). Of equal records the first one wins.
 	void rebuildIndexes();
 
+	/// A copy of the module's tables without the sections of function bodies (`insts`, `extra`, `blocks`, `functions`,
+	/// `allocas`) and without the interning tables (call `rebuildIndexes` once the sections are final). The conversion
+	/// starts its result from it: the bodies are written anew, and copying them only to clear them is wasted work.
+	/// Every section that is not a body is copied: a new section belongs in this function (the module-tables test
+	/// compares it with a full copy).
+	Module copyTables() const;
+
 	/// Instructions, blocks and allocas of function `f`.
 	std::span<const Inst> functionInsts(uint32_t f) const;
 	std::span<Inst> functionInsts(uint32_t f);

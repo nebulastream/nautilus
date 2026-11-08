@@ -41,14 +41,22 @@ bool divisorIsSafeConstant(const Module& m, std::span<const Inst> insts, const s
 	return semantics::divisorIsAlwaysSafe(isUnsigned, type, m.consts.record(divisor).bits);
 }
 
-Local analyze(const Module& m, uint32_t f) {
+/// The arrays of one analysis, kept by the thread for the next one.
+struct Scratch {
+	std::vector<uint8_t> assigned, color;
+	std::vector<uint32_t> succ; // two per block: its successors, NONE for none
+	std::vector<std::pair<uint32_t, uint32_t>> stack;
+};
+
+Local analyze(const Module& m, uint32_t f, Scratch& scratch) {
 	Local local;
 	const auto insts = m.functionInsts(f);
 	const auto blocks = m.functionBlocks(f);
 	const auto& rec = m.functions[f];
 
 	// variables that an `assign` writes: a `var` of a constant that nothing assigns is a constant
-	std::vector<uint8_t> assigned(insts.size(), 0);
+	auto& assigned = scratch.assigned;
+	assigned.assign(insts.size(), 0);
 	for (const auto& inst : insts) {
 		if (inst.op == static_cast<uint16_t>(Op::Assign) && inst.a < insts.size()) {
 			assigned[inst.a] = 1;
@@ -83,7 +91,9 @@ Local analyze(const Module& m, uint32_t f) {
 			}
 			const auto& callee = m.callees[inst.a];
 			if (callee.kind == static_cast<uint8_t>(CalleeKind::Internal)) {
-				local.callees.push_back(callee.target);
+				if (local.callees.empty() || local.callees.back() != callee.target) {
+					local.callees.push_back(callee.target); // a repeated call adds nothing to the call graph
+				}
 			} else {
 				// external, imported and intrinsic callees are as declared
 				local.reads |= (callee.attrs & NO_READ) != NO_READ;
@@ -102,7 +112,8 @@ Local analyze(const Module& m, uint32_t f) {
 
 	// a loop is a back edge of a depth-first search of the blocks
 	const uint32_t n = rec.blockCount;
-	std::vector<std::vector<uint32_t>> succ(n);
+	auto& succ = scratch.succ;
+	succ.assign(size_t(n) * 2, NONE);
 	for (uint32_t b = 0; b < n; ++b) {
 		if (blocks[b].count == 0) {
 			continue;
@@ -110,16 +121,18 @@ Local analyze(const Module& m, uint32_t f) {
 		const auto ids = std::span<const uint32_t>(m.extra.data() + blocks[b].first, blocks[b].count);
 		const auto& term = insts[ids.back()];
 		if (term.op == static_cast<uint16_t>(Op::Br)) {
-			succ[b].push_back(term.a);
+			succ[2 * b] = term.a;
 		} else if (term.op == static_cast<uint16_t>(Op::CondBr)) {
 			const uint32_t* list = m.extra.data() + term.c;
-			succ[b].push_back(term.b);
-			succ[b].push_back(list[1 + list[1] + 1]);
+			succ[2 * b] = term.b;
+			succ[2 * b + 1] = list[1 + list[1] + 1];
 		}
 	}
 	enum : uint8_t { White, Grey, Black };
-	std::vector<uint8_t> color(n, White);
-	std::vector<std::pair<uint32_t, uint32_t>> stack;
+	auto& color = scratch.color;
+	color.assign(n, White);
+	auto& stack = scratch.stack;
+	stack.clear();
 	for (uint32_t start = 0; start < n && !local.loops; ++start) {
 		if (color[start] != White) {
 			continue;
@@ -128,9 +141,9 @@ Local analyze(const Module& m, uint32_t f) {
 		color[start] = Grey;
 		while (!stack.empty() && !local.loops) {
 			auto& [b, next] = stack.back();
-			if (next < succ[b].size()) {
-				const auto to = succ[b][next++];
-				if (to >= n) {
+			if (next < 2) {
+				const auto to = succ[2 * b + next++];
+				if (to >= n) { // NONE too
 					continue;
 				}
 				if (color[to] == Grey) {
@@ -151,12 +164,14 @@ Local analyze(const Module& m, uint32_t f) {
 
 } // namespace
 
-InferenceStatistics inferAttributes(Module& m) {
+InferenceStatistics inferAttributes(const Module& m, std::vector<FunctionRecord>& functions,
+                                    std::vector<CalleeRecord>& callees) {
 	InferenceStatistics stats;
 	const uint32_t count = static_cast<uint32_t>(m.functions.size());
 	std::vector<Local> locals(count);
+	static thread_local Scratch scratch;
 	for (uint32_t f = 0; f < count; ++f) {
-		locals[f] = analyze(m, f);
+		locals[f] = analyze(m, f, scratch);
 	}
 
 	// strongly connected components of the call graph (Tarjan, iterative); a component is complete when all of its
@@ -245,7 +260,7 @@ InferenceStatistics inferAttributes(Module& m) {
 
 	// store the bits on the internal functions and on every callee record that names one
 	for (uint32_t f = 0; f < count; ++f) {
-		auto& rec = m.functions[f];
+		auto& rec = functions[f];
 		if (rec.visibility != static_cast<uint8_t>(Visibility::Internal)) {
 			continue;
 		}
@@ -254,9 +269,9 @@ InferenceStatistics inferAttributes(Module& m) {
 		stats.noUnwind += (bits[f] & AttrNoUnwind) != 0;
 		stats.willReturn += (bits[f] & AttrWillReturn) != 0;
 	}
-	for (auto& callee : m.callees) {
+	for (auto& callee : callees) {
 		if (callee.kind == static_cast<uint8_t>(CalleeKind::Internal) && callee.target < count &&
-		    m.functions[callee.target].visibility == static_cast<uint8_t>(Visibility::Internal)) {
+		    functions[callee.target].visibility == static_cast<uint8_t>(Visibility::Internal)) {
 			callee.attrs = (callee.attrs & ~GUARANTEE_MASK) | bits[callee.target];
 		}
 	}
