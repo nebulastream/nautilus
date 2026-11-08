@@ -532,6 +532,8 @@ private:
 	/// Constant branches are folded and dead blocks dropped; off for a function with an irreducible region, where a
 	/// block can be entered through an edge from a block that comes later.
 	bool foldBranches_ = false;
+	/// A branch of this function folded or a block was dropped.
+	bool graphChanged_ = false;
 	uint32_t irreducibleHere_ = 0;
 	std::vector<uint32_t> emitOrder_;
 
@@ -1386,6 +1388,7 @@ void FunctionConverter::convertTerminator(uint32_t b, const Inst& inst) {
 			targets[targetCount++] = target;
 			dropped = succ[taken ? 1 : 0];
 			++stats().foldedBranches;
+			graphChanged_ = true;
 		} else {
 			targets[targetCount++] = succ[0];
 			targets[targetCount++] = succ[1];
@@ -1448,9 +1451,10 @@ void FunctionConverter::emit() {
 	Builder builder(out());
 	builder.setTrackUses(false); // nobody asks for the use counts here
 	emitOrder_.clear();
-	if (foldBranches_) {
+	if (graphChanged_) {
 		// Folded branches and dropped blocks changed the graph: a block that the static graph put into a loop may no
 		// longer reach its latch and must leave the loop's range. The layout is computed again on the live edges.
+		// (Without them the live edges are the static ones, and so is the layout.)
 		liveSucc_.start.assign(n_ + 2, 0);
 		livePred_.start.assign(n_ + 2, 0);
 		for (const auto& edge : dynEdges_) {
@@ -1752,6 +1756,7 @@ void FunctionConverter::reset(uint32_t function) {
 	insts_ = pre().functionInsts(function);
 	blocks_ = pre().functionBlocks(function);
 	foldBranches_ = false;
+	graphChanged_ = false;
 	irreducibleHere_ = 0;
 	phisForwarded_ = 0;
 	nextEpoch_ = 1;
@@ -1809,6 +1814,7 @@ void FunctionConverter::run(uint32_t function) {
 		if (foldBranches_ && b != 0 && states_[b].incomingCount == 0) {
 			// no live edge enters the block: it is never emitted, and its successors no longer wait for it
 			++stats().deadBlocks;
+			graphChanged_ = true;
 			for (auto to : succ_[b]) {
 				if (--states_[to].pending == 0) {
 					seal(to);
