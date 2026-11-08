@@ -1,6 +1,7 @@
 #include "nautilus/compiler/backends/tbc/TBCNirLowering.hpp"
 #include "nautilus/compiler/backends/NativeClosure.hpp"
 #include "nautilus/compiler/backends/nir/NirRuntime.hpp"
+#include "nautilus/compiler/backends/tbc/TBCClosure.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/extensions/ExtensionRegistry.hpp"
@@ -951,7 +952,7 @@ private:
 		switch (static_cast<CalleeKind>(callee.kind)) {
 		case CalleeKind::Internal:
 			// internal functions have no machine code; the native closure built for them is a real C function
-			address = reinterpret_cast<uint64_t>(program_.closures.at(callee.target)->code());
+			address = reinterpret_cast<uint64_t>(closureEntry(program_, callee.target));
 			break;
 		case CalleeKind::External:
 			address = reinterpret_cast<uint64_t>(nirbackend::resolvePointer(m_, callee.target, host_));

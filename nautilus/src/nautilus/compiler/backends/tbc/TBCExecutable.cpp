@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/tbc/TBCExecutable.hpp"
 #include "nautilus/compiler/backends/NativeClosure.hpp"
+#include "nautilus/compiler/backends/tbc/TBCClosure.hpp"
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <any>
@@ -165,7 +166,7 @@ void* TBCExecutable::getInvocableFunctionPtr(const std::string& member) {
 	if (it == program->functionIndex.end()) {
 		throw RuntimeException("tbc: unknown function \"" + member + "\"");
 	}
-	return program->closures[it->second]->code();
+	return closureEntry(*program, it->second);
 }
 
 bool TBCExecutable::hasInvocableFunctionPtr() {

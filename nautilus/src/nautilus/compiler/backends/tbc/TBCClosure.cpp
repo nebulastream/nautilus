@@ -2,6 +2,7 @@
 #include "nautilus/compiler/backends/tbc/TBCClosure.hpp"
 #include "nautilus/compiler/backends/NativeClosure.hpp"
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
+#include <mutex>
 #include <vector>
 
 namespace nautilus::compiler::tbc {
@@ -39,16 +40,26 @@ uint64_t closureBody(ClosureArgs& args, void* userdata) {
 void createClosures(TBCProgram& program) {
 	// Sized once and never resized: each closure stores the address of its
 	// binding, so those addresses must stay stable for the program's lifetime.
+	// The closures themselves are made on first use (closureEntry): each takes a page of executable memory, which
+	// costs a few microseconds of system calls, and most functions of most modules are never called by address.
 	program.closureBindings.resize(program.functions.size());
-	program.closures.reserve(program.functions.size());
+	program.closures.resize(program.functions.size());
 	for (size_t i = 0; i < program.functions.size(); ++i) {
-		const auto& function = program.functions[i];
 		auto& binding = program.closureBindings[i];
 		binding.program = &program;
 		binding.functionIndex = static_cast<uint32_t>(i);
-		program.closures.push_back(
-		    std::make_unique<NativeClosure>(function.argTypes, function.returnType, closureBody, &binding));
 	}
+}
+
+void* closureEntry(TBCProgram& program, uint32_t functionIndex) {
+	const std::lock_guard<std::mutex> lock(program.closureMutex);
+	auto& closure = program.closures.at(functionIndex);
+	if (closure == nullptr) {
+		const auto& function = program.functions[functionIndex];
+		closure = std::make_unique<NativeClosure>(function.argTypes, function.returnType, closureBody,
+		                                          &program.closureBindings[functionIndex]);
+	}
+	return closure->code();
 }
 
 } // namespace nautilus::compiler::tbc

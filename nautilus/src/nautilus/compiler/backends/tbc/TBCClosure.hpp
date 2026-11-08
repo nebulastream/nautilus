@@ -4,8 +4,8 @@
 
 namespace nautilus::compiler::tbc {
 
-/// Build one native entry point per function in @p program, filling its
-/// `closureBindings` and `closures`.
+/// Prepare one native entry point per function in @p program: fills its `closureBindings` and sizes `closures`. The
+/// entry points themselves are built when first asked for with @ref closureEntry.
 ///
 /// Interpreted functions have no machine code of their own, but their address
 /// escapes in two ways: as the module's entry point
@@ -19,5 +19,9 @@ namespace nautilus::compiler::tbc {
 /// FunctionAddressOf can resolve any module function regardless of lowering
 /// order. Every argument and return type is supported, at any arity.
 void createClosures(TBCProgram& program);
+
+/// The native entry point of function @p functionIndex, built on the first call (thread-safe: the executable hands
+/// out the pointer to any thread). It stays valid as long as @p program.
+void* closureEntry(TBCProgram& program, uint32_t functionIndex);
 
 } // namespace nautilus::compiler::tbc
