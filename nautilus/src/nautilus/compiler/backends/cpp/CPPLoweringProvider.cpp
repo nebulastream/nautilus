@@ -7,6 +7,7 @@
 #include <nautilus/common/ExceptionTransport.hpp>
 #include <nautilus/compiler/backends/CapturedExceptionTransport.hpp>
 #include <nautilus/compiler/backends/cpp/CPPLoweringProvider.hpp>
+#include <nautilus/compiler/backends/cpp/CPPPreamble.hpp>
 #include <nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp>
 #include <nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp>
 #include <nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp>
@@ -69,8 +70,7 @@ std::string CPPLoweringProvider::LoweringContext::getType(const Type& stamp) {
 
 std::stringstream CPPLoweringProvider::LoweringContext::process() {
 	std::stringstream pipelineCode;
-	pipelineCode << "\n";
-	pipelineCode << "#include <cstdint>\n";
+	pipelineCode << GENERATED_SOURCE_PREAMBLE;
 
 	// Process all function operations in the IR graph
 	const auto& functionOperations = ir->getFunctionOperations();

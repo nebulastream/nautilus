@@ -1,5 +1,6 @@
 #include "nautilus/compiler/backends/cpp/CPPNirLowering.hpp"
 #include "nautilus/common/ExceptionTransport.hpp"
+#include "nautilus/compiler/backends/cpp/CPPPreamble.hpp"
 #include "nautilus/compiler/backends/nir/NirRuntime.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
@@ -158,7 +159,7 @@ public:
 		}
 
 		std::ostringstream out;
-		out << "\n#include <cstdint>\n";
+		out << GENERATED_SOURCE_PREAMBLE;
 		out << "#if defined(__APPLE__)\n#define NAUTILUS_PREFIX \"_\"\n#else\n#define NAUTILUS_PREFIX \"\"\n#endif\n";
 		if (needsCapture) {
 			// The generated library cannot link against nautilus, so the helpers of the exception frame are baked in

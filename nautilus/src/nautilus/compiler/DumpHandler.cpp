@@ -15,7 +15,11 @@ std::filesystem::path getRootPath(const engine::Options&, const nautilus::compil
 }
 
 DumpHandler::DumpHandler(const engine::Options& options, const nautilus::compiler::CompilationUnitID& id)
-    : options(options), id(id), rootPath(getRootPath(options, id, shallCreateFolder())) {
+    : options(options), id(id) {
+	if (options.hasDumpOptions()) {
+		rootPath = getRootPath(options, id, shallCreateFolder());
+		hasRootPath = true;
+	}
 }
 
 bool DumpHandler::shallCreateFolder() const {
@@ -50,7 +54,9 @@ void DumpHandler::forceDump(std::string_view dumpName, std::string_view extensio
 		fmt::println("{}", content);
 	}
 	if (dumpToFile()) {
-		auto filePath = rootPath / fmt::format("{}.{}", dumpName, extension);
+		// Without a `dump.*` option the folder was not resolved (and, as before, is not created)
+		const auto root = hasRootPath ? rootPath : getRootPath(options, id, false);
+		auto filePath = root / fmt::format("{}.{}", dumpName, extension);
 		common::File::createFile(filePath.string(), content);
 		fmt::println("{} -- {} -- file://{}", dumpName, id, filePath.native());
 		generatedFilesByType[std::string(dumpName)] = filePath.string();
@@ -58,6 +64,9 @@ void DumpHandler::forceDump(std::string_view dumpName, std::string_view extensio
 }
 
 bool DumpHandler::shouldDump(std::string_view dumpName) const {
+	if (!options.hasDumpOptions()) {
+		return false;
+	}
 	return options.getOptionOrDefault("dump.all", false) ||
 	       options.getOptionOrDefault("dump." + std::string(dumpName), false);
 }

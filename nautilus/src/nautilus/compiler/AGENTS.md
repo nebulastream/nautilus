@@ -29,5 +29,6 @@
   one linear walk.
 - **Dumps and statistics:** `DumpHandler` writes the `dump.*` options;
   `CompilationStatistics` collects per-stage timings (`engine.logStatistics`,
-  `NAUTILUS_STATISTICS_FILE`).
+  `NAUTILUS_STATISTICS_FILE`). Both sit on the path of every compile, so they must stay free when unused: see
+  "Fixed cost per compile" in `backends/AGENTS.md` before adding a lookup or a `set` to the pipeline.
 - **Options:** documented in `docs/options.md`; add new options there.

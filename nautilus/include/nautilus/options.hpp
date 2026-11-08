@@ -1,8 +1,10 @@
 #pragma once
 
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <variant>
 
@@ -32,24 +34,33 @@ public:
 	template <typename T>
 	void setOption(const std::string& name, const T& value) {
 		options[name] = value;
+		hasDumpOptions_ = hasDumpOptions_ || name.starts_with("dump.");
 	}
 
 	/// True iff a value for @p name has been set, whatever its type. Lets a
 	/// consumer tell "left at the default" from "explicitly set to the
 	/// default value" when the default itself is derived from context.
-	[[nodiscard]] bool hasOption(const std::string& name) const {
-		return options.contains(name);
+	[[nodiscard]] bool hasOption(std::string_view name) const {
+		return options.find(name) != options.end();
 	}
 
+	/// The value of @p name if it is set and holds a @p T, else @p defaultValue. A name is looked up as a
+	/// `string_view` without building a `std::string` (the lookups of a compile are many and its names mostly longer
+	/// than a short string holds), and in one probe.
 	template <typename T>
-	T getOptionOrDefault(const std::string& name, T defaultValue) const {
-		if (options.contains(name)) {
-			const OptionValue& val = options.at(name);
-			if (std::holds_alternative<T>(val)) {
-				return std::get<T>(val);
+	T getOptionOrDefault(std::string_view name, T defaultValue) const {
+		if (const auto it = options.find(name); it != options.end()) {
+			if (const T* value = std::get_if<T>(&it->second)) {
+				return *value;
 			}
 		}
 		return defaultValue;
+	}
+
+	/// True iff an option whose name starts with `dump.` has been set. When none has, no dump can be enabled, which
+	/// lets the dump machinery of a compile skip all of its lookups.
+	[[nodiscard]] bool hasDumpOptions() const {
+		return hasDumpOptions_;
 	}
 
 	/**
@@ -62,6 +73,7 @@ public:
 		for (const auto& entry : other.options) {
 			options[entry.first] = entry.second;
 		}
+		hasDumpOptions_ = hasDumpOptions_ || other.hasDumpOptions_;
 	}
 
 	/**
@@ -76,7 +88,16 @@ public:
 	[[nodiscard]] ModuleOptions deriveModuleOptions() const;
 
 private:
-	std::unordered_map<std::string, OptionValue> options;
+	/// Hashes a name without needing a `std::string`, so that `find` takes a `string_view`.
+	struct NameHash {
+		using is_transparent = void;
+		std::size_t operator()(std::string_view name) const noexcept {
+			return std::hash<std::string_view> {}(name);
+		}
+	};
+
+	std::unordered_map<std::string, OptionValue, NameHash, std::equal_to<>> options;
+	bool hasDumpOptions_ = false;
 };
 
 /**

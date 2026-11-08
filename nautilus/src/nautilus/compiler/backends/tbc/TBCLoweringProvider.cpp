@@ -3,6 +3,7 @@
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/NativeClosure.hpp"
+#include "nautilus/compiler/backends/tbc/TBCClosure.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
@@ -1098,7 +1099,7 @@ private:
 		uint64_t value;
 		const auto it = program.functionSlotById.find(opt->getCalleeId());
 		if (it != program.functionSlotById.end()) {
-			value = reinterpret_cast<uint64_t>(program.closures[it->second]->code());
+			value = reinterpret_cast<uint64_t>(closureEntry(program, it->second));
 		} else {
 			value = reinterpret_cast<uint64_t>(opt->getFunctionPtr());
 		}

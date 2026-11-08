@@ -5,6 +5,7 @@
 #include "nautilus/tracing/Types.hpp"
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -109,7 +110,9 @@ struct TBCProgram {
 	/// the closures are destroyed first -- a closure is callable until it is
 	/// freed, so nothing may outlive the code it would enter.
 	std::vector<TBCClosureBinding> closureBindings;
+	/// Null until the entry point of that function is first asked for (closureEntry).
 	std::vector<std::unique_ptr<compiler::NativeClosure>> closures;
+	std::mutex closureMutex;
 };
 
 } // namespace nautilus::compiler::tbc

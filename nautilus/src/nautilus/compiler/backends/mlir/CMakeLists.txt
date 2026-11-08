@@ -59,6 +59,7 @@ if (ENABLE_MLIR_BACKEND)
             JITCompiler.cpp
             LLVMBackendHooks.cpp
             PropagatePersonalityPass.cpp
+            ThreadTargetMachineCompiler.cpp
     )
     # PropagatePersonalityPass subclasses mlir::PassWrapper; MLIR is built with
     # -fno-rtti and does not export typeinfo for mlir::Pass (see debug/).
@@ -67,6 +68,13 @@ if (ENABLE_MLIR_BACKEND)
             ABSOLUTE)
     set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/PropagatePersonalityPass.cpp
+            DIRECTORY ${_nautilus_target_dir}
+            PROPERTIES COMPILE_OPTIONS -fno-rtti
+    )
+    # ThreadTargetMachineCompiler subclasses llvm::orc::IRCompileLayer::IRCompiler, which LLVM (built with -fno-rtti)
+    # does not export typeinfo for either.
+    set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/ThreadTargetMachineCompiler.cpp
             DIRECTORY ${_nautilus_target_dir}
             PROPERTIES COMPILE_OPTIONS -fno-rtti
     )

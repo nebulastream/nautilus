@@ -25,7 +25,11 @@ private:
 	[[nodiscard]] bool dumpToFile() const;
 	const engine::Options& options;
 	const CompilationUnitID& id;
-	const std::filesystem::path rootPath;
+	/// The folder of the dump files, resolved (and created when something is dumped to a file) only when an option
+	/// `dump.*` is set: resolving it queries the environment and builds a path, which a compile without dumps, the
+	/// common one, must not pay for twice.
+	std::filesystem::path rootPath;
+	bool hasRootPath = false;
 	mutable std::map<std::string, std::string> generatedFilesByType;
 };
 

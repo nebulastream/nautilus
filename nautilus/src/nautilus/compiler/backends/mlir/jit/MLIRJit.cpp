@@ -1,6 +1,7 @@
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
 #include "nautilus/compiler/JitSymbolRegistry.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRThreadState.hpp"
+#include "nautilus/compiler/backends/mlir/ThreadTargetMachineCompiler.hpp"
 #include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
@@ -182,14 +183,20 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		return layer;
 	};
 
-	// Let LLJIT build its own ConcurrentIRCompiler from the JITTargetMachineBuilder.
-	// We avoid constructing llvm::orc::TMOwningSimpleCompiler directly because
-	// LLVM is compiled with -fno-rtti and exporting RTTI for its polymorphic
-	// types across TU boundaries would require us to match.
-	auto jitOrErr = llvm::orc::LLJITBuilder()
-	                    .setJITTargetMachineBuilder(std::move(tmBuilder))
-	                    .setObjectLinkingLayerCreator(objectLinkingLayerCreator)
-	                    .create();
+	// Code generation uses the target machine of the compiling thread (ThreadTargetMachineCompiler) rather than one
+	// that LLJIT builds per JIT, and the data layout comes from the machine already at hand, so that LLJIT builds none
+	// just to ask for it. The compiler lives in a translation unit of its own, compiled without RTTI like LLVM.
+	const auto codeGenOptLevel = options.codeGenOptLevel;
+	auto jitOrErr =
+	    llvm::orc::LLJITBuilder()
+	        .setJITTargetMachineBuilder(std::move(tmBuilder))
+	        .setDataLayout(seedMachine.createDataLayout())
+	        .setCompileFunctionCreator([codeGenOptLevel](llvm::orc::JITTargetMachineBuilder builder)
+	                                       -> llvm::Expected<std::unique_ptr<llvm::orc::IRCompileLayer::IRCompiler>> {
+		        return makeThreadTargetMachineCompiler(builder, codeGenOptLevel);
+	        })
+	        .setObjectLinkingLayerCreator(objectLinkingLayerCreator)
+	        .create();
 	if (!jitOrErr) {
 		return jitOrErr.takeError();
 	}
