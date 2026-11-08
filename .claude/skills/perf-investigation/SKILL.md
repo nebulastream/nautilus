@@ -31,6 +31,10 @@ The ready-made harness (`-DENABLE_BENCHMARKS=ON`) is `nautilus-compile-bench [re
 (`nautilus/test/benchmark/CompileTimeBench.cpp`): per kernel and size, tracing, conversion (or IR generation plus
 passes) and backend time and microseconds per traced operation, for the 0.3 pipeline and the NIR tracer on one binary.
 `nautilus-tracing-corpus function[:N] [reps [nir]]` runs the tracer alone for callgrind; the same kernels.
+`nautilus-fixed-cost-bench [reps [kernel [backend]]]` is the harness for the cost that does not grow with the function:
+one engine, one tiny kernel registered over and over, the median wall time of `registerFunction` next to every duration
+statistic and the time no stage accounts for (`FIXED_COST_CALL=1` adds the first call). Compare two builds by running
+their binaries alternately, and use callgrind (`NautilusModule::compile()` inclusive) for the numbers to quote.
 
 ## 3. A probe for one function shape
 
