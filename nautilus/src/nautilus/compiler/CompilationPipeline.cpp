@@ -1,6 +1,7 @@
 #include "nautilus/compiler/CompilationPipeline.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Executable.hpp"
+#include "nautilus/common/Deterministic.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
@@ -63,6 +64,11 @@ CompilationPipeline::~CompilationPipeline() = default;
 #if defined(ENABLE_COMPILER) && defined(ENABLE_TRACING)
 
 std::string createCompilationUnitID() {
+	if (common::deterministicMode()) {
+		// the same shape as below, from a counter: no clock, no entropy source, no dependence on when a second ends
+		static std::atomic<uint64_t> counter {0};
+		return fmt::format("1970-01-01_00-00-00.000000000_#{:07X}", counter.fetch_add(1) & 0xFFFFFFF);
+	}
 	// `<local date and time to the clock's precision>_#<7 hex digits>`. Every
 	// compile makes two of these, so neither part may cost much: a
 	// std::random_device opens the system's entropy source each time it is

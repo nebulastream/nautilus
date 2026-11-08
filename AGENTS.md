@@ -115,7 +115,9 @@ ctest --test-dir build/dev/plugins/std/test --output-on-failure                #
 - **Statistics:** `engine.logStatistics=true` logs per-stage timings;
   `NAUTILUS_STATISTICS_FILE=<path>` appends one JSON line per compile.
 - **Performance work:** see the `perf-investigation` skill (callgrind recipes,
-  what the benchmark bot's numbers mean).
+  what the benchmark bot's numbers mean). `tools/latency/run-callgrind-local.sh` runs the instruction-count gate of
+  the `callgrind-gate` CI job (NIR against `main`, thresholds in `nautilus/test/baselines/callgrind-gates.json`).
+- `NAUTILUS_DETERMINISTIC=1` makes two runs execute the same instructions (measurement only, `docs/options.md`).
 - `engine.backend=<x>` pins a single backend; without it the engine compiles
   tier 0 (`asmjit` where available) and promotes to MLIR in the background.
 - `tracing.nirTracer=false` compiles with the 0.3 pipeline (0.3 tracer and IR

@@ -1,0 +1,714 @@
+{
+ "schema": 1,
+ "about": "Ratchet thresholds and plan targets of the callgrind gate (tools/latency/callgrind-gate.py, docs/plans/nautilus-0.4/10-observability.md \u00a72). Regenerate with `callgrind-gate.py update`.",
+ "margin": 0.03,
+ "environment": {
+  "fingerprint": "8a28a7d15bc30d73"
+ },
+ "cases": {
+  "straight/100/tbc": {
+   "total": {
+    "threshold": 0.153,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.6754,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.0642,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.1002,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "straight/100/asmjit": {
+   "total": {
+    "threshold": 0.2202,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.6754,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.0642,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.3866,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "straight/1000/tbc": {
+   "total": {
+    "threshold": 0.137,
+    "target": 0.295,
+    "target_source": "0.75 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "tracing": {
+    "threshold": 0.6514,
+    "target": 0.583,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "ir": {
+    "threshold": 0.0538,
+    "target": 0.142,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "backend": {
+    "threshold": 0.0813,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "straight/1000/asmjit": {
+   "total": {
+    "threshold": 0.2052,
+    "target": 0.275,
+    "target_source": "0.75 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "tracing": {
+    "threshold": 0.6514,
+    "target": 0.583,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "ir": {
+    "threshold": 0.0538,
+    "target": 0.142,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "backend": {
+    "threshold": 0.3707,
+    "target": 0.583,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   }
+  },
+  "straight/10000/tbc": {
+   "total": {
+    "threshold": 0.1375,
+    "target": 0.295,
+    "target_source": "0.75 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "tracing": {
+    "threshold": 0.6589,
+    "target": 0.583,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "ir": {
+    "threshold": 0.0537,
+    "target": 0.142,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "backend": {
+    "threshold": 0.0803,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "straight/10000/asmjit": {
+   "total": {
+    "threshold": 0.2051,
+    "target": 0.275,
+    "target_source": "0.75 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "tracing": {
+    "threshold": 0.6589,
+    "target": 0.583,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "ir": {
+    "threshold": 0.0537,
+    "target": 0.142,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "backend": {
+    "threshold": 0.3667,
+    "target": 0.583,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   }
+  },
+  "chainedIf/10/tbc": {
+   "total": {
+    "threshold": 0.2423,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.8049,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.1087,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.2351,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIf/10/asmjit": {
+   "total": {
+    "threshold": 0.3217,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.8049,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.1087,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.5555,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIf/100/tbc": {
+   "total": {
+    "threshold": 0.3485,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.5731,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.0806,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.209,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIf/100/asmjit": {
+   "total": {
+    "threshold": 0.3902,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.5731,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.0806,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.5463,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIf/300/tbc": {
+   "total": {
+    "threshold": 0.4401,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.5504,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.0762,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.2071,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIf/300/asmjit": {
+   "total": {
+    "threshold": 0.459,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.5504,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.0762,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.5442,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIfRegion/10/tbc": {
+   "total": {
+    "threshold": 0.2868,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.9605,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.1274,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.3293,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIfRegion/10/asmjit": {
+   "total": {
+    "threshold": 0.4065,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.9605,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.1273,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.8227,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIfRegion/100/tbc": {
+   "total": {
+    "threshold": 0.2418,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.8833,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.0906,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.2806,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIfRegion/100/asmjit": {
+   "total": {
+    "threshold": 0.3776,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.8833,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.0906,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.8672,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIfRegion/300/tbc": {
+   "total": {
+    "threshold": 0.2339,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.863,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.085,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.2735,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "chainedIfRegion/300/asmjit": {
+   "total": {
+    "threshold": 0.3754,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.863,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.085,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.8759,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "loopBody/100/tbc": {
+   "total": {
+    "threshold": 0.1935,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.8414,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.0833,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.1459,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "loopBody/100/asmjit": {
+   "total": {
+    "threshold": 0.3021,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.8414,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.0833,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.5493,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "loopBody/1000/tbc": {
+   "total": {
+    "threshold": 0.1723,
+    "target": 0.308,
+    "target_source": "0.75 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "tracing": {
+    "threshold": 0.8055,
+    "target": 0.674,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "ir": {
+    "threshold": 0.069,
+    "target": 0.144,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "backend": {
+    "threshold": 0.1276,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "loopBody/1000/asmjit": {
+   "total": {
+    "threshold": 0.2847,
+    "target": 0.287,
+    "target_source": "0.75 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "tracing": {
+    "threshold": 0.8055,
+    "target": 0.674,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "ir": {
+    "threshold": 0.069,
+    "target": 0.144,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "backend": {
+    "threshold": 0.5331,
+    "target": 0.426,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   }
+  },
+  "loopBody/10000/tbc": {
+   "total": {
+    "threshold": 0.1708,
+    "target": 0.308,
+    "target_source": "0.75 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "tracing": {
+    "threshold": 0.7809,
+    "target": 0.674,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "ir": {
+    "threshold": 0.069,
+    "target": 0.144,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "backend": {
+    "threshold": 0.1132,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "loopBody/10000/asmjit": {
+   "total": {
+    "threshold": 0.2838,
+    "target": 0.287,
+    "target_source": "0.75 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "tracing": {
+    "threshold": 0.7809,
+    "target": 0.674,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "ir": {
+    "threshold": 0.069,
+    "target": 0.144,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   },
+   "backend": {
+    "threshold": 0.5322,
+    "target": 0.426,
+    "target_source": "0.25 us/op on linear code (README \u00a71) over 0.3's cost"
+   }
+  },
+  "calls/100/tbc": {
+   "total": {
+    "threshold": 0.5142,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 1.2228,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.2078,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.5185,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "calls/100/asmjit": {
+   "total": {
+    "threshold": 0.6741,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 1.2228,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.2078,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.8336,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "calls/1000/tbc": {
+   "total": {
+    "threshold": 0.5083,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 1.1813,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.1779,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.5516,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "calls/1000/asmjit": {
+   "total": {
+    "threshold": 0.6748,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 1.1813,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.1779,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.8473,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "calls/5000/tbc": {
+   "total": {
+    "threshold": 0.503,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 1.1667,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.1754,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.5451,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "calls/5000/asmjit": {
+   "total": {
+    "threshold": 0.6745,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 1.1667,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "ir": {
+    "threshold": 0.1754,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.8506,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "distinctSites1024/1/tbc": {
+   "total": {
+    "threshold": 0.192,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.3056,
+    "target": 0.7,
+    "target_source": "tracing at least 30% cheaper than 0.3 (01 \u00a77, M2.8)"
+   },
+   "ir": {
+    "threshold": 0.1219,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.0819,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  },
+  "distinctSites1024/1/asmjit": {
+   "total": {
+    "threshold": 0.2652,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "tracing": {
+    "threshold": 0.3056,
+    "target": 0.7,
+    "target_source": "tracing at least 30% cheaper than 0.3 (01 \u00a77, M2.8)"
+   },
+   "ir": {
+    "threshold": 0.1219,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   },
+   "backend": {
+    "threshold": 0.3709,
+    "target": 1.0,
+    "target_source": "no slower than 0.3 (README \u00a76.2)"
+   }
+  }
+ }
+}

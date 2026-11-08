@@ -124,7 +124,7 @@ unchanged from the cut-over on, on every enabled backend.
    | `nir-components` | PR 1 | `nautilus-nir-tests`: unit tests, `.nir` text tests, golden images | always |
    | `nir-chain` | PR 4 | execution-test functions through `NirChain`, plus the fuzzer replay and corpus op-count `NirChain` modes (M3.1) | until the cut-over, then replaced by the normal matrix |
    | `api-compat` | PR 6 | `test/api-compat/` on every enabled backend (GPU tests from PR 18) | from the cut-over |
-   | `latency-corpus` | PR 2 | corpus under callgrind in the pinned container (single-tier, ASLR off, CPU dispatch pinned, [10 §2](10-observability.md)), as instruction-count ratios against the recorded 0.3 baselines (gated); wall clock (reported) | from the cut-over (before: reports the 0.3 pipeline) |
+   | `latency-corpus` | PR 2 | corpus under callgrind in the pinned container (single-tier, ASLR off, CPU dispatch pinned, [10 §2](10-observability.md)), as instruction-count ratios against the recorded 0.3 baselines (gated); wall clock (reported). Built as two jobs: `callgrind-gate` (the counts, gated, [10 §2.1](10-observability.md)) and `latency-corpus` (wall clock, reports) | from the cut-over (before: reports the 0.3 pipeline) |
    | `baselines-0.3` | PR 2 | on `nautilus-0.4`: checks out `main`, builds it in the same container with the corpus driver and refreshes `test/baselines/0.3/` | — |
    | `nebulastream-0.4` | PR 2 | NebulaStream against `nautilus-0.4` (D16) | from the M4 exit (before: reports) |
    | `tpch-duck` | PR 9 | nautilus-duck TPC-H tracing and execution | from the M4 exit (before: reports) |
@@ -195,8 +195,8 @@ opened as drafts early and kept up to date with the branch.
 **State and next steps (end of the autoresearch session; PR 6 is opened since, see its status below).** PRs 1–4 are open as
 a stack (#570 ← #571 ← #572 ← #573, all drafts). Open in them: M2.1's
 direct-recording tracer (#572 maps the 0.3 trace instead), the `NirChain`
-fixture and `useCount` (#573), and the reference machine, the published CI
-image and the callgrind identity check (#571, need an owner). Continue in
+fixture and `useCount` (#573), and the reference machine and the published CI
+image (#571, need an owner; the callgrind gate and identity check are built, 10 §2.1). Continue in
 this order:
 
 1. **PR 5 (M4.0, M4.1): backend interface, `nautilus-nir-run`, `tbc` on
@@ -291,8 +291,8 @@ changes M4.2 and §2 step 2 as follows:
   counters are the 0.3 ones; D10/D11 are explicit (cold block for checked `div`/`rem`, masked narrow shifts, saturating
   casts); the plugins' intrinsic handlers take an `IntrinsicCallContext` and serve both lowerings. See the notes of
   `backends/AGENTS.md`. Deferred: the 0.3 providers stay for `legacy-asmjit` until M4.2; the line table of 05 §4.4
-  step 3 and `perf`/`debug` come with M4.9; the callgrind ratio gate of the `latency-corpus` leg needs the pinned CI
-  container (the `asm-diff` leg compares code size against the recorded 0.3 corpus).
+  step 3 and `perf`/`debug` come with M4.9; the callgrind ratio gate is the `callgrind-gate` leg (it has the backend ratios on `tbc` and `asmjit`; the `asm-diff` leg
+  compares code size against the recorded 0.3 corpus).
 - **M4.5 (`mlir` on NIR) is done in PR 8**, stacked on PR 7, by the same method (the loop: autoresearch, metric = failing assertions
   and crashed tests of `ctest --preset full`): 1582 for the scaffold that throws (1579 failed assertions, 3 crashed), 9 with the
   lowering, 0 with the intrinsic handlers on the NIR call and the ABI attributes of arguments (only below 32 bits). `mlir`
@@ -810,9 +810,14 @@ time (13.0 ms against 13.1 ms for `calls` 5000 on `tbc`, seven repetitions each)
 the operation count after 0.3's passes of 305 functions: committed in `nautilus/test/baselines/0.3/`, refreshed by the
 `baselines-0.3` workflow. `test/api-compat/` holds 16 of 0.3's test files, `ExecutionTest.cpp` with three cuts, and the
 examples (each pinned backend recorded in its CMake file). `nebulastream.yml` runs for `nautilus-0.4`, and
-`.github/docker/ci-0.4` with the `ci-image` workflow builds the pinned image. Still open and not code: the reference
-machine (needs an owner, §16) and, once the image is published, naming its digest in the two measurement jobs; the
-callgrind instruction counts that "two runs of the same image are identical" is checked with come from that machine.
+`.github/docker/ci-0.4` with the `ci-image` workflow builds the pinned image. **The callgrind gate is in** (the
+`callgrind-gate` job, `tools/latency`, [10 §2.1](10-observability.md)): the corpus's compile cost in instructions on
+`tbc` and `asmjit`, as ratios against the `main`-built driver in the same image, with ratchet thresholds and the plan's
+targets in `nautilus/test/baselines/callgrind-gates.json`, and the identity check (two runs of this branch must give
+equal counts; they do, after `NAUTILUS_DETERMINISTIC=1` removed the clock and entropy reads of the unit id). The job
+builds the image itself and starts non-blocking. Still open and not code: the reference machine (needs an owner, §16),
+publishing the image and naming its digest in the measurement jobs (the repository owners; `.github/docker/README.md`),
+and making `callgrind-gate` a required check once its first runs on the branch have been stable.
 
 **M1 exit:** M1.1–M1.12 (with M1.3a, M1.4a and M1.7a) done; the spec is
 marked final ([13 §11](13-nir-spec.md)).

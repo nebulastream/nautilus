@@ -1,4 +1,5 @@
 #include "nautilus/nir/Module.hpp"
+#include "nautilus/common/Deterministic.hpp"
 #include <cstring>
 #include <random>
 
@@ -191,6 +192,9 @@ std::span<const AllocaRecord> Module::functionAllocas(uint32_t f) const {
 
 uint64_t currentProcessToken() {
 	static const uint64_t token = [] {
+		if (common::deterministicMode()) {
+			return uint64_t {0x6e61757469'6c7573}; // "nautilus": measurement only (common/Deterministic.hpp)
+		}
 		std::random_device rd;
 		uint64_t t = (static_cast<uint64_t>(rd()) << 32) | rd();
 		return t == 0 ? 1 : t;
