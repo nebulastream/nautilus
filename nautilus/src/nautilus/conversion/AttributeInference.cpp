@@ -151,7 +151,8 @@ Local analyze(const Module& m, uint32_t f) {
 
 } // namespace
 
-InferenceStatistics inferAttributes(Module& m) {
+InferenceStatistics inferAttributes(const Module& m, std::vector<FunctionRecord>& functions,
+                                    std::vector<CalleeRecord>& callees) {
 	InferenceStatistics stats;
 	const uint32_t count = static_cast<uint32_t>(m.functions.size());
 	std::vector<Local> locals(count);
@@ -245,7 +246,7 @@ InferenceStatistics inferAttributes(Module& m) {
 
 	// store the bits on the internal functions and on every callee record that names one
 	for (uint32_t f = 0; f < count; ++f) {
-		auto& rec = m.functions[f];
+		auto& rec = functions[f];
 		if (rec.visibility != static_cast<uint8_t>(Visibility::Internal)) {
 			continue;
 		}
@@ -254,9 +255,9 @@ InferenceStatistics inferAttributes(Module& m) {
 		stats.noUnwind += (bits[f] & AttrNoUnwind) != 0;
 		stats.willReturn += (bits[f] & AttrWillReturn) != 0;
 	}
-	for (auto& callee : m.callees) {
+	for (auto& callee : callees) {
 		if (callee.kind == static_cast<uint8_t>(CalleeKind::Internal) && callee.target < count &&
-		    m.functions[callee.target].visibility == static_cast<uint8_t>(Visibility::Internal)) {
+		    functions[callee.target].visibility == static_cast<uint8_t>(Visibility::Internal)) {
 			callee.attrs = (callee.attrs & ~GUARANTEE_MASK) | bits[callee.target];
 		}
 	}

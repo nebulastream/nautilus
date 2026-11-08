@@ -28,9 +28,12 @@ namespace {
 /// converter made) or a constant reference. Temporaries become instruction ids when the function is emitted.
 class FunctionConverter {
 public:
-	FunctionConverter(const Module& pre, uint32_t function, Module& out, ConversionStatistics& stats, bool optimize)
-	    : pre_(pre), f_(function), out_(out), stats_(stats), optimize_(optimize), rec_(pre.functions[function]),
-	      insts_(pre.functionInsts(function)), blocks_(pre.functionBlocks(function)) {
+	/// `functions` and `callees` are the module's tables with the attributes the pre-pass derived.
+	FunctionConverter(const Module& pre, const std::vector<FunctionRecord>& functions,
+	                  const std::vector<CalleeRecord>& callees, uint32_t function, Module& out,
+	                  ConversionStatistics& stats, bool optimize)
+	    : pre_(pre), callees_(callees), f_(function), out_(out), stats_(stats), optimize_(optimize),
+	      rec_(functions[function]), insts_(pre.functionInsts(function)), blocks_(pre.functionBlocks(function)) {
 	}
 
 	void run();
@@ -208,6 +211,7 @@ private:
 	}
 
 	const Module& pre_;
+	const std::vector<CalleeRecord>& callees_;
 	uint32_t f_;
 	Module& out_;
 	ConversionStatistics& stats_;
@@ -350,9 +354,9 @@ bool FunctionConverter::availKey(const Inst& ni, uint32_t b, std::span<const uin
 		key.hash = hashOf(key);
 		return true;
 	}
-	if (op == Op::Call && ni.a < pre_.callees.size()) {
+	if (op == Op::Call && ni.a < callees_.size()) {
 		// only a call that neither writes, nor throws, nor fails to return can be shared
-		const auto attrs = pre_.callees[ni.a].attrs;
+		const auto attrs = callees_[ni.a].attrs;
 		constexpr uint32_t Needed = AttrNoArgWrite | AttrNoOtherWrite | AttrNoUnwind | AttrWillReturn;
 		if ((attrs & Needed) != Needed) {
 			return false;
@@ -1077,8 +1081,8 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 		const uint32_t unwind = list[1 + argc];
 		// a callee that cannot throw needs no unwind entry and no cleanup (M3.5: only where the final noUnwind is
 		// clear)
-		const bool cannotThrow = optimize_ && op == Op::Call && inst.a < pre_.callees.size() &&
-		                         (pre_.callees[inst.a].attrs & AttrNoUnwind) != 0;
+		const bool cannotThrow = optimize_ && op == Op::Call && inst.a < callees_.size() &&
+		                         (callees_[inst.a].attrs & AttrNoUnwind) != 0;
 		CallInfo call;
 		if (unwind == NO_UNWIND) {
 			call.unwind = NO_UNWIND;
@@ -1128,8 +1132,8 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 	// a store, and a call that may write, start a new memory epoch
 	if (optimize_ && !shareable) {
 		const bool readsOnly =
-		    op == Op::Call && inst.a < pre_.callees.size() &&
-		    (pre_.callees[inst.a].attrs & (AttrNoArgWrite | AttrNoOtherWrite)) == (AttrNoArgWrite | AttrNoOtherWrite);
+		    op == Op::Call && inst.a < callees_.size() &&
+		    (callees_[inst.a].attrs & (AttrNoArgWrite | AttrNoOtherWrite)) == (AttrNoArgWrite | AttrNoOtherWrite);
 		if (op == Op::Store || op == Op::CallIndirect || (op == Op::Call && !readsOnly)) {
 			epochAtEnd_[b] = nextEpoch_++;
 		}
@@ -1593,32 +1597,31 @@ Module convert(const Module& preSSA, const ConversionOptions& options, Conversio
 	auto& stats = statistics != nullptr ? *statistics : local;
 	stats = {};
 
-	// the attribute pre-pass runs over all bodies before any function is converted (03 §3.5)
-	Module pre = preSSA;
+	// the attribute pre-pass runs over all bodies before any function is converted (03 §3.5); it stores its bits in
+	// copies of the function and callee tables, so that the input is not copied as a whole
+	auto functions = preSSA.functions;
+	auto callees = preSSA.callees;
 	if (options.inferAttributes && options.optimize) {
-		auto inferred = inferAttributes(pre);
+		auto inferred = inferAttributes(preSSA, functions, callees);
 		stats.inferredFunctions = inferred.functions;
 		stats.cyclicFunctions = inferred.cyclic;
 		stats.inferredNoUnwind = inferred.noUnwind;
 		stats.inferredWillReturn = inferred.willReturn;
 	}
-	Module out = pre;
-	out.insts.clear();
-	out.blocks.clear();
-	out.functions.clear();
-	out.allocas.clear();
+	// the result shares the tables of the input and writes the bodies anew
+	Module out = preSSA.copyTables();
+	out.callees = callees;
 	// the signatures keep their parameter types in `extra`; the instruction lists of the pre-SSA functions do not
 	// come along
-	out.extra.clear();
 	for (auto& sig : out.signatures) {
-		const auto words = std::span<const uint32_t>(pre.extra.data() + sig.paramTypes, sig.paramCount);
+		const auto words = std::span<const uint32_t>(preSSA.extra.data() + sig.paramTypes, sig.paramCount);
 		sig.paramTypes = out.addExtra(words);
 	}
-	for (uint32_t f = 0; f < pre.functions.size(); ++f) {
-		if (pre.functions[f].level != static_cast<uint8_t>(Level::PreSSA)) {
+	for (uint32_t f = 0; f < preSSA.functions.size(); ++f) {
+		if (preSSA.functions[f].level != static_cast<uint8_t>(Level::PreSSA)) {
 			throw std::runtime_error("conversion of function #" + std::to_string(f) + ": it is not a pre-SSA function");
 		}
-		FunctionConverter(pre, f, out, stats, options.optimize).run();
+		FunctionConverter(preSSA, functions, callees, f, out, stats, options.optimize).run();
 	}
 	out.rebuildIndexes();
 	return out;

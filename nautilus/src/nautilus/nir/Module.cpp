@@ -143,6 +143,32 @@ uint32_t Module::addExtra(std::span<const uint32_t> words) {
 	return offset;
 }
 
+Module Module::copyTables() const {
+	Module m;
+	m.consts = consts;
+	m.signatures = signatures;
+	m.callees = callees;
+	m.pointers = pointers;
+	m.bindings = bindings;
+	m.names = names;
+	m.nameBytes = nameBytes;
+	m.imports = imports;
+	m.data = data;
+	m.dataBytes = dataBytes;
+	m.functionAttrs = functionAttrs;
+	m.extensions = extensions;
+	m.module = module;
+	m.debugLocations = debugLocations;
+	m.debugInstLocations = debugInstLocations;
+	m.debugRegions = debugRegions;
+	m.debugInstRegions = debugInstRegions;
+	m.debugNames = debugNames;
+	m.debugNameBytes = debugNameBytes;
+	m.debugFunctions = debugFunctions;
+	m.debugParamNames = debugParamNames;
+	return m;
+}
+
 std::span<const Inst> Module::functionInsts(uint32_t f) const {
 	auto& fn = functions[f];
 	return std::span<const Inst>(insts).subspan(fn.firstInst, fn.instCount);
