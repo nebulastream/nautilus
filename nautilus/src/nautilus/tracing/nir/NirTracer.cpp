@@ -138,6 +138,9 @@ namespace {
 struct WriteScratch {
 	std::vector<uint32_t> newBlockId, order, post, position, hoistedVars, newId, slotOf;
 	std::vector<uint8_t> state, hoisted;
+	/// (index, old word) of the operands of the lists in `extra` (call arguments, cleanup objects) that the pass in
+	/// layout order has renumbered in place, to undo them if it is abandoned.
+	std::vector<std::pair<uint32_t, uint32_t>> extraUndo;
 	std::vector<Type> paramTypes;
 	std::vector<nir::Inst> blockInsts;
 	std::vector<nir::TypeWord> params;
@@ -238,6 +241,7 @@ bool emitInLayoutOrder(nir::Module& module, FlatTrace& trace, WriteScratch& scra
 	const auto& newBlockId = scratch.newBlockId;
 	auto& newId = scratch.newId;
 	newId.assign(trace.recs.size(), nir::NONE);
+	scratch.extraUndo.clear();
 	{
 		nir::Ref next = 0;
 		for (auto record : trace.parameters) {
@@ -254,6 +258,17 @@ bool emitInLayoutOrder(nir::Module& module, FlatTrace& trace, WriteScratch& scra
 			return;
 		}
 		r = newId[r];
+	};
+	// the operands of the lists in `extra` are renumbered in place; remember the old word to undo it
+	auto remapListOperand = [&](nir::Ref& r) {
+		if (nir::isConstRef(r)) {
+			return;
+		}
+		const auto* extraBase = module.extra.data();
+		if (&r >= extraBase && &r < extraBase + module.extra.size() && r < newId.size() && newId[r] != nir::NONE) {
+			scratch.extraUndo.emplace_back(static_cast<uint32_t>(&r - extraBase), r);
+		}
+		remap(r);
 	};
 	for (uint32_t i = 0; i < order.size(); ++i) {
 		const auto& blockOps = trace.blocks[order[i]].ops;
@@ -286,6 +301,12 @@ bool emitInLayoutOrder(nir::Module& module, FlatTrace& trace, WriteScratch& scra
 				const uint32_t args[] = {cond.probability, 0, newBlockId[cond.falseBlock], 0};
 				inst.b = newBlockId[inst.b];
 				inst.c = module.addExtra(args);
+			} else if (nir::coreOpInfo(inst.op) == nullptr || inst.op == static_cast<uint16_t>(NOp::Call) ||
+			           inst.op == static_cast<uint16_t>(NOp::CallIndirect) ||
+			           ((inst.op == static_cast<uint16_t>(NOp::Div) || inst.op == static_cast<uint16_t>(NOp::Rem)) &&
+			            (inst.flags & 2) != 0)) {
+				// calls, checked divisions and operations of extensions hold operands in lists
+				nir::forEachRef(inst, module.extra.data(), nir::Level::PreSSA, remapListOperand);
 			} else {
 				nir::forEachRef(inst, module.extra.data(), nir::Level::PreSSA, remap);
 			}
@@ -378,6 +399,12 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 		module.insts.resize(instsBefore);
 		module.blocks.resize(blocksBefore);
 		module.extra.resize(extraBefore);
+		// the lists of calls were renumbered in place: put them back
+		for (auto it = scratch.extraUndo.rbegin(); it != scratch.extraUndo.rend(); ++it) {
+			if (it->first < module.extra.size()) {
+				module.extra[it->first] = it->second;
+			}
+		}
 		module.functions[functionId].blockCount = 0;
 	}
 	auto& position = scratch.position;
