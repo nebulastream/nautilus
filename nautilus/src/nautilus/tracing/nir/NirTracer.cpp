@@ -9,6 +9,7 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/nir/NirTrace.hpp"
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cassert>
 #include <cstring>
@@ -85,6 +86,20 @@ struct NirTracer::SessionState {
 	std::vector<uint32_t> internalAttrs;    // function index -> the guarantees every call of it states
 	std::vector<uint8_t> internalAttrsSeen;
 	std::unordered_map<std::string, uint32_t> bindingIndex;
+	/// The external callee of the last calls, by (target, result type, argument types, attributes): a runtime call
+	/// from a loop unrolled by static_val interns the same signature, pointer and callee thousands of times, and each
+	/// interning allocates and walks an ordered map. A hit returns the id the interning would have returned.
+	struct CalleeCacheEntry {
+		const void* target = nullptr;
+		uint64_t argumentTypes = 0;
+		uint32_t attrs = 0;
+		uint32_t callee = nir::NONE;
+		uint8_t resultType = 0;
+		uint8_t argumentCount = 0;
+	};
+	static constexpr size_t CALLEE_CACHE_SIZE = 64;
+	static constexpr size_t CALLEE_CACHE_MAX_ARGUMENTS = 16;
+	std::array<CalleeCacheEntry, CALLEE_CACHE_SIZE> calleeCache {};
 	bool processLocal = false;
 	std::string currentFunctionName;
 	SourceLocation currentFunctionLocation;
@@ -761,12 +776,41 @@ uint32_t NirTracer::signatureOf(Type result, const std::vector<TypedValueRef>& a
 
 uint32_t NirTracer::externalCallee(void* fptn, Type resultType, const std::vector<TypedValueRef>& arguments,
                                    FunctionAttributes fnAttrs) {
+	SessionState::CalleeCacheEntry* entry = nullptr;
+	if (arguments.size() <= SessionState::CALLEE_CACHE_MAX_ARGUMENTS) {
+		// four bits per argument type (a Type has fewer than sixteen values)
+		uint64_t types = 0;
+		for (const auto& a : arguments) {
+			types = (types << 4) | static_cast<uint64_t>(a.type);
+		}
+		const auto attrs = attrBits(fnAttrs);
+		const uint64_t h = (reinterpret_cast<uintptr_t>(fptn) * 0x9E3779B97F4A7C15ull) ^
+		                   (types * 0xC2B2AE3D27D4EB4Full) ^ (static_cast<uint64_t>(attrs) << 7) ^
+		                   static_cast<uint64_t>(resultType);
+		auto& cache = session_->sessionState_->calleeCache;
+		entry = &cache[(h >> 24) % SessionState::CALLEE_CACHE_SIZE];
+		if (entry->callee != nir::NONE && entry->target == fptn && entry->argumentTypes == types &&
+		    entry->attrs == attrs && entry->resultType == static_cast<uint8_t>(resultType) &&
+		    entry->argumentCount == arguments.size()) {
+			return entry->callee;
+		}
+		entry->target = fptn;
+		entry->argumentTypes = types;
+		entry->attrs = attrs;
+		entry->resultType = static_cast<uint8_t>(resultType);
+		entry->argumentCount = static_cast<uint8_t>(arguments.size());
+		entry->callee = nir::NONE;
+	}
 	nir::CalleeRecord record {};
 	record.kind = static_cast<uint8_t>(nir::CalleeKind::External);
 	record.signature = signatureOf(resultType, arguments);
 	record.attrs = attrBits(fnAttrs);
 	record.target = pointerEntry(nir::PointerKind::Callee, fptn, 0);
-	return state->trace.module().internCallee(record);
+	const auto callee = state->trace.module().internCallee(record);
+	if (entry != nullptr) {
+		entry->callee = callee;
+	}
+	return callee;
 }
 
 uint32_t NirTracer::internalCallee(uint32_t functionIndex) {
@@ -1227,14 +1271,22 @@ TypedValueRef& NirTracer::recordCallRecord(uint32_t first, const Snapshot& tag, 
                                            Type resultType, const std::vector<TypedValueRef>& arguments,
                                            FunctionAttributes fnAttrs, bool external, void* captureFunc) {
 	const bool mayThrow = exceptionHandling && !fnAttrs.noUnwind;
-	std::vector<uint32_t> words;
-	words.push_back(static_cast<uint32_t>(arguments.size()));
+	// [argument count, arguments, cleanup list or NO_UNWIND, capture thunk]; a call with few arguments needs no heap
+	uint32_t inlineWords[24];
+	std::vector<uint32_t> heapWords;
+	uint32_t* words = inlineWords;
+	if (arguments.size() + 3 > std::size(inlineWords)) {
+		heapWords.resize(arguments.size() + 3);
+		words = heapWords.data();
+	}
+	size_t used = 0;
+	words[used++] = static_cast<uint32_t>(arguments.size());
 	for (const auto& a : arguments) {
-		words.push_back(a.ref);
+		words[used++] = a.ref;
 	}
 	uint32_t thunk = nir::NONE;
 	if (mayThrow) {
-		words.push_back(cleanupList());
+		words[used++] = cleanupList();
 		if (external) {
 			if (captureFunc == nullptr) {
 				throw RuntimeException("NIR trace: a may-throw external call has no capture thunk");
@@ -1242,10 +1294,11 @@ TypedValueRef& NirTracer::recordCallRecord(uint32_t first, const Snapshot& tag, 
 			thunk = pointerEntry(nir::PointerKind::CaptureThunk, captureFunc, 0);
 		}
 	} else {
-		words.push_back(nir::NO_UNWIND);
+		words[used++] = nir::NO_UNWIND;
 	}
-	words.push_back(thunk);
-	const auto id = emit(NOp::Call, typeInfo(resultType).id, 0, callee, 0, state->trace.module().addExtra(words));
+	words[used++] = thunk;
+	const auto id = emit(NOp::Call, typeInfo(resultType).id, 0, callee, 0,
+	                     state->trace.module().addExtra(std::span<const uint32_t>(words, used)));
 	return finish(first, tag, id, resultType);
 }
 
