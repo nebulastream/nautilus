@@ -83,11 +83,52 @@ public:
   bool _is64Bit;
   bool _avxEnabled;
 
+  // [Nautilus] The read/write information of an instruction depends only on its id, its options and the signature
+  // (type and size) of its operands, never on register ids, and a function repeats a handful of such shapes thousands
+  // of times: the answers of queryRWInfo are remembered in a small direct-mapped table. (The lookup in the instruction
+  // database was 3% of the instructions of a backend compile.)
+  struct RWCacheEntry {
+    uint32_t key[8];
+    InstRWInfo info;
+  };
+  static constexpr uint32_t kRWCacheSize = 64;
+  uint64_t _rwCacheValid = 0;
+  RWCacheEntry _rwCache[kRWCacheSize];
+
   inline RACFGBuilder(X86RAPass* pass) noexcept
     : RACFGBuilderT<RACFGBuilder>(pass),
       _arch(pass->cc()->arch()),
       _is64Bit(pass->registerSize() == 8),
       _avxEnabled(pass->avxEnabled()) {
+  }
+
+  /// Returns the RW info of `inst` and stores it in `fallback` when it cannot be cached.
+  inline const InstRWInfo* queryRWInfoCached(const InstNode* inst, const Operand* opArray, uint32_t opCount, InstRWInfo* fallback, Error* err) noexcept {
+    if (opCount > 6 || inst->hasExtraReg()) {
+      *err = InstInternal::queryRWInfo(_arch, inst->baseInst(), opArray, opCount, fallback);
+      return fallback;
+    }
+    uint32_t key[8] = {};
+    key[0] = uint32_t(inst->id());
+    key[1] = opCount | (uint32_t(inst->options()) << 8);
+    for (uint32_t i = 0; i < opCount; i++)
+      key[2 + i] = opArray[i]._signature.bits();
+    uint32_t h = (key[0] * 0x9E3779B1u) ^ (key[2] * 0x85EBCA6Bu) ^ (key[3] * 0xC2B2AE35u) ^ key[1];
+    h ^= h >> 15;
+    RWCacheEntry& entry = _rwCache[h % kRWCacheSize];
+    const uint64_t bit = uint64_t(1) << (h % kRWCacheSize);
+    if ((_rwCacheValid & bit) && memcmp(entry.key, key, sizeof(key)) == 0) {
+      *err = kErrorOk;
+      return &entry.info;
+    }
+    *err = InstInternal::queryRWInfo(_arch, inst->baseInst(), opArray, opCount, &entry.info);
+    if (*err != kErrorOk) {
+      _rwCacheValid &= ~bit;
+      return &entry.info;
+    }
+    memcpy(entry.key, key, sizeof(key));
+    _rwCacheValid |= bit;
+    return &entry.info;
   }
 
   inline Compiler* cc() const noexcept { return static_cast<Compiler*>(_cc); }
@@ -114,13 +155,15 @@ public:
 // ==========================
 
 Error RACFGBuilder::onInst(InstNode* inst, InstControlFlow& cf, RAInstBuilder& ib) noexcept {
-  InstRWInfo rwInfo;
+  InstRWInfo rwInfoStorage;
 
   InstId instId = inst->id();
   if (Inst::isDefinedId(instId)) {
     uint32_t opCount = inst->opCount();
     const Operand* opArray = inst->operands();
-    ASMJIT_PROPAGATE(InstInternal::queryRWInfo(_arch, inst->baseInst(), opArray, opCount, &rwInfo));
+    Error rwErr;
+    const InstRWInfo& rwInfo = *queryRWInfoCached(inst, opArray, opCount, &rwInfoStorage, &rwErr);
+    ASMJIT_PROPAGATE(rwErr);
 
     const InstDB::InstInfo& instInfo = InstDB::infoById(instId);
     bool hasGpbHiConstraint = false;
