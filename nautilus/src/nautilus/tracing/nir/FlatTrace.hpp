@@ -165,6 +165,8 @@ public:
 	std::vector<AllocaSpec> allocas;
 	/// The records of the function's parameters, by position.
 	std::vector<uint32_t> parameters;
+	/// The `ret` records, in the order they were recorded: the function's result type is that of its returns.
+	std::vector<uint32_t> returns;
 
 	nir::Module& module() {
 		return *module_;
