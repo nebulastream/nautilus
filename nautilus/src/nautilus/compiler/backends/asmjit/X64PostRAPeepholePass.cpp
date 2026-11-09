@@ -322,7 +322,8 @@ std::vector<uint8_t> referencedLabels(BaseBuilder* cb) {
 /// Returns the number of jumps removed.
 int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 	int64_t removed = 0;
-	const auto referenced = referencedLabels(cb);
+	std::vector<uint8_t> referenced;
+	bool referencedKnown = false; // the scan of all instructions is needed only after a conditional jump
 	BaseNode* node = cb->firstNode();
 	while (node != nullptr) {
 		BaseNode* next = node->next();
@@ -351,12 +352,28 @@ int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 		// that previously went through it.
 		// (labels in between that no instruction names are the heads of blocks that were emitted empty: they do not
 		// make the jmp a branch target)
-		BaseNode* afterJcc = next;
-		while (afterJcc != nullptr && afterJcc->isLabel() && afterJcc->as<LabelNode>()->labelId() < referenced.size() &&
-		       referenced[afterJcc->as<LabelNode>()->labelId()] == 0) {
-			afterJcc = afterJcc->next();
+		if (jumpTarget(inst) == nullptr) {
+			node = next;
+			continue;
 		}
-		if (const uint32_t cond = jccCondition(inst->id()); cond < 16 && afterJcc != nullptr && afterJcc->isInst()) {
+		const uint32_t cond = jccCondition(inst->id());
+		if (cond >= 16) {
+			node = next;
+			continue;
+		}
+		BaseNode* afterJcc = next;
+		if (afterJcc != nullptr && afterJcc->isLabel()) {
+			if (!referencedKnown) {
+				referenced = referencedLabels(cb);
+				referencedKnown = true;
+			}
+			while (afterJcc != nullptr && afterJcc->isLabel() &&
+			       afterJcc->as<LabelNode>()->labelId() < referenced.size() &&
+			       referenced[afterJcc->as<LabelNode>()->labelId()] == 0) {
+				afterJcc = afterJcc->next();
+			}
+		}
+		if (afterJcc != nullptr && afterJcc->isInst()) {
 			auto* jmp = afterJcc->as<InstNode>();
 			const Label* condTarget = jumpTarget(inst);
 			const Label* jmpTarget = jmp->id() == Inst::kIdJmp ? jumpTarget(jmp) : nullptr;

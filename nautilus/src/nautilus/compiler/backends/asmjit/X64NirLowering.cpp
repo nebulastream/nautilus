@@ -555,7 +555,8 @@ private:
 			return std::nullopt;
 		}
 		const auto& c = F().insts[candidate];
-		if (static_cast<TypeId>(c.type) != TypeId::I64) {
+		if (static_cast<TypeId>(c.type) != TypeId::I64 ||
+		    (static_cast<N>(c.op) != N::Mul && static_cast<N>(c.op) != N::Shl)) {
 			return std::nullopt;
 		}
 		if (static_cast<N>(c.op) == N::Mul) {
@@ -908,15 +909,15 @@ private:
 			return lowerFloatBinary(op, id, inst);
 		}
 		if (op == N::Add && (t == TypeId::Ptr || t == TypeId::I64)) {
-			if (const auto parts = matchAddress(id)) {
+			const auto parts = matchAddress(id);
+			if (parts.has_value()) {
 				// every consumer folds it into its own memory operand: nothing to emit
 				if (addressFusion_ && F().useCount[id] > 0 && F().addressUses[id] == F().useCount[id]) {
 					F().deferred[id] |= kAddressPart;
 					return;
 				}
 			}
-			if (const auto parts = matchAddress(id);
-			    parts.has_value() && ((parts->scaledInput != nir::NONE && isScaledIndexDeferred(parts->offset)) ||
+			if (parts.has_value() && ((parts->scaledInput != nir::NONE && isScaledIndexDeferred(parts->offset)) ||
 			                          parts->base == nir::NONE)) {
 				// a scaled index or a doubled value: one three-operand lea computes it; the register of an operand
 				// that dies here takes the result. (A plain `a + b` or `a + c` takes the general path below: where an
