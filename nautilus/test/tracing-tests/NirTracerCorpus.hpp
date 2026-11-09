@@ -7,6 +7,7 @@
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/conversion/Conversion.hpp"
 #include "nautilus/extensions/ExtensionRegistry.hpp"
+#include "nautilus/function.hpp"
 #include "nautilus/nir/Printer.hpp"
 #include "nautilus/nir/Verifier.hpp"
 #include "nautilus/select.hpp"
@@ -28,6 +29,24 @@ namespace nautilus::testing::nirtracer {
 
 inline val<int32_t> linearSum(val<int32_t> a, val<int32_t> b) {
 	return (a + b) * a - b;
+}
+
+extern "C" inline int64_t nirTracerCorpusFirst(int64_t a, int64_t b) noexcept {
+	return a ^ (b + 1);
+}
+extern "C" inline int32_t nirTracerCorpusSecond(int32_t a) noexcept {
+	return a + 1;
+}
+
+/// Runtime calls: the same function twice in a row and again after another, with other argument values, so that the
+/// callee, signature and pointer entries are interned once and every later call finds them.
+inline val<int64_t> runtimeCalls(val<int64_t> x) {
+	val<int64_t> r = invoke(nirTracerCorpusFirst, x, val<int64_t>(1));
+	r = invoke(nirTracerCorpusFirst, r, val<int64_t>(2));
+	val<int32_t> small = invoke(nirTracerCorpusSecond, val<int32_t>(7));
+	r = invoke(nirTracerCorpusFirst, r, val<int64_t>(small));
+	val<int32_t> other = invoke(nirTracerCorpusSecond, small);
+	return r + val<int64_t>(other);
 }
 
 inline val<int32_t> ifElse(val<int32_t> a, val<int32_t> b) {
