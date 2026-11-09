@@ -124,22 +124,33 @@ __attribute__((noinline)) Tag* TagRecorder::createReferenceTagBuildin() {
 		                           " which is not supported in Nautilus code.");
 	}
 	if (cache == nullptr) {
-		cache = static_cast<CacheEntry*>(arena.allocate(CACHE_SIZE * sizeof(CacheEntry), alignof(CacheEntry)));
-		std::memset(static_cast<void*>(cache), 0, CACHE_SIZE * sizeof(CacheEntry));
+		cache =
+		    static_cast<CacheEntry*>(arena.allocate(CACHE_SETS * CACHE_WAYS * sizeof(CacheEntry), alignof(CacheEntry)));
+		std::memset(static_cast<void*>(cache), 0, CACHE_SETS * CACHE_WAYS * sizeof(CacheEntry));
 	}
-	CacheEntry* entry = nullptr;
+	CacheEntry* set = nullptr;
 	if (cache != nullptr && depth <= MAX_CACHED_DEPTH) {
-		entry = &cache[(hash >> 32) & (CACHE_SIZE - 1)];
-		if (entry->node != nullptr && entry->hash == hash && entry->depth == depth &&
-		    std::memcmp(entry->stack, addresses, depth * sizeof(TagAddress)) == 0) {
-			return entry->node;
+		set = &cache[((hash >> 32) & (CACHE_SETS - 1)) * CACHE_WAYS];
+		for (size_t way = 0; way < CACHE_WAYS; ++way) {
+			const auto& entry = set[way];
+			if (entry.hash == hash && entry.node != nullptr && entry.depth == depth &&
+			    std::memcmp(entry.stack, addresses, depth * sizeof(TagAddress)) == 0) {
+				return entry.node;
+			}
 		}
 	}
 	auto* currentTagNode = &rootTagThreeNode;
 	for (size_t i = 0; i < depth; i++) {
 		currentTagNode = currentTagNode->append(addresses[i], arena);
 	}
-	if (entry != nullptr) {
+	if (set != nullptr) {
+		// a free way, else the one the hash picks: a set holds the stacks of the call sites that collide in it, so a
+		// loop over a few more sites than ways does not make every operation descend the trie again
+		size_t way = 0;
+		while (way < CACHE_WAYS && set[way].node != nullptr) {
+			++way;
+		}
+		auto* entry = &set[way < CACHE_WAYS ? way : (hash >> 16) % CACHE_WAYS];
 		entry->hash = hash;
 		entry->node = currentTagNode;
 		entry->depth = depth;
