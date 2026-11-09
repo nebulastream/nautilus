@@ -253,7 +253,9 @@ Error BaseCompiler::newVirtReg(VirtReg** out, TypeId typeId, OperandSignature si
 #ifndef ASMJIT_NO_LOGGING
   if (name && name[0] != '\0')
     vReg->_name.setData(&_dataZone, name, SIZE_MAX);
-  else
+  else if (code()->logger())
+    // [Nautilus] The generic name "%N" is only read by the logger; the formatter prints the index of an unnamed register
+    // itself, and an snprintf per virtual register was 7% of the instructions of a backend compile.
     BaseCompiler_assignGenericName(this, vReg);
 #else
   DebugUtils::unused(name);

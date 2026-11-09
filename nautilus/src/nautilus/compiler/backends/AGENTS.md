@@ -128,6 +128,11 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
   (`lowerAddChain`: manyArgsLoop 11 -> 9, 0.3 has 10). Open and not worth it so far: the `mov` of a loop-carried value on
   the back edge (the allocator's choice), `setcc` partial writes and select by flags, demanded-bits removal of
   extensions. Passing constant call arguments as invoke immediates only moved the move into the allocator.
+- Callgrind of `loopBody` 1000 (backend, `lowerNirModule` inclusive) went 7.71M -> 6.16M instructions without changing a
+  byte of generated code: no `snprintf` name per virtual register (584 instructions each; `[Nautilus]` in
+  `core/compiler.cpp`), a memo of `queryRWInfo` per instruction shape in `x86::RACFGBuilder` (`[Nautilus]`), a peephole
+  that walks the list of jumps instead of all nodes, one use-count pass and one `scaledOf` per side in the lowering.
+  Check such a change with the assembly dump of `nautilus-asm-kernels dump` before and after (it must be identical).
 - Floor: AsmJit's finalize is about 0.3 us per NIR instruction on linear code (backend total about 0.37 against the
   0.25 target); a `[Nautilus]` fast path in `queryRWInfo` would be worth at most 11-15% of it.
 - Not mirrored in `A64NirLowering.cpp` (no way to run AArch64 code in the sessions that wrote this): load plus
