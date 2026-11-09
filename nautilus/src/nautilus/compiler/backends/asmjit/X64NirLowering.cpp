@@ -471,13 +471,6 @@ private:
 				f.blockOf[f.blocks[b].first + i] = b;
 			}
 		}
-		for (uint32_t id = 0; id < n; ++id) {
-			nir::forEachRef(f.insts[id], m_.extra.data(), nir::Level::SSA, [&](const uint32_t& ref) {
-				if (nir::isValueRef(ref) && ref < n) {
-					f.soleUser[ref] = ++f.useCount[ref] == 1 ? id : nir::NONE;
-				}
-			});
-		}
 		// a block without arguments that holds nothing but a jump without arguments is skipped: branches go to the
 		// block that it jumps to (`if (c) {...}` without else leaves such a block on the false edge)
 		f.resolved.resize(f.blocks.size());
@@ -516,6 +509,7 @@ private:
 				nir::forEachRef(inst, m_.extra.data(), nir::Level::SSA, [&](const uint32_t& ref) {
 					if (nir::isValueRef(ref) && ref < n) {
 						seenIn[ref] = b;
+						f.soleUser[ref] = ++f.useCount[ref] == 1 ? id : nir::NONE;
 					}
 				});
 			}
@@ -609,12 +603,16 @@ private:
 			return parts;
 		}
 		// for an integer add either side may be the scaled one
-		if (type != TypeId::Ptr && !scaledOf(offset).has_value() && scaledOf(base).has_value()) {
-			std::swap(base, offset);
+		auto scaled = scaledOf(offset);
+		if (type != TypeId::Ptr && !scaled.has_value()) {
+			if (const auto baseScaled = scaledOf(base)) {
+				std::swap(base, offset);
+				scaled = baseScaled;
+			}
 		}
 		parts.base = base;
 		parts.offset = offset;
-		if (const auto scaled = scaledOf(offset)) {
+		if (scaled.has_value()) {
 			parts.scaledInput = scaled->first;
 			parts.shift = scaled->second;
 		}
