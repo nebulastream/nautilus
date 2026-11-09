@@ -33,6 +33,12 @@ public:
 	/// Equivalent to `beginBlock` and one `emit` each, without the per-instruction bookkeeping. Returns the id of the
 	/// first instruction. No block may be open, and use counts are not kept.
 	Ref appendPreSSABlock(std::span<const Inst> insts);
+	/// The same in two steps for a producer that writes the instructions in place: `beginPreSSABlock` makes room for
+	/// up to @p capacity instructions at the end of the module (default-initialized; the pointer is valid until the
+	/// next instruction is added to the module), `endPreSSABlock` keeps the first @p count of them as the block.
+	/// Returns the id of the first instruction.
+	Inst* beginPreSSABlock(size_t capacity);
+	Ref endPreSSABlock(size_t count);
 
 	/// Whether `emit` counts the uses of the values (`useCount`); on by default. A producer that never asks switches
 	/// it off and saves a walk over the operands of every instruction.
@@ -69,6 +75,7 @@ private:
 	uint32_t fn_ = NONE;
 	bool blockOpen_ = false;
 	bool trackUses_ = true;
+	size_t pendingBlockStart_ = 0;
 	std::vector<uint32_t> useCount_;
 	std::vector<uint32_t> blockIds_; // pre-SSA: ids of the current block's instructions
 };

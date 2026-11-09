@@ -98,6 +98,29 @@ Ref Builder::appendPreSSABlock(std::span<const Inst> insts) {
 	return first;
 }
 
+Inst* Builder::beginPreSSABlock(size_t capacity) {
+	assert(fn_ != NONE && !blockOpen_ && level() == Level::PreSSA);
+	pendingBlockStart_ = m_.insts.size();
+	m_.insts.resize(pendingBlockStart_ + capacity);
+	return m_.insts.data() + pendingBlockStart_;
+}
+
+Ref Builder::endPreSSABlock(size_t count) {
+	const auto first = static_cast<Ref>(pendingBlockStart_ - fn().firstInst);
+	m_.insts.resize(pendingBlockStart_ + count);
+	if (static_cast<uint64_t>(first) + count > static_cast<uint64_t>(MAX_VALUE_ID) + 1) {
+		throw std::length_error("function has too many instructions");
+	}
+	BlockRecord b {};
+	b.first = static_cast<uint32_t>(m_.extra.size());
+	b.count = static_cast<uint32_t>(count);
+	m_.blocks.push_back(b);
+	m_.extra.resize(m_.extra.size() + count);
+	std::iota(m_.extra.end() - static_cast<std::ptrdiff_t>(count), m_.extra.end(), first);
+	fn().blockCount++;
+	return first;
+}
+
 void Builder::reserve(size_t insts, size_t extraWords) {
 	m_.insts.reserve(m_.insts.size() + insts);
 	m_.extra.reserve(m_.extra.size() + extraWords);

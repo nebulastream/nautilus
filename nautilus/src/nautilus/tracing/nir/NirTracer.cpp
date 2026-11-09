@@ -237,7 +237,6 @@ bool emitInLayoutOrder(nir::Module& module, FlatTrace& trace, WriteScratch& scra
 	const auto& order = scratch.order;
 	const auto& newBlockId = scratch.newBlockId;
 	auto& newId = scratch.newId;
-	auto& blockInsts = scratch.blockInsts;
 	newId.assign(trace.recs.size(), nir::NONE);
 	{
 		nir::Ref next = 0;
@@ -257,42 +256,46 @@ bool emitInLayoutOrder(nir::Module& module, FlatTrace& trace, WriteScratch& scra
 		r = newId[r];
 	};
 	for (uint32_t i = 0; i < order.size(); ++i) {
-		blockInsts.clear();
+		const auto& blockOps = trace.blocks[order[i]].ops;
 		const nir::Ref blockFirst = b.instCount();
+		// written in place at the end of the module: room for every record of the block and, in the entry block, the
+		// parameters
+		nir::Inst* out = b.beginPreSSABlock(blockOps.size() + (i == 0 ? trace.parameters.size() : 0));
+		size_t count = 0;
 		if (i == 0) {
 			for (uint32_t p = 0; p < trace.parameters.size(); ++p) {
-				if (blockFirst + blockInsts.size() != newId[trace.parameters[p]]) {
+				if (blockFirst + count != newId[trace.parameters[p]]) {
 					throw RuntimeException("NIR trace: the instruction numbering of the parameters moved");
 				}
-				blockInsts.push_back(nir::Inst {static_cast<uint16_t>(NOp::BlockArg),
-				                                static_cast<uint8_t>(typeInfo(paramTypes[p]).id), 0, p, 0, 0});
+				out[count++] = nir::Inst {
+				    static_cast<uint16_t>(NOp::BlockArg), static_cast<uint8_t>(typeInfo(paramTypes[p]).id), 0, p, 0, 0};
 			}
 		}
-		for (auto id : trace.blocks[order[i]].ops) {
-			nir::Inst out = trace.recs[id];
-			if (out.op == static_cast<uint16_t>(NOp::BlockArg)) {
+		for (auto id : blockOps) {
+			nir::Inst inst = trace.recs[id];
+			if (inst.op == static_cast<uint16_t>(NOp::BlockArg)) {
 				continue; // emitted with the entry block
 			}
-			if (out.op == static_cast<uint16_t>(NOp::Br)) {
+			if (inst.op == static_cast<uint16_t>(NOp::Br)) {
 				const uint32_t args[] = {0};
-				out.a = newBlockId[out.a];
-				out.c = module.addExtra(args);
-			} else if (out.op == static_cast<uint16_t>(NOp::CondBr)) {
-				const auto& cond = trace.conds[out.c];
-				remap(out.a);
+				inst.a = newBlockId[inst.a];
+				inst.c = module.addExtra(args);
+			} else if (inst.op == static_cast<uint16_t>(NOp::CondBr)) {
+				const auto& cond = trace.conds[inst.c];
+				remap(inst.a);
 				const uint32_t args[] = {cond.probability, 0, newBlockId[cond.falseBlock], 0};
-				out.b = newBlockId[out.b];
-				out.c = module.addExtra(args);
+				inst.b = newBlockId[inst.b];
+				inst.c = module.addExtra(args);
 			} else {
-				nir::forEachRef(out, module.extra.data(), nir::Level::PreSSA, remap);
+				nir::forEachRef(inst, module.extra.data(), nir::Level::PreSSA, remap);
 			}
 			if (!complete) {
 				return false;
 			}
-			newId[id] = blockFirst + static_cast<nir::Ref>(blockInsts.size());
-			blockInsts.push_back(out);
+			newId[id] = blockFirst + static_cast<nir::Ref>(count);
+			out[count++] = inst;
 		}
-		b.appendPreSSABlock(blockInsts);
+		b.endPreSSABlock(count);
 	}
 	return true;
 }
