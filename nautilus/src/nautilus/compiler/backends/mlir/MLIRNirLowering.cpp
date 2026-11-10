@@ -547,10 +547,10 @@ private:
 			throw RuntimeException("mlir: the module calls an imported function but was not linked");
 		}
 		auto slot = pointerConstant(host_.imports->address(callee.target));
-		M::Value entry = M::LLVM::LoadOp::create(builder_, loc_, ptrType(), slot,
-		                                         /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
-		                                         /*isInvariant=*/false, /*isInvariantGroup=*/false,
-		                                         M::LLVM::AtomicOrdering::acquire);
+		M::Value entry = M::LLVM::LoadOp::create(
+		    builder_, loc_, ptrType(), slot,
+		    /*alignment=*/sizeof(void*), /*isVolatile=*/false, /*isNonTemporal=*/false,
+		    /*isInvariant=*/false, /*isInvariantGroup=*/false, M::LLVM::AtomicOrdering::acquire);
 		if (unwind != nir::NO_UNWIND) {
 			if (void* thunk = host_.imports->frameThunk(callee.target)) {
 				return emitIndirectCall(pointerConstant(thunk), sig, args, unwind, entry, true);
