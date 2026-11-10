@@ -11,8 +11,8 @@ namespace nautilus::compiler::nirbackend {
 class NirChainBackend : public CompilationBackend {
 public:
 	std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
-	                                    const engine::Options& options,
-	                                    CompilationStatistics* statistics = nullptr) const override;
+	                                    const engine::Options& options, CompilationStatistics* statistics = nullptr,
+	                                    const nirbackend::CancellationToken* cancellation = nullptr) const override;
 
 	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode() const override {
 		return ExceptionPropagationMode::CapturedHostRethrow;

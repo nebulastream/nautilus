@@ -13,12 +13,13 @@ namespace nautilus::compiler::cpp {
 std::unique_ptr<Executable> CPPCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
                                                            const DumpHandler& dumpHandler,
                                                            const engine::Options& options,
-                                                           CompilationStatistics* statistics) const {
+                                                           CompilationStatistics* statistics,
+                                                           const nirbackend::CancellationToken* cancellation) const {
 	// The graph of the NIR front end carries the module and no IR: it compiles natively (M4.3)
 	if (ir->getNirModule() != nullptr && ir->getFunctionOperations().empty()) {
 		auto module = std::static_pointer_cast<const nir::Module>(ir->getNirModule());
 		// the traced module is process-local: its pointers are addresses, so the host resolves nothing
-		const nirbackend::CompileContext context {dumpHandler, options, statistics, nullptr, {}};
+		const nirbackend::CompileContext context {dumpHandler, options, statistics, cancellation, {}};
 		return CPPNirBackend().compileNamed(std::move(module), context, ir->getId());
 	}
 	const auto backendStart = std::chrono::steady_clock::now();

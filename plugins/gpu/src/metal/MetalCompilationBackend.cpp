@@ -9,10 +9,10 @@
 
 namespace nautilus::compiler::metal {
 
-std::unique_ptr<Executable> MetalCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
-                                                             const DumpHandler& dumpHandler,
-                                                             const engine::Options& options,
-                                                             CompilationStatistics* /*statistics*/) const {
+std::unique_ptr<Executable>
+MetalCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
+                                 const engine::Options& options, CompilationStatistics* /*statistics*/,
+                                 const nirbackend::CancellationToken* /*cancellation*/) const {
 	auto result = MetalLoweringProvider::lower(ir, options);
 	dumpHandler.dump("after_metal_generation", ".metal", [&]() { return result.deviceCode; });
 	dumpHandler.dump("after_metal_host_generation", ".mm", [&]() { return result.hostCode; });

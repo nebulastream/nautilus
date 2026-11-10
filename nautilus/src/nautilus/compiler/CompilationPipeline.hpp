@@ -83,12 +83,15 @@ public:
 	 * @param ir The IR graph
 	 * @param backendName Which backend to use
 	 * @param statistics Optional statistics sink populated by the backend.
-	 * @return Compiled executable
+	 * @param unitId The compilation unit ID of this compile (dump directory, statistics). Empty: a fresh one. A
+	 *        promotion passes the tier-0 unit ID plus `_tier1`, so the dumps of one module sit side by side.
+	 * @param cancellation Checked by the backend at stage boundaries (null for a synchronous compile).
+	 * @return Compiled executable; null only if @p cancellation was set
 	 */
-	[[nodiscard]] std::unique_ptr<Executable> compileIR(const std::shared_ptr<ir::IRGraph>& ir,
-	                                                    const std::string& backendName,
-	                                                    const engine::ModuleOptions& moduleOptions,
-	                                                    CompilationStatistics* statistics = nullptr) const;
+	[[nodiscard]] std::unique_ptr<Executable>
+	compileIR(const std::shared_ptr<ir::IRGraph>& ir, const std::string& backendName,
+	          const engine::ModuleOptions& moduleOptions, CompilationStatistics* statistics = nullptr,
+	          const CompilationUnitID& unitId = {}, const nirbackend::CancellationToken* cancellation = nullptr) const;
 
 	/**
 	 * @brief Makes @p ir ready for the backend @p backendName.

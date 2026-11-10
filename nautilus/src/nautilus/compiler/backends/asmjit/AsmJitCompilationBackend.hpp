@@ -12,8 +12,8 @@ namespace nautilus::compiler::asmjit {
 class AsmJitCompilationBackend : public CompilationBackend {
 public:
 	std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
-	                                    const engine::Options& options,
-	                                    CompilationStatistics* statistics = nullptr) const override;
+	                                    const engine::Options& options, CompilationStatistics* statistics = nullptr,
+	                                    const nirbackend::CancellationToken* cancellation = nullptr) const override;
 
 	/// The graph of the NIR front end carries a module that this backend compiles itself (M4.4).
 	[[nodiscard]] bool compilesNir() const override {
