@@ -2,6 +2,7 @@
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
+#include "nautilus/link/ModuleRegistry.hpp"
 #ifdef ENABLE_TBC_BACKEND
 #include "nautilus/compiler/backends/tbc/TBCNirBackend.hpp"
 #endif
@@ -47,6 +48,14 @@ void NirBackendRegistry::registerBackend(const std::string& name, std::unique_pt
 const NirBackend* NirBackendRegistry::find(const std::string& name) const {
 	auto it = backends_.find(name);
 	return it == backends_.end() ? nullptr : it->second.get();
+}
+
+HostEnvironment hostEnvironmentFor(const std::shared_ptr<const void>& importLink) {
+	HostEnvironment host;
+	if (importLink != nullptr) {
+		host.imports = &static_cast<const link::ImportLink*>(importLink.get())->slots;
+	}
+	return host;
 }
 
 void* resolvePointer(const nir::Module& module, uint32_t pointerIndex, const HostEnvironment& host) {

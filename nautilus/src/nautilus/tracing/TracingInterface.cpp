@@ -18,4 +18,10 @@ TypedValueRef& TracingInterface::traceBinding(std::string_view, size_t, size_t) 
 	throw NotImplementedException("this tracer cannot record runtime bindings");
 }
 
+TypedValueRef& TracingInterface::traceImportedCall(std::string_view, std::string_view, Type,
+                                                   const std::vector<TypedValueRef>&, FunctionAttributes) {
+	throw NotImplementedException("this tracer cannot record imported calls; modules link on the NIR pipeline "
+	                              "(tracing.nirTracer=true)");
+}
+
 } // namespace nautilus::tracing

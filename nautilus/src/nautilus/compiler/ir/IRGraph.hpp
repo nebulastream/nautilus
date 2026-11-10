@@ -136,6 +136,15 @@ public:
 	void setNirModule(std::shared_ptr<const void> module) {
 		nirModule = std::move(module);
 	}
+	/// The `link::ImportLink` of the NIR module (its import slots; 13-nir-spec.md §4.4.2), or null for a module without
+	/// imports. Type-erased like the module: the IR does not depend on the link library. The graph keeps it alive for
+	/// the compiles that read the slot addresses from it, tier 0 and the promotion alike.
+	[[nodiscard]] const std::shared_ptr<const void>& getImportLink() const {
+		return importLink;
+	}
+	void setImportLink(std::shared_ptr<const void> link) {
+		importLink = std::move(link);
+	}
 	[[nodiscard]] FunctionTable& getFunctionTableMut() {
 		return functionTable;
 	}
@@ -202,6 +211,7 @@ private:
 	uint32_t regionIdCounter = 0;
 	std::shared_ptr<const IRLocationMap> locationMap;
 	std::shared_ptr<const void> nirModule;
+	std::shared_ptr<const void> importLink;
 };
 
 } // namespace nautilus::compiler::ir

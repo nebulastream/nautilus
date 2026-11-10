@@ -51,7 +51,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	if (ir->getNirModule() != nullptr && ir->getFunctionOperations().empty()) {
 		auto module = std::static_pointer_cast<const nir::Module>(ir->getNirModule());
 		// the traced module is process-local: its pointers are addresses, so the host resolves nothing
-		const nirbackend::CompileContext context {dumpHandler, options, statistics, cancellation, {}};
+		const nirbackend::CompileContext context {dumpHandler, options, statistics, cancellation,
+		                                          nirbackend::hostEnvironmentFor(ir->getImportLink())};
 		return MLIRNirBackend().compileNamed(std::move(module), context, ir->getId());
 	}
 	const auto backendStart = std::chrono::steady_clock::now();

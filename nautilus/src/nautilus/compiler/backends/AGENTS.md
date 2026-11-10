@@ -138,6 +138,22 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
 - Not mirrored in `A64NirLowering.cpp` (no way to run AArch64 code in the sessions that wrote this): load plus
   extension fusion, block threading, the `lea` rule, constant add chains, reassociation and constant block parameters.
 
+## Imported calls (0.4, M4.6)
+
+- A call of an `imported` callee goes through the import slot of its module (`HostEnvironment::imports`, the
+  `link::ImportSlots` of the graph's link; `module.callees[c].target` is the slot index): load the cell, call the
+  entry point with the C convention of the signature. `tbc` uses `LOAD` + `CALL_IND` (the loaded address orders the
+  call), `asmjit` a `mov` + `mov [slot]` (x86-64) or `ldar` (AArch64) + `invoke`, `cpp` `__atomic_load_n(..., ACQUIRE)`,
+  `mlir` `llvm.load atomic acquire` + an indirect call with the extension attributes of the narrow arguments.
+- The exporter's tier decides whether it throws natively or captures, and promotion changes it, so the backends do not
+  assume it: a call with an unwind entry other than `NO_UNWIND` goes through the import's thunk, `captureThunk` for
+  `tbc`/`asmjit` (an external call with the loaded entry point as the thunk's first argument), `frameThunk` for `mlir`.
+  `cpp` catches natively in the generated code. A call that cannot throw (`NO_UNWIND`) is a plain indirect call.
+  `functionsNeedingCapture` already counts such a call as an exceptional call site. Without a thunk (a module that did
+  not come from the C++ front end) the call is direct and the modes must match.
+- `funcaddr` of an imported callee throws `NotImplementedException` on every backend (the stub through the slot is not
+  built; nothing takes such an address).
+
 ## Fixed cost per compile
 
 What a compile costs before the size of the function counts, measured with `nautilus-fixed-cost-bench [reps [kernel

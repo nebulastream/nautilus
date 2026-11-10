@@ -140,7 +140,9 @@ bool PromotionService::idle() const {
 
 bool PromotionService::waitIdle(std::chrono::milliseconds timeout) {
 	std::unique_lock<std::mutex> lock(mutex_);
-	const auto settled = [this] { return queue_.empty() && active_.empty(); };
+	const auto settled = [this] {
+		return queue_.empty() && active_.empty();
+	};
 	if (timeout == std::chrono::milliseconds::max()) {
 		idle_.wait(lock, settled);
 		return true;

@@ -684,8 +684,18 @@ private:
 			             parts.arguments + ")";
 			break;
 		}
-		case CalleeKind::Imported:
-			throw NotImplementedException("cpp: imported callees come with modules and linking (M4.6)");
+		case CalleeKind::Imported: {
+			if (host_.imports == nullptr) {
+				throw RuntimeException("cpp: the module calls an imported function but was not linked");
+			}
+			// the entry point of the exporter's current code, read from the import slot (13 §5.7); the generated code
+			// unwinds natively and catches into the frame like any call that may throw, so the exporter may be in
+			// either kind of tier
+			expression = "((" + parts.pointerType + ")__atomic_load_n((void* const*)" +
+			             hex(reinterpret_cast<uint64_t>(host_.imports->address(callee.target))) +
+			             ", __ATOMIC_ACQUIRE))(" + parts.arguments + ")";
+			break;
+		}
 		}
 		emitCall(out, id, inst, expression, sig.result, unwind);
 	}
@@ -701,7 +711,9 @@ private:
 			    << hex(reinterpret_cast<uint64_t>(nirbackend::resolvePointer(m_, callee.target, host_))) << ";\n";
 			return;
 		case CalleeKind::Imported:
-			throw NotImplementedException("cpp: imported callees come with modules and linking (M4.6)");
+			// the stub that calls through the import slot (13 §5.7) is not built by any backend yet; nothing in the C++
+			// front end takes the address of an imported function
+			throw NotImplementedException("cpp: the address of an imported function (funcaddr) is not supported");
 		case CalleeKind::Intrinsic:
 			throw RuntimeException("cpp: an intrinsic has no address");
 		}

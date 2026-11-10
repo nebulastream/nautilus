@@ -468,14 +468,47 @@ private:
 		return results.empty() ? M::Value() : call.getResult(0);
 	}
 
+	/// The ABI attributes of the arguments of a native call through a pointer: the extension of narrow integers (what
+	/// `declareExternal` puts on the parameters of a declaration), after an optional leading pointer. Null if there is
+	/// none.
+	M::ArrayAttr nativeArgumentAttributes(const nir::SignatureRecord& sig, bool leadingPointer) {
+		llvm::SmallVector<M::Attribute> perArgument;
+		bool any = false;
+		if (leadingPointer) {
+			perArgument.push_back(builder_.getDictionaryAttr({}));
+		}
+		for (uint32_t p = 0; p < sig.paramCount; ++p) {
+			if (const char* attribute = extensionAttribute(m_.paramType(sig, p))) {
+				perArgument.push_back(builder_.getDictionaryAttr(
+				    llvm::ArrayRef<M::NamedAttribute> {builder_.getNamedAttr(attribute, M::UnitAttr::get(&ctx_))}));
+				any = true;
+			} else {
+				perArgument.push_back(builder_.getDictionaryAttr({}));
+			}
+		}
+		return any ? builder_.getArrayAttr(perArgument) : M::ArrayAttr {};
+	}
+
+	/// A call of the function at address `callee`. A `leading` argument is passed before `args` (the target of a
+	/// thunk); `nativeAbi` states the extension of narrow arguments, for a callee that is native code.
 	M::Value emitIndirectCall(M::Value callee, const nir::SignatureRecord& sig, llvm::ArrayRef<M::Value> args,
-	                          uint32_t unwind) {
+	                          uint32_t unwind, M::Value leading = M::Value(), bool nativeAbi = false) {
 		const auto results = resultTypes(sig);
 		M::Type resultType = results.empty() ? static_cast<M::Type>(M::LLVM::LLVMVoidType::get(&ctx_)) : results[0];
-		auto functionType = M::LLVM::LLVMFunctionType::get(resultType, paramTypes(sig));
+		llvm::SmallVector<M::Type> parameters;
 		llvm::SmallVector<M::Value> operands;
 		operands.push_back(callee);
+		if (leading) {
+			parameters.push_back(ptrType());
+			operands.push_back(leading);
+		}
+		for (const auto type : paramTypes(sig)) {
+			parameters.push_back(type);
+		}
 		operands.append(args.begin(), args.end());
+		auto functionType = M::LLVM::LLVMFunctionType::get(resultType, parameters);
+		const M::ArrayAttr argumentAttributes =
+		    nativeAbi ? nativeArgumentAttributes(sig, static_cast<bool>(leading)) : M::ArrayAttr {};
 		if (isPad(unwind)) {
 			auto* current = builder_.getInsertionBlock();
 			auto* region = current->getParent();
@@ -485,7 +518,7 @@ private:
 			auto invoke = M::LLVM::InvokeOp::create(builder_, loc_, results,
 			                                        /*var_callee_type=*/M::TypeAttr {},
 			                                        /*callee=*/M::FlatSymbolRefAttr {}, operands,
-			                                        /*arg_attrs=*/M::ArrayAttr {},
+			                                        /*arg_attrs=*/argumentAttributes,
 			                                        /*res_attrs=*/M::ArrayAttr {},
 			                                        /*normalDestOperands=*/M::ValueRange {},
 			                                        /*unwindDestOperands=*/M::ValueRange {},
@@ -497,7 +530,33 @@ private:
 			return results.empty() ? M::Value() : invoke.getResult();
 		}
 		auto call = M::LLVM::CallOp::create(builder_, loc_, functionType, operands);
+		if (argumentAttributes) {
+			call.setArgAttrsAttr(argumentAttributes);
+		}
 		return results.empty() ? M::Value() : call.getResult();
+	}
+
+	/// A call of an exported function of another module (13 §5.7): the entry point of the exporter's current code is
+	/// read from the import slot with an acquire load. The exporter's tier decides whether it throws natively or
+	/// captures into the exception frame of the thread, and that can change under this code, so a call that may throw
+	/// goes through the import's frame thunk: a C++ frame that gives a capturing exporter a frame to write to and
+	/// rethrows from it, so that this code only ever sees a native exception.
+	M::Value emitImportedCall(const nir::CalleeRecord& callee, const nir::SignatureRecord& sig,
+	                          llvm::ArrayRef<M::Value> args, uint32_t unwind) {
+		if (host_.imports == nullptr) {
+			throw RuntimeException("mlir: the module calls an imported function but was not linked");
+		}
+		auto slot = pointerConstant(host_.imports->address(callee.target));
+		M::Value entry = M::LLVM::LoadOp::create(builder_, loc_, ptrType(), slot,
+		                                         /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
+		                                         /*isInvariant=*/false, /*isInvariantGroup=*/false,
+		                                         M::LLVM::AtomicOrdering::acquire);
+		if (unwind != nir::NO_UNWIND) {
+			if (void* thunk = host_.imports->frameThunk(callee.target)) {
+				return emitIndirectCall(pointerConstant(thunk), sig, args, unwind, entry, true);
+			}
+		}
+		return emitIndirectCall(entry, sig, args, unwind, M::Value(), true);
 	}
 
 	// ---- instructions ---------------------------------------------------------------------------------------
@@ -974,8 +1033,13 @@ private:
 			symbol = declareExternal(info->fallback, callee.signature, callee.attrs, inst.a);
 			break;
 		}
-		case CalleeKind::Imported:
-			throw NotImplementedException("mlir: imported callees come with modules and linking (M4.6)");
+		case CalleeKind::Imported: {
+			const auto result = emitImportedCall(callee, sig, args, unwind);
+			if (result) {
+				bind(id, result);
+			}
+			return;
+		}
 		}
 		const auto result = emitCall(symbol, results, args, unwind);
 		if (result) {
@@ -1012,7 +1076,9 @@ private:
 			return;
 		}
 		case CalleeKind::Imported:
-			throw NotImplementedException("mlir: imported callees come with modules and linking (M4.6)");
+			// the stub that calls through the import slot (13 §5.7) is not built by any backend yet; nothing in the C++
+			// front end takes the address of an imported function
+			throw NotImplementedException("mlir: the address of an imported function (funcaddr) is not supported");
 		case CalleeKind::Intrinsic:
 			throw RuntimeException("mlir: an intrinsic has no address");
 		}

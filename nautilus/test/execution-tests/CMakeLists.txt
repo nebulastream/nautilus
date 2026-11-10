@@ -22,6 +22,8 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         NoThrowInferenceIntegrationTest.cpp
         MemoryIntrinsicExecutionTest.cpp
         ModuleLifecycleTest.cpp
+        ModuleLinkingTest.cpp
+        ModuleRegistryTest.cpp
         ModuleTest.cpp
         TieredCompilationTest.cpp
         PromotionServiceTest.cpp

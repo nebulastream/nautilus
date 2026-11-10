@@ -7,6 +7,7 @@
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
+#include "nautilus/link/LinkSession.hpp"
 #include "nautilus/logging.hpp"
 #include <algorithm>
 #include <atomic>
@@ -331,8 +332,20 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::traceToNir(std::list<Compilabl
 
 	// The graph carries the module to the backend: a NIR backend compiles it as it is, the others get the 0.3 IR built
 	// from it (`lowerToIR`).
+	// A module that is named or imports others takes part in the module registry of its engine (13 §4.4): the session
+	// of this compile resolves its imports against the compiled modules and the backends call through the slots.
+	auto* linkSession = engine::details::LinkSession::current();
+	std::shared_ptr<const void> importLink;
+	if (linkSession != nullptr) {
+		importLink = link::prepareModule(*linkSession, ssa);
+	}
 	auto carrier = std::make_shared<ir::IRGraph>(irArenaPool_->acquire(), compilationId);
-	carrier->setNirModule(std::make_shared<const nir::Module>(std::move(ssa)));
+	auto finalModule = std::make_shared<const nir::Module>(std::move(ssa));
+	if (linkSession != nullptr) {
+		link::noteCompiledModule(*linkSession, finalModule);
+	}
+	carrier->setNirModule(std::move(finalModule));
+	carrier->setImportLink(std::move(importLink));
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("frontend.totalMs", frontendStart);
 	}

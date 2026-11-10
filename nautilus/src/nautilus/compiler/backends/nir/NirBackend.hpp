@@ -3,6 +3,7 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/common/ExceptionPropagation.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
+#include "nautilus/link/ImportSlots.hpp"
 #include "nautilus/nir/Module.hpp"
 #include "nautilus/options.hpp"
 #include <atomic>
@@ -43,7 +44,14 @@ struct HostEnvironment {
 	std::function<void*(std::string_view)> resolveSymbol;
 	/// The address of runtime binding `index` of the module (13 §4.8). Null if the host supplies none.
 	std::function<void*(const nir::Module&, uint32_t)> bindingAddress;
+	/// The import slots of the module (13 §4.4.2): an imported callee `c` is called through
+	/// `imports->address(module.callees[c].target)`. Null for a module without imports.
+	const link::ImportSlots* imports = nullptr;
 };
+
+/// The host environment for a compile of a graph whose `IRGraph::getImportLink()` is @p importLink: the import slots
+/// of its link, if it has one.
+HostEnvironment hostEnvironmentFor(const std::shared_ptr<const void>& importLink);
 
 /// Everything a compile receives besides the module.
 struct CompileContext {

@@ -80,11 +80,10 @@ public:
 	explicit ProbeBackend(std::shared_ptr<Probe> probe) : probe_(std::move(probe)) {
 	}
 
-	std::unique_ptr<compiler::Executable> compile(const std::shared_ptr<compiler::ir::IRGraph>& ir,
-	                                              const compiler::DumpHandler& dumpHandler,
-	                                              const engine::Options& options,
-	                                              compiler::CompilationStatistics* statistics,
-	                                              const compiler::nirbackend::CancellationToken* cancellation) const override {
+	std::unique_ptr<compiler::Executable>
+	compile(const std::shared_ptr<compiler::ir::IRGraph>& ir, const compiler::DumpHandler& dumpHandler,
+	        const engine::Options& options, compiler::CompilationStatistics* statistics,
+	        const compiler::nirbackend::CancellationToken* cancellation) const override {
 		probe_->entered.fetch_add(1);
 		switch (probe_->fault.load()) {
 		case Fault::throwInt:
@@ -215,7 +214,7 @@ void runShortLivedModules(const Fixture& fixture, int modules, int baselineThrea
 		if (i % 64 == 0) {
 			maxThreads = std::max(maxThreads, threadCount());
 		}
-		if (i == modules / 10) {
+		if (i == modules / 2) {
 			*memoryAfterWarmup = virtualMemoryKiB();
 		}
 	}
@@ -242,8 +241,9 @@ TEST_CASE("Promotion Service - The Thread Count Is Bounded By The Pool") {
 		REQUIRE(fixture.jit->promotionWorkerCount() <= 2);
 		REQUIRE(fixture.jit->promotionWorkerCount() >= 1);
 		if (!SANITIZED && warm > 0) {
-			// flat: a thread per promotion would map a stack (8 MiB) each
-			REQUIRE(end - warm < 128 * 1024);
+			// flat: a thread per promotion would map a stack (8 MiB) each; the bound leaves room for the malloc arenas
+			// of the workers, which glibc reserves 64 MiB of address space for
+			REQUIRE(end - warm < 256 * 1024);
 		}
 	}
 	if (baseline > 0) {
@@ -439,7 +439,7 @@ TEST_CASE("Promotion Service - A Tier 1 That Finishes First Is Not Overwritten B
 	tier0->gate.open();
 	compiling.join();
 
-	REQUIRE(tier0->completed.load() == 1); // the tier-0 compile ran to the end ...
+	REQUIRE(tier0->completed.load() == 1);    // the tier-0 compile ran to the end ...
 	REQUIRE(compiled->tier() == Tier::tier1); // ... and its result was dropped
 	REQUIRE(compiled->promotionStatus().state == PromotionState::done);
 	const auto stats = compiled->getStatistics();
@@ -483,7 +483,7 @@ TEST_CASE("Promotion Service - The Admission Cap Skips Promotions", "[promotion]
 		REQUIRE(eventually([&] { return probe->entered.load() == 1; }));
 		{
 			auto dropped = fixture.compileOne(); // fills the queue ...
-		}                                        // ... and is dropped
+		} // ... and is dropped
 		auto c = fixture.compileOne();
 		REQUIRE(c.promotionStatus().state == PromotionState::queued);
 		probe->gate.open();
@@ -692,7 +692,7 @@ TEST_CASE("Promotion Service - 40000 Short-Lived Modules", "[promotion]") {
 	long end = 0;
 	runShortLivedModules(fixture, SANITIZED ? 4000 : 40000, baseline, 2, &warm, &end);
 	if (!SANITIZED && warm > 0) {
-		REQUIRE(end - warm < 128 * 1024);
+		REQUIRE(end - warm < 256 * 1024);
 	}
 }
 

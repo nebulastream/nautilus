@@ -25,6 +25,21 @@
   immutable NIR (`canStartEarly`); tier 0 is installed only while `ModuleState::version` is 0. The service mutex is
   never held while compiling, publishing a status, joining or waiting. Promotions turn
   `mlir.enableMultithreading` off: workers own no thread pool (11 §4.1).
+- **Tiered compilation** (`TieredCompiler.cpp`): `engine.backend=<x>` pins one
+  backend. Otherwise tier 0 (`asmjit`, else `tbc`, else the interpreter) is
+  compiled synchronously and tier 1 (MLIR) on a background thread, which swaps
+  the module's executable. Finished promotion threads are reaped when the next
+  promotion starts (#566).
+- **Modules and linking** (`../link/`, 13 §4.4): `createModule(name)` registers a module with the engine's
+  `ModuleRegistry` when it is compiled; `NautilusModule::importFunction` declares a call into another compiled module.
+  `NautilusModule::compile` opens a `LinkSession` (the thread's current one), `CompilationPipeline::traceToNir` hands the
+  converted module to it (`link::prepareModule`: module name, declared export attributes, link), and the resulting
+  `ImportLink` rides on the `IRGraph` to the backends as `HostEnvironment::imports`. `ModuleState::link` owns the handle,
+  so releasing a module releases its name and pins; `ModuleState::version.fetch_add` is the one point where a new
+  executable is announced, and the registry's observer there republishes the slots of the importers. Anything that
+  installs an executable in a `ModuleState` must bump the version while holding `ModuleState::mutex` (the tiered compiler
+  does). Rules to keep: lock order is the state's mutex, then a handle's `dependentsMutex_`, then an `ImportLink`'s; the
+  registry's mutex is never held while taking the state's.
 - **IR** (`ir/`): `IRGraph`, `operations/` (one class per operation kind),
   `blocks/`. Adding or changing an operation touches many places: use the
   `ir-change` skill.
