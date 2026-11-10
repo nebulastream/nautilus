@@ -48,7 +48,6 @@ TEST_CASE("Tiered Compilation - Tier 0 Executes Correctly") {
 	common::ArenaPool traceArenaPool;
 	common::ArenaPool irArenaPool;
 	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
-	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 	auto module = engine.createModule();
 	module.registerFunction("add_one", tieredAddOne);
@@ -71,7 +70,7 @@ TEST_CASE("Tiered Compilation - Tier 0 Executes Correctly") {
 	REQUIRE(mulFn(3, 4) == 12);
 	REQUIRE(mulFn(0, 100) == 0);
 
-	jit->waitForPendingPromotions();
+	engine.waitForPromotions();
 }
 
 TEST_CASE("Tiered Compilation - Background Promotion Completes") {
@@ -99,48 +98,13 @@ TEST_CASE("Tiered Compilation - Background Promotion Completes") {
 	REQUIRE(fn(5) == 6);
 
 	// Wait for tier 1 to complete
-	jit->waitForPendingPromotions();
+	engine.waitForPromotions();
 	REQUIRE(jit->allPromotionsComplete());
 
 	// Still correct after promotion
 	REQUIRE(fn(5) == 6);
 	REQUIRE(fn(0) == 1);
 	REQUIRE(fn(-100) == -99);
-}
-
-TEST_CASE("Tiered Compilation - Finished Promotion Threads Are Reaped") {
-	auto [tier0Backend, tier1Backend] = getTieredBackends();
-	if (tier0Backend.empty()) {
-		SKIP("Need at least two compilation backends for tiered compilation");
-	}
-
-	TieredCompilationConfig config;
-	config.tier0.backend = tier0Backend;
-	config.tier1.backend = tier1Backend;
-
-	common::ArenaPool traceArenaPool;
-	common::ArenaPool irArenaPool;
-	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
-	auto* jit = tieredJit.get();
-	auto engine = NautilusEngine(std::move(tieredJit));
-
-	// Short-lived modules, each promoted before the next is compiled. Without
-	// reaping, the compiler would hold one finished thread (and its stack) per
-	// module until it is destroyed.
-	constexpr int modules = 32;
-	for (int i = 0; i < modules; i++) {
-		auto module = engine.createModule();
-		module.registerFunction("add_one", tieredAddOne);
-		auto compiled = module.compile();
-		REQUIRE(compiled.getFunction<int32_t(int32_t)>("add_one")(i) == i + 1);
-		while (!jit->allPromotionsComplete()) {
-			std::this_thread::yield();
-		}
-	}
-	REQUIRE(jit->retainedPromotionThreads() <= 1);
-
-	jit->waitForPendingPromotions();
-	REQUIRE(jit->retainedPromotionThreads() == 0);
 }
 
 TEST_CASE("Tiered Compilation - Results Correct After Promotion") {
@@ -156,7 +120,6 @@ TEST_CASE("Tiered Compilation - Results Correct After Promotion") {
 	common::ArenaPool traceArenaPool;
 	common::ArenaPool irArenaPool;
 	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
-	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 	auto module = engine.createModule();
 	module.registerFunction("add_one", tieredAddOne);
@@ -171,7 +134,7 @@ TEST_CASE("Tiered Compilation - Results Correct After Promotion") {
 	REQUIRE(sumFn(3, 4) == 7);
 
 	// Wait for promotion
-	jit->waitForPendingPromotions();
+	engine.waitForPromotions();
 
 	// Call after promotion — results must still be correct
 	REQUIRE(addOneFn(5) == 6);
@@ -218,7 +181,7 @@ TEST_CASE("Tiered Compilation - Custom Backend Per Tier") {
 			REQUIRE(fn(42) == 43);
 			REQUIRE(fn(-1) == 0);
 
-			jit->waitForPendingPromotions();
+			engine.waitForPromotions();
 			REQUIRE(jit->allPromotionsComplete());
 
 			REQUIRE(fn(42) == 43);
@@ -284,7 +247,7 @@ TEST_CASE("Tiered Compilation - Multiple Functions In Module") {
 	REQUIRE(mulFn(7, 8) == 56);
 
 	// Wait for promotion
-	jit->waitForPendingPromotions();
+	engine.waitForPromotions();
 	REQUIRE(jit->allPromotionsComplete());
 
 	// All functions work post-promotion
@@ -325,7 +288,7 @@ TEST_CASE("Tiered Compilation - Single Tier Mode") {
 	// No background promotion was started, so it is immediately complete and
 	// waiting is a no-op.
 	REQUIRE(jit->allPromotionsComplete());
-	jit->waitForPendingPromotions();
+	engine.waitForPromotions();
 	REQUIRE(jit->allPromotionsComplete());
 
 	// Results remain correct.
@@ -387,7 +350,7 @@ TEST_CASE("Tiered Compilation - Interpreter Tier 0") {
 	REQUIRE(sumFn(3, 4) == 7);
 
 	// Wait for the tier-1 promotion to swap in the compiled executable.
-	jit->waitForPendingPromotions();
+	engine.waitForPromotions();
 	REQUIRE(jit->allPromotionsComplete());
 
 	// Still correct after promotion, and the executable's stats carry the

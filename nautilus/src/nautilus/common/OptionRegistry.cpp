@@ -15,6 +15,8 @@ const std::vector<OptionSpec>& optionRegistry() {
 	    {"engine.tier0.backend", OptionType::String, "", false, {}},
 	    {"engine.tier1.backend", OptionType::String, "", false, {}},
 	    {"engine.tiered.promotion", OptionType::String, "eager", false, {"eager", "manual", "none"}},
+	    {"engine.tiered.promotionThreads", OptionType::Int, "", false, {}},
+	    {"engine.tiered.maxQueuedPromotions", OptionType::Int, "", false, {}},
 	    {"engine.normalizeFunctionNames", OptionType::Bool, "false", false, {}},
 	    {"engine.foldStaticConstants", OptionType::Bool, "true", true, {}},
 	    {"engine.demangleFunctionNames", OptionType::Bool, "true", false, {}},

@@ -3,17 +3,20 @@
 #include "CompilationPipeline.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
-#include <atomic>
+#include <chrono>
+#include <cstddef>
+#include <functional>
 #include <memory>
-#include <mutex>
-#include <shared_mutex>
 #include <string>
-#include <thread>
-#include <vector>
 
 namespace nautilus::engine::details {
 struct ModuleState;
 }
+
+namespace nautilus::compiler {
+class PromotionJob;
+class PromotionService;
+} // namespace nautilus::compiler
 
 namespace nautilus::engine {
 
@@ -21,6 +24,14 @@ namespace nautilus::engine {
 /// the module interpreted (direct invocation of the original callable) until
 /// the background tier-1 compilation swaps in its executable.
 inline constexpr auto INTERPRETER_BACKEND = "interpreter";
+
+/// When a module is promoted to tier 1 (`engine.tiered.promotion`, 11-tiered-compilation.md §4.4).
+enum class PromotionPolicy {
+	/// Queued right after conversion, before the tier-0 code generation.
+	eager,
+	/// Only on `CompiledModule::promote()`.
+	manual,
+};
 
 /**
  * @brief Configuration for a single compilation tier.
@@ -50,6 +61,9 @@ struct TieredCompilationConfig {
 	/// directly with the high-performance @ref tier1 backend and performs no
 	/// tier-0 compile and no background promotion.
 	bool backgroundPromotion {true};
+
+	/// When a two-tier module is promoted. The options constructor reads it from `engine.tiered.promotion`.
+	PromotionPolicy policy {PromotionPolicy::eager};
 };
 
 } // namespace nautilus::engine
@@ -60,7 +74,9 @@ namespace nautilus::compiler {
  * @brief Multi-tier JIT compiler implementation.
  *
  * Compiles functions first with a fast backend (tier 0) for immediate execution,
- * then promotes to a high-performance backend (tier 1) in the background.
+ * then promotes to a high-performance backend (tier 1) in the background, on the
+ * workers of the compiler's @ref PromotionService (one per compiler, hence one per
+ * engine).
  *
  * This is the only JITCompiler strategy. Single-tier compilation is a
  * configuration of it: setting `engine.backend=<x>` compiles synchronously
@@ -68,8 +84,8 @@ namespace nautilus::compiler {
  * and `engine.tiered.backgroundPromotion=false` compiles single-tier with
  * the configured tier-1 backend.
  *
- * The compiler keeps a reference to the module state and directly swaps the
- * executable and increments the version counter when tier-1 compilation completes.
+ * A promotion job holds the module state weakly and, when it completes, swaps the
+ * executable and increments the version counter under the module's exclusive lock.
  * This eliminates the need for swap callbacks on executables.
  */
 class TieredJITCompiler : public JITCompiler {
@@ -88,11 +104,14 @@ public:
 	                                                  const engine::ModuleOptions& moduleOptions = {}) const override;
 
 	/**
-	 * @brief Compile tier-0 into @p state and start background tier-1 promotion.
+	 * @brief Compile tier-0 into @p state and queue the background tier-1 promotion.
 	 *
 	 * The IR produced for tier-0 is handed directly to the promotion for this
-	 * module — no compiler-level cache is shared between calls, so concurrent
+	 * module -- no compiler-level cache is shared between calls, so concurrent
 	 * compileModule() invocations on a single shared compiler are race-free.
+	 * With the policy `eager` the job is queued right after conversion, before
+	 * the tier-0 code generation (11-tiered-compilation.md §4.5); with `manual`
+	 * it waits for `CompiledModule::promote()`.
 	 */
 	void compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
 	                   std::shared_ptr<engine::details::ModuleState> state) const override;
@@ -100,69 +119,52 @@ public:
 	std::string getName() const override;
 	const engine::Options& getOptions() const override;
 
-	/**
-	 * @brief Block until all pending background promotions have completed.
-	 */
-	void waitForPendingPromotions() const;
+	/// Blocks until no promotion of this compiler is queued or running. No lock is held while waiting.
+	bool waitForPromotions(std::chrono::milliseconds timeout = std::chrono::milliseconds::max()) const override;
 
-	/**
-	 * @brief Returns true if all background promotions have completed.
-	 */
+	/// True if no promotion is queued or running.
 	bool allPromotionsComplete() const;
 
-	/**
-	 * @brief Number of promotion threads this compiler still holds: the running
-	 * ones plus those that finished since the last promotion started. Finished
-	 * threads are joined when the next promotion starts, so this stays bounded
-	 * by the promotions in flight however many modules are compiled.
-	 */
-	size_t retainedPromotionThreads() const;
+	/// The promotion workers created so far: at most `engine.tiered.promotionThreads`, however many modules were
+	/// compiled.
+	size_t promotionWorkerCount() const;
 
 private:
+	/// Called with the converted graph, before the tier backend compiles it.
+	using GraphReady = std::function<void(const std::shared_ptr<ir::IRGraph>&)>;
+
 	/**
-	 * @brief Trace and compile @p functions with the named @p backend, returning
-	 * the IR via @p outIR so callers can hand it to background promotion.
+	 * @brief Trace and compile @p functions with the named @p backend.
 	 *
 	 * @p tierLabel is recorded into the compilation statistics ("tier0"/"tier1").
 	 * @p optimization is how much of the IR optimization pipeline runs before
 	 * the graph is compiled; the caller decides it from every backend that
 	 * will compile this graph, the promotion target included, since the graph
 	 * is traced once and shared between the tiers.
+	 * @p graphReady, if set, is called between conversion and the backend: the
+	 * point where an eager promotion starts (§4.5).
 	 */
 	[[nodiscard]] std::unique_ptr<Executable> compileTier(std::list<CompilableFunction>& functions,
 	                                                      const engine::ModuleOptions& moduleOptions,
 	                                                      const std::string& backend, const std::string& tierLabel,
 	                                                      IROptimizationLevel optimization,
-	                                                      std::shared_ptr<ir::IRGraph>& outIR) const;
+	                                                      const GraphReady& graphReady = {}) const;
 
-	/**
-	 * @brief Start background tier-1 promotion of @p ir targeting @p state.
-	 *
-	 * Compiles @p ir with the tier-1 backend on a background thread using
-	 * @p options.  When done, the executable in the module state is swapped and
-	 * the version counter is incremented, causing all ModuleFunction handles to
-	 * re-resolve.  The IR and options are owned per call, so nothing is shared
-	 * between concurrent compiles.
-	 */
-	void promoteAsync(std::weak_ptr<engine::details::ModuleState> state, std::shared_ptr<ir::IRGraph> ir,
-	                  engine::ModuleOptions options) const;
+	/// The promotion job of @p state: compiles @p ir with the tier-1 backend on a worker. Installs the job as the
+	/// state's promotion control and, under the policy `manual`, parks it.
+	[[nodiscard]] std::shared_ptr<PromotionJob>
+	createPromotion(const std::shared_ptr<engine::details::ModuleState>& state, std::shared_ptr<ir::IRGraph> ir,
+	                const engine::ModuleOptions& options) const;
 
-	/// A promotion thread and the flag it sets when its work is done, so the
-	/// thread can be joined (briefly) once the flag is set.
-	struct PromotionThread {
-		std::thread thread;
-		std::shared_ptr<std::atomic<bool>> finished;
-	};
-
-	/// Joins and drops the finished promotion threads. Caller holds threadsMutex_.
-	void reapFinishedPromotions() const;
+	/// Whether tier 1 can compile @p ir while tier 0 still does: both backends read the immutable NIR module
+	/// and neither builds the 0.3 IR into the graph.
+	[[nodiscard]] bool canStartEarly(const ir::IRGraph& ir) const;
 
 	CompilationPipeline pipeline_;
 	engine::TieredCompilationConfig config_;
-
-	mutable std::vector<PromotionThread> promotionThreads_;
-	mutable std::mutex threadsMutex_;
-	mutable std::atomic<int> pendingPromotions_ {0};
+	/// Created with the compiler, starts its first worker with the first job. Shared with the promotion controls of
+	/// the modules, weakly, so that `promote()` after the engine is gone is a no-op.
+	std::shared_ptr<PromotionService> service_;
 };
 
 } // namespace nautilus::compiler

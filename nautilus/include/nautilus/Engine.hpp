@@ -149,6 +149,20 @@ public:
 		return module_.getStatistics();
 	}
 
+	/// The tier that runs the function and the state of its promotion; see CompiledModule.
+	[[nodiscard]] Tier tier() const {
+		return module_.tier();
+	}
+	[[nodiscard]] PromotionStatus promotionStatus() const {
+		return module_.promotionStatus();
+	}
+	bool waitForPromotion(std::chrono::milliseconds timeout = std::chrono::milliseconds::max()) const {
+		return module_.waitForPromotion(timeout);
+	}
+	bool promote() {
+		return module_.promote();
+	}
+
 private:
 	CompiledModule module_;
 	ModuleFunction<R(Args...)> fn_;
@@ -224,6 +238,17 @@ public:
 
 	/// The counters of the engine's arena chunk pool: bytes held, in use, peak, chunks trimmed.
 	common::ChunkPoolStats arenaStatistics() const;
+
+	/**
+	 * @brief Blocks until no promotion of this engine's modules is queued or running (11-tiered-compilation.md §4.3).
+	 *
+	 * For tests, benchmarks and embedders that want every module on tier 1 before they measure or shut down. Waits on
+	 * the engine's promotion service only, with no lock held that a `compile()` on another thread needs. A module of
+	 * policy `manual` that was not promoted has no pending promotion. Returns false if @p timeout passed first.
+	 */
+	bool waitForPromotions(std::chrono::milliseconds timeout = std::chrono::milliseconds::max()) const {
+		return jit_->waitForPromotions(timeout);
+	}
 
 	std::string getNameOfBackend() const {
 		return jit_->getName();

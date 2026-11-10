@@ -146,14 +146,13 @@ TEST_CASE("Tiered End-to-End Benchmark") {
 			common::ArenaPool irArenaPool;
 			auto tieredJit =
 			    std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
-			auto* jit = tieredJit.get();
 			auto engine = NautilusEngine(std::move(tieredJit));
 			auto module = engine.createModule();
 			module.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
 			auto compiled = module.compile();
 			auto fn = compiled.getFunction<int32_t(int32_t)>("f");
 			auto result = fn(42);
-			jit->waitForPendingPromotions();
+			engine.waitForPromotions();
 			return result;
 		});
 	});
