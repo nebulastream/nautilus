@@ -72,8 +72,8 @@ FunctionAttributes attributesFromBits(uint32_t bits) {
 	const bool reads = (bits & noRead) != noRead;
 	const bool writes = (bits & noWrite) != noWrite;
 	FunctionAttributes attributes;
-	attributes.modRefInfo = reads ? (writes ? ModRefInfo::ModRef : ModRefInfo::Ref)
-	                              : (writes ? ModRefInfo::Mod : ModRefInfo::NoModRef);
+	attributes.modRefInfo =
+	    reads ? (writes ? ModRefInfo::ModRef : ModRefInfo::Ref) : (writes ? ModRefInfo::Mod : ModRefInfo::NoModRef);
 	attributes.willReturn = (bits & nir::AttrWillReturn) != 0;
 	attributes.noUnwind = (bits & nir::AttrNoUnwind) != 0;
 	return attributes;
@@ -87,8 +87,8 @@ std::optional<FunctionAttributes> checkImport(const std::shared_ptr<link::Module
 	}
 	const auto exported = registry->findExport(declaration.module, declaration.function);
 	if (!exported) {
-		throw link::LinkError(
-		    fmt::format("{}: module '{}' has no exported function '{}'", where, declaration.module, declaration.function));
+		throw link::LinkError(fmt::format("{}: module '{}' has no exported function '{}'", where, declaration.module,
+		                                  declaration.function));
 	}
 	if (exported->signature != declaration.signature) {
 		throw link::LinkError(fmt::format("{}: signature mismatch, the import is built against {} but the export is {}",

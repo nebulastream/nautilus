@@ -169,10 +169,10 @@ TEST_CASE("Registry - linking needs the exact signature") {
 		                        Catch::Matchers::ContainsSubstring("i64 (i64)"));
 	}
 	SECTION("another arity") {
-		REQUIRE_THROWS_AS(
-		    importer->link(std::vector {importOf(
-		        "lib.math", "hash", {makeTypeWord(TypeId::I64), makeTypeWord(TypeId::I64), makeTypeWord(TypeId::I64)})}),
-		    LinkError);
+		REQUIRE_THROWS_AS(importer->link(std::vector {importOf(
+		                      "lib.math", "hash",
+		                      {makeTypeWord(TypeId::I64), makeTypeWord(TypeId::I64), makeTypeWord(TypeId::I64)})}),
+		                  LinkError);
 	}
 	SECTION("another extension kind") {
 		// the same i32 with another widening is another signature (13 §4.5.1)
@@ -180,15 +180,17 @@ TEST_CASE("Registry - linking needs the exact signature") {
 		auto other = registry->begin("other");
 		auto exporter2 = registry->begin("lib.zext");
 		auto zextState = stateOf(reinterpret_cast<void*>(&entryA));
-		exporter2->publish(zextState,
-		                   {ExportInfo {"f", {makeTypeWord(TypeId::I32, nir::ExtKind::Zext), makeTypeWord(TypeId::I32, nir::ExtKind::Zext)}, 0}});
-		REQUIRE_THROWS_AS(other->link(std::vector {importOf(
-		                      "lib.zext", "f",
-		                      {makeTypeWord(TypeId::I32, nir::ExtKind::Sext), makeTypeWord(TypeId::I32, nir::ExtKind::Sext)})}),
+		exporter2->publish(zextState, {ExportInfo {"f",
+		                                           {makeTypeWord(TypeId::I32, nir::ExtKind::Zext),
+		                                            makeTypeWord(TypeId::I32, nir::ExtKind::Zext)},
+		                                           0}});
+		REQUIRE_THROWS_AS(other->link(std::vector {importOf("lib.zext", "f",
+		                                                    {makeTypeWord(TypeId::I32, nir::ExtKind::Sext),
+		                                                     makeTypeWord(TypeId::I32, nir::ExtKind::Sext)})}),
 		                  LinkError);
-		REQUIRE_NOTHROW(other->link(std::vector {importOf(
-		    "lib.zext", "f",
-		    {makeTypeWord(TypeId::I32, nir::ExtKind::Zext), makeTypeWord(TypeId::I32, nir::ExtKind::Zext)})}));
+		REQUIRE_NOTHROW(other->link(std::vector {
+		    importOf("lib.zext", "f",
+		             {makeTypeWord(TypeId::I32, nir::ExtKind::Zext), makeTypeWord(TypeId::I32, nir::ExtKind::Zext)})}));
 	}
 }
 

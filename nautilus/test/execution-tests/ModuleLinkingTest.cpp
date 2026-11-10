@@ -152,7 +152,7 @@ TEST_CASE("Modules - the importer sees the exporter's guarantees") {
 			auto query = engine.createModule("nes.q");
 			auto hash = query.importFunction<uint64_t(uint64_t)>("lib.math", "hash");
 			query.registerFunction<val<uint64_t>(val<uint64_t>)>("run",
-			                                                      [hash](val<uint64_t> x) { return hash(x) + 1; });
+			                                                     [hash](val<uint64_t> x) { return hash(x) + 1; });
 			auto compiled = query.compile();
 			REQUIRE(compiled.getFunction<uint64_t(uint64_t)>("run")(2) == 2 * 31 + 7 + 1);
 			if (engine.isCompiled()) {
@@ -184,7 +184,8 @@ TEST_CASE("Modules - the module, the function, the signature and the guarantees 
 		auto query = engine.createModule("nes.q");
 		auto hash = query.importFunction<uint64_t(uint64_t)>("lib.nothing", "hash");
 		query.registerFunction<val<uint64_t>(val<uint64_t>)>("run", [hash](val<uint64_t> x) { return hash(x); });
-		REQUIRE_THROWS_WITH(query.compile(), Catch::Matchers::ContainsSubstring("module 'lib.nothing' is not registered"));
+		REQUIRE_THROWS_WITH(query.compile(),
+		                    Catch::Matchers::ContainsSubstring("module 'lib.nothing' is not registered"));
 	}
 	auto library = compileLibrary(engine);
 	SECTION("a function that is not exported") {
@@ -276,7 +277,8 @@ TEST_CASE("Modules - an exporter outlives its importers") {
 		REQUIRE(registry->stageOf("lib.math") == link::ModuleStage::Compiled);
 		REQUIRE((*run)(2) == 2 * 31 + 7);
 
-		// the importer's functions are handles of its state: with them gone, the importer is released, then the exporter
+		// the importer's functions are handles of its state: with them gone, the importer is released, then the
+		// exporter
 		run.reset();
 		query.reset();
 		REQUIRE(libraryWatch.expired());

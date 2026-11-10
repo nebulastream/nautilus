@@ -251,7 +251,8 @@ std::shared_ptr<const ImportLink> ModuleHandle::link(std::span<const ImportReque
 			throw LinkError(fmt::format("module '{}' cannot be linked: it is {}", importer, toString(stage_)));
 		}
 		for (const auto& request : imports) {
-			const auto where = fmt::format("import '{}'.'{}' of module '{}'", request.module, request.function, importer);
+			const auto where =
+			    fmt::format("import '{}'.'{}' of module '{}'", request.module, request.function, importer);
 			if (!name_.empty() && request.module == name_) {
 				throw LinkError(fmt::format("{}: cycle, a module cannot import from itself", where));
 			}
@@ -275,9 +276,9 @@ std::shared_ptr<const ImportLink> ModuleHandle::link(std::span<const ImportReque
 				                            request.function));
 			}
 			if (exported->signature != request.signature) {
-				throw LinkError(fmt::format("{}: signature mismatch, the import is built against {} but the export is {}",
-				                            where, describeSignature(request.signature),
-				                            describeSignature(exported->signature)));
+				throw LinkError(
+				    fmt::format("{}: signature mismatch, the import is built against {} but the export is {}", where,
+				                describeSignature(request.signature), describeSignature(exported->signature)));
 			}
 			if (!nir::attrsImply(exported->attrs, request.attrs)) {
 				throw LinkError(fmt::format("{}: the import assumes the guarantees {:#x} but the export gives {:#x}",
@@ -362,7 +363,8 @@ void ModuleHandle::release() {
 		if (stage_ == ModuleStage::Released) {
 			return;
 		}
-		if (const auto it = registry_->modules_.find(name_); it != registry_->modules_.end() && it->second.raw == this) {
+		if (const auto it = registry_->modules_.find(name_);
+		    it != registry_->modules_.end() && it->second.raw == this) {
 			registry_->modules_.erase(it);
 		}
 		stage_ = ModuleStage::Released;
