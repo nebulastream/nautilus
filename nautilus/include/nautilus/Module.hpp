@@ -4,6 +4,7 @@
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
+#include "nautilus/ModuleExplanation.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
@@ -81,6 +82,12 @@ public:
 	/// Queues the promotion if nobody has yet. Returns true if this call queued it, false if the promotion was
 	/// requested before, was skipped, or the engine is gone.
 	virtual bool promote() = 0;
+	/// The backends of the two tiers, for `CompiledModule::explain()`.
+	struct TierBackends {
+		std::string tier0;
+		std::string tier1;
+	};
+	[[nodiscard]] virtual TierBackends tierBackends() const = 0;
 };
 
 struct ModuleState;
@@ -468,6 +475,15 @@ public:
 		const std::lock_guard<std::mutex> lock(state_->promotionMutex);
 		return state_->promotion;
 	}
+
+	/**
+	 * @brief One report of what the engine knows about this module: tiers and their backends, the promotion status,
+	 * the functions with their attributes and sizes, the compile statistics, and the parts that are not built yet
+	 * (persistability, inlining decisions), which say so. See `ModuleExplanation::toString()` and `toJson()`.
+	 *
+	 * Reads recorded state only; it never compiles and does not wait for a promotion.
+	 */
+	[[nodiscard]] ModuleExplanation explain() const;
 
 	/**
 	 * @brief Waits until this module's promotion is no longer queued or running.
