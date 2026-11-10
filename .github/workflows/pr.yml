@@ -318,6 +318,8 @@ jobs:
         run: python3 tools/doc-check/doc-check.py --self-test
       - name: doc-check
         run: python3 tools/doc-check/doc-check.py
+      - name: affected-tests maps a sample of changed files to the expected targets
+        run: python3 tools/agent/affected-tests --self-test
   nir-components:
     runs-on: ubuntu-24.04
     if: ${{ github.event.action != 'labeled' || github.event.label.name == '0.4' }}

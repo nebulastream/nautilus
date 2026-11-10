@@ -61,7 +61,8 @@ ctest --test-dir $B/plugins/<plugin>/test --output-on-failure             # one 
 ## 4. Before pushing
 
 1. `./format.sh` (clang-format 22; older versions report false violations).
-2. The tests of every area you touched, on the backends you changed.
+2. The tests of every area you touched, on the backends you changed;
+   `tools/agent/affected-tests` lists them for your diff.
 3. If you added `#ifdef` paths or stubs: build the `nocompiler` preset.
 4. Re-read the diff for what CI's 14 configurations would reject: GCC 14
    warnings as errors, macOS (no `/proc`, different `dlopen`), AArch64.
