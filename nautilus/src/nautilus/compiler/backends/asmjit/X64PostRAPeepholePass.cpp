@@ -294,54 +294,73 @@ uint32_t jccCondition(InstId id) noexcept {
 	return 16;
 }
 
-/// The labels that an instruction names: the target of a jump, the base of a RIP-relative address.
-std::vector<uint8_t> referencedLabels(BaseBuilder* cb) {
-	std::vector<uint8_t> referenced(cb->labelNodes().size(), 0);
+/// The direct jumps (instructions with one label operand) in order, and the labels that the other instructions name
+/// (the base of a RIP-relative address): only they take part in rules 3 and 4.
+struct JumpList {
+	std::vector<InstNode*> jumps;
+	std::vector<uint8_t> memReferenced;
+};
+
+JumpList collectJumps(BaseBuilder* cb) {
+	JumpList list;
+	list.memReferenced.assign(cb->labelNodes().size(), 0);
 	for (BaseNode* node = cb->firstNode(); node != nullptr; node = node->next()) {
 		if (!node->isInst()) {
 			continue;
 		}
-		const auto* inst = node->as<InstNode>();
-		for (uint32_t i = 0; i < inst->opCount(); ++i) {
+		auto* inst = node->as<InstNode>();
+		const uint32_t count = inst->opCount();
+		if (count == 1 && inst->op(0).isLabel()) {
+			list.jumps.push_back(inst);
+			continue;
+		}
+		for (uint32_t i = 0; i < count; ++i) {
 			const Operand& op = inst->op(i);
-			uint32_t id = Globals::kInvalidId;
-			if (op.isLabel()) {
-				id = op.id();
-			} else if (op.isMem() && op.as<Mem>().hasBaseLabel()) {
-				id = op.as<Mem>().baseId();
+			if (op.isMem() && op.as<Mem>().hasBaseLabel()) {
+				const uint32_t id = op.as<Mem>().baseId();
+				if (id < list.memReferenced.size()) {
+					list.memReferenced[id] = 1;
+				}
 			}
-			if (id < referenced.size()) {
-				referenced[id] = 1;
-			}
+		}
+	}
+	return list;
+}
+
+/// The labels that some instruction still names.
+std::vector<uint8_t> referencedLabels(const JumpList& list) {
+	std::vector<uint8_t> referenced = list.memReferenced;
+	for (const InstNode* inst : list.jumps) {
+		if (inst != nullptr && inst->op(0).id() < referenced.size()) {
+			referenced[inst->op(0).id()] = 1;
 		}
 	}
 	return referenced;
 }
 
-/// Rules 3 and 4 (jump simplification) over the whole node list, once.
+/// Rules 3 and 4 (jump simplification) over the jumps, once; removed jumps are cleared from the list.
 /// Returns the number of jumps removed.
-int64_t simplifyJumps(BaseBuilder* cb) noexcept {
+int64_t simplifyJumps(BaseBuilder* cb, JumpList& list) noexcept {
+	auto& jumps = list.jumps;
 	int64_t removed = 0;
-	const auto referenced = referencedLabels(cb);
-	BaseNode* node = cb->firstNode();
-	while (node != nullptr) {
-		BaseNode* next = node->next();
-		if (!node->isInst()) {
-			node = next;
+	std::vector<uint8_t> referenced;
+	bool referencedKnown = false; // the scan of all instructions is needed only after a conditional jump
+	for (size_t i = 0; i < jumps.size(); ++i) {
+		InstNode* inst = jumps[i];
+		if (inst == nullptr) {
 			continue;
 		}
-		auto* inst = node->as<InstNode>();
 
 		// Rule 3: a jump to the label bound right after it is a no-op. The
 		// lowering emits one at nearly every block boundary (each
 		// block-argument edge ends in an explicit jmp, and the target is
 		// usually emitted next).
 		if (inst->id() == Inst::kIdJmp) {
-			if (const Label* target = jumpTarget(inst); target != nullptr && isBoundDirectlyAfter(node, target->id())) {
-				cb->removeNode(node);
+			if (isBoundDirectlyAfter(inst, inst->op(0).id())) {
+				cb->removeNode(inst);
+				jumps[i] = nullptr;
 				++removed;
 			}
-			node = next;
 			continue;
 		}
 
@@ -351,12 +370,23 @@ int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 		// that previously went through it.
 		// (labels in between that no instruction names are the heads of blocks that were emitted empty: they do not
 		// make the jmp a branch target)
-		BaseNode* afterJcc = next;
-		while (afterJcc != nullptr && afterJcc->isLabel() && afterJcc->as<LabelNode>()->labelId() < referenced.size() &&
-		       referenced[afterJcc->as<LabelNode>()->labelId()] == 0) {
-			afterJcc = afterJcc->next();
+		const uint32_t cond = jccCondition(inst->id());
+		if (cond >= 16) {
+			continue;
 		}
-		if (const uint32_t cond = jccCondition(inst->id()); cond < 16 && afterJcc != nullptr && afterJcc->isInst()) {
+		BaseNode* afterJcc = inst->next();
+		if (afterJcc != nullptr && afterJcc->isLabel()) {
+			if (!referencedKnown) {
+				referenced = referencedLabels(list);
+				referencedKnown = true;
+			}
+			while (afterJcc != nullptr && afterJcc->isLabel() &&
+			       afterJcc->as<LabelNode>()->labelId() < referenced.size() &&
+			       referenced[afterJcc->as<LabelNode>()->labelId()] == 0) {
+				afterJcc = afterJcc->next();
+			}
+		}
+		if (afterJcc != nullptr && afterJcc->isInst()) {
 			auto* jmp = afterJcc->as<InstNode>();
 			const Label* condTarget = jumpTarget(inst);
 			const Label* jmpTarget = jmp->id() == Inst::kIdJmp ? jumpTarget(jmp) : nullptr;
@@ -365,12 +395,17 @@ int64_t simplifyJumps(BaseBuilder* cb) noexcept {
 				inst->setOp(0, *jmpTarget);
 				// The new target may be out of rel8 range; let the assembler pick.
 				inst->clearOptions(InstOptions::kShortForm);
-				next = jmp->next();
 				cb->removeNode(jmp);
+				// the jmp is the next jump of the list (it directly follows the jcc)
+				for (size_t j = i + 1; j < jumps.size(); ++j) {
+					if (jumps[j] == jmp) {
+						jumps[j] = nullptr;
+						break;
+					}
+				}
 				++removed;
 			}
 		}
-		node = next;
 	}
 	return removed;
 }
@@ -391,7 +426,8 @@ Error X64PostRAPeepholePass::run(Zone* /*zone*/, Logger* /*logger*/) {
 	// Removing one jump can make another one a fallthrough (`jmp L; M: jmp L;
 	// L:`), so iterate to a fixpoint; each round only removes nodes.
 	int64_t jumpsRemoved = 0;
-	for (int64_t round = simplifyJumps(cb); round != 0; round = simplifyJumps(cb)) {
+	auto jumps = collectJumps(cb);
+	for (int64_t round = simplifyJumps(cb, jumps); round != 0; round = simplifyJumps(cb, jumps)) {
 		jumpsRemoved += round;
 	}
 
