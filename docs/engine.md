@@ -108,6 +108,64 @@ For debugging purposes, you can disable compilation entirely. When compilation i
 options.setOption("engine.Compilation", false);
 ```
 
+## Tiered Compilation and Promotion
+
+Without `engine.backend`, the engine compiles in two tiers. `compile()` returns a module that runs on a fast **tier 0**
+executable (`asmjit`, else `tbc`, else the interpreter), and the **tier 1** executable (`mlir`) is compiled in the
+background and swapped in; the `ModuleFunction` handles you hold pick it up on their next call. A call that is running
+when the swap happens finishes in the tier it started in, and a superseded executable lives as long as the handles that
+resolved it. `engine.backend=<x>` pins one backend and compiles single-tier, synchronously.
+
+The tiers are set with `engine.tier0.backend` and `engine.tier1.backend`, each alone or both; a backend that is not built
+fails when the engine is created.
+
+### The promotion service
+
+Each engine owns a **promotion service**: a pool of `engine.tiered.promotionThreads` worker threads (default a quarter
+of the hardware threads, at least one) that compile the tier 1 of all of the engine's modules. The workers are created
+with the first promotion, run at a lower OS priority than your threads, and live as long as the engine, so the number
+of threads stays the same however many modules you compile, and the state a backend keeps per thread (the MLIR context
+and target machines) is reused by every promotion after a worker's first. `engine.tiered.maxQueuedPromotions` caps how
+many promotions may wait: a module beyond the cap stays on tier 0 with the status `skipped`.
+
+A promotion whose module is dropped is cancelled: it is dropped when a worker dequeues it, and a running one ends at the
+next stage boundary of the backend (after the MLIR generation, after the LLVM optimization), installing nothing.
+Destroying the engine cancels the queued promotions and waits only for the compiles that are running, at most one per
+worker. No lock is held while waiting, so `compile()` on other threads is never held up by a wait.
+
+With the default policy the promotion is queued right after the trace was converted, **before** the tier-0 code
+generation, so a tier 1 that finishes first is installed and the late tier-0 executable is dropped.
+
+### Policy
+
+`engine.tiered.promotion` selects when a module is promoted:
+
+- `eager` (default): every module, right after conversion.
+- `manual`: only when you call `CompiledModule::promote()`, for example once a query is known to be long-running.
+  `promote()` from several threads at once queues one job.
+
+### Status
+
+```cpp
+auto compiled = module.compile();
+
+compiled.tier();             // Tier::interpreted, Tier::tier0 or Tier::tier1
+compiled.promotionStatus();  // {PromotionState::queued, ...}: none, queued, running, done, failed, cancelled, skipped
+compiled.waitForPromotion(); // waits for this module only; with a timeout, returns false if it passed
+compiled.promote();          // policy manual: queue the promotion now
+
+engine.waitForPromotions();  // waits until no promotion of the engine is queued or running
+```
+
+A promotion that throws leaves the module on tier 0 with the status `failed` and the message in
+`promotionStatus().error`; it is logged once and not retried. `engine.logStatistics` and `NAUTILUS_STATISTICS_FILE`
+report a promotion as its own compile: the unit ID is the tier-0 one plus `_tier1`, `compilation.tier0UnitId` links the
+two, and `promotion.queueMs`, `promotion.compileMs`, `promotion.timeToTier1Ms` and `promotion.status` (with
+`promotion.error` on failure) describe it.
+
+`engine.tiered.backgroundPromotion=false` is a deprecated alias that compiles single-tier with the tier-1 backend; it
+wins over `engine.tiered.promotion` when both are set, with a warning. Prefer `engine.backend`.
+
 ## Modules
 
 When you need to compile multiple functions together into a single compilation unit, use modules. All functions registered with a module share one IR graph and are compiled by the same backend in one pass.

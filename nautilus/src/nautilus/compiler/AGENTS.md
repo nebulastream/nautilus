@@ -15,11 +15,16 @@
   lets a backend ask for fewer passes (MLIR takes only block-argument pruning).
   The `ir.*` options configure this pipeline. Both go when the last backend has
   its NIR port (PRs 7 and 8).
-- **Tiered compilation** (`TieredCompiler.cpp`): `engine.backend=<x>` pins one
-  backend. Otherwise tier 0 (`asmjit`, else `tbc`, else the interpreter) is
-  compiled synchronously and tier 1 (MLIR) on a background thread, which swaps
-  the module's executable. Finished promotion threads are reaped when the next
-  promotion starts (#566).
+- **Tiered compilation** (`TieredCompiler.cpp`, `PromotionService.cpp`): `engine.backend=<x>` pins one
+  backend. Otherwise tier 0 (`asmjit`, else `tbc`, else the interpreter) is compiled synchronously and tier 1
+  (MLIR) by the engine's `PromotionService`: a fixed pool of `engine.tiered.promotionThreads` workers (lower OS
+  priority) that run `PromotionJob`s (`queued -> running -> done | failed | cancelled`, or `skipped` past
+  `engine.tiered.maxQueuedPromotions`) and swap the module's executable. A job holds its module weakly; dropping
+  the module cancels the job, and the backends check the token at stage boundaries. With the policy `eager` the job
+  is queued right after conversion, before the tier-0 code generation, but only if both backends compile the
+  immutable NIR (`canStartEarly`); tier 0 is installed only while `ModuleState::version` is 0. The service mutex is
+  never held while compiling, publishing a status, joining or waiting. Promotions turn
+  `mlir.enableMultithreading` off: workers own no thread pool (11 §4.1).
 - **IR** (`ir/`): `IRGraph`, `operations/` (one class per operation kind),
   `blocks/`. Adding or changing an operation touches many places: use the
   `ir-change` skill.
