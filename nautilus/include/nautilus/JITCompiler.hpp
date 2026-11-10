@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/options.hpp"
+#include <chrono>
 #include <functional>
 #include <list>
 #include <memory>
@@ -68,6 +69,16 @@ public:
 	 */
 	virtual void compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
 	                           std::shared_ptr<engine::details::ModuleState> state) const = 0;
+
+	/**
+	 * @brief Blocks until no background promotion of this compiler is queued or running.
+	 *
+	 * Compilers that do not promote in the background have nothing to wait for. Returns false if @p timeout passed
+	 * first. No lock of the compiler is held while waiting, so compiles on other threads proceed.
+	 */
+	virtual bool waitForPromotions(std::chrono::milliseconds /*timeout*/ = std::chrono::milliseconds::max()) const {
+		return true;
+	}
 
 	/**
 	 * @brief Get the name of the primary compilation backend.

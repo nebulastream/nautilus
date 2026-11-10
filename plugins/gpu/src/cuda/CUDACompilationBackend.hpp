@@ -7,8 +7,8 @@ namespace nautilus::compiler::cuda {
 class CUDACompilationBackend : public CompilationBackend {
 public:
 	std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
-	                                    const engine::Options& options,
-	                                    CompilationStatistics* statistics = nullptr) const override;
+	                                    const engine::Options& options, CompilationStatistics* statistics = nullptr,
+	                                    const nirbackend::CancellationToken* cancellation = nullptr) const override;
 	/// The kernel classification reads the `kernel` attribute of the 0.3 trace
 	[[nodiscard]] bool needs03Frontend() const override {
 		return true;

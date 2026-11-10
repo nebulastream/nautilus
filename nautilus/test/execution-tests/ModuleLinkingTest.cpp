@@ -371,7 +371,6 @@ TEST_CASE("Modules - the promotion of an exporter is seen by its importers") {
 	common::ArenaPool traceArenaPool;
 	common::ArenaPool irArenaPool;
 	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
-	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 
 	auto library = compileLibrary(engine);
@@ -391,7 +390,7 @@ TEST_CASE("Modules - the promotion of an exporter is seen by its importers") {
 	REQUIRE(check(1) == 4);
 	REQUIRE_THROWS_AS(check(-1), std::runtime_error);
 
-	jit->waitForPendingPromotions();
+	engine.waitForPromotions();
 
 	// the exporter runs other code now, the slot names it, and the importer (itself promoted) still computes the same
 	REQUIRE(library.getExecutable() != libraryTier0);
@@ -414,7 +413,6 @@ TEST_CASE("Modules - calls run while the exporter is promoted") {
 	common::ArenaPool traceArenaPool;
 	common::ArenaPool irArenaPool;
 	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
-	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 
 	auto library = compileLibrary(engine);
@@ -437,7 +435,7 @@ TEST_CASE("Modules - calls run while the exporter is promoted") {
 			}
 		});
 	}
-	jit->waitForPendingPromotions();
+	engine.waitForPromotions();
 	done = true;
 	for (auto& caller : callers) {
 		caller.join();

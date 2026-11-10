@@ -541,6 +541,14 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	return ir;
 }
 
+CompilationUnitID CompilationPipeline::unitIdOf(const ir::IRGraph& ir) {
+	return ir.getId();
+}
+
+bool CompilationPipeline::carriesOnlyNir(const ir::IRGraph& ir) {
+	return ir.getNirModule() != nullptr && ir.getFunctionOperations().empty();
+}
+
 void CompilationPipeline::prepareFor(const std::shared_ptr<ir::IRGraph>& ir, const std::string& backendName,
                                      const engine::ModuleOptions& moduleOptions,
                                      CompilationStatistics* statistics) const {
@@ -558,8 +566,10 @@ void CompilationPipeline::prepareFor(const std::shared_ptr<ir::IRGraph>& ir, con
 std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr<ir::IRGraph>& ir,
                                                            const std::string& backendName,
                                                            const engine::ModuleOptions& moduleOptions,
-                                                           CompilationStatistics* statistics) const {
-	const CompilationUnitID compilationId = createCompilationUnitID();
+                                                           CompilationStatistics* statistics,
+                                                           const CompilationUnitID& unitId,
+                                                           const nirbackend::CancellationToken* cancellation) const {
+	const CompilationUnitID compilationId = unitId.empty() ? createCompilationUnitID() : unitId;
 	auto dumpHandler = DumpHandler(moduleOptions, compilationId);
 
 	if (statistics != nullptr) {
@@ -571,7 +581,10 @@ std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr
 
 	prepareFor(ir, backendName, moduleOptions, statistics);
 	const auto backend = backends->getBackend(backendName);
-	auto executable = backend->compile(ir, dumpHandler, moduleOptions, statistics);
+	auto executable = backend->compile(ir, dumpHandler, moduleOptions, statistics, cancellation);
+	if (executable == nullptr) {
+		return nullptr; // cancelled
+	}
 	executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 	return executable;
 }
@@ -585,8 +598,18 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 }
 
 std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr<ir::IRGraph>&, const std::string&,
-                                                           const engine::ModuleOptions&, CompilationStatistics*) const {
+                                                           const engine::ModuleOptions&, CompilationStatistics*,
+                                                           const CompilationUnitID&,
+                                                           const nirbackend::CancellationToken*) const {
 	throw RuntimeException("Jit not initialised");
+}
+
+CompilationUnitID CompilationPipeline::unitIdOf(const ir::IRGraph&) {
+	return {};
+}
+
+bool CompilationPipeline::carriesOnlyNir(const ir::IRGraph&) {
+	return false;
 }
 
 void CompilationPipeline::prepareFor(const std::shared_ptr<ir::IRGraph>&, const std::string&,

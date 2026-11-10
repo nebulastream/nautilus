@@ -7,7 +7,8 @@ namespace nautilus::compiler::nirbackend {
 
 std::unique_ptr<Executable> NirChainBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
                                                      const DumpHandler& dumpHandler, const engine::Options& options,
-                                                     CompilationStatistics* statistics) const {
+                                                     CompilationStatistics* statistics,
+                                                     const nirbackend::CancellationToken* cancellation) const {
 	auto module = std::static_pointer_cast<const nir::Module>(ir->getNirModule());
 	if (!module) {
 		throw RuntimeException("The backend 'nirtbc' compiles the NIR of the trace: set tracing.nirChain=true");
@@ -17,7 +18,7 @@ std::unique_ptr<Executable> NirChainBackend::compile(const std::shared_ptr<ir::I
 		throw RuntimeException("The backend 'nirtbc' needs the tbc backend");
 	}
 	// the traced module is process-local: its pointers are addresses, so the host resolves nothing
-	CompileContext context {dumpHandler, options, statistics, nullptr, hostEnvironmentFor(ir->getImportLink())};
+	CompileContext context {dumpHandler, options, statistics, cancellation, hostEnvironmentFor(ir->getImportLink())};
 	return backend->compile(std::move(module), context);
 }
 

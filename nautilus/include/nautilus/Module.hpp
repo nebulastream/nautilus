@@ -9,6 +9,8 @@
 #include "nautilus/options.hpp"
 #include <any>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <list>
@@ -32,7 +34,54 @@ struct SessionAccess;
 
 namespace nautilus::engine {
 
+/// The executable a module runs (11-tiered-compilation.md §4.3).
+enum class Tier : uint8_t {
+	/// No executable: the original callables are invoked directly, until a promotion installs one.
+	interpreted,
+	/// The fast executable that is compiled before `compile()` returns.
+	tier0,
+	/// The optimized executable: from a promotion, or the only one of a single-tier compile.
+	tier1,
+};
+
+/// Where the promotion of a module to tier 1 stands.
+enum class PromotionState : uint8_t {
+	/// No promotion is under way: the module has none (single-tier), or the policy is `manual` and `promote()` was not
+	/// called yet.
+	none,
+	/// Waiting for a worker of the engine's promotion service.
+	queued,
+	/// A worker compiles the tier-1 executable.
+	running,
+	/// The tier-1 executable runs the module (or, if it was ready before tier 0, tier 0 was dropped).
+	done,
+	/// The tier-1 compile threw; the module stays on tier 0. `PromotionStatus::error` has the message. Not retried.
+	failed,
+	/// The module was dropped, or the engine shut down, before the promotion finished; nothing was installed.
+	cancelled,
+	/// The admission cap (`engine.tiered.maxQueuedPromotions`) was reached: the module stays on tier 0.
+	skipped,
+};
+
+/// The result of `CompiledModule::promotionStatus()`.
+struct PromotionStatus {
+	PromotionState state = PromotionState::none;
+	/// The message of the exception of a `failed` promotion; empty otherwise.
+	std::string error;
+};
+
 namespace details {
+
+/// The part of a module's promotion that the compiler implements: the module asks it to queue the job (`promote()`),
+/// and destroying it, with the module's state, cancels the job. Set once by the compiler before `compileModule`
+/// returns.
+class PromotionControl {
+public:
+	virtual ~PromotionControl() = default;
+	/// Queues the promotion if nobody has yet. Returns true if this call queued it, false if the promotion was
+	/// requested before, was skipped, or the engine is gone.
+	virtual bool promote() = 0;
+};
 
 struct ModuleState;
 
@@ -83,6 +132,29 @@ struct ModuleState {
 	mutable std::shared_mutex mutex;
 	/// Called by ModuleVersion::fetch_add; added and read with the mutex held exclusively.
 	std::vector<std::function<void(ModuleState&)>> installObservers;
+
+	/// The tier of `executable`; written under `mutex` together with it. A module with an executable and no
+	/// promotion runs its only tier, hence the default.
+	std::atomic<Tier> tier {Tier::tier1};
+
+	/// The promotion status and the signal for the waiters of `CompiledModule::waitForPromotion`. Separate from
+	/// `mutex` so that a waiter never holds up a call that re-resolves.
+	mutable std::mutex promotionMutex;
+	mutable std::condition_variable promotionChanged;
+	PromotionStatus promotion; // guarded by promotionMutex
+
+	/// Declared last: destroyed first, so a cancelled job never sees a half-destroyed state.
+	std::unique_ptr<PromotionControl> promotionControl;
+
+	/// Publishes a new promotion status and wakes the waiters.
+	void setPromotion(PromotionState state, std::string error = {}) {
+		{
+			const std::lock_guard<std::mutex> lock(promotionMutex);
+			promotion.state = state;
+			promotion.error = std::move(error);
+		}
+		promotionChanged.notify_all();
+	}
 };
 
 uint64_t ModuleVersion::fetch_add(uint64_t delta, std::memory_order order) {
@@ -378,6 +450,53 @@ public:
 		auto exe = std::move(state_->executable);
 		state_->version.fetch_add(1, std::memory_order_release);
 		return exe;
+	}
+
+	/**
+	 * @brief The tier that runs the module now (11-tiered-compilation.md §4.3).
+	 *
+	 * `interpreted` while the module has no executable, `tier0` after the fast compile, `tier1` once a promotion
+	 * installed the optimized executable (or from the start, for a single-tier compile).
+	 */
+	[[nodiscard]] Tier tier() const {
+		std::shared_lock<std::shared_mutex> lock(state_->mutex);
+		return state_->executable ? state_->tier.load(std::memory_order_relaxed) : Tier::interpreted;
+	}
+
+	/// Where the promotion to tier 1 stands, with the error message of a failed one.
+	[[nodiscard]] PromotionStatus promotionStatus() const {
+		const std::lock_guard<std::mutex> lock(state_->promotionMutex);
+		return state_->promotion;
+	}
+
+	/**
+	 * @brief Waits until this module's promotion is no longer queued or running.
+	 *
+	 * Waits for this module only. Returns at once if no promotion is pending (single-tier compile, policy `manual`
+	 * before `promote()`, or a promotion that ended). Returns false if @p timeout passed first.
+	 */
+	bool waitForPromotion(std::chrono::milliseconds timeout = std::chrono::milliseconds::max()) const {
+		std::unique_lock<std::mutex> lock(state_->promotionMutex);
+		const auto settled = [this] {
+			return state_->promotion.state != PromotionState::queued &&
+			       state_->promotion.state != PromotionState::running;
+		};
+		if (timeout == std::chrono::milliseconds::max()) {
+			state_->promotionChanged.wait(lock, settled);
+			return true;
+		}
+		return state_->promotionChanged.wait_for(lock, timeout, settled);
+	}
+
+	/**
+	 * @brief Requests the promotion to tier 1 now (policy `manual`, `engine.tiered.promotion`).
+	 *
+	 * Queues one promotion job however many threads call it at once. Returns true if this call queued it, false if
+	 * it was requested already, the policy is `eager` (the job was queued by `compile()`), the module has nothing to
+	 * promote to, or the engine was destroyed. A no-op after that; the outcome shows in `promotionStatus()`.
+	 */
+	bool promote() {
+		return state_->promotionControl != nullptr && state_->promotionControl->promote();
 	}
 
 	/// Get the shared module state (used by NautilusModule for tiered compilation).

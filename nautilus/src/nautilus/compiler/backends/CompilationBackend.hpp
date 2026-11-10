@@ -12,6 +12,9 @@ class CompilationStatistics;
 namespace ir {
 class IRGraph;
 }
+namespace nirbackend {
+class CancellationToken;
+}
 
 /**
  * @brief How much of the IR optimization pipeline runs on a graph before a
@@ -53,11 +56,16 @@ public:
 	 *                    non-null, backends record per-phase timings and
 	 *                    backend-specific metrics (e.g. code size) under
 	 *                    backend-scoped keys.
-	 * @return std::unique_ptr<Executable>
+	 * @param cancellation Set by another thread to stop a compile that runs in the background (a promotion,
+	 *                    11-tiered-compilation.md §4.2); null for a synchronous compile. A backend that compiles NIR
+	 *                    checks it at stage boundaries and returns null when it was cancelled; the others ignore it
+	 *                    and run to the end.
+	 * @return the executable; null only if the compile was cancelled
 	 */
 	virtual std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
 	                                            const engine::Options& options,
-	                                            CompilationStatistics* statistics = nullptr) const = 0;
+	                                            CompilationStatistics* statistics = nullptr,
+	                                            const nirbackend::CancellationToken* cancellation = nullptr) const = 0;
 
 	[[nodiscard]] virtual ExceptionPropagationMode getExceptionPropagationMode() const {
 		return ExceptionPropagationMode::NativeUnwind;

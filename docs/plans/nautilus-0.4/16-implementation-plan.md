@@ -1336,6 +1336,19 @@ checked at M4.2.
 - **Done when:** the tests of [11 §6](11-tiered-compilation.md), except
   its Caches bullet (checked by M5.7), pass, including fault injection,
   the fuzzer with forced promotion and the thread bound with MLIR workers.
+- **Status.** Built: `PromotionService` (fixed worker pool, lazy start, `nice`/QoS background priority, admission
+  cap, `PromotionJob` states, cancellation through the token the backends already poll, shutdown that holds no mutex
+  while it joins or waits), the status API on `CompiledModule`/`CompiledFunction` and `NautilusEngine::waitForPromotions`
+  (`JITCompiler::waitForPromotions` underneath), policies `eager` and `manual`, early start with the late tier 0
+  dropped, the tier options settable alone and checked at engine construction, the promotion through
+  `CompilationPipeline::compileIR` with the unit ID `<tier 0>_tier1`. `TieredJITCompiler::waitForPendingPromotions`
+  and `retainedPromotionThreads` are gone. Workers disable `mlir.enableMultithreading` in their copy of the
+  options instead of sharing an `llvm::ThreadPool`: contexts are per thread and have no pool (M4.5).
+  **Not done, and why:** (1) the Caches bullet of 11 §6 and the L0 "one job per entry" rule (M5.7); (2) early start
+  is limited to a tier pair that both compile NIR (`canStartEarly`), because a backend that needs the 0.3 IR builds
+  it into the shared graph; the 0.3 pipeline and the GPU backends start after tier 0, as before; (3) `promotion.status`
+  and `promotion.error` of a failed promotion go to the tier-1 report that is logged and appended to
+  `NAUTILUS_STATISTICS_FILE`, not to the statistics of the module (the tier-0 report is immutable and shared).
 
 #### M4.8 Debug info and profiling (D14) · M · deps: M4.4, M4.5
 - **Builds:** `asmjit` symbols per function (and per region with source

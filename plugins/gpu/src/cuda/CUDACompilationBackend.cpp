@@ -7,10 +7,10 @@
 
 namespace nautilus::compiler::cuda {
 
-std::unique_ptr<Executable> CUDACompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
-                                                            const DumpHandler& dumpHandler,
-                                                            const engine::Options& options,
-                                                            CompilationStatistics* /*statistics*/) const {
+std::unique_ptr<Executable>
+CUDACompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
+                                const engine::Options& options, CompilationStatistics* /*statistics*/,
+                                const nirbackend::CancellationToken* /*cancellation*/) const {
 	auto code = CUDALoweringProvider::lower(ir, options);
 	dumpHandler.dump("after_cuda_generation", ".cu", [&]() { return code; });
 

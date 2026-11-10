@@ -26,6 +26,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         ModuleRegistryTest.cpp
         ModuleTest.cpp
         TieredCompilationTest.cpp
+        PromotionServiceTest.cpp
         ArenaMemoryTest.cpp
         PointerExecutionTest.cpp
         RegionTest.cpp
