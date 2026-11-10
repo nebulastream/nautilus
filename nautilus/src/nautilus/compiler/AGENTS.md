@@ -52,3 +52,7 @@
   `NAUTILUS_STATISTICS_FILE`). Both sit on the path of every compile, so they must stay free when unused: see
   "Fixed cost per compile" in `backends/AGENTS.md` before adding a lookup or a `set` to the pipeline.
 - **Options:** documented in `docs/options.md`; add new options there.
+- **`explain()`:** `CompiledModule::explain()` (`nautilus/src/nautilus/link/ModuleExplain.cpp`) reads what a compile has
+  already recorded: the statistics, the registry's NIR and the promotion's tier backends. A new thing worth showing to
+  a user goes into the statistics or the module, then into the report, never into extra work on the compile path.
+  `persistability` and `inlining` stay `not available yet` until M5.3 and M3.8 fill them.

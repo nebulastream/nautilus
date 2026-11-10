@@ -65,7 +65,9 @@ ctest --test-dir build/dev/plugins/std/test --output-on-failure                #
 ```
 
 - Run the tests of what you changed before pushing; CI runs all of them on
-  14 configurations (`.github/workflows/pr.yml`).
+  14 configurations (`.github/workflows/pr.yml`). `tools/agent/affected-tests`
+  names them: it maps changed files (arguments, or `git diff --name-only <base>`
+  with `--base`) to the targets of this table and the checks to run.
 - `NAUTILUS_IR_VERIFY=1` runs the IR verifier after every pass in the tests.
 - **Reference dumps:** see the `regenerate-dumps` skill. Never regenerate
   dumps in the same commit as a behavior change.
@@ -104,7 +106,7 @@ ctest --test-dir build/dev/plugins/std/test --output-on-failure                #
 | `plugins/` | `std`, `simd`, `builtin`, `specialization`, `inlining`, `gpu`, `profiling`, each with its own tests |
 | `nautilus/test/` | tests (§3), `data/` reference dumps, `benchmark/`, `fuzz/` |
 | `docs/` | user documentation; `docs/options.md` lists every option |
-| `tools/` | playground, stencil generator for `tbc`, perf helpers, `nir-opt` (`nautilus-nir-opt`: read, verify, print, hash NIR), `nir-run` (`nautilus-nir-run`: compile `.nir` with a NIR backend and run its `; run` directives) |
+| `tools/` | playground, `tools/agent/` (`affected-tests`: the test targets for changed files), stencil generator for `tbc`, perf helpers, `nir-opt` (`nautilus-nir-opt`: read, verify, print, hash NIR), `nir-run` (`nautilus-nir-run`: compile `.nir` with a NIR backend and run its `; run` directives) |
 
 ## 6. Debugging and measuring
 
@@ -150,6 +152,7 @@ Project skills in `.claude/skills/`:
 | `ir-change` | add or change an IR operation everywhere it must be handled |
 | `perf-investigation` | measure compile time or generated-code quality before and after a change |
 | `regenerate-dumps` | update `nautilus/test/data` reference dumps correctly |
+| `memory-check` | check retention and leaks of a long-running engine: arena-pool counters, the 40,000-module probe, ASan/LSan |
 | `asm-diff` | compare the machine code of the `asmjit` backend before and after a change, or with the 0.3 baseline |
 | `nautilus-review` | review user code written with `val<T>` for tracing and codegen quality |
 
