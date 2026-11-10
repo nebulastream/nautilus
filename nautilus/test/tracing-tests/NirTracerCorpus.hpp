@@ -49,6 +49,21 @@ inline val<int64_t> runtimeCalls(val<int64_t> x) {
 	return r + val<int64_t>(other);
 }
 
+extern "C" inline int32_t nirTracerCorpusDivideTenBy(int32_t a) noexcept {
+	return a == 0 ? 0 : 10 / a;
+}
+
+/// The short-circuit guard written out: constants returned on several paths (the ones the tracer reaches again and
+/// hoists) in a function whose calls have arguments.
+inline val<int32_t> guardedCalls(val<int32_t> x) {
+	if (x != 0) {
+		if (invoke(nirTracerCorpusDivideTenBy, x) > 1) {
+			return invoke(nirTracerCorpusDivideTenBy, x);
+		}
+	}
+	return val<int32_t>(0);
+}
+
 inline val<int32_t> ifElse(val<int32_t> a, val<int32_t> b) {
 	val<int32_t> r = 0;
 	if (a < b) {

@@ -126,6 +126,7 @@ struct NirTracer::SessionState {
 
 	/// Writes the finished trace of function `index` into the module as a pre-SSA function.
 	void emitFunction(uint32_t index, const std::string& name, FlatTrace& trace, bool exported);
+
 	/// Gives the callees of internal functions the signatures and attributes their functions ended up with.
 	void finish();
 };
@@ -137,6 +138,9 @@ namespace {
 struct WriteScratch {
 	std::vector<uint32_t> newBlockId, order, post, position, hoistedVars, newId, slotOf;
 	std::vector<uint8_t> state, hoisted;
+	/// (index, old word) of the operands of the lists in `extra` (call arguments, cleanup objects) that the pass in
+	/// layout order has renumbered in place, to undo them if it is abandoned.
+	std::vector<std::pair<uint32_t, uint32_t>> extraUndo;
 	std::vector<Type> paramTypes;
 	std::vector<nir::Inst> blockInsts;
 	std::vector<nir::TypeWord> params;
@@ -226,6 +230,99 @@ void layoutBlocks(FlatTrace& trace, WriteScratch& scratch) {
 
 } // namespace
 
+namespace {
+
+/// Writes the blocks of a trace in layout order in one pass: a record gets its id when it is reached and its operands
+/// are looked up. Returns false, with the blocks written so far left in the module, if an operand has not been reached
+/// yet: a declaration that the layout places after a use (the caller then hoists it).
+bool emitInLayoutOrder(nir::Module& module, FlatTrace& trace, WriteScratch& scratch, nir::Builder& b,
+                       const std::vector<Type>& paramTypes) {
+	const auto& order = scratch.order;
+	const auto& newBlockId = scratch.newBlockId;
+	auto& newId = scratch.newId;
+	newId.assign(trace.recs.size(), nir::NONE);
+	scratch.extraUndo.clear();
+	{
+		nir::Ref next = 0;
+		for (auto record : trace.parameters) {
+			newId[record] = next++;
+		}
+	}
+	bool complete = true;
+	auto remap = [&](nir::Ref& r) {
+		if (nir::isConstRef(r)) {
+			return;
+		}
+		if (r >= newId.size() || newId[r] == nir::NONE) {
+			complete = false;
+			return;
+		}
+		r = newId[r];
+	};
+	// the operands of the lists in `extra` are renumbered in place; remember the old word to undo it
+	auto remapListOperand = [&](nir::Ref& r) {
+		if (nir::isConstRef(r)) {
+			return;
+		}
+		const auto* extraBase = module.extra.data();
+		if (&r >= extraBase && &r < extraBase + module.extra.size() && r < newId.size() && newId[r] != nir::NONE) {
+			scratch.extraUndo.emplace_back(static_cast<uint32_t>(&r - extraBase), r);
+		}
+		remap(r);
+	};
+	for (uint32_t i = 0; i < order.size(); ++i) {
+		const auto& blockOps = trace.blocks[order[i]].ops;
+		const nir::Ref blockFirst = b.instCount();
+		// written in place at the end of the module: room for every record of the block and, in the entry block, the
+		// parameters
+		nir::Inst* out = b.beginPreSSABlock(blockOps.size() + (i == 0 ? trace.parameters.size() : 0));
+		size_t count = 0;
+		if (i == 0) {
+			for (uint32_t p = 0; p < trace.parameters.size(); ++p) {
+				if (blockFirst + count != newId[trace.parameters[p]]) {
+					throw RuntimeException("NIR trace: the instruction numbering of the parameters moved");
+				}
+				out[count++] = nir::Inst {
+				    static_cast<uint16_t>(NOp::BlockArg), static_cast<uint8_t>(typeInfo(paramTypes[p]).id), 0, p, 0, 0};
+			}
+		}
+		for (auto id : blockOps) {
+			nir::Inst inst = trace.recs[id];
+			if (inst.op == static_cast<uint16_t>(NOp::BlockArg)) {
+				continue; // emitted with the entry block
+			}
+			if (inst.op == static_cast<uint16_t>(NOp::Br)) {
+				const uint32_t args[] = {0};
+				inst.a = newBlockId[inst.a];
+				inst.c = module.addExtra(args);
+			} else if (inst.op == static_cast<uint16_t>(NOp::CondBr)) {
+				const auto& cond = trace.conds[inst.c];
+				remap(inst.a);
+				const uint32_t args[] = {cond.probability, 0, newBlockId[cond.falseBlock], 0};
+				inst.b = newBlockId[inst.b];
+				inst.c = module.addExtra(args);
+			} else if (nir::coreOpInfo(inst.op) == nullptr || inst.op == static_cast<uint16_t>(NOp::Call) ||
+			           inst.op == static_cast<uint16_t>(NOp::CallIndirect) ||
+			           ((inst.op == static_cast<uint16_t>(NOp::Div) || inst.op == static_cast<uint16_t>(NOp::Rem)) &&
+			            (inst.flags & 2) != 0)) {
+				// calls, checked divisions and operations of extensions hold operands in lists
+				nir::forEachRef(inst, module.extra.data(), nir::Level::PreSSA, remapListOperand);
+			} else {
+				nir::forEachRef(inst, module.extra.data(), nir::Level::PreSSA, remap);
+			}
+			if (!complete) {
+				return false;
+			}
+			newId[id] = blockFirst + static_cast<nir::Ref>(count);
+			out[count++] = inst;
+		}
+		b.endPreSSABlock(count);
+	}
+	return true;
+}
+
+} // namespace
+
 void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& name, FlatTrace& trace, bool exported) {
 	auto& scratch = writeScratch();
 	layoutBlocks(trace, scratch);
@@ -242,11 +339,22 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 		}
 		paramTypes.push_back(trace.meta[record].type);
 	}
+	// the type of what the function returns: that of its returns; the last one in layout order wins if they differ
 	Type resultType = Type::v;
-	for (auto blockId : order) {
-		for (auto id : trace.blocks[blockId].ops) {
-			if (trace.recs[id].op == static_cast<uint16_t>(NOp::Ret) && trace.meta[id].type != Type::v) {
-				resultType = trace.meta[id].type;
+	bool returnTypesDiffer = false;
+	for (auto id : trace.returns) {
+		const auto type = trace.meta[id].type;
+		if (type != Type::v) {
+			returnTypesDiffer |= resultType != Type::v && resultType != type;
+			resultType = type;
+		}
+	}
+	if (returnTypesDiffer) {
+		for (auto blockId : order) {
+			for (auto id : trace.blocks[blockId].ops) {
+				if (trace.recs[id].op == static_cast<uint16_t>(NOp::Ret) && trace.meta[id].type != Type::v) {
+					resultType = trace.meta[id].type;
+				}
 			}
 		}
 	}
@@ -277,30 +385,43 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 	const auto isOp = [&](uint32_t id, NOp op) {
 		return trace.recs[id].op == static_cast<uint16_t>(op);
 	};
+	// The common case needs no hoisting: every operand is reached before its use in layout order, and a record's id is
+	// its place in that order. Anything else (a declaration placed after a use) starts over below.
+	{
+		const auto instsBefore = module.insts.size();
+		const auto blocksBefore = module.blocks.size();
+		const auto extraBefore = module.extra.size();
+		if (emitInLayoutOrder(module, trace, scratch, b, paramTypes)) {
+			b.endFunction();
+			scratch.trim();
+			return;
+		}
+		module.insts.resize(instsBefore);
+		module.blocks.resize(blocksBefore);
+		module.extra.resize(extraBefore);
+		// the lists of calls were renumbered in place: put them back
+		for (auto it = scratch.extraUndo.rbegin(); it != scratch.extraUndo.rend(); ++it) {
+			if (it->first < module.extra.size()) {
+				module.extra[it->first] = it->second;
+			}
+		}
+		module.functions[functionId].blockCount = 0;
+	}
 	auto& position = scratch.position;
 	position.assign(trace.recs.size(), 0);
-	// An operand is always a record made before the one that uses it. When the layout also keeps the records in the
-	// order they were made (code without a merge that comes before the arm it joins), no operand can be placed after
-	// its use and the scan for declarations to hoist has nothing to find.
-	bool layoutKeepsRecordingOrder = true;
 	{
 		uint32_t next = 0;
-		uint32_t previous = 0;
 		for (auto blockId : order) {
 			for (auto id : trace.blocks[blockId].ops) {
 				position[id] = next++;
-				layoutKeepsRecordingOrder &= id > previous;
-				previous = id;
 			}
 		}
 	}
 	auto& hoisted = scratch.hoisted;
 	auto& hoistedVars = scratch.hoistedVars;
 	hoistedVars.clear();
-	if (!layoutKeepsRecordingOrder) {
-		hoisted.assign(trace.recs.size(), 0);
-	}
-	for (auto blockId : layoutKeepsRecordingOrder ? std::span<const uint32_t> {} : std::span<const uint32_t>(order)) {
+	hoisted.assign(trace.recs.size(), 0);
+	for (auto blockId : order) {
 		for (auto id : trace.blocks[blockId].ops) {
 			if (isOp(id, NOp::BlockArg)) {
 				continue;
@@ -1131,6 +1252,7 @@ void NirTracer::traceReturnOperation(Type resultType, const TypedValueRef& ref) 
 	if (ref.type == Type::v) {
 		trace.meta[first].type = Type::v;
 	}
+	trace.returns.push_back(first);
 }
 
 void NirTracer::traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type) {

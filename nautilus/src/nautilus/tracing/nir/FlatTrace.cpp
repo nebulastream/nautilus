@@ -141,6 +141,7 @@ void FlatTrace::reset(nir::Module& module) {
 	conds.clear();
 	allocas.clear();
 	parameters.clear();
+	returns.clear();
 	regions.clear();
 	currentRegion = NO_FLAT_REGION;
 	currentBlock_ = 0;

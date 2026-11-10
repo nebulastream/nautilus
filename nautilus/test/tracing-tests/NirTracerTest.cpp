@@ -58,3 +58,13 @@ TEST_CASE("runtime calls share their callee, signature and pointer entries", "[n
 	REQUIRE(nir::print(conversion::convert(module)) ==
 	        nir::print(conversion::convert(trace03(engine::details::createFunctionWrapper(runtimeCalls), arena03))));
 }
+
+TEST_CASE("a function that needs a hoisted declaration keeps the arguments of its calls", "[nir-tracer][calls]") {
+	// the tracer writes the blocks in one pass and starts over, hoisting, when a declaration comes after a use; the
+	// calls renumbered by the first attempt must be back as they were
+	common::Arena arena, arena03;
+	auto module = traceDirect(engine::details::createFunctionWrapper(guardedCalls), arena);
+	REQUIRE(diagnostics(module).empty());
+	REQUIRE(nir::print(conversion::convert(module)) ==
+	        nir::print(conversion::convert(trace03(engine::details::createFunctionWrapper(guardedCalls), arena03))));
+}

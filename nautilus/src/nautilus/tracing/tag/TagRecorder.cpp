@@ -99,14 +99,20 @@ __attribute__((noinline)) Tag* TagRecorder::createReferenceTagBuildin() {
 		                           "of recursive control-flow,"
 		                           " which is not supported in Nautilus code.");
 	}
-	// Walk the frames first, into a small array, and look the stack up before descending the trie: consecutive
-	// operations of a traced function share their whole stack but for a few frames, and a static loop revisits the
-	// same call sites again and again.
+#pragma GCC diagnostic ignored "-Wframe-address"
+	auto** const frame0 = static_cast<void**>(__builtin_frame_address(0));
+	// Look the stack up in the cache before descending the trie: consecutive operations of a traced function share
+	// their whole stack but for a few frames, and a static loop revisits the same call sites again and again. The
+	// three innermost return addresses pick the set; a hit is the entry whose stack is, frame for frame, the walked
+	// one.
+	if (cache != nullptr) {
+		if (auto* hit = lookupCached(frame0)) {
+			return hit;
+		}
+	}
 	TagAddress addresses[MAX_TAG_SIZE + 1];
 	size_t depth = 0;
-	uint64_t hash = 0x9E3779B97F4A7C15ull;
-#pragma GCC diagnostic ignored "-Wframe-address"
-	auto** frame = static_cast<void**>(__builtin_frame_address(0));
+	auto** frame = frame0;
 	bool found = false;
 	for (size_t i = 0; i <= MAX_TAG_SIZE && frame != nullptr; i++) {
 		auto tagAddress = (TagAddress) frame[1];
@@ -115,7 +121,6 @@ __attribute__((noinline)) Tag* TagRecorder::createReferenceTagBuildin() {
 			break;
 		}
 		addresses[depth++] = tagAddress;
-		hash = (hash + tagAddress) * 0xC2B2AE3D27D4EB4Full;
 		frame = static_cast<void**>(frame[0]);
 	}
 	if (!found) {
@@ -124,28 +129,78 @@ __attribute__((noinline)) Tag* TagRecorder::createReferenceTagBuildin() {
 		                           " which is not supported in Nautilus code.");
 	}
 	if (cache == nullptr) {
-		cache = static_cast<CacheEntry*>(arena.allocate(CACHE_SIZE * sizeof(CacheEntry), alignof(CacheEntry)));
-		std::memset(static_cast<void*>(cache), 0, CACHE_SIZE * sizeof(CacheEntry));
-	}
-	CacheEntry* entry = nullptr;
-	if (cache != nullptr && depth <= MAX_CACHED_DEPTH) {
-		entry = &cache[(hash >> 32) & (CACHE_SIZE - 1)];
-		if (entry->node != nullptr && entry->hash == hash && entry->depth == depth &&
-		    std::memcmp(entry->stack, addresses, depth * sizeof(TagAddress)) == 0) {
-			return entry->node;
-		}
+		cache =
+		    static_cast<CacheEntry*>(arena.allocate(CACHE_SETS * CACHE_WAYS * sizeof(CacheEntry), alignof(CacheEntry)));
+		std::memset(static_cast<void*>(cache), 0, CACHE_SETS * CACHE_WAYS * sizeof(CacheEntry));
 	}
 	auto* currentTagNode = &rootTagThreeNode;
 	for (size_t i = 0; i < depth; i++) {
 		currentTagNode = currentTagNode->append(addresses[i], arena);
 	}
-	if (entry != nullptr) {
-		entry->hash = hash;
+	if (depth >= CACHE_PREFIX && depth <= MAX_CACHED_DEPTH) {
+		const auto key = prefixKey(addresses[0], addresses[1], addresses[2]);
+		auto* set = &cache[((key >> 32) & (CACHE_SETS - 1)) * CACHE_WAYS];
+		// a free way, else the one the key picks: a set holds the stacks of the call sites that collide in it, so a
+		// loop over a few more sites than ways does not make every operation descend the trie again
+		size_t way = 0;
+		while (way < CACHE_WAYS && set[way].node != nullptr) {
+			++way;
+		}
+		auto* entry = &set[way < CACHE_WAYS ? way : (key >> 16) % CACHE_WAYS];
+		entry->key = key;
 		entry->node = currentTagNode;
 		entry->depth = depth;
 		std::memcpy(entry->stack, addresses, depth * sizeof(TagAddress));
 	}
 	return currentTagNode;
+}
+
+Tag* TagRecorder::lookupCached(void** frame0) const {
+	auto** f = frame0;
+	const auto a0 = static_cast<TagAddress>(reinterpret_cast<uintptr_t>(f[1]));
+	f = static_cast<void**>(f[0]);
+	if (a0 == startAddress || f == nullptr) {
+		return nullptr;
+	}
+	const auto a1 = static_cast<TagAddress>(reinterpret_cast<uintptr_t>(f[1]));
+	f = static_cast<void**>(f[0]);
+	if (a1 == startAddress || f == nullptr) {
+		return nullptr;
+	}
+	const auto a2 = static_cast<TagAddress>(reinterpret_cast<uintptr_t>(f[1]));
+	auto** const rest = static_cast<void**>(f[0]);
+	if (a2 == startAddress) {
+		return nullptr;
+	}
+	const auto key = prefixKey(a0, a1, a2);
+	const auto* set = &cache[((key >> 32) & (CACHE_SETS - 1)) * CACHE_WAYS];
+	for (size_t way = 0; way < CACHE_WAYS; ++way) {
+		const auto& entry = set[way];
+		if (entry.key != key || entry.node == nullptr || entry.stack[0] != a0 || entry.stack[1] != a1 ||
+		    entry.stack[2] != a2) {
+			continue;
+		}
+		// the remaining frames must be those of the entry, and the stack must end where the entry's does
+		auto** g = rest;
+		size_t d = CACHE_PREFIX;
+		for (;; ++d) {
+			if (g == nullptr) {
+				break;
+			}
+			const auto address = static_cast<TagAddress>(reinterpret_cast<uintptr_t>(g[1]));
+			if (address == startAddress) {
+				if (d == entry.depth) {
+					return entry.node;
+				}
+				break;
+			}
+			if (d >= entry.depth || address != entry.stack[d]) {
+				break;
+			}
+			g = static_cast<void**>(g[0]);
+		}
+	}
+	return nullptr;
 }
 
 Tag* TagRecorder::createReferenceTag() {

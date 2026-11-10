@@ -62,10 +62,17 @@ private:
 	/// The table is allocated from the arena once a recorder has made CACHE_AFTER tags, so small functions and
 	/// regions do not pay for it.
 	static constexpr size_t MAX_CACHED_DEPTH = 10;
-	static constexpr size_t CACHE_SIZE = 64;
+	static constexpr size_t CACHE_WAYS = 4;
+	static constexpr size_t CACHE_SETS = 16;
 	static constexpr uint32_t CACHE_AFTER = 24;
+	static constexpr size_t CACHE_PREFIX = 3;
+	static uint64_t prefixKey(TagAddress a0, TagAddress a1, TagAddress a2) {
+		return (((a0 * 0x9E3779B97F4A7C15ull) + a1) * 0xC2B2AE3D27D4EB4Full + a2) * 0xD6E8FEB86659FD93ull;
+	}
+	/// The node of the walked stack if the cache has it, else null.
+	Tag* lookupCached(void** frame0) const;
 	struct CacheEntry {
-		uint64_t hash;
+		uint64_t key;
 		Tag* node;
 		uint64_t depth;
 		TagAddress stack[MAX_CACHED_DEPTH];
