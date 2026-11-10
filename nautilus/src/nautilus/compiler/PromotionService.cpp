@@ -5,8 +5,10 @@
 #include "nautilus/compiler/PromotionService.hpp"
 #include "nautilus/logging.hpp"
 #include <algorithm>
+#include <cstring>
 #include <cxxabi.h>
 #include <system_error>
+#include <typeinfo>
 
 #if defined(__linux__)
 #include <sys/resource.h>
@@ -36,6 +38,47 @@ void lowerThreadPriority() {
 }
 
 } // namespace
+
+std::string describeCurrentException() {
+	try {
+		throw;
+	} catch (const std::exception& e) {
+		return e.what();
+	} catch (...) {
+	}
+	const std::type_info* type = abi::__cxa_current_exception_type();
+#ifdef __APPLE__
+	// On macOS the clause above has been seen to miss a std::runtime_error thrown from another translation unit of the
+	// same executable (the CI leg of PR 593 logged the type "St13runtime_error" in the fallback), although the type is
+	// the standard one. The standard exceptions all derive from std::exception at offset 0, so their message is read
+	// through the thrown object once the type is recognised by name; other types stay "not derived".
+	if (type != nullptr) {
+		static constexpr const char* standardExceptions[] = {
+		    "St9exception",         "St13runtime_error", "St11logic_error",
+		    "St16invalid_argument", "St12out_of_range",  "St12length_error",
+		    "St12domain_error",     "St11range_error",   "St14overflow_error",
+		    "St15underflow_error",  "St9bad_alloc",      "St8bad_cast",
+		    "St10bad_typeid",       "St13bad_exception", "St16bad_array_new_length"};
+		const char* name = type->name();
+		name += *name == '*' ? 1 : 0;
+		for (const char* known : standardExceptions) {
+			if (std::strcmp(name, known) == 0) {
+				void* object = abi::__cxa_current_primary_exception();
+				if (object != nullptr) {
+					std::string message = static_cast<const std::exception*>(object)->what();
+					abi::__cxa_decrement_exception_refcount(object);
+					return message;
+				}
+			}
+		}
+	}
+#endif
+	std::string message = "an exception that is not derived from std::exception";
+	if (type != nullptr) {
+		message += std::string(" (type ") + type->name() + ")";
+	}
+	return message;
+}
 
 PromotionService::PromotionService(PromotionServiceConfig config)
     : config_([&] {
@@ -266,12 +309,7 @@ void PromotionService::runJob(const std::shared_ptr<PromotionJob>& job) {
 		error = e.what();
 	} catch (...) {
 		failed = true;
-		error = "an exception that is not derived from std::exception";
-#if defined(__GLIBCXX__) || defined(_LIBCPP_VERSION)
-		if (const auto* type = abi::__cxa_current_exception_type()) {
-			error += std::string(" (type ") + type->name() + ")";
-		}
-#endif
+		error = describeCurrentException();
 	}
 	if (failed) {
 		log::error("Tier 1 promotion failed, the module stays on tier 0: {}", error);

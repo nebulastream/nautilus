@@ -284,7 +284,7 @@ TieredJITCompiler::createPromotion(const std::shared_ptr<engine::details::Module
 			recordFailure(e.what());
 			throw;
 		} catch (...) {
-			recordFailure("an exception that is not derived from std::exception");
+			recordFailure(describeCurrentException());
 			throw;
 		}
 		if (executable == nullptr) {

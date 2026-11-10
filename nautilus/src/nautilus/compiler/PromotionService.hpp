@@ -79,6 +79,10 @@ struct PromotionServiceConfig {
 	bool lowPriority = true;
 };
 
+/// The message of the exception that is being handled; call it inside a `catch (...)`. A `std::exception` gives its
+/// `what()`, anything else a description naming its type.
+std::string describeCurrentException();
+
 /// The default of `engine.tiered.promotionThreads`: a quarter of the hardware threads, at least one.
 std::size_t defaultPromotionThreads();
 
