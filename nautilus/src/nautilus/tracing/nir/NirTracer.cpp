@@ -86,6 +86,8 @@ struct NirTracer::SessionState {
 	std::vector<uint32_t> internalAttrs;    // function index -> the guarantees every call of it states
 	std::vector<uint8_t> internalAttrsSeen;
 	std::unordered_map<std::string, uint32_t> bindingIndex;
+	/// (module name id, function name id) -> index in the module's `imports`
+	std::unordered_map<uint64_t, uint32_t> importIndex;
 	/// The external callee of the last calls, by (target, result type, argument types, attributes): a runtime call
 	/// from a loop unrolled by static_val interns the same signature, pointer and callee thousands of times, and each
 	/// interning allocates and walks an ordered map. A hit returns the id the interning would have returned.
@@ -932,6 +934,47 @@ uint32_t NirTracer::externalCallee(void* fptn, Type resultType, const std::vecto
 		entry->callee = callee;
 	}
 	return callee;
+}
+
+uint32_t NirTracer::importedCallee(std::string_view moduleName, std::string_view functionName, Type resultType,
+                                   const std::vector<TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
+	auto& module = state->trace.module();
+	auto& index = session_->sessionState_->importIndex;
+	const auto moduleId = module.internName(moduleName);
+	const auto functionId = module.internName(functionName);
+	const auto signature = signatureOf(resultType, arguments);
+	const auto attrs = attrBits(fnAttrs);
+	// an import is one (module, function): the function of a module that is imported twice states one signature and
+	// one set of assumptions, or the module would not link against one export
+	const auto key = (static_cast<uint64_t>(moduleId) << 32) | functionId;
+	auto it = index.find(key);
+	if (it == index.end()) {
+		it = index.emplace(key, module.addImport(nir::ImportRecord {moduleId, functionId, signature, attrs})).first;
+	} else if (module.imports[it->second].signature != signature || module.imports[it->second].attrs != attrs) {
+		throw RuntimeException(fmt::format("NIR trace: '{}'.'{}' is imported twice with a different signature or "
+		                                   "different assumed attributes",
+		                                   moduleName, functionName));
+	}
+	nir::CalleeRecord record {};
+	record.kind = static_cast<uint8_t>(nir::CalleeKind::Imported);
+	record.target = it->second;
+	record.signature = signature;
+	record.attrs = attrs;
+	return module.internCallee(record);
+}
+
+TypedValueRef& NirTracer::traceImportedCall(std::string_view moduleName, std::string_view functionName, Type resultType,
+                                            const std::vector<TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
+	if (paused_) {
+		++session_->stats_.pausedOperations;
+		return dummyRef_;
+	}
+	return traceOperation([&](Snapshot& tag) -> TypedValueRef& {
+		const auto first = state->trace.nextId();
+		const auto callee = importedCallee(moduleName, functionName, resultType, arguments, fnAttrs);
+		// no capture thunk: the engine bridges exceptions between Nautilus frames itself (13 §5.7)
+		return recordCallRecord(first, tag, callee, true, resultType, arguments, fnAttrs, false, nullptr);
+	});
 }
 
 uint32_t NirTracer::internalCallee(uint32_t functionIndex) {

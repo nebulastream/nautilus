@@ -133,6 +133,11 @@ TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
 	return detail::activeTracer->traceCallWithExceptionHandling(fptn, resultType, arguments, fnAttrs, captureFunc);
 }
 
+TypedValueRef& traceImportedCall(std::string_view moduleName, std::string_view functionName, Type resultType,
+                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
+	return detail::activeTracer->traceImportedCall(moduleName, functionName, resultType, arguments, fnAttrs);
+}
+
 void registerDestructor(const TypedValueRef& address, void* destructor) {
 	detail::activeTracer->registerDestructor(address, destructor);
 }

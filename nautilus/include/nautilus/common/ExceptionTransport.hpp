@@ -60,6 +60,28 @@ private:
 	bool enabled_;
 };
 
+/// The counterpart of `captureThrowingCall` for a caller that unwinds natively (MLIR code) and calls a function of
+/// another module (13-nir-spec.md §4.4.2). The callee may be code that throws natively or code that captures its
+/// exceptions into the frame of the thread, and the caller cannot know which, because the callee's module can be
+/// promoted to the other kind. This is a real C++ frame: it pushes an exception frame for a capturing callee to write
+/// to, and rethrows what ends up in it, so the caller only ever sees a native exception.
+template <typename R, typename... Args>
+R callInExceptionFrame(R (*target)(Args...), Args... args) {
+	ExceptionFrameScope scope(true);
+	if constexpr (std::is_void_v<R>) {
+		target(std::forward<Args>(args)...);
+		if (scope.pending()) {
+			std::rethrow_exception(scope.pending());
+		}
+	} else {
+		R result = target(std::forward<Args>(args)...);
+		if (scope.pending()) {
+			std::rethrow_exception(scope.pending());
+		}
+		return result;
+	}
+}
+
 template <typename R, typename... Args>
 R captureThrowingCall(R (*target)(Args...), Args... args) noexcept {
 	// This thunk is invoked from generated/JIT-compiled frames that have no

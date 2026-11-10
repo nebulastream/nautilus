@@ -9,11 +9,15 @@
 #include "nautilus/options.hpp"
 #include <any>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <list>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -21,9 +25,42 @@
 #include "nautilus/CompilableFunction.hpp"
 #endif
 
+namespace nautilus::link {
+class ModuleRegistry;
+struct SessionAccess;
+} // namespace nautilus::link
+
 namespace nautilus::engine {
 
 namespace details {
+
+struct ModuleState;
+
+/**
+ * @brief The version counter of a ModuleState, with a notification when the executable changes.
+ *
+ * Every path that installs an executable (CompiledModule::setExecutable, the tier-1 promotion) bumps the version after
+ * it has stored the executable, while holding the state's mutex exclusively. That makes the bump the single point where
+ * the module registry (docs/plans/nautilus-0.4/13-nir-spec.md §4.4.2) learns that importers must be pointed at new
+ * code: it registers an observer on the state, and fetch_add calls it.
+ */
+class ModuleVersion {
+public:
+	explicit ModuleVersion(ModuleState& owner) noexcept : owner_(owner) {
+	}
+
+	uint64_t load(std::memory_order order = std::memory_order_seq_cst) const noexcept {
+		return value_.load(order);
+	}
+
+	/// Increments the version, then calls the owner's install observers. The caller holds the state's mutex
+	/// exclusively: an observer reads `ModuleState::executable` directly and must not lock the mutex.
+	inline uint64_t fetch_add(uint64_t delta, std::memory_order order = std::memory_order_seq_cst);
+
+private:
+	std::atomic<uint64_t> value_ {0};
+	ModuleState& owner_;
+};
 
 /**
  * @brief Shared mutable state backing a CompiledModule and all its ModuleFunction handles.
@@ -36,11 +73,25 @@ namespace details {
  * is atomic so the fast path (version check in operator()) requires no lock.
  */
 struct ModuleState {
+	/// The module's membership in its engine's module registry and the exporters it is linked to (a
+	/// link::ModuleHandle, type-erased). Declared first so that it is destroyed last: the module's code goes before the
+	/// modules it calls.
+	std::shared_ptr<void> link;
 	std::shared_ptr<compiler::Executable> executable;
 	std::unordered_map<std::string, std::any> interpretedFunctions;
-	std::atomic<uint64_t> version {0};
+	ModuleVersion version {*this};
 	mutable std::shared_mutex mutex;
+	/// Called by ModuleVersion::fetch_add; added and read with the mutex held exclusively.
+	std::vector<std::function<void(ModuleState&)>> installObservers;
 };
+
+uint64_t ModuleVersion::fetch_add(uint64_t delta, std::memory_order order) {
+	const auto previous = value_.fetch_add(delta, order);
+	for (auto& observer : owner_.installObservers) {
+		observer(owner_);
+	}
+	return previous;
+}
 
 } // namespace details
 
@@ -336,6 +387,192 @@ public:
 
 private:
 	std::shared_ptr<details::ModuleState> state_;
+};
+
+// ---- modules and linking (docs/plans/nautilus-0.4/13-nir-spec.md §4.4) ---------------------------------------------
+
+namespace details {
+
+/// A function a named module exports: its name and its signature as the type words of the NIR (the result, then the
+/// parameters; 13 §4.5.1), and the guarantees it declares for its callers (13 §4.6.2).
+struct ExportDeclaration {
+	std::string name;
+	std::vector<uint32_t> signature;
+	FunctionAttributes attributes;
+};
+
+/// A function of another module that this module calls, as `NautilusModule::importFunction` declares it.
+struct ImportDeclaration {
+	std::string module;
+	std::string function;
+	/// The signature the importer is built against: the type words of the result, then of the parameters.
+	std::vector<uint32_t> signature;
+	/// What the importer assumes the exporter guarantees; the link fails if the export does not guarantee it.
+	FunctionAttributes attributes;
+	/// `compiler::captureThrowingCall<R, Args...>` and `compiler::callInExceptionFrame<R, Args...>` for the C++
+	/// signature of the import. They bridge the exception propagation of the exporter (whatever tier it is in) to
+	/// that of the importer's backend.
+	void* captureThunk = nullptr;
+	void* frameThunk = nullptr;
+};
+
+/// The type word of a traced type at a native boundary (13 §4.5.1).
+uint32_t signatureWord(Type type);
+
+template <typename T>
+uint32_t signatureWordOf() {
+	if constexpr (std::is_void_v<T>) {
+		return signatureWord(Type::v);
+	} else {
+		return signatureWord(tracing::TypeResolver<T>::to_type());
+	}
+}
+
+/// The declaration of an exported function whose val-typed result is @p R (void or a `val<T>`) and whose parameters
+/// have the raw types @p Args.
+template <typename R, typename = void>
+struct ExportedResult {
+	using type = void;
+};
+
+template <typename R>
+struct ExportedResult<R, std::void_t<typename R::raw_type>> {
+	using type = typename R::raw_type;
+};
+
+template <typename R, typename... Args>
+ExportDeclaration makeExportDeclaration(std::string name) {
+	return ExportDeclaration {
+	    std::move(name),
+	    {signatureWordOf<typename ExportedResult<R>::type>(), signatureWordOf<typename val<Args>::raw_type>()...},
+	    {}};
+}
+
+/// The declaration of an import of the raw signature @p Signature with its typed exception thunks.
+template <typename Signature>
+struct ImportBuilder;
+
+template <typename R, typename... Args>
+struct ImportBuilder<R(Args...)> {
+	static ImportDeclaration declaration(std::string module, std::string function, FunctionAttributes attributes) {
+		ImportDeclaration declaration;
+		declaration.module = std::move(module);
+		declaration.function = std::move(function);
+		declaration.signature = {signatureWordOf<R>(), signatureWordOf<Args>()...};
+		declaration.attributes = attributes;
+		declaration.captureThunk = reinterpret_cast<void*>(&compiler::captureThrowingCall<R, Args...>);
+		declaration.frameThunk = reinterpret_cast<void*>(&compiler::callInExceptionFrame<R, Args...>);
+		return declaration;
+	}
+};
+
+/// The NIR guarantee bits of `attributes` and back (13 §4.6.2).
+uint32_t attributeBits(const FunctionAttributes& attributes);
+FunctionAttributes attributesFromBits(uint32_t bits);
+
+/// Checks `declaration` against the exporter if it is already compiled in the registry (the early check of
+/// `importFunction`, 13 §4.4.4) and returns the guarantees of the export, or nothing if the exporter is not compiled
+/// yet. Throws link::LinkError on a signature mismatch.
+std::optional<FunctionAttributes> checkImport(const std::shared_ptr<link::ModuleRegistry>& registry,
+                                              const ImportDeclaration& declaration);
+
+/// The state of the compiled module `module` in the registry (to call it from interpreted code). Throws
+/// link::LinkError if there is none.
+std::shared_ptr<ModuleState> importedState(const std::shared_ptr<link::ModuleRegistry>& registry,
+                                           const std::string& module);
+
+/**
+ * @brief The linking of one `NautilusModule::compile()` (13 §4.4.1-§4.4.2).
+ *
+ * Built -> linked -> compiled: the constructor reserves the module's name in the registry of its engine (a name refers
+ * to one module, so a name that is taken fails here, before any work is done); the compilation pipeline calls back into
+ * the session after tracing to resolve the imports against the registry and to publish the import slots to the
+ * backends; `commit` registers the module's exports once its executable is installed. A session that is destroyed
+ * without a commit (the compile failed) gives the name back. The session is current on the thread that compiles.
+ */
+class LinkSession {
+public:
+	LinkSession(std::shared_ptr<link::ModuleRegistry> registry, std::string moduleName,
+	            std::vector<ExportDeclaration> exports, std::vector<ImportDeclaration> imports);
+	~LinkSession();
+	LinkSession(const LinkSession&) = delete;
+	LinkSession& operator=(const LinkSession&) = delete;
+
+	/// Registers the module as compiled, with `state` as the code importers call. Later promotions of the state point
+	/// the import slots of its importers at the new code.
+	void commit(const std::shared_ptr<ModuleState>& state);
+
+	/// The session of the compile running on this thread, or null.
+	static LinkSession* current() noexcept;
+
+	struct Impl;
+
+private:
+	friend struct ::nautilus::link::SessionAccess;
+	std::unique_ptr<Impl> impl_;
+	LinkSession* previous_ = nullptr;
+};
+
+} // namespace details
+
+/**
+ * @brief A function of another, compiled module, callable from a traced function: `NautilusModule::importFunction`.
+ *
+ * Traced, a call is recorded as a call to an imported callee that goes through an import slot (the exporter's current
+ * entry point), so the exporter can be promoted to another tier without recompiling the importer. Outside tracing (an
+ * engine that interprets) the call runs the exporter's function.
+ *
+ * @tparam Signature Raw function signature, e.g. uint64_t(uint64_t)
+ */
+template <typename Signature>
+class ImportedFunction;
+
+template <typename R, typename... Args>
+class ImportedFunction<R(Args...)> {
+	using ValReturnType = std::conditional_t<std::is_void_v<R>, void, val<R>>;
+
+public:
+	ImportedFunction(std::shared_ptr<link::ModuleRegistry> registry, std::string module, std::string function,
+	                 FunctionAttributes attributes)
+	    : registry_(std::move(registry)), module_(std::move(module)), function_(std::move(function)),
+	      attributes_(attributes) {
+	}
+
+	[[nodiscard]] const std::string& module() const {
+		return module_;
+	}
+	[[nodiscard]] const std::string& function() const {
+		return function_;
+	}
+
+	ValReturnType operator()(val<Args>... args) const {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			auto references = getArgumentReferences(args...);
+			if constexpr (std::is_void_v<R>) {
+				tracing::traceImportedCall(module_, function_, Type::v, references, attributes_);
+				return;
+			} else {
+				auto& result = tracing::traceImportedCall(module_, function_, tracing::TypeResolver<R>::to_type(),
+				                                          references, attributes_);
+				return val<R>(result);
+			}
+		}
+#endif
+		// not tracing: the exporter runs in the interpreter or as compiled code, as any caller would call it
+		ModuleFunction<R(Args...)> target(details::importedState(registry_, module_), function_);
+		if constexpr (std::is_void_v<R>) {
+			target(::nautilus::details::RawValueResolver<Args>::getRawValue(args)...);
+		} else {
+			return val<R>(target(::nautilus::details::RawValueResolver<Args>::getRawValue(args)...));
+		}
+	}
+
+private:
+	std::shared_ptr<link::ModuleRegistry> registry_;
+	std::string module_;
+	std::string function_;
+	FunctionAttributes attributes_;
 };
 
 // Forward-declare for inline definition after NautilusEngine
