@@ -33,7 +33,9 @@ void lowerThreadPriority() {
 	const auto tid = static_cast<id_t>(::syscall(SYS_gettid));
 	(void) ::setpriority(PRIO_PROCESS, tid, 10);
 #elif defined(__APPLE__)
-	(void) ::pthread_set_qos_class_self_np(QOS_CLASS_BACKGROUND, 0);
+	// not QOS_CLASS_BACKGROUND: that class is throttled hard enough to starve a worker while other threads spin, which
+	// hung a test on a small CI runner
+	(void) ::pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
 #endif
 }
 
