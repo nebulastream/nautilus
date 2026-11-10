@@ -352,7 +352,11 @@ linking.
 - **Exceptions** cross module boundaries like any call: the import's
   `noUnwind` decides whether the call site needs an unwind entry, and the
   engine bridges the exporter's and the importer's exception-propagation
-  modes in the import slot's entry point when they differ.
+  modes in the import slot's entry point when they differ. (The C++ front end
+  does this with two typed thunks it registers per import, outside the module
+  format: a call that may throw goes through the one that suits the
+  importer's backend, whatever tier the exporter is in. An import without
+  thunks is called directly, which needs equal modes.)
 
 #### 4.4.3 Inlining
 

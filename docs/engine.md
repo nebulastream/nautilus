@@ -150,6 +150,43 @@ for (...) {
 } // each `compiled` (and its executable) is freed here; the engine lives on
 ```
 
+### Named Modules and Imports
+
+A module with a name is registered with its engine when it is compiled, and modules compiled after it can call its
+functions. Use this to compile a library of functions once and share it among many queries:
+
+```cpp
+auto math = engine.createModule("lib.math");
+math.registerFunction<val<uint64_t>(val<uint64_t>)>("hash", [](val<uint64_t> x) { return x * 31 + 7; });
+auto lib = math.compile();                       // registered as "lib.math"
+
+auto query = engine.createModule("nes.query42");
+auto hash = query.importFunction<uint64_t(uint64_t)>("lib.math", "hash");
+query.registerFunction<val<uint64_t>(val<uint64_t>)>("run", [hash](val<uint64_t> x) { return hash(hash(x)); });
+auto compiled = query.compile();                 // links "lib.math"."hash"
+```
+
+`importFunction` takes the *raw* signature of the function. The call is traced as a call through an import slot, a
+cell that holds the entry point of the exporter's current code, so the exporter can be promoted to another tier without
+recompiling the importer: the engine points the slot at the new code, and calls that are running finish in the old.
+
+`compile()` links the imports and fails with a `link::LinkError` that names the import if the module is not
+registered or not compiled, the function is not exported, its signature is not exactly the one imported (extension
+kinds of narrow integers included), the export does not give the guarantees the import assumes, or the import graph
+would have a cycle. Nothing is bound when a link fails, and the name of the module that failed stays free.
+`importFunction` checks the signature at once if the exporter is already compiled.
+
+* A name refers to one module of an engine; compiling a second module under a registered name fails.
+* An importer pins its exporters: letting go of the exporter's `CompiledModule` keeps it (and its name) alive until the
+  last module that imports from it is gone.
+* Imports take over the guarantees the export gives (`module.setFunctionAttributes("hash", attributes)` declares
+  them for a function, as `invoke(attributes, ...)` does for a native one). Pass `FunctionAttributes` to
+  `importFunction` to assume less, or more, which the link then checks. A call that may throw goes through a thunk that
+  carries the exception across the tiers, whichever the exporter's current tier is.
+* Imports are linked on the default (NIR) pipeline of the `tbc`, `cpp`, `asmjit` and `mlir` backends. With
+  `tracing.nirTracer=false` (or `debug` and `perf`, which select the 0.3 pipeline) a call of an imported function
+  throws. An engine that interprets (`engine.compilation=false`) calls the exporter by name.
+
 ### Memory Use of a Long-Running Engine
 
 Tracing and IR construction take their memory from arenas, which draw fixed-size chunks (64 KiB up to 1 MiB) from one
