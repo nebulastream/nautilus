@@ -541,6 +541,14 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	return ir;
 }
 
+CompilationUnitID CompilationPipeline::unitIdOf(const ir::IRGraph& ir) {
+	return ir.getId();
+}
+
+bool CompilationPipeline::carriesOnlyNir(const ir::IRGraph& ir) {
+	return ir.getNirModule() != nullptr && ir.getFunctionOperations().empty();
+}
+
 void CompilationPipeline::prepareFor(const std::shared_ptr<ir::IRGraph>& ir, const std::string& backendName,
                                      const engine::ModuleOptions& moduleOptions,
                                      CompilationStatistics* statistics) const {
@@ -594,6 +602,14 @@ std::unique_ptr<Executable> CompilationPipeline::compileIR(const std::shared_ptr
                                                            const CompilationUnitID&,
                                                            const nirbackend::CancellationToken*) const {
 	throw RuntimeException("Jit not initialised");
+}
+
+CompilationUnitID CompilationPipeline::unitIdOf(const ir::IRGraph&) {
+	return {};
+}
+
+bool CompilationPipeline::carriesOnlyNir(const ir::IRGraph&) {
+	return false;
 }
 
 void CompilationPipeline::prepareFor(const std::shared_ptr<ir::IRGraph>&, const std::string&,

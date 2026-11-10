@@ -93,6 +93,13 @@ public:
 	          const engine::ModuleOptions& moduleOptions, CompilationStatistics* statistics = nullptr,
 	          const CompilationUnitID& unitId = {}, const nirbackend::CancellationToken* cancellation = nullptr) const;
 
+	/// The compilation unit ID of @p ir: the ID the front end gave the compile that produced the graph. Empty without
+	/// tracing, where no graph exists.
+	[[nodiscard]] static CompilationUnitID unitIdOf(const ir::IRGraph& ir);
+
+	/// Whether @p ir is the carrier of the NIR front end: it holds the NIR module and no 0.3 IR (yet).
+	[[nodiscard]] static bool carriesOnlyNir(const ir::IRGraph& ir);
+
 	/**
 	 * @brief Makes @p ir ready for the backend @p backendName.
 	 *

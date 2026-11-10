@@ -244,7 +244,7 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunct
 bool TieredJITCompiler::canStartEarly(const ir::IRGraph& ir) const {
 	// Tier 1 may read the graph while tier 0 does only if neither builds the 0.3 IR into it: the backends that
 	// compile NIR read the immutable module (§4.5); the others lower it in `prepareFor`, which writes the graph.
-	if (ir.getNirModule() == nullptr || !ir.getFunctionOperations().empty()) {
+	if (!CompilationPipeline::carriesOnlyNir(ir)) {
 		return false;
 	}
 	auto* registry = CompilationBackendRegistry::getInstance();
@@ -257,7 +257,7 @@ TieredJITCompiler::createPromotion(const std::shared_ptr<engine::details::Module
                                    std::shared_ptr<ir::IRGraph> ir, const engine::ModuleOptions& moduleOptions) const {
 	// The unit ID of the tier-1 compile is the tier-0 one plus `_tier1`: the dumps of one module sit side by side
 	// and the report links its tier-0 report (11 §4.8).
-	auto tier0UnitId = ir->getId();
+	auto tier0UnitId = CompilationPipeline::unitIdOf(*ir);
 	auto options = moduleOptions;
 	// Workers own no thread pool: a promotion lowers one module, and a context with a pool of its own would cost
 	// `promotionThreads x hardware_concurrency` threads (11 §4.1).

@@ -5,6 +5,7 @@
 #include "nautilus/compiler/PromotionService.hpp"
 #include "nautilus/logging.hpp"
 #include <algorithm>
+#include <cxxabi.h>
 #include <system_error>
 
 #if defined(__linux__)
@@ -266,6 +267,11 @@ void PromotionService::runJob(const std::shared_ptr<PromotionJob>& job) {
 	} catch (...) {
 		failed = true;
 		error = "an exception that is not derived from std::exception";
+#if defined(__GLIBCXX__) || defined(_LIBCPP_VERSION)
+		if (const auto* type = abi::__cxa_current_exception_type()) {
+			error += std::string(" (type ") + type->name() + ")";
+		}
+#endif
 	}
 	if (failed) {
 		log::error("Tier 1 promotion failed, the module stays on tier 0: {}", error);
