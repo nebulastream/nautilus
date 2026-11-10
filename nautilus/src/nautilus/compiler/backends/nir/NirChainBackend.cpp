@@ -17,7 +17,7 @@ std::unique_ptr<Executable> NirChainBackend::compile(const std::shared_ptr<ir::I
 		throw RuntimeException("The backend 'nirtbc' needs the tbc backend");
 	}
 	// the traced module is process-local: its pointers are addresses, so the host resolves nothing
-	CompileContext context {dumpHandler, options, statistics, nullptr, {}};
+	CompileContext context {dumpHandler, options, statistics, nullptr, hostEnvironmentFor(ir->getImportLink())};
 	return backend->compile(std::move(module), context);
 }
 

@@ -208,7 +208,9 @@ struct ModuleBridge {
 		case nir::CalleeKind::Imported:
 			break;
 		}
-		throw RuntimeException("NIR to IR bridge: imported callees come with modules and linking (M4.6)");
+		throw RuntimeException(
+		    "NIR to IR bridge: imported callees are called through import slots, which only a backend on NIR "
+		    "(tbc, cpp, asmjit, mlir) lowers");
 	}
 
 	/// Interns callee `index` in the function table of the graph, with the types of its first call site.

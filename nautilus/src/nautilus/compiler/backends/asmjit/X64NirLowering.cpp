@@ -2248,8 +2248,36 @@ private:
 			return emitNativeCall(sig, info->fallback, thunk, record, id, type);
 		}
 		case CalleeKind::Imported:
-			throw NotImplementedException("asmjit: imported callees come with modules and linking (M4.6)");
+			return emitImportedCall(callee, sig, record, id, type);
 		}
+	}
+
+	/// A call of an exported function of another module (13 §5.7): the entry point of the exporter's current code is
+	/// read from the import slot (a load is an acquire on x86-64) and called with the C convention of the signature.
+	/// One that may throw goes through the import's capture thunk, as an indirect call does, since the exporter may be
+	/// code that throws natively.
+	void emitImportedCall(const nir::CalleeRecord& callee, const nir::SignatureRecord& sig, const CallRecord& record,
+	                      uint32_t id, TypeId type) {
+		if (host_.imports == nullptr) {
+			throw RuntimeException("asmjit: the module calls an imported function but was not linked");
+		}
+		Gp slot = cc.newIntPtr();
+		cc.mov(slot, reinterpret_cast<uint64_t>(host_.imports->address(callee.target)));
+		Gp entry = cc.newIntPtr();
+		cc.mov(entry, x86::qword_ptr(slot));
+		void* thunk = record.unwind != nir::NO_UNWIND ? host_.imports->captureThunk(callee.target) : nullptr;
+		const auto args = callArguments(sig, record.args, true);
+		InvokeNode* node = nullptr;
+		if (thunk != nullptr) {
+			cc.invoke(&node, reinterpret_cast<uint64_t>(thunk), signatureOf(sig, true));
+			node->setArg(0, entry);
+			setInvokeArguments(node, 1, args);
+		} else {
+			cc.invoke(&node, entry, signatureOf(sig));
+			setInvokeArguments(node, 0, args);
+		}
+		bindCallResult(node, id, type);
+		emitCheckPending(record.unwind);
 	}
 
 	/// A call of a native function; one that may throw goes through a capture thunk, a real C++ frame, so that the
@@ -2307,7 +2335,9 @@ private:
 		case CalleeKind::External:
 			return deferConstant(id, reinterpret_cast<uint64_t>(nirbackend::resolvePointer(m_, callee.target, host_)));
 		case CalleeKind::Imported:
-			throw NotImplementedException("asmjit: imported callees come with modules and linking (M4.6)");
+			// the stub that calls through the import slot (13 §5.7) is not built by any backend yet; nothing in the C++
+			// front end takes the address of an imported function
+			throw NotImplementedException("asmjit: the address of an imported function (funcaddr) is not supported");
 		case CalleeKind::Intrinsic:
 			throw RuntimeException("asmjit: an intrinsic has no address");
 		}

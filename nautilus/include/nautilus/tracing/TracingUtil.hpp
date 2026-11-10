@@ -101,6 +101,11 @@ TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
                                               const std::vector<tracing::TypedValueRef>& arguments,
                                               FunctionAttributes fnAttrs, void* captureFunc = nullptr);
 
+/// A call to an exported function of another module through its import slot (13-nir-spec.md §4.4); see
+/// TracingInterface::traceImportedCall.
+TypedValueRef& traceImportedCall(std::string_view moduleName, std::string_view functionName, Type resultType,
+                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs);
+
 void registerDestructor(const TypedValueRef& address, void* destructor);
 void unregisterDestructor(const TypedValueRef& address);
 void transferDestructor(const TypedValueRef& from, const TypedValueRef& to);

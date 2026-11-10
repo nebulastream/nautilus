@@ -3,6 +3,7 @@
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/TieredCompiler.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
+#include "nautilus/link/ModuleRegistry.hpp"
 #include "nautilus/logging.hpp"
 #include <charconv>
 #include <cstdlib>
@@ -95,7 +96,8 @@ NautilusEngine::NautilusEngine(const Options& options) : NautilusEngine(options,
 }
 
 NautilusEngine::NautilusEngine(const Options& options, std::shared_ptr<common::ChunkProvider> provider)
-    : chunkPool_(createChunkPool(applyEnvironmentOptions(options), std::move(provider))),
+    : registry_(std::make_shared<link::ModuleRegistry>()),
+      chunkPool_(createChunkPool(applyEnvironmentOptions(options), std::move(provider))),
       traceArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)),
       irArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)),
       jit_(createJITCompiler(applyEnvironmentOptions(options), *traceArenaPool_, *irArenaPool_)),
@@ -103,7 +105,8 @@ NautilusEngine::NautilusEngine(const Options& options, std::shared_ptr<common::C
 }
 
 NautilusEngine::NautilusEngine(std::unique_ptr<compiler::JITCompiler> jit, const Options& options)
-    : chunkPool_(createChunkPool(applyEnvironmentOptions(options), nullptr)),
+    : registry_(std::make_shared<link::ModuleRegistry>()),
+      chunkPool_(createChunkPool(applyEnvironmentOptions(options), nullptr)),
       traceArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)),
       irArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)), jit_(std::move(jit)),
       options(applyEnvironmentOptions(options)) {

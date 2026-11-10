@@ -317,7 +317,7 @@ changes M4.2 and §2 step 2 as follows:
   engine-owned worker pool sized by `engine.tiered.promotionThreads` (M4.7): contexts are per thread and have no pool. LLJIT
   still builds a `TargetMachine` per module for code generation, as ORC may generate code on any thread at the first call.
   (3) `MLIRLoweringProvider`, the `IRLocationMap` source and `MLIRCompilationBackend`'s IR path stay for the 0.3 pipeline, like
-  `CPPLoweringProvider`; they go with it. (4) Imported callees (M4.6). (5) Not measured against the 0.3 path on the reference
+  `CPPLoweringProvider`; they go with it. (4) Imported callees (done in M4.6). (5) Not measured against the 0.3 path on the reference
   machine: the fixed cost per compile is covered by a test that a second compile on a thread builds no context and no target
   machine, not by a microsecond figure.
 - **Tests.** Every execution test, plugin test and the fuzzer run each backend on the default pipeline; `legacy-tbc` and
@@ -1285,6 +1285,39 @@ checked at M4.2.
 - **Done when:** cycles, signature and guarantee mismatches are rejected;
   an exporter's promotion is seen by importers; release order holds; every
   backend runs cross-module calls.
+- **As built.** `link::ModuleRegistry` (one per engine; `NautilusEngine::moduleRegistry()`) holds a `ModuleHandle` per
+  named module with the stages built → linked → compiled → released; `ModuleHandle::link` resolves, checks (exact
+  signature with extension kinds, `attrsImply`, cycle through the recorded import edges, exporter compiled) and binds
+  atomically; `link::ImportSlots` are the cells (release store, acquire load) and `link::ImportLink` owns them with the
+  pins on the exporters and the executables a slot has named (a running call may still be in the old code). The handle
+  is owned by `ModuleState::link`, so release order is ownership order: an importer pins its exporters, an exporter's
+  name stays registered while any importer lives. Promotion is seen through `ModuleState::version`: its `fetch_add` (the
+  one point every install of an executable passes, `CompiledModule::setExecutable` and the tier-1 promotion alike) calls
+  the observers the registry adds, which republish the slots of the importers. Host API: `createModule(name)`,
+  `NautilusModule::importFunction<Signature>(module, function[, assumed])` (early signature check, assumed attributes
+  copied from the export), `setFunctionAttributes` (declared guarantees of an export), `link::LinkError`. A named module
+  or one with imports compiles inside a `LinkSession`, which the pipeline reaches through the thread
+  (`LinkSession::current()`) after conversion: the module gets its name, its imports are linked, and the graph carries
+  the `ImportLink` to the backends (`HostEnvironment::imports`, tier 0 and promotion alike).
+  **Backends.** An imported call loads the slot (acquire on AArch64, a plain load where the target orders it) and calls
+  the entry point with the C convention of the signature: `tbc` (`LOAD` + `CALL_IND`), `asmjit` (x86-64 and AArch64),
+  `cpp` (`__atomic_load_n`) and `mlir` (an `llvm.load atomic acquire` and an indirect call). The exporter's exception
+  mode is that of its current tier and changes with a promotion, so a call that may throw goes through a typed thunk the
+  C++ front end registers per import (`ImportSlots::captureThunk`: `captureThrowingCall` for the backends that capture;
+  `frameThunk`: `callInExceptionFrame` for MLIR, which pushes an exception frame for a capturing exporter and rethrows
+  from it). An import without thunks (a hand-written module) is called directly, which is right when exporter and
+  importer have the same mode.
+  **Not done, and why:** (1) Cross-module inlining. It is a mode of the inlining pass of M3.8, which does not exist on
+  this branch; the registry keeps what it needs (the exporter's SSA module, `ModuleHandle::module()`, and its structural
+  hash, recorded in `ImportLink::bindings` at the link, for the key of compiled code that inlines, 13 §7.3), but there is
+  no pass to inline with, and so no use for the rule that functions with `bind.addr` stay out. (2) `funcaddr` of an
+  imported function (the stub that calls through the slot): no front end takes such an address, and every backend
+  throws `NotImplementedException` for it. (3) The C API and loaded images link with the same registry, but have no
+  entry point yet (M5). (4) The exporter's structural hash is taken with the default options. (5) Imports need the NIR
+  pipeline: `tracing.nirTracer=false`, `debug` and `perf` throw at the call, and the bridge to the 0.3 IR (`NirToIR`)
+  rejects imported callees. (6) The exporter's attributes are the declared ones: the conversion infers the guarantees of
+  internal functions only, so an exported function guarantees nothing unless `setFunctionAttributes` says so. (7) The
+  `mlir` lowering could not be built in the session that wrote it (no MLIR in the `dev` preset); CI is its test.
 
 #### M4.7 Promotion service · L · deps: M4.5
 - **Builds:** [11 §4](11-tiered-compilation.md): engine-wide worker pool,

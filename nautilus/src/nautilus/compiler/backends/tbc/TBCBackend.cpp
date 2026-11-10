@@ -25,7 +25,8 @@ std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGrap
 	if (ir->getNirModule() != nullptr && ir->getFunctionOperations().empty()) {
 		auto module = std::static_pointer_cast<const nir::Module>(ir->getNirModule());
 		// the traced module is process-local: its pointers are addresses, so the host resolves nothing
-		const nirbackend::CompileContext context {dumpHandler, options, statistics, nullptr, {}};
+		const nirbackend::CompileContext context {dumpHandler, options, statistics, nullptr,
+		                                          nirbackend::hostEnvironmentFor(ir->getImportLink())};
 		return TBCNirBackend().compile(std::move(module), context);
 	}
 	const auto backendStart = std::chrono::steady_clock::now();

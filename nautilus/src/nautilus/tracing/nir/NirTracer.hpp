@@ -61,6 +61,8 @@ public:
 	TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
 	                                              const std::vector<TypedValueRef>& arguments,
 	                                              FunctionAttributes fnAttrs, void* captureFunc = nullptr) override;
+	TypedValueRef& traceImportedCall(std::string_view moduleName, std::string_view functionName, Type resultType,
+	                                 const std::vector<TypedValueRef>& arguments, FunctionAttributes fnAttrs) override;
 	TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
 	                                 const std::vector<TypedValueRef>& arguments, FunctionAttributes fnAttrs,
 	                                 void* captureFunc = nullptr) override;
@@ -136,6 +138,8 @@ private:
 	uint32_t externalCallee(void* fptn, Type resultType, const std::vector<TypedValueRef>& arguments,
 	                        FunctionAttributes fnAttrs);
 	uint32_t internalCallee(uint32_t functionIndex);
+	uint32_t importedCallee(std::string_view moduleName, std::string_view functionName, Type resultType,
+	                        const std::vector<TypedValueRef>& arguments, FunctionAttributes fnAttrs);
 	uint32_t pointerEntry(::nautilus::nir::PointerKind kind, const void* address, uint8_t provenance);
 	uint32_t signatureOf(Type result, const std::vector<TypedValueRef>& arguments);
 	uint32_t cleanupList();

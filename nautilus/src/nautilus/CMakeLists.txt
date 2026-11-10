@@ -5,5 +5,6 @@ add_subdirectory(tracing)
 add_subdirectory(compiler)
 add_subdirectory(api)
 add_subdirectory(nir)
+add_subdirectory(link)
 
 add_source_files(nautilus logging.cpp)

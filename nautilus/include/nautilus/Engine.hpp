@@ -218,6 +218,21 @@ public:
 	 */
 	NautilusModule createModule(ModuleOptions overrides) const;
 
+	/**
+	 * @brief Creates a module with a name (docs/plans/nautilus-0.4/13-nir-spec.md §4.4).
+	 *
+	 * A named module is registered with the engine when it is compiled, so that modules compiled after it can import
+	 * its functions with NautilusModule::importFunction. A name refers to one module of the engine: compiling a second
+	 * module under a name that is registered fails. The name is released with the compiled module.
+	 */
+	NautilusModule createModule(std::string name) const;
+	NautilusModule createModule(std::string name, ModuleOptions overrides) const;
+
+	/// The compiled modules of this engine that have a name, and the links between them.
+	[[nodiscard]] const std::shared_ptr<link::ModuleRegistry>& moduleRegistry() const {
+		return registry_;
+	}
+
 	/// Gives the memory that compilations no longer use back to the OS (the reaction to memory pressure). Chunks in
 	/// use by running compilations are unaffected; the pool refills as compilations continue.
 	void trimMemory();
@@ -234,6 +249,8 @@ public:
 	}
 
 private:
+	/// Declared first: modules hold it, and it outlives everything that unregisters from it.
+	std::shared_ptr<link::ModuleRegistry> registry_;
 	/**
 	 * @brief The chunk pool both arena pools draw from (`engine.arena.retainedBytes` bounds what it keeps idle).
 	 * Declared first: it outlives the arena pools and the compiler.
@@ -285,14 +302,78 @@ private:
 class NautilusModule {
 public:
 #ifdef ENABLE_TRACING
-	NautilusModule(const compiler::JITCompiler& jit, bool compiled, ModuleOptions moduleOptions)
-	    : moduleOptions_(std::move(moduleOptions)), jit_(jit), compiled_(compiled) {
+	NautilusModule(const compiler::JITCompiler& jit, bool compiled, ModuleOptions moduleOptions, std::string name = {},
+	               std::shared_ptr<link::ModuleRegistry> registry = {})
+	    : moduleOptions_(std::move(moduleOptions)), name_(std::move(name)), registry_(std::move(registry)), jit_(jit),
+	      compiled_(compiled) {
 	}
 #else
-	NautilusModule(const compiler::JITCompiler& /*jit*/, bool /*compiled*/, ModuleOptions moduleOptions)
-	    : moduleOptions_(std::move(moduleOptions)) {
+	NautilusModule(const compiler::JITCompiler& /*jit*/, bool /*compiled*/, ModuleOptions moduleOptions,
+	               std::string name = {}, std::shared_ptr<link::ModuleRegistry> registry = {})
+	    : moduleOptions_(std::move(moduleOptions)), name_(std::move(name)), registry_(std::move(registry)) {
 	}
 #endif
+
+	/// The name this module is registered under when it is compiled, or empty for an anonymous module.
+	[[nodiscard]] const std::string& name() const {
+		return name_;
+	}
+
+	/**
+	 * @brief Declares a call to the exported function @p functionName of the compiled module @p moduleName.
+	 *
+	 * The returned callable is used inside the functions registered on this module, where it is traced as a call to an
+	 * imported callee: it goes through an import slot that holds the exporter's current entry point, so promoting the
+	 * exporter to another tier is seen by this module without recompiling it. The exporter has to be compiled before
+	 * this module is; compile() links the imports and fails with a link::LinkError that names the import if the module
+	 * or the function is missing, the signature is not exactly @p Signature, the export does not give the guarantees
+	 * this import assumes, or the import graph would have a cycle.
+	 *
+	 * If the exporter is already compiled the signature is checked here, and unless @p assumed states otherwise the
+	 * import assumes the guarantees the export gives. Otherwise it assumes none.
+	 *
+	 * @tparam Signature Raw function signature, e.g. uint64_t(uint64_t)
+	 * @param assumed What the callee is assumed to guarantee (a guarantee the export does not give fails the link).
+	 */
+	template <typename Signature>
+	ImportedFunction<Signature> importFunction(const std::string& moduleName, const std::string& functionName,
+	                                           std::optional<FunctionAttributes> assumed = std::nullopt) {
+		auto declaration = details::ImportBuilder<Signature>::declaration(moduleName, functionName,
+		                                                                  assumed.value_or(FunctionAttributes {}));
+		if (registry_) {
+			if (const auto exported = details::checkImport(registry_, declaration); exported && !assumed) {
+				declaration.attributes = *exported;
+			}
+		}
+		for (const auto& existing : imports_) {
+			if (existing.module == moduleName && existing.function == functionName) {
+				if (existing.signature != declaration.signature) {
+					throw std::runtime_error("'" + moduleName + "'.'" + functionName +
+					                         "' is imported twice with different signatures");
+				}
+				return ImportedFunction<Signature>(registry_, moduleName, functionName, existing.attributes);
+			}
+		}
+		imports_.push_back(declaration);
+		return ImportedFunction<Signature>(registry_, moduleName, functionName, declaration.attributes);
+	}
+
+	/**
+	 * @brief Declares what the exported function @p functionName guarantees to the modules that import it.
+	 *
+	 * Importers may assume these attributes of the function (the link fails for an import that assumes more); they are
+	 * trusted, as for `invoke(attributes, function)`. A function that declares nothing guarantees nothing.
+	 */
+	void setFunctionAttributes(const std::string& functionName, FunctionAttributes attributes) {
+		for (auto& declaration : exports_) {
+			if (declaration.name == functionName) {
+				declaration.attributes = attributes;
+				return;
+			}
+		}
+		throw std::runtime_error("module '" + name_ + "' has no exported function '" + functionName +
+		                         "' to declare attributes of (only a named module exports)");
+	}
 
 	/**
 	 * @brief Override a per-module option before compiling.
@@ -338,6 +419,7 @@ public:
 	void registerFunction(const std::string& name, std::function<R(val<FunctionArguments>...)> func,
 	                      [[maybe_unused]] std::source_location location = std::source_location::current()) {
 		interpretedFunctions_[name] = func;
+		declareExport<R, FunctionArguments...>(name);
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			auto wrapper = details::createFunctionWrapper(std::move(func));
@@ -358,6 +440,7 @@ public:
 	                      [[maybe_unused]] std::source_location location = std::source_location::current()) {
 		std::function<R(val<FunctionArguments>...)> func = fnptr;
 		interpretedFunctions_[name] = func;
+		declareExport<R, FunctionArguments...>(name);
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			auto wrapper = details::createFunctionWrapper(fnptr);
@@ -373,6 +456,9 @@ public:
 	 * @return CompiledModule with all functions accessible by name
 	 */
 	CompiledModule compile() {
+		// A named module, or one with imports, takes part in the module registry of its engine (13 §4.4): the session
+		// reserves the name now, the compilation pipeline links the imports, and the commit registers the exports.
+		const bool linked = registry_ && (!name_.empty() || !imports_.empty());
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			// Compile into a freshly created module state. Each compile() carries
@@ -382,16 +468,39 @@ public:
 			// the version on this state when promotion completes.
 			auto state = std::make_shared<details::ModuleState>();
 			state->interpretedFunctions = std::move(interpretedFunctions_);
-			jit_.compileModule(functions_, moduleOptions_, state);
+			if (linked) {
+				details::LinkSession session(registry_, name_, std::move(exports_), std::move(imports_));
+				jit_.compileModule(functions_, moduleOptions_, state);
+				session.commit(state);
+			} else {
+				jit_.compileModule(functions_, moduleOptions_, state);
+			}
 			return CompiledModule(std::move(state));
 		}
 #endif
-		return CompiledModule(std::move(interpretedFunctions_));
+		CompiledModule module(std::move(interpretedFunctions_));
+		if (linked) {
+			// interpreted: the functions are the code importers call
+			details::LinkSession session(registry_, name_, std::move(exports_), std::move(imports_));
+			session.commit(module.getState());
+		}
+		return module;
 	}
 
 private:
+	template <typename R, typename... FunctionArguments>
+	void declareExport(const std::string& name) {
+		if (!name_.empty()) {
+			exports_.push_back(details::makeExportDeclaration<R, FunctionArguments...>(name));
+		}
+	}
+
 	std::unordered_map<std::string, std::any> interpretedFunctions_;
 	ModuleOptions moduleOptions_;
+	std::string name_;
+	std::shared_ptr<link::ModuleRegistry> registry_;
+	std::vector<details::ExportDeclaration> exports_;
+	std::vector<details::ImportDeclaration> imports_;
 #ifdef ENABLE_TRACING
 	const compiler::JITCompiler& jit_;
 	bool compiled_;
@@ -400,13 +509,23 @@ private:
 };
 
 inline NautilusModule NautilusEngine::createModule() const {
-	return NautilusModule(*jit_, isCompiled(), options.deriveModuleOptions());
+	return NautilusModule(*jit_, isCompiled(), options.deriveModuleOptions(), {}, registry_);
 }
 
 inline NautilusModule NautilusEngine::createModule(ModuleOptions overrides) const {
 	auto moduleOptions = options.deriveModuleOptions();
 	moduleOptions.applyOverrides(overrides);
-	return NautilusModule(*jit_, isCompiled(), std::move(moduleOptions));
+	return NautilusModule(*jit_, isCompiled(), std::move(moduleOptions), {}, registry_);
+}
+
+inline NautilusModule NautilusEngine::createModule(std::string name) const {
+	return NautilusModule(*jit_, isCompiled(), options.deriveModuleOptions(), std::move(name), registry_);
+}
+
+inline NautilusModule NautilusEngine::createModule(std::string name, ModuleOptions overrides) const {
+	auto moduleOptions = options.deriveModuleOptions();
+	moduleOptions.applyOverrides(overrides);
+	return NautilusModule(*jit_, isCompiled(), std::move(moduleOptions), std::move(name), registry_);
 }
 
 namespace details {

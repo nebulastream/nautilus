@@ -83,6 +83,14 @@ public:
 	                                                      const std::vector<TypedValueRef>& arguments,
 	                                                      FunctionAttributes fnAttrs, void* captureFunc = nullptr) = 0;
 
+	/// Trace a call to an exported function of another module (13-nir-spec.md §4.4): a call of an imported callee,
+	/// made through the import slot the link step fills. @p fnAttrs are the guarantees the caller assumes of the
+	/// exporter; a call that may throw records the destructors live at this point. Only the NIR tracer records
+	/// imports; the default throws.
+	virtual TypedValueRef& traceImportedCall(std::string_view moduleName, std::string_view functionName,
+	                                         Type resultType, const std::vector<TypedValueRef>& arguments,
+	                                         FunctionAttributes fnAttrs);
+
 	/// Maintain the host-side cleanup stack used to annotate throwing calls.
 	virtual void registerDestructor(const TypedValueRef& address, void* destructor) = 0;
 	virtual void unregisterDestructor(const TypedValueRef& address) = 0;
