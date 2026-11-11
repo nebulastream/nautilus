@@ -28,7 +28,7 @@ Committed on the 0.4 branch, so it reaches `main` with the release:
 | `CMakePresets.json` | `dev` (no MLIR), `full`, `debug`, `asan`, `tsan`, `nocompiler`, `bench` |
 | Session hook | `.claude/hooks/session-start.sh`: GCC 14, Clang 21, ninja, ccache, valgrind, clang-format 22 |
 | `format.sh` | warns when it is not using clang-format 22, whose output CI checks |
-| Skills | `build-and-test`, `ir-change`, `perf-investigation`, `regenerate-dumps` (plus the existing `nautilus-review`) |
+| Skills | `build-and-test`, `ir-change`, `perf-investigation`, `regenerate-dumps`, `memory-check` (plus the existing `nautilus-review`) |
 
 ## 3. Contributors in 0.4
 
@@ -110,6 +110,10 @@ compile-fail test suite.
 
 Most of the data exists in 0.4's statistics; `explain()` is the single entry
 point.
+
+**Status (M4.9).** Built as `ModuleExplanation` (text and JSON); the IR at each stage on request is not part of it
+yet, and the persistability and inlining entries report `not available yet` until M5.3 and M3.8
+([16 M4.9](16-implementation-plan.md)). `tools/agent/affected-tests` and the `memory-check` skill exist.
 
 ### 4.4 The playground as an MCP server
 

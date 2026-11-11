@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""affected-tests: the test targets that cover a set of changed files.
+
+  affected-tests [--base REF | FILE ...] [--json] [--preset NAME]
+  affected-tests --self-test
+
+With file arguments it maps those; without, it maps `git diff --name-only REF` (default: the merge base with
+`origin/nautilus-0.4` when that exists, else HEAD, i.e. the uncommitted changes). The mapping is the table of
+AGENTS.md §3 applied to the directory layout of §5: the rules below, ordered from the specific to the general, and
+every matching rule adds its targets. It reads no build output and no file contents, so the answer is the same on
+every machine and takes milliseconds.
+
+Text output: one target per line, sorted, then `check: <command>` lines for what is not a test binary (the format
+check, the document check). `--preset NAME` prints the binary's path under build/NAME instead of its target name.
+`--json` prints {"targets", "paths", "optional", "checks", "files", "unmapped"}; `optional` are targets that only
+exist with a non-default CMake option (MLIR, benchmarks, the fuzzer replay driver, GPU, ...). A file that no rule
+knows goes to `unmapped` (and to stderr in text mode); under nautilus/ it falls back to the end-to-end tests.
+
+Build the targets with `cmake --build --preset dev --target <target>` and run the binaries (AGENTS.md §3).
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+EXECUTION = "nautilus-execution-tests"
+TRACING = "nautilus-tracing-tests"
+TRACING_UNIT = "nautilus-tracing-unit-tests"
+IR_PASS = "nautilus-ir-pass-tests"
+VALUE = "nautilus-value-tests"
+COMMON = "nautilus-common-tests"
+NIR = "nautilus-nir-tests"
+EXTENSION = "nautilus-extension-tests"
+API_COMPAT = "nautilus-api-compat-tests"
+LLVM_IR = "nautilus-llvm-ir-test"
+PLUGINS = {
+    "std": ["nautilus-std-tests"],
+    "simd": ["nautilus-simd-tests"],
+    "builtin": ["nautilus-builtin-tests"],
+    "specialization": ["nautilus-specialization-tests"],
+    "inlining": ["nautilus-inlining-tests"],
+    "profiling": ["nautilus-profiling-tests"],
+    "gpu": ["nautilus-gpu-execution-tests"],
+}
+# targets that a default (`dev`) configure does not build
+OPTIONAL = {
+    LLVM_IR, API_COMPAT, "nautilus-benchmarks", "nautilus-fuzz-replay", "nautilus-gpu-execution-tests",
+    "nautilus-gpu-tracing-tests", "nautilus-gpu-codegen-tests",
+}
+ALL = sorted({EXECUTION, TRACING, TRACING_UNIT, IR_PASS, VALUE, COMMON, NIR, EXTENSION}
+             | {t for ts in PLUGINS.values() for t in ts if t not in OPTIONAL})
+
+FORMAT_CHECK = "./format.sh"
+DOC_CHECK = "python3 tools/doc-check/doc-check.py"
+AGENT_SELF_TEST = "python3 tools/agent/affected-tests --self-test"
+
+# (regex over the repository-relative path, targets, checks), most specific first; all matches count.
+RULES = [
+    # documents: only the document check applies
+    (r"(^|/)(AGENTS|CLAUDE)\.md$|^\.claude/skills/", [], [DOC_CHECK]),
+    (r"^docs/options\.md$", [], [DOC_CHECK]),
+    (r"^docs/|\.md$|^LICENSE", [], []),
+    (r"^\.claude/|^\.github/|^\.gitignore$|^\.clang", [], []),
+    (r"^tools/doc-check/", [], [DOC_CHECK]),
+    (r"^tools/agent/", [], [AGENT_SELF_TEST]),
+    (r"^format\.sh$", [], [FORMAT_CHECK]),
+    # build files reach every target
+    (r"(^|/)CMakeLists\.txt$|^cmake/|\.cmake$|^CMakePresets\.json$", ALL, []),
+    # the public API: a header change rebuilds almost everything (AGENTS.md §2)
+    (r"^nautilus/include/", ALL, []),
+    # the library, by subsystem
+    (r"^nautilus/src/nautilus/nir/", [NIR, EXECUTION, TRACING], []),
+    (r"^nautilus/src/nautilus/tracing/", [TRACING_UNIT, TRACING, EXECUTION, VALUE], []),
+    (r"^nautilus/src/nautilus/compiler/ir/", [IR_PASS, TRACING, EXECUTION], []),
+    (r"^nautilus/src/nautilus/compiler/backends/mlir/", [EXECUTION, LLVM_IR], []),
+    (r"^nautilus/src/nautilus/compiler/backends/", [EXECUTION], []),
+    (r"^nautilus/src/nautilus/compiler/(?!ir/|backends/)", [EXECUTION, TRACING], []),
+    (r"^nautilus/src/nautilus/conversion/", [NIR, EXECUTION, TRACING], []),
+    (r"^nautilus/src/nautilus/link/", [EXECUTION], []),
+    (r"^nautilus/src/nautilus/common/", [COMMON, EXECUTION], []),
+    (r"^nautilus/src/nautilus/(exceptions/|logging\.)", [COMMON, EXECUTION], []),
+    (r"^nautilus/src/nautilus/extensions/", [EXTENSION, EXECUTION], []),
+    (r"^nautilus/src/nautilus/api/", [VALUE, EXECUTION], []),
+    (r"^nautilus/src/", [EXECUTION], []),
+    # the tests themselves
+    (r"^nautilus/test/execution-tests/", [EXECUTION, TRACING], []),
+    (r"^nautilus/test/tracing-tests/", [TRACING_UNIT, "nautilus-nir-tracer-allocation-tests"], []),
+    (r"^nautilus/test/ir-pass-tests/", [IR_PASS], []),
+    (r"^nautilus/test/val-tests/", [VALUE], []),
+    (r"^nautilus/test/common/", [COMMON], []),
+    (r"^nautilus/test/nir-tests/", [NIR], []),
+    (r"^nautilus/test/extension-tests/", [EXTENSION], []),
+    (r"^nautilus/test/api-compat/", [API_COMPAT], []),
+    (r"^nautilus/test/llvm-ir-test/", [LLVM_IR], []),
+    (r"^nautilus/test/fuzz/", ["nautilus-fuzz-replay"], []),
+    (r"^nautilus/test/benchmark/", ["nautilus-benchmarks"], []),
+    (r"^nautilus/test/data/nir-conformance/", [NIR], []),
+    (r"^nautilus/test/data/nir-trace/", [TRACING_UNIT, "nautilus-nir-tracer-allocation-tests"], []),
+    (r"^nautilus/test/data/(?!nir-conformance/|nir-trace/)", [TRACING], []),
+    # tools and vendored code
+    (r"^tools/nir-opt/", ["nautilus-nir-opt", NIR], []),
+    (r"^tools/nir-run/", ["nautilus-nir-run", NIR], []),
+    (r"^tools/stencils/", [EXECUTION], []),
+    (r"^third_party/xxhash/", [NIR], []),
+    (r"^third_party/(?!xxhash/)", [EXECUTION], []),
+    (r"^tools/", [], []),
+]
+COMPILED = re.compile(r"\.(cpp|hpp|h|cc)$")
+PLUGIN_PATH = re.compile(r"^plugins/([^/]+)/")
+
+
+def plugin_targets(path):
+    m = PLUGIN_PATH.match(path)
+    if m is None or m.group(1) not in PLUGINS:
+        return None
+    return PLUGINS[m.group(1)]
+
+
+def map_file(path):
+    """(targets, checks, known) of one repository-relative path."""
+    targets, checks, known = set(), set(), False
+    for pattern, rule_targets, rule_checks in RULES:
+        if re.search(pattern, path):
+            targets.update(rule_targets)
+            checks.update(rule_checks)
+            known = True
+    plugin = plugin_targets(path)
+    if path.startswith("plugins/") and not path.endswith(".md") and not path.endswith("CMakeLists.txt"):
+        if plugin is not None:
+            targets.update(plugin)
+            known = True
+    if COMPILED.search(path):
+        checks.add(FORMAT_CHECK)
+    if not known and path.startswith("nautilus/"):
+        targets.add(EXECUTION)
+        known = True
+    return targets, checks, known
+
+
+def affected(files):
+    targets, checks, per_file, unmapped = set(), set(), {}, []
+    for f in files:
+        t, c, known = map_file(f)
+        targets |= t
+        checks |= c
+        per_file[f] = sorted(t)
+        if not known:
+            unmapped.append(f)
+    return sorted(targets), sorted(checks), per_file, sorted(unmapped)
+
+
+def target_dirs(root):
+    """Target name -> directory of the CMakeLists.txt that defines it, for the paths of --preset."""
+    out = subprocess.check_output(["git", "ls-files", "-z", "--", "*CMakeLists.txt"], cwd=root, text=True)
+    dirs = {}
+    for f in (x for x in out.split("\0") if x):
+        with open(os.path.join(root, f), errors="replace") as fh:
+            for m in re.finditer(r"add_executable\(\s*(nautilus-[A-Za-z0-9_-]+)", fh.read()):
+                dirs.setdefault(m.group(1), os.path.dirname(f))
+    return dirs
+
+
+def git(root, *args):
+    return subprocess.check_output(["git", *args], cwd=root, text=True)
+
+
+def default_base(root):
+    try:
+        return git(root, "merge-base", "HEAD", "origin/nautilus-0.4").strip()
+    except subprocess.CalledProcessError:
+        return "HEAD"
+
+
+def changed_files(root, base):
+    return sorted(set(f for f in git(root, "diff", "--name-only", base).split("\n") if f))
+
+
+def self_test():
+    root = git(os.getcwd(), "rev-parse", "--show-toplevel").strip()
+    problems = []
+    # 1. every target a rule names is defined by the repository's CMake files
+    defined = set(target_dirs(root))
+    named = {t for _, ts, _ in RULES for t in ts} | {t for ts in PLUGINS.values() for t in ts} | set(ALL)
+    for t in sorted(named - defined):
+        problems.append(f"rule target {t} is not defined by any CMakeLists.txt")
+    # 2. a sample of changed files maps to the expected targets
+    samples = [
+        (["nautilus/src/nautilus/nir/Parser.cpp"], [EXECUTION, NIR, TRACING], [FORMAT_CHECK]),
+        (["nautilus/src/nautilus/tracing/TraceContext.cpp"], [EXECUTION, TRACING, TRACING_UNIT, VALUE], [FORMAT_CHECK]),
+        (["nautilus/src/nautilus/compiler/ir/passes/DeadCodeElimination.cpp"], [EXECUTION, IR_PASS, TRACING], [FORMAT_CHECK]),
+        (["nautilus/src/nautilus/compiler/backends/asmjit/AsmJitBackend.cpp"], [EXECUTION], [FORMAT_CHECK]),
+        (["nautilus/src/nautilus/compiler/TieredCompiler.cpp"], [EXECUTION, TRACING], [FORMAT_CHECK]),
+        (["nautilus/src/nautilus/link/ModuleRegistry.cpp"], [EXECUTION], [FORMAT_CHECK]),
+        (["nautilus/src/nautilus/common/Arena.cpp"], [COMMON, EXECUTION], [FORMAT_CHECK]),
+        (["nautilus/include/nautilus/val.hpp"], ALL, [FORMAT_CHECK]),
+        (["plugins/std/src/string.cpp"], ["nautilus-std-tests"], [FORMAT_CHECK]),
+        (["plugins/simd/include/nautilus/simd.hpp"], ["nautilus-simd-tests"], [FORMAT_CHECK]),
+        (["nautilus/test/val-tests/ValueTest.cpp"], [VALUE], [FORMAT_CHECK]),
+        (["nautilus/test/data/after_constant_folding/x.ir"], [TRACING], []),
+        (["nautilus/test/data/nir-conformance/a.nir"], [NIR], []),
+        (["AGENTS.md"], [], [DOC_CHECK]),
+        (["docs/getting-started.md"], [], []),
+        (["tools/doc-check/doc-check.py"], [], [DOC_CHECK]),
+        (["tools/nir-opt/main.cpp"], ["nautilus-nir-opt", NIR], [FORMAT_CHECK]),
+        (["third_party/xxhash/xxhash.h"], [NIR], [FORMAT_CHECK]),
+        (["nautilus/src/nautilus/brand_new_dir/x.cpp"], [EXECUTION], [FORMAT_CHECK]),
+        (["nautilus/test/ir-pass-tests/A.cpp", "nautilus/test/nir-tests/B.cpp"], [IR_PASS, NIR], [FORMAT_CHECK]),
+        ([], [], []),
+    ]
+    for files, expected_targets, expected_checks in samples:
+        targets, checks, _, unmapped = affected(files)
+        if targets != sorted(expected_targets) or checks != sorted(expected_checks) or unmapped:
+            problems.append(f"{files}: got targets {targets} checks {checks} unmapped {unmapped}, "
+                            f"expected {sorted(expected_targets)} {sorted(expected_checks)}")
+    if affected(["somewhere/else.txt"])[3] != ["somewhere/else.txt"]:
+        problems.append("an unknown file outside nautilus/ must be reported as unmapped")
+    if affected(["nautilus/src/nautilus/tracing/a.cpp", "nautilus/src/nautilus/nir/b.cpp"]) != \
+            affected(["nautilus/src/nautilus/nir/b.cpp", "nautilus/src/nautilus/tracing/a.cpp"]):
+        problems.append("the answer depends on the order of the files")
+    # 3. the git path: the files of `git diff --name-only <base>` in a scratch repository, and the --preset paths
+    with tempfile.TemporaryDirectory() as tmp:
+        def run(*cmd):
+            subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *cmd], cwd=tmp, check=True,
+                           capture_output=True)
+        run("init", "-q")
+        os.makedirs(os.path.join(tmp, "nautilus", "src", "nautilus", "nir"))
+        os.makedirs(os.path.join(tmp, "docs"))
+        for name in ("nautilus/src/nautilus/nir/a.cpp", "docs/a.md"):
+            open(os.path.join(tmp, name), "w").write("1\n")
+        run("add", ".")
+        run("commit", "-q", "-m", "base")
+        open(os.path.join(tmp, "nautilus/src/nautilus/nir/a.cpp"), "w").write("2\n")
+        if changed_files(tmp, "HEAD") != ["nautilus/src/nautilus/nir/a.cpp"]:
+            problems.append("changed_files did not return the modified file")
+        if affected(changed_files(tmp, "HEAD"))[0] != sorted([NIR, EXECUTION, TRACING]):
+            problems.append("a modified NIR source did not map to the NIR targets")
+    dirs = target_dirs(root)
+    if dirs.get(NIR) != "nautilus/test/nir-tests" or dirs.get(EXECUTION) != "nautilus/test/execution-tests":
+        problems.append(f"target directories are wrong: {dirs.get(NIR)}, {dirs.get(EXECUTION)}")
+    for p in problems:
+        print("self-test:", p)
+    print("self-test ok" if not problems else f"self-test: {len(problems)} problems")
+    return 1 if problems else 0
+
+
+def main():
+    ap = argparse.ArgumentParser(description="print the test targets that cover changed files")
+    ap.add_argument("files", nargs="*", help="changed files, relative to the repository root")
+    ap.add_argument("--base", help="diff against this ref (default: merge base with origin/nautilus-0.4, else HEAD)")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--preset", help="print binary paths under build/<preset> instead of target names")
+    ap.add_argument("--self-test", action="store_true")
+    args = ap.parse_args()
+    if args.self_test:
+        return self_test()
+    root = git(os.getcwd(), "rev-parse", "--show-toplevel").strip()
+    files = sorted(set(args.files)) if args.files else changed_files(root, args.base or default_base(root))
+    targets, checks, per_file, unmapped = affected(files)
+    dirs = target_dirs(root) if args.preset or args.json else {}
+    paths = {t: f"build/{args.preset or '<preset>'}/{dirs[t]}/{t}" for t in targets if t in dirs}
+    if args.json:
+        print(json.dumps({"targets": targets, "paths": paths, "optional": [t for t in targets if t in OPTIONAL],
+                          "checks": checks, "files": per_file, "unmapped": unmapped}, indent=2, sort_keys=True))
+        return 0
+    for t in targets:
+        print(paths.get(t, t) if args.preset else t)
+    for c in checks:
+        print(f"check: {c}")
+    for f in unmapped:
+        print(f"unmapped: {f}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

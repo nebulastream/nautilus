@@ -1367,6 +1367,24 @@ checked at M4.2.
   ([15 §5](15-agent-experience.md)).
 - **Done when:** `explain()` is covered by a test; `affected-tests` maps a
   sample of changed files to the expected targets.
+- **Status.** Built: `CompiledModule::explain()` returning a `ModuleExplanation` (`include/nautilus/ModuleExplanation.hpp`,
+  `link/ModuleExplain.cpp`) with `toString()` and `toJson()`: the module's name and registry stage, the tier that runs
+  it and its backend, the two tiers with their backends and status (`active`, `replaced`, or the promotion state; the
+  backends come from `PromotionControl::tierBackends()`, which the compiler fills from the configuration it already
+  holds), the promotion status and error, the imported modules, per function its tier, backend, block and instruction
+  counts, guarantees and whether it is exported (from the module's NIR as the registry keeps it), and the statistics of
+  the running executable. `persistability` (M5.3) and `inlining` (M3.8) are present as `{"available": false,
+  "status": "not available yet", "milestone": ...}` and become data when those land. `explain()` only reads recorded
+  state: nothing was added to the compile path except two backend-name strings copied into the promotion's control.
+  `tools/agent/affected-tests` (files or `--base REF` to targets; `--json`, `--preset`), with its own `--self-test`
+  (every target of a rule is defined by CMake, a sample of files maps to the expected targets, the git path) that the
+  `doc-check` job runs; the `memory-check` skill (arena counters, the 40,000-module probe, ASan/LSan). Tests:
+  `ModuleExplainTest.cpp` (single tier, JSON, manual promotion before and after, interpreted).
+  **Not done, and why:** (1) the IR at each stage "on request" of [15 §4.3](15-agent-experience.md): it needs the
+  dump hooks to hand out their text, which M4.10 or a later item can add on top of this report; (2) per-function
+  tier and backend are those of the module, because one executable holds every function; (3) `functions` is empty
+  for a module without NIR (the 0.3 pipeline), and says so (`functionsAvailable`); (4) why a call was not inlined and
+  `artifact.ineligibleReason` wait for M3.8 and M5.3 as the task says.
 
 #### M4.10 M4 exit · S · deps: M4.3–M4.9
 - **Builds:** every backend switched on except GPU (M7,

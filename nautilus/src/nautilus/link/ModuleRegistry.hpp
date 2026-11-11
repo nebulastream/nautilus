@@ -133,6 +133,8 @@ public:
 	/// The links of this module, or null before it is linked and after it is released.
 	[[nodiscard]] std::shared_ptr<const ImportLink> imports() const;
 	[[nodiscard]] std::vector<std::string> importedModules() const;
+	/// The exported functions, empty before the module is compiled and after it is released.
+	[[nodiscard]] std::vector<ExportInfo> exports() const;
 	[[nodiscard]] std::shared_ptr<const nir::Module> module() const;
 	/// The structural hash of `module()` (computed on first use), if the handle keeps one.
 	[[nodiscard]] std::optional<nir::Hash128> structuralHash() const;

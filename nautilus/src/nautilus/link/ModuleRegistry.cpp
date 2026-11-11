@@ -199,6 +199,11 @@ std::vector<std::string> ModuleHandle::importedModules() const {
 	return importedModules_;
 }
 
+std::vector<ExportInfo> ModuleHandle::exports() const {
+	std::lock_guard lock(registry_->mutex_);
+	return exports_;
+}
+
 std::shared_ptr<const nir::Module> ModuleHandle::module() const {
 	std::lock_guard lock(registry_->mutex_);
 	return module_;

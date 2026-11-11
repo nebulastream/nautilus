@@ -21,6 +21,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         LiteralOperandExecutionTest.cpp
         NoThrowInferenceIntegrationTest.cpp
         MemoryIntrinsicExecutionTest.cpp
+        ModuleExplainTest.cpp
         ModuleLifecycleTest.cpp
         ModuleLinkingTest.cpp
         ModuleRegistryTest.cpp

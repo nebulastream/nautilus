@@ -70,8 +70,8 @@ PromotionServiceConfig promotionServiceConfig(const engine::Options& options) {
 /// The module's side of its promotion job: `promote()` queues it, and destroying the module's state cancels it.
 class JobControl final : public engine::details::PromotionControl {
 public:
-	JobControl(std::shared_ptr<PromotionJob> job, std::weak_ptr<PromotionService> service)
-	    : job_(std::move(job)), service_(std::move(service)) {
+	JobControl(std::shared_ptr<PromotionJob> job, std::weak_ptr<PromotionService> service, TierBackends backends)
+	    : job_(std::move(job)), service_(std::move(service)), backends_(std::move(backends)) {
 	}
 	~JobControl() override {
 		job_->cancel();
@@ -80,10 +80,14 @@ public:
 		const auto service = service_.lock();
 		return service != nullptr && service->submit(job_);
 	}
+	TierBackends tierBackends() const override {
+		return backends_;
+	}
 
 private:
 	std::shared_ptr<PromotionJob> job_;
 	std::weak_ptr<PromotionService> service_;
+	TierBackends backends_;
 };
 
 } // namespace
@@ -304,7 +308,8 @@ TieredJITCompiler::createPromotion(const std::shared_ptr<engine::details::Module
 		return executable;
 	};
 	auto job = std::make_shared<PromotionJob>(state, std::move(compile));
-	state->promotionControl = std::make_unique<JobControl>(job, service_);
+	state->promotionControl = std::make_unique<JobControl>(
+	    job, service_, engine::details::PromotionControl::TierBackends {config_.tier0.backend, config_.tier1.backend});
 	if (config_.policy == engine::PromotionPolicy::manual) {
 		service_->park(job);
 	}
