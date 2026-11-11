@@ -6,8 +6,8 @@
 #include <string>
 #include <string_view>
 
-// `CompiledModule::explain()` and the rendering of `ModuleExplanation` (plan M4.9, 15 §4.3). Everything here reads state
-// that the compile has already recorded; nothing runs on the compile path.
+// `CompiledModule::explain()` and the rendering of `ModuleExplanation` (plan M4.9, 15 §4.3). Everything here reads
+// state that the compile has already recorded; nothing runs on the compile path.
 
 namespace nautilus::engine {
 
@@ -140,11 +140,13 @@ ModuleExplanation CompiledModule::explain() const {
 	report.statistics = statistics;
 	report.backend = current == Tier::interpreted ? "interpreter" : backendOf(statistics.get());
 
-	// The tiers: a module with a promotion has two, whose backends the promotion remembers; any other has the one it runs.
+	// The tiers: a module with a promotion has two, whose backends the promotion remembers; any other has the one it
+	// runs.
 	if (state_->promotionControl != nullptr) {
 		const auto backends = state_->promotionControl->tierBackends();
 		const bool tier0Interpreted = backends.tier0 == "interpreter";
-		report.tiers.push_back({tier0Interpreted ? "interpreted" : "tier0", tier0Interpreted ? "interpreter" : backends.tier0,
+		report.tiers.push_back({tier0Interpreted ? "interpreted" : "tier0",
+		                        tier0Interpreted ? "interpreter" : backends.tier0,
 		                        current == Tier::tier1 ? "replaced" : "active"});
 		report.tiers.push_back({"tier1", backends.tier1, current == Tier::tier1 ? "active" : report.promotion});
 	} else {
@@ -182,7 +184,9 @@ ModuleExplanation CompiledModule::explain() const {
 
 std::string ModuleExplanation::toString() const {
 	std::string out;
-	const auto line = [&](std::string_view key, std::string_view value) { out += fmt::format("{} = {}\n", key, value); };
+	const auto line = [&](std::string_view key, std::string_view value) {
+		out += fmt::format("{} = {}\n", key, value);
+	};
 	line("module.name", name.empty() ? "(anonymous)" : name);
 	line("module.stage", stage);
 	line("tier", tier);

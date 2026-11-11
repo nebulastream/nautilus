@@ -131,10 +131,11 @@ TEST_CASE("Explain - the JSON is one well-formed object with stable keys", "[exp
 	const auto json = compiled.explain().toJson();
 	CHECK(wellFormedJson(json));
 	CHECK(json.find('\n') == std::string::npos);
-	for (const auto* key : {"\"module\":", "\"tier\":\"tier1\"", "\"backend\":\"tbc\"", "\"promotion\":{\"status\":\"none\"",
-	                        "\"tiers\":[", "\"functions\":[", "\"functionsAvailable\":true", "\"statistics\":{",
-	                        "\"persistability\":{\"available\":false,\"status\":\"not available yet\",\"milestone\":\"M5.3\"}",
-	                        "\"inlining\":{\"available\":false,\"status\":\"not available yet\",\"milestone\":\"M3.8\"}"}) {
+	for (const auto* key :
+	     {"\"module\":", "\"tier\":\"tier1\"", "\"backend\":\"tbc\"", "\"promotion\":{\"status\":\"none\"",
+	      "\"tiers\":[", "\"functions\":[", "\"functionsAvailable\":true", "\"statistics\":{",
+	      "\"persistability\":{\"available\":false,\"status\":\"not available yet\",\"milestone\":\"M5.3\"}",
+	      "\"inlining\":{\"available\":false,\"status\":\"not available yet\",\"milestone\":\"M3.8\"}"}) {
 		INFO(key);
 		CHECK(contains(json, key));
 	}
