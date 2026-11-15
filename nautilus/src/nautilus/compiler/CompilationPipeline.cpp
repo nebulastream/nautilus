@@ -234,6 +234,13 @@ void recordTracingStatistics(CompilationStatistics& statistics, const tracing::T
 		s.set("tracing.rerun.follow.ms", t.rerunFollowMs);
 		s.set("tracing.rerun.record.ms", t.rerunRecordMs);
 		s.set("tracing.rerun.paused.ms", t.rerunPausedMs);
+		// the share of the pass time that went into re-runs (0 when nothing ran twice): the target of R1-R4
+		const double passes = t.firstRunMs + t.rerunMs;
+		s.set("tracing.rerun.share", passes > 0 ? t.rerunMs / passes : 0.0);
+		s.set("tracing.unwoundPasses", static_cast<int64_t>(t.unwoundPasses));
+		s.set("tracing.unwindFallbacks", static_cast<int64_t>(t.unwindFallbacks));
+		s.set("tracing.constructs", static_cast<int64_t>(t.constructs));
+		s.set("tracing.constructRestarts", static_cast<int64_t>(t.constructRestarts));
 	});
 }
 

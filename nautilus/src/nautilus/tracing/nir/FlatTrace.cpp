@@ -36,6 +36,12 @@ TagMap::~TagMap() {
 }
 
 void TagMap::set(const Snapshot& key, uint32_t op) {
+	if (key.getTag() == nullptr) {
+		return;
+	}
+	if (logDepth_ > 0) {
+		log_.push_back({key, find(key)});
+	}
 	if ((size_ + 1) * 8 > capacity_ * 5) { // at most 5/8 full
 		grow();
 	}
@@ -51,6 +57,51 @@ void TagMap::set(const Snapshot& key, uint32_t op) {
 	table_[slot].op = op;
 	table_[slot].epoch = epoch_;
 	++size_;
+}
+
+void TagMap::erase(const Snapshot& key) {
+	size_t hole = hashOf(key) & mask_;
+	while (table_[hole].epoch == epoch_) {
+		if (table_[hole].key == key) {
+			break;
+		}
+		hole = (hole + 1) & mask_;
+	}
+	if (table_[hole].epoch != epoch_) {
+		return;
+	}
+	--size_;
+	// shift back the entries of the probe sequence that would not be found past the hole
+	size_t next = hole;
+	for (;;) {
+		next = (next + 1) & mask_;
+		if (table_[next].epoch != epoch_) {
+			break;
+		}
+		const size_t home = hashOf(table_[next].key) & mask_;
+		// the entry may move into the hole if its home is not in the cyclic range (hole, next]
+		const bool between = hole <= next ? (hole < home && home <= next) : (hole < home || home <= next);
+		if (!between) {
+			table_[hole] = table_[next];
+			hole = next;
+		}
+	}
+	table_[hole].epoch = 0;
+}
+
+void TagMap::undoTo(size_t mark) {
+	while (log_.size() > mark) {
+		const auto entry = log_.back();
+		log_.pop_back();
+		erase(entry.key);
+		if (entry.previous != nir::NONE) {
+			// the binding the insertion replaced; written without logging it again
+			const auto depth = logDepth_;
+			logDepth_ = 0;
+			set(entry.key, entry.previous);
+			logDepth_ = depth;
+		}
+	}
 }
 
 void TagMap::grow() {
@@ -146,6 +197,8 @@ void FlatTrace::reset(nir::Module& module) {
 	currentRegion = NO_FLAT_REGION;
 	currentBlock_ = 0;
 	cursor_ = 0;
+	openCheckpoints_ = 0;
+	predLog_.clear();
 	tags.clear();
 	recs.push_back(nir::Inst {});
 	meta.push_back({});
@@ -320,6 +373,69 @@ uint32_t FlatTrace::processControlFlowMerge(uint32_t op) {
 		std::replace(preds.begin(), preds.end(), previousCurrent, merged);
 	});
 	return merged;
+}
+
+FlatTrace::Checkpoint FlatTrace::checkpoint(uint32_t entryBlock) {
+	Checkpoint cp;
+	cp.records = static_cast<uint32_t>(recs.size());
+	cp.blocks = static_cast<uint32_t>(blocks.size());
+	cp.conds = static_cast<uint32_t>(conds.size());
+	cp.allocas = static_cast<uint32_t>(allocas.size());
+	cp.returns = static_cast<uint32_t>(returns.size());
+	cp.regions = static_cast<uint32_t>(regions.size());
+	cp.entryBlock = entryBlock;
+	cp.currentRegion = currentRegion;
+	cp.predLog = predLog_.size();
+	cp.tagLog = tags.logSize();
+	++openCheckpoints_;
+	tags.openLog();
+	return cp;
+}
+
+void FlatTrace::addPred(uint32_t block, uint32_t pred) {
+	blocks[block].preds.push_back(pred);
+	if (openCheckpoints_ > 0) {
+		predLog_.push_back(block);
+	}
+}
+
+void FlatTrace::release(const Checkpoint&) {
+	--openCheckpoints_;
+	tags.closeLog();
+	if (openCheckpoints_ == 0) {
+		predLog_.clear();
+	}
+}
+
+void FlatTrace::rollback(const Checkpoint& cp) {
+	tags.undoTo(cp.tagLog);
+	// the predecessors added to blocks that existed before the checkpoint (the others are dropped below)
+	while (predLog_.size() > cp.predLog) {
+		const auto block = predLog_.back();
+		predLog_.pop_back();
+		if (block < cp.blocks) {
+			blocks[block].preds.pop_back();
+		}
+	}
+	// the entry block of the scope keeps the records it had; every other older block got none
+	auto& entry = blocks[cp.entryBlock].ops;
+	entry.erase(std::lower_bound(entry.begin(), entry.end(), cp.records), entry.end());
+	while (blocks.size() > cp.blocks) {
+		if (blocks.back().ops.capacity() <= 4096 && spareVectors_.size() < 1024) {
+			blocks.back().ops.clear();
+			spareVectors_.push_back(std::move(blocks.back().ops));
+		}
+		blocks.pop_back();
+	}
+	recs.resize(cp.records);
+	meta.resize(cp.records);
+	conds.resize(cp.conds);
+	allocas.resize(cp.allocas);
+	returns.resize(cp.returns);
+	regions.resize(cp.regions);
+	currentRegion = cp.currentRegion;
+	cursor_ = 0;
+	release(cp);
 }
 
 FlatRegion FlatTrace::addRegion(const RegionAttributes& attributes, uint32_t entryBlock) {

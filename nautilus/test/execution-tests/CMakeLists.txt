@@ -16,6 +16,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         ConcurrentCompilationTest.cpp
         ConcurrentExecutionTest.cpp
         DumpHelperTest.cpp
+        ExplicitControlFlowTest.cpp
         FunctionPtrExecutionTest.cpp
 		InvokeExceptionExecutionTest.cpp
         LiteralOperandExecutionTest.cpp
@@ -27,6 +28,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         ModuleRegistryTest.cpp
         ModuleTest.cpp
         TieredCompilationTest.cpp
+        TracingFrontendTest.cpp
         PromotionServiceTest.cpp
         ArenaMemoryTest.cpp
         PointerExecutionTest.cpp

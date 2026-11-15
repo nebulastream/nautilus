@@ -31,6 +31,8 @@ const std::vector<OptionSpec>& optionRegistry() {
 	    {"tracing.nirAttributesFile", OptionType::String, "", false, {}},
 	    {"tracing.nirChain", OptionType::Bool, "false", false, {}},
 	    {"tracing.nirTracer", OptionType::Bool, "true", false, {}},
+	    {"tracing.unwindPausedPasses", OptionType::Bool, "false", false, {}},
+	    {"tracing.forceConstructRestarts", OptionType::Bool, "false", false, {}},
 	    {"dump.after_tracing", OptionType::Bool, "false", false, {}},
 	    {"dump.after_ir_creation", OptionType::Bool, "false", false, {}},
 	    {"dump.after_mlir_generation", OptionType::Bool, "false", false, {}},

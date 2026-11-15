@@ -24,4 +24,31 @@ TypedValueRef& TracingInterface::traceImportedCall(std::string_view, std::string
 	                              "(tracing.nirTracer=true)");
 }
 
+// The explicit control-flow constructs (01 §5): a tracer that does not trace them says so with
+// `tracesExplicitControlFlow`, and the constructs of `control_flow.hpp` never call these.
+
+void TracingInterface::traceIf(const TypedValueRef&, double, std::function<void()>&, std::function<void()>&) {
+	throw NotImplementedException("this tracer cannot record explicit control flow");
+}
+
+void TracingInterface::traceLoop(std::function<void()>&, std::function<void()>&, std::function<void()>*) {
+	throw NotImplementedException("this tracer cannot record explicit control flow");
+}
+
+void TracingInterface::traceLoopCondition(const TypedValueRef&, double) {
+	throw NotImplementedException("this tracer cannot record explicit control flow");
+}
+
+void TracingInterface::traceBreak() {
+	throw NotImplementedException("this tracer cannot record explicit control flow");
+}
+
+void TracingInterface::traceContinue() {
+	throw NotImplementedException("this tracer cannot record explicit control flow");
+}
+
+void TracingInterface::traceExplicitReturn(Type, const TypedValueRef&) {
+	throw NotImplementedException("this tracer cannot record explicit control flow");
+}
+
 } // namespace nautilus::tracing

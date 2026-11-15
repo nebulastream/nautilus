@@ -13,6 +13,7 @@
 #include <bit>
 #include <cassert>
 #include <cstring>
+#include <exception>
 #include <fmt/format.h>
 
 namespace nautilus::tracing::nirtrace {
@@ -25,6 +26,10 @@ using nir::TypeId;
 static thread_local NirTracer nirTracer;
 
 namespace {
+
+/// Thrown to leave the body of a scope when its pass is finished (`tracing.unwindPausedPasses`). It derives from
+/// nothing, so a `catch (const std::exception&)` of the traced code does not see it.
+struct PausedPass {};
 
 uint64_t literalBits(const ConstantLiteral& value) {
 	return std::visit(
@@ -615,6 +620,9 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 	syncAlive();
 	ActiveTracerGuard activeTracerGuard;
 	setFoldStaticConstants(options.getOptionOrDefault("engine.foldStaticConstants", true));
+	unwindPaused_ = options.getOptionOrDefault("tracing.unwindPausedPasses", false);
+	forceRestarts_ = options.getOptionOrDefault("tracing.forceConstructRestarts", false);
+	loops_.clear();
 
 	bool isFirstFunction = true;
 	while (!session.functionsToTrace.empty()) {
@@ -648,6 +656,9 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 		}
 		entryBlock_ = 0;
 		parent_ = nullptr;
+		kind_ = ScopeKind::Function;
+		optimistic_ = false;
+		loops_.clear();
 		runScope(wrapperFunc);
 
 		state.reset();
@@ -730,6 +741,12 @@ void NirTracer::endPass() {
 void NirTracer::runScope(std::function<void()>& body) {
 	auto& symbolicExecutionContext = state->symbolicExecutionContext;
 	auto traceIteration = 0;
+	unwindEnabled_ = session_->unwindPaused_;
+	unwindThrown_ = false;
+	restart_ = false;
+	if (optimistic_) {
+		checkpoint_ = state->trace.checkpoint(entryBlock_);
+	}
 #if defined(__clang__)
 #pragma clang loop unroll(disable)
 #endif
@@ -742,15 +759,40 @@ void NirTracer::runScope(std::function<void()>& body) {
 		if (parent_ == nullptr) {
 			beginPass(traceIteration > 1);
 		}
-		body();
+		try {
+			body();
+		} catch (const PausedPass&) {
+			// the pass was finished by a merge and unwound (R4); this scope's pass ends here
+			unwindThrown_ = false;
+		}
+		if (unwindThrown_) {
+			// the body returned although the pass was unwound: user code swallowed the signal (`catch (...)`). The pass
+			// is paused as before (R3) and this scope does not throw again.
+			unwindThrown_ = false;
+			unwindEnabled_ = false;
+			++session_->stats_.unwindFallbacks;
+		}
 		if (parent_ == nullptr) {
 			endPass();
+		}
+		if (optimistic_ && session_->forceRestarts_) {
+			restart_ = true; // the test mode: every optimistic scope starts over once, to exercise the rollback
+		}
+		if (restart_) {
+			restartScope();
+			traceIteration = 0;
+			continue;
 		}
 		if (parent_ != nullptr) {
 			traceScopeExit();
 		}
 		assert(staticVars.empty() && "static variable stack not empty after tracing iteration");
 	}
+	if (checkpoint_) {
+		state->trace.release(*checkpoint_);
+		checkpoint_.reset();
+	}
+	optimistic_ = false;
 	++session_->stats_.scopes;
 	session_->stats_.maxScopeIterations = std::max<uint64_t>(session_->stats_.maxScopeIterations, traceIteration);
 }
@@ -758,7 +800,20 @@ void NirTracer::runScope(std::function<void()>& body) {
 #pragma GCC pop_options
 #endif
 
-Snapshot NirTracer::recordSnapshot() {
+void NirTracer::pauseAndUnwind() {
+	pause();
+	if (unwindEnabled_ && std::uncaught_exceptions() == 0) {
+		// R4: the rest of the pass records nothing, so leave the body instead of running it out
+		unwindThrown_ = true;
+		++session_->stats_.unwoundPasses;
+		throw PausedPass {};
+	}
+}
+
+Snapshot NirTracer::recordSnapshot(bool force) {
+	if (optimistic_ && !force) {
+		return {};
+	}
 	++session_->stats_.snapshots;
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
 }
@@ -787,7 +842,7 @@ TypedValueRef& NirTracer::traceOperation(OnCreation&& onCreation) {
 		return onCreation(tag);
 	}
 	// already explored from here: enter passive mode
-	pause();
+	pauseAndUnwind();
 	return dummyRef_;
 }
 
@@ -1323,7 +1378,7 @@ void NirTracer::traceAssignment(const TypedValueRef& target, const TypedValueRef
 		}
 	}
 	if (!trace.checkTag(tag)) {
-		pause();
+		pauseAndUnwind();
 		return;
 	}
 	const auto first = trace.nextId();
@@ -1335,6 +1390,11 @@ bool NirTracer::traceBool(const TypedValueRef& value, double probability) {
 	if (paused_) {
 		++session_->stats_.pausedOperations;
 		// in passive mode, return false to guarantee loop termination
+		return false;
+	}
+	if (optimistic_) {
+		// an implicit branch in a scope that records without snapshots: the scope starts over with them (01 §5.2)
+		requestRestart();
 		return false;
 	}
 	auto& trace = state->trace;
@@ -1367,12 +1427,12 @@ bool NirTracer::traceBool(const TypedValueRef& value, double probability) {
 			shouldTerminate = recordResult.shouldTerminate;
 		} else {
 			// a control-flow merge or loop: passive mode
-			pause();
+			pauseAndUnwind();
 			return false;
 		}
 	}
 	if (shouldTerminate) {
-		pause();
+		pauseAndUnwind();
 		return false;
 	}
 	const auto& branch = trace.currentRecord();
@@ -1752,6 +1812,8 @@ void NirTracer::initRegionScope(NirTracer& parent, uint32_t entry, uint32_t exit
 	parent_ = &parent;
 	session_ = parent.session_;
 	entryBlock_ = entry;
+	kind_ = ScopeKind::Region;
+	optimistic_ = false;
 	paused_ = false;
 	staticVars.clear();
 	aliveVars.reset();
@@ -1768,35 +1830,45 @@ void NirTracer::traceScopeExit() {
 	if (paused_ || isFollowing()) {
 		return;
 	}
+	if (kind_ == ScopeKind::LoopHeader) {
+		return; // the pass ended in the branch on the loop condition
+	}
 	auto& region = regionState();
-	// Nothing created inside a region may outlive it (docs/region.md).
+	const std::string what = kind_ == ScopeKind::Region ? "region() " + region.attributes.toString() : "construct";
+	// Nothing created inside a region may outlive it (docs/region.md); the arms and bodies of explicit constructs obey
+	// the same rule.
 	if (aliveVars.size() > 0) {
 		std::string escaped;
 		aliveVars.forEachAlive([&escaped](uint32_t ref, uint32_t) {
 			escaped += (escaped.empty() ? "" : ", ") + std::string("$") + std::to_string(ref);
 		});
 		throw RuntimeException(
-		    "Invalid region() " + region.attributes.toString() + describeCurrentFunction() +
-		    ": a value created inside the region body outlives it (" + escaped +
-		    "). Carry the value out through a val<T> declared outside the region and assigned to inside it.");
+		    "Invalid " + what + describeCurrentFunction() + ": a value created inside the body outlives it (" +
+		    escaped + "). Carry the value out through a val<T> declared outside the body and assigned to inside it.");
+	}
+	auto& trace = state->trace;
+	if (optimistic_) {
+		// no snapshot: nothing in this scope can merge with another pass
+		trace.addPred(region.exitBlock, trace.currentBlock());
+		trace.addJump(region.exitBlock, nullptr);
+		return;
 	}
 	auto snapshot = recordSnapshot();
 	if (!region.exitSnapshot.has_value()) {
 		region.exitSnapshot = snapshot;
 	} else if (*region.exitSnapshot != snapshot) {
 		throw RuntimeException(
-		    "Invalid region() " + region.attributes.toString() + describeCurrentFunction() +
-		    ": the state alive at the end of the region body differs between the paths through it, so what escapes the "
-		    "region would depend on which path was explored last. Build the escaping value on every path (assigning to "
-		    "a val<T> declared outside the region merges across branches).");
+		    "Invalid " + what + describeCurrentFunction() +
+		    ": the state alive at the end of the body differs between the paths through it, so what escapes the body "
+		    "would depend on which path was explored last. Build the escaping value on every path (assigning to a "
+		    "val<T> declared outside the body merges across branches).");
 	}
-	auto& trace = state->trace;
 	if (!trace.checkTag(snapshot)) {
 		// this pass's tail was merged with an earlier pass's exit: the pass is over
 		pause();
 		return;
 	}
-	trace.blocks[region.exitBlock].preds.push_back(trace.currentBlock());
+	trace.addPred(region.exitBlock, trace.currentBlock());
 	trace.addJump(region.exitBlock, &snapshot);
 }
 
@@ -1806,31 +1878,33 @@ void NirTracer::traceRegion(std::function<void()>& regionFunction, const RegionA
 		return;
 	}
 	auto& trace = state->trace;
-	// a region is an operation to its enclosing scope and a function to its own body: identified at its call site
-	auto key = recordSnapshot();
 
 	if (isFollowing()) {
-		// memoized replay: the body was fully explored when it was first reached, so it is skipped
+		// memoized replay: the body was fully explored when it was first reached, so it is skipped. The region is found
+		// by the entry block the recorded path enters here, not by a snapshot of this call site: no frame walk (R2).
 		auto& memo = regionState().regionMemo;
-		auto memoized = memo.find(key);
-		if (memoized == memo.end()) {
+		const bool atEntry = trace.seekBlock([&](uint32_t block) { return memo.contains(block); });
+		if (!atEntry) {
 			throw RuntimeException("Invalid region() " + attributes.toString() + describeCurrentFunction() +
 			                       ": replaying a recorded path reached a region() call site that was not recorded "
 			                       "there.");
 		}
-		trace.setCurrentBlock(memoized->second.exitBlock);
+		trace.setCurrentBlock(memo.find(trace.currentBlock())->second.exitBlock);
 		return;
 	}
 
+	// a region is an operation to its enclosing scope and a function to its own body: identified at its call site
+	auto key = recordSnapshot(true);
+
 	if (!trace.checkTag(key)) {
 		// the same region call site in the same state: a loop around the region; checkTag has merged
-		pause();
+		pauseAndUnwind();
 		return;
 	}
 
 	auto entry = trace.createBlock();
 	auto exit = trace.createBlock();
-	trace.blocks[entry].preds.push_back(trace.currentBlock());
+	trace.addPred(entry, trace.currentBlock());
 	trace.addJump(entry, &key);
 	trace.setCurrentBlock(entry);
 
@@ -1867,7 +1941,309 @@ void NirTracer::traceRegion(std::function<void()>& regionFunction, const RegionA
 
 	child.state.reset();
 	trace.setCurrentBlock(exit);
-	regionState().regionMemo[key] = RegionRecord {entry, exit};
+	regionState().regionMemo[entry] = RegionRecord {entry, exit};
+}
+
+// ---- explicit control flow (01 §5) ---------------------------------------------------------------------------------
+//
+// An `If` or a loop is memoized like a region: the scope that meets it records its entry block, and a replay that
+// enters that block skips to the construct's exit. Its arms, header, body and step are scopes of their own that run
+// once per explored path through them; they record optimistically (no snapshots, no tag-map entries) until an implicit
+// branch restarts them.
+
+void NirTracer::initConstructScope(NirTracer& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder,
+                                   ScopeKind kind) {
+	parent_ = &parent;
+	session_ = parent.session_;
+	entryBlock_ = entry;
+	kind_ = kind;
+	optimistic_ = true;
+	restart_ = false;
+	checkpoint_.reset();
+	paused_ = false;
+	staticVars.clear();
+	aliveVars.reset();
+	auto& region = regionState();
+	region.exitBlock = exit;
+	region.attributes = {};
+	region.exitSnapshot.reset();
+	region.regionMemo.clear();
+	region.symbolicExecutionContext.reset();
+	state.emplace(TraceScope {recorder, parent.state->trace, region.symbolicExecutionContext, parent.state->options});
+}
+
+void NirTracer::runConstructScope(std::function<void()>& scopeBody, uint32_t entry, uint32_t exit, ScopeKind kind,
+                                  TagAddress root) {
+	// the recorder is rooted at the construct's call site: tags in the scope are the path from there
+	auto& recorder = session_->regionState().tagRecorders.emplace_back(root, *session_->arena_);
+	auto& child = acquireChildScope();
+	child.initConstructScope(*this, entry, exit, recorder, kind);
+	setActiveTracer(&child);
+	child.syncAlive();
+	try {
+		child.runScope(scopeBody);
+	} catch (...) {
+		setActiveTracer(this);
+		syncAlive();
+		throw;
+	}
+	setActiveTracer(this);
+	syncAlive();
+	// the scope may have released or re-keyed destructors this scope registered; take the updated list back
+	activeDestructors = std::move(child.activeDestructors);
+	child.state.reset();
+}
+
+void NirTracer::requestRestart() {
+	restart_ = true;
+	pauseAndUnwind();
+}
+
+void NirTracer::restartScope() {
+	state->trace.rollback(*checkpoint_);
+	checkpoint_.reset();
+	optimistic_ = false;
+	restart_ = false;
+	auto& region = regionState();
+	// the nested constructs and regions recorded after the checkpoint are gone, and so are their memo entries
+	region.regionMemo.clear();
+	region.exitSnapshot.reset();
+	region.symbolicExecutionContext.reset();
+	// the restarting pass is paused, and not an explored path
+	--session_->stats_.iterations;
+	++session_->stats_.constructRestarts;
+}
+
+void NirTracer::traceIf(const TypedValueRef& condition, double probability, std::function<void()>& thenArm,
+                        std::function<void()>& elseArm) {
+	if (paused_) {
+		++session_->stats_.pausedOperations;
+		return;
+	}
+	auto& trace = state->trace;
+	if (isFollowing()) {
+		auto& memo = regionState().regionMemo;
+		if (!trace.seekBlock([&](uint32_t block) { return memo.contains(block); })) {
+			throw RuntimeException("Invalid If()" + describeCurrentFunction() +
+			                       ": replaying a recorded path reached an If() that was not recorded there.");
+		}
+		trace.setCurrentBlock(memo.find(trace.currentBlock())->second.exitBlock);
+		return;
+	}
+	const auto root = reinterpret_cast<TagAddress>(__builtin_return_address(0));
+	// the construct is an operation to its enclosing scope: the one snapshot it takes is the memo key
+	auto key = recordSnapshot(true);
+	if (!trace.checkTag(key)) {
+		pauseAndUnwind();
+		return;
+	}
+	++session_->stats_.constructs;
+	const auto entry = trace.createBlock();
+	const auto exit = trace.createBlock();
+	const auto thenBlock = trace.createBlock();
+	const auto elseBlock = trace.createBlock();
+	trace.addPred(entry, trace.currentBlock());
+	trace.addJump(entry, &key);
+	trace.setCurrentBlock(entry);
+	const auto condIndex = static_cast<uint32_t>(trace.conds.size());
+	trace.conds.push_back({probabilityWord(probability), elseBlock});
+	const auto first = trace.nextId();
+	emit(NOp::CondBr, TypeId::Void, 0, condition.ref, thenBlock, condIndex);
+	trace.markOperation(first, nullptr, TypedValueRef(0, Type::v));
+	trace.addPred(thenBlock, entry);
+	trace.addPred(elseBlock, entry);
+
+	runConstructScope(thenArm, thenBlock, exit, ScopeKind::Arm, root);
+	runConstructScope(elseArm, elseBlock, exit, ScopeKind::Arm, root);
+
+	trace.setCurrentBlock(exit);
+	if (trace.blocks[exit].preds.empty()) {
+		// every path through the arms left non-locally: the code after the construct is unreachable
+		pauseAndUnwind();
+		return;
+	}
+	regionState().regionMemo[entry] = RegionRecord {entry, exit};
+}
+
+void NirTracer::traceLoop(std::function<void()>& header, std::function<void()>& body, std::function<void()>* step) {
+	if (paused_) {
+		++session_->stats_.pausedOperations;
+		return;
+	}
+	auto& trace = state->trace;
+	if (isFollowing()) {
+		auto& memo = regionState().regionMemo;
+		if (!trace.seekBlock([&](uint32_t block) { return memo.contains(block); })) {
+			throw RuntimeException("Invalid loop" + describeCurrentFunction() +
+			                       ": replaying a recorded path reached a loop that was not recorded there.");
+		}
+		trace.setCurrentBlock(memo.find(trace.currentBlock())->second.exitBlock);
+		return;
+	}
+	const auto root = reinterpret_cast<TagAddress>(__builtin_return_address(0));
+	auto key = recordSnapshot(true);
+	if (!trace.checkTag(key)) {
+		pauseAndUnwind();
+		return;
+	}
+	++session_->stats_.constructs;
+	const auto headerBlock = trace.createBlock();
+	const auto bodyBlock = trace.createBlock();
+	const auto exitBlock = trace.createBlock();
+	const auto stepBlock = step != nullptr ? trace.createBlock() : headerBlock;
+	trace.addPred(headerBlock, trace.currentBlock());
+	trace.addJump(headerBlock, &key);
+
+	auto& child = acquireChildScope();
+	auto& frames = session_->loops_;
+	frames.push_back(LoopFrame {exitBlock, stepBlock, bodyBlock, &child, activeDestructors.size(), true});
+	const auto depth = frames.size();
+	try {
+		runConstructScope(header, headerBlock, nir::NONE, ScopeKind::LoopHeader, root);
+		frames.back().inHeader = false;
+		runConstructScope(body, bodyBlock, stepBlock, ScopeKind::LoopBody, root);
+		if (step != nullptr && !trace.blocks[stepBlock].preds.empty()) {
+			runConstructScope(*step, stepBlock, headerBlock, ScopeKind::LoopStep, root);
+		}
+	} catch (...) {
+		frames.erase(frames.begin() + static_cast<std::ptrdiff_t>(depth - 1), frames.end());
+		throw;
+	}
+	frames.pop_back();
+
+	trace.setCurrentBlock(exitBlock);
+	if (trace.blocks[exitBlock].preds.empty()) {
+		pauseAndUnwind();
+		return;
+	}
+	regionState().regionMemo[headerBlock] = RegionRecord {headerBlock, exitBlock};
+}
+
+void NirTracer::traceLoopCondition(const TypedValueRef& condition, double probability) {
+	if (paused_) {
+		++session_->stats_.pausedOperations;
+		return;
+	}
+	auto& frames = session_->loops_;
+	if (kind_ != ScopeKind::LoopHeader || frames.empty() || !frames.back().inHeader) {
+		throw RuntimeException("The condition of a loop was reported outside the loop's header" +
+		                       describeCurrentFunction());
+	}
+	if (isFollowing()) {
+		return; // the pass flips before it gets here
+	}
+	const auto frame = frames.back();
+	auto& trace = state->trace;
+	auto tag = recordSnapshot();
+	if (!trace.checkTag(tag)) {
+		pauseAndUnwind();
+		return;
+	}
+	const auto condIndex = static_cast<uint32_t>(trace.conds.size());
+	trace.conds.push_back({probabilityWord(probability), frame.exitBlock});
+	const auto first = trace.nextId();
+	emit(NOp::CondBr, TypeId::Void, 0, condition.ref, frame.bodyBlock, condIndex);
+	trace.markOperation(first, &tag, TypedValueRef(0, Type::v));
+	trace.addPred(frame.bodyBlock, trace.currentBlock());
+	trace.addPred(frame.exitBlock, trace.currentBlock());
+}
+
+uint32_t NirTracer::destructorCallee(void* destructor) {
+	auto& module = state->trace.module();
+	nir::CalleeRecord record {};
+	record.kind = static_cast<uint8_t>(nir::CalleeKind::External);
+	record.target = pointerEntry(nir::PointerKind::Destructor, destructor, 0);
+	nir::TypeWord param[] = {nir::makeTypeWord(TypeId::Ptr)};
+	record.signature = module.internSignature(nir::makeTypeWord(TypeId::Void), param);
+	record.attrs = nir::AttrNoUnwind;
+	return module.internCallee(record);
+}
+
+void NirTracer::emitExitDestructors(size_t depth) {
+	// the owned values above the target's depth die on the exit path, last registered first, as native control flow
+	// destroys them; the list itself is not changed (01 §5.1)
+	auto& module = state->trace.module();
+	for (size_t i = activeDestructors.size(); i > depth; --i) {
+		const auto& d = activeDestructors[i - 1];
+		const uint32_t words[] = {1, d.address.ref, nir::NO_UNWIND, nir::NONE};
+		emit(NOp::Call, TypeId::Void, 0, destructorCallee(d.ptr), 0, module.addExtra(words));
+	}
+}
+
+void NirTracer::requireNoRegionBetween(const NirTracer* target, const char* what) const {
+	for (const NirTracer* scope = this; scope != target; scope = scope->parent_) {
+		if (scope == nullptr) {
+			throw RuntimeException(
+			    fmt::format("{}{} is not inside the construct it leaves", what, describeCurrentFunction()));
+		}
+		if (scope->kind_ == ScopeKind::Region) {
+			throw RuntimeException(fmt::format("Invalid {}{}: it would leave a region() body, which keeps its single "
+			                                   "exit. Do the exit outside the region.",
+			                                   what, describeCurrentFunction()));
+		}
+	}
+}
+
+void NirTracer::exitLoop(bool isBreak) {
+	const char* what = isBreak ? "Break()" : "Continue()";
+	if (paused_) {
+		++session_->stats_.pausedOperations;
+		return;
+	}
+	auto& frames = session_->loops_;
+	if (frames.empty()) {
+		throw RuntimeException(fmt::format("{}{} outside of an explicit loop", what, describeCurrentFunction()));
+	}
+	const auto frame = frames.back();
+	if (frame.inHeader) {
+		throw RuntimeException(fmt::format("{}{} in the condition of a loop", what, describeCurrentFunction()));
+	}
+	if (isFollowing()) {
+		pauseAndUnwind(); // not reachable on a path that flips later; nothing to record in any case
+		return;
+	}
+	requireNoRegionBetween(frame.bodyScope, what);
+	auto& trace = state->trace;
+	emitExitDestructors(frame.destructorDepth);
+	const auto target = isBreak ? frame.exitBlock : frame.continueBlock;
+	trace.addPred(target, trace.currentBlock());
+	trace.addJump(target, nullptr);
+	pauseAndUnwind();
+}
+
+void NirTracer::traceBreak() {
+	exitLoop(true);
+}
+
+void NirTracer::traceContinue() {
+	exitLoop(false);
+}
+
+void NirTracer::traceExplicitReturn(Type resultType, const TypedValueRef& ref) {
+	if (paused_) {
+		++session_->stats_.pausedOperations;
+		return;
+	}
+	for (const NirTracer* scope = this; scope != nullptr; scope = scope->parent_) {
+		if (scope->kind_ == ScopeKind::Region) {
+			throw RuntimeException("Invalid Return()" + describeCurrentFunction() +
+			                       ": it would leave a region() body, which keeps its single exit.");
+		}
+	}
+	if (isFollowing()) {
+		pauseAndUnwind();
+		return;
+	}
+	auto& trace = state->trace;
+	emitExitDestructors(0);
+	const auto first = trace.nextId();
+	emit(NOp::Ret, TypeId::Void, 0, ref.type == Type::v ? nir::NONE : ref.ref);
+	trace.markOperation(first, nullptr, TypedValueRef(0, ref.type == Type::v ? resultType : ref.type));
+	if (ref.type == Type::v) {
+		trace.meta[first].type = Type::v;
+	}
+	trace.returns.push_back(first);
+	pauseAndUnwind();
 }
 
 } // namespace nautilus::tracing::nirtrace

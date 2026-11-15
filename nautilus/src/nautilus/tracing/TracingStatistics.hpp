@@ -18,6 +18,14 @@ struct TracingStatistics {
 	uint64_t operations = 0;
 	/// Traced calls that only returned a dummy because the pass was already finished (a control-flow merge).
 	uint64_t pausedOperations = 0;
+	/// Passes that a merge finished and that left their body by an exception instead of running it out
+	/// (`tracing.unwindPausedPasses`), and scopes whose body swallowed that exception, which then run out their passes.
+	uint64_t unwoundPasses = 0;
+	uint64_t unwindFallbacks = 0;
+	/// Explicit constructs (`If`, `While`, `For`) traced, and the scopes of them that met an implicit branch while they
+	/// recorded without snapshots and had to start over.
+	uint64_t constructs = 0;
+	uint64_t constructRestarts = 0;
 	/// Copies recorded, by kind: `val` copy construction, assignment, and the copies the library makes on purpose
 	/// (`ptr + 0`).
 	uint64_t copiesConstruct = 0;
