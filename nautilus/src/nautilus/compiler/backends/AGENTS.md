@@ -80,8 +80,27 @@ attribute of a function); the engine then uses the 0.3 pipeline when `engine.bac
   typed function pointer (dyncall's kernel has no unwind information). Mutation check: breaking the minimum-divided-by-minus-one
   check, the shift mask or the saturating cast fails exactly `division`, `shifts` and `casts`.
 - The LLVM IR tests (`ENABLE_LLVM_IR_TEST=ON`, `llvm-ir-test` job) run on the NIR pipeline; their reference IR was
-  regenerated from it. `debug`, `perf` and `perf.sample` still select the 0.3 pipeline (and so `MLIRLoweringProvider` with
-  the `IRLocationMap` source), see the plan's M4.5 notes.
+  regenerated from it.
+- **Debug information and profiling (D14, M4.8).** `debug`, `perf` and `perf.sample` run on the NIR pipeline: the tracer
+  records the module's debug sections for them (regions, function locations; `tracing/AGENTS.md`), the conversion carries
+  the region of each instruction, and the backends read them. `MLIRNirBackend` prints the module with
+  `nir::print(module, PrintLines&)` (instruction -> line of the text, the replacement of `IRLocationPass`), writes the
+  text where 0.3 wrote its IR dump (`DebugSource.hpp`), and `MLIRNirLowering` puts a `FileLineColLoc` on every
+  operation: named `$<id>` (the instruction number, `%<id>` in the text) if it defines a value, fused with the region chain
+  of `RegionScopeInfo.hpp`. The passes of `mlir/debug/` (`EmitDbgValuePass`, the DWARF scopes, the jitdump and registry
+  plugins) are the 0.3 ones and know nothing of NIR; `debug` adds the shadow slot of every value (`storeValues`).
+  `DebugInfoExecutionTest` and `PerfJitDumpExecutionTest` run on this path.
+- **Naming generated code that is not LLVM's** (`NirCodeProfile.hpp`, shared by `asmjit` and `tbc.mode=jit`): with `perf` or
+  `perf.sample` the lowering reports where the code of each NIR instruction landed (`NirCodeMark`: function, instruction,
+  offset), and `publishNirCode` turns that into one symbol per function and per `region()` run (`execute::outer::hot`), a
+  line table (`JitSymbolRegistry::addLines`, the lines of the printed module) and, for `perf`, jitdump records
+  (`PerfJitDump.hpp`, its own `jit-<pid>.dump` under `$JITDUMPDIR/.debug/jit/nautilus-*`; LLVM's writer is only for
+  `mlir`). The executable withdraws its symbols when it is destroyed. The interpreting `tbc` has no code to name.
+- `asmjit` marks instructions with a comment node carrying user data, put before the lowering of each instruction when a
+  profile is asked for (`AsmJitCodeMarks.hpp`); a `[Nautilus]` patch of `BaseBuilder::serializeTo` reports the buffer
+  offset of such a node. A comment node survives register allocation and the peephole pass, which a node of the
+  instruction itself would not. Off, nothing is added to the node list: check that the assembly of a kernel is the same
+  with `perf.sample` on and off (the markers change nothing but the listing).
 
 ## `asmjit` on NIR (0.4, M4.4)
 

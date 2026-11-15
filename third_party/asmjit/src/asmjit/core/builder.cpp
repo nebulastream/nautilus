@@ -6,6 +6,7 @@
 #include "../core/api-build_p.h"
 #ifndef ASMJIT_NO_BUILDER
 
+#include "../core/assembler.h"
 #include "../core/builder.h"
 #include "../core/emitterutils_p.h"
 #include "../core/errorhandler.h"
@@ -824,6 +825,9 @@ Error BaseBuilder::serializeTo(BaseEmitter* dst) {
     }
     else if (node_->isComment()) {
       CommentNode* node = node_->as<CommentNode>();
+      // [Nautilus] Report the position of a marker comment (see `_markerFn`).
+      if (_markerFn != nullptr && node->userDataAsUInt64() != 0 && dst->isAssembler())
+        _markerFn(_markerCtx, node->userDataAsUInt64(), static_cast<BaseAssembler*>(dst)->offset());
       err = dst->comment(node->inlineComment());
     }
 

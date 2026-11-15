@@ -1,6 +1,7 @@
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/common/ExceptionTransport.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
+#include "nautilus/compiler/backends/asmjit/AsmJitCodeMarks.hpp"
 #include "nautilus/compiler/backends/asmjit/AsmJitNirLowering.hpp"
 #include "nautilus/compiler/backends/asmjit/X64PostRAPeepholePass.hpp"
 #include "nautilus/compiler/backends/asmjit/intrinsics/AsmJitBackendIntrinsic.hpp"
@@ -177,6 +178,9 @@ public:
 	        CompilationStatistics* statistics, const AsmJitIntrinsicManager& intrinsics,
 	        const nirbackend::HostEnvironment& host)
 	    : m_(module), cc(&code), intrinsics_(intrinsics), host_(host), statistics_(statistics) {
+		if (CodeMarks::wanted(options)) {
+			marks_.attach(cc);
+		}
 		if (options.getOptionOrDefault<bool>("asmjit.enablePostRAPeephole", true)) {
 			cc.addPassT<X64PostRAPeepholePass>(statistics);
 		}
@@ -249,6 +253,11 @@ public:
 		return nodesByName_;
 	}
 
+	/// Where the code of each instruction landed, in code order; empty unless the options ask for a profile.
+	std::vector<NirCodeMark> takeMarks() {
+		return marks_.take();
+	}
+
 private:
 	const nir::Module& m_;
 	x86::Compiler cc;
@@ -256,6 +265,7 @@ private:
 	const nirbackend::HostEnvironment& host_;
 	CompilationStatistics* statistics_;
 
+	CodeMarks marks_;
 	std::vector<FuncNode*> nodes_;
 	std::unordered_map<std::string, FuncNode*> nodesByName_;
 	std::vector<int8_t> inlinable_;
@@ -695,6 +705,8 @@ private:
 			lowerBlock(b);
 		}
 		// cold code: failed checks and rare paths, after the body
+		// the cold paths and the exit belong to no instruction
+		marks_.mark(cc, function, nir::NONE);
 		for (size_t i = 0; i < fn.cold.size(); ++i) {
 			fn.cold[i]();
 		}
@@ -755,6 +767,7 @@ private:
 	// ---- instructions -----------------------------------------------------------------------------------------
 
 	void lowerInstruction(uint32_t id) {
+		marks_.mark(cc, F().index, id);
 		const nir::Inst& inst = F().insts[id];
 		const auto op = static_cast<N>(inst.op);
 		switch (op) {
@@ -2495,6 +2508,16 @@ NirLowerResult lowerNirModule(const nir::Module& module, ::asmjit::JitRuntime& r
 		result.jitPtrs[name] = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(basePtr) + offset);
 	}
 	result.asmjitIR = std::move(asmjitIR);
+	result.marks = lowerer.takeMarks();
+	if (!result.marks.empty()) {
+		result.functionOffsets.assign(module.functions.size(), 0);
+		for (uint32_t f = 0; f < module.functions.size(); ++f) {
+			if (const auto it = offsets.find(std::string(module.name(module.functions[f].nameId)));
+			    it != offsets.end()) {
+				result.functionOffsets[f] = static_cast<uint32_t>(it->second);
+			}
+		}
+	}
 	if (dumpAssembly) {
 		result.assembly.assign(asmLogger.data(), asmLogger.dataSize());
 	}

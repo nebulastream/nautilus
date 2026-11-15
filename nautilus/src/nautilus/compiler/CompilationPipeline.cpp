@@ -623,17 +623,14 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	}
 
 	// The default front end: the direct NIR tracer and the conversion. `tracing.nirTracer=false` selects the 0.3
-	// pipeline below, kept as a fallback for one release, and so do the options below.
-	// Debug information and perf need the source tags and region tables of the 0.3 trace, which NIR gets with the debug
-	// producers of M4.9, so `debug`, `perf` and `perf.sample` select it as well.
-	// A backend pinned with `engine.backend` can ask for it too (`CompilationBackend::needs03Frontend`).
+	// pipeline below, kept as a fallback for one release, and so does `dump.copySites`, which needs its tags.
+	// `debug`, `perf` and `perf.sample` stay on this pipeline: the NIR tracer records the debug sections they need (the
+	// regions and function locations, 13 §4.9) when one of them is set, and the backends read them (M4.8).
+	// A backend pinned with `engine.backend` can ask for the 0.3 pipeline too (`CompilationBackend::needs03Frontend`).
 	const auto pinnedBackend = moduleOptions.getOptionOrDefault<std::string>("engine.backend", "");
 	const bool backendNeeds03 = !pinnedBackend.empty() && backends->hasBackend(pinnedBackend) &&
 	                            backends->getBackend(pinnedBackend)->needs03Frontend();
-	const bool needs03Trace = backendNeeds03 || moduleOptions.getOptionOrDefault("dump.copySites", false) ||
-	                          moduleOptions.getOptionOrDefault("debug", false) ||
-	                          moduleOptions.getOptionOrDefault("perf", false) ||
-	                          moduleOptions.getOptionOrDefault("perf.sample", false);
+	const bool needs03Trace = backendNeeds03 || moduleOptions.getOptionOrDefault("dump.copySites", false);
 	if (moduleOptions.getOptionOrDefault("tracing.nirTracer", true) && !needs03Trace) {
 		return traceToNir(functions, moduleOptions, statistics, compilationId, dumpHandler);
 	}

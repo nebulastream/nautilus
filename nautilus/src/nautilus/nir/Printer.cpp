@@ -2,6 +2,7 @@
 #include "nautilus/extensions/ExtensionRegistry.hpp"
 #include "nautilus/nir/ExtensionIds.hpp"
 #include "nautilus/nir/Operands.hpp"
+#include <algorithm>
 #include <bit>
 #include <charconv>
 #include <cmath>
@@ -103,9 +104,38 @@ std::string attrsText(uint32_t attrs) {
 	return out.empty() ? "" : " attrs(" + out + ")";
 }
 
+/// A string buffer that counts the lines written to it, so that the printer can say where an object starts.
+class LineCountingBuf : public std::stringbuf {
+public:
+	[[nodiscard]] uint32_t line() const {
+		return lines_ + 1;
+	}
+
+protected:
+	std::streamsize xsputn(const char* s, std::streamsize n) override {
+		lines_ += static_cast<uint32_t>(std::count(s, s + n, '\n'));
+		return std::stringbuf::xsputn(s, n);
+	}
+	int_type overflow(int_type c) override {
+		if (c == '\n') {
+			++lines_;
+		}
+		return std::stringbuf::overflow(c);
+	}
+
+private:
+	uint32_t lines_ = 0;
+};
+
 class Printer {
 public:
-	Printer(const Module& m, std::ostream& os) : m_(m), os_(os) {
+	Printer(const Module& m, std::ostream& os, const LineCountingBuf* counter = nullptr, PrintLines* lines = nullptr)
+	    : m_(m), os_(os), counter_(counter), lines_(lines) {
+		if (lines_ != nullptr) {
+			lines_->instruction.assign(m.insts.size(), 0);
+			lines_->block.assign(m.blocks.size(), 0);
+			lines_->function.assign(m.functions.size(), 0);
+		}
 	}
 
 	void run() {
@@ -309,6 +339,9 @@ private:
 		auto blocks = m_.functionBlocks(f);
 		level_ = static_cast<Level>(fn.level);
 		curF_ = f;
+		if (lines_ != nullptr) {
+			lines_->function[f] = counter_->line();
+		}
 		os_ << "func";
 		if (fn.visibility == 1) {
 			os_ << " export";
@@ -338,6 +371,10 @@ private:
 			ids.push_back(level_ == Level::SSA ? blk.first + k : m_.extra[blk.first + k]);
 		}
 		size_t skipped = 0;
+		const auto headerLine = lines_ != nullptr ? counter_->line() : 0;
+		if (lines_ != nullptr) {
+			lines_->block[m_.functions[f].firstBlock + b] = headerLine;
+		}
 		os_ << "^b" << b;
 		std::string argText;
 		if (level_ == Level::SSA) {
@@ -358,10 +395,20 @@ private:
 			os_ << " pad";
 		}
 		os_ << ":\n";
+		if (lines_ != nullptr) {
+			const auto base = m_.functions[f].firstInst;
+			for (size_t k = 0; k < skipped; ++k) {
+				lines_->instruction[base + ids[k]] = headerLine;
+			}
+			for (size_t k = skipped; k < ids.size(); ++k) {
+				lines_->instruction[base + ids[k]] = counter_->line();
+				os_ << "  " << instruction(ids[k], insts[ids[k]]) << "\n";
+			}
+			return;
+		}
 		for (size_t k = skipped; k < ids.size(); ++k) {
 			os_ << "  " << instruction(ids[k], insts[ids[k]]) << "\n";
 		}
-		(void) f;
 	}
 
 	std::string unwind(uint32_t u) const {
@@ -632,6 +679,8 @@ private:
 	std::ostream& os_;
 	Level level_ = Level::SSA;
 	uint32_t curF_ = 0;
+	const LineCountingBuf* counter_;
+	PrintLines* lines_;
 };
 
 } // namespace
@@ -645,6 +694,14 @@ std::string print(const Module& m) {
 	std::ostringstream os;
 	print(m, os);
 	return os.str();
+}
+
+std::string print(const Module& m, PrintLines& lines) {
+	LineCountingBuf buffer;
+	std::ostream os(&buffer);
+	Printer p(m, os, &buffer, &lines);
+	p.run();
+	return buffer.str();
 }
 
 } // namespace nautilus::nir

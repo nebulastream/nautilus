@@ -22,6 +22,40 @@ std::string_view Module::name(uint32_t id) const {
 	return std::string_view(nameBytes.data() + n.offset, n.length);
 }
 
+uint32_t Module::internDebugName(std::string_view s) {
+	for (uint32_t i = 0; i < debugNames.size(); ++i) {
+		if (debugName(i) == s) {
+			return i;
+		}
+	}
+	auto id = static_cast<uint32_t>(debugNames.size());
+	debugNames.push_back(NameRecord {static_cast<uint32_t>(debugNameBytes.size()), static_cast<uint32_t>(s.size())});
+	debugNameBytes.insert(debugNameBytes.end(), s.begin(), s.end());
+	return id;
+}
+
+std::string_view Module::debugName(uint32_t id) const {
+	auto& n = debugNames[id];
+	return std::string_view(debugNameBytes.data() + n.offset, n.length);
+}
+
+uint32_t Module::internDebugLocation(std::string_view file, uint32_t line, uint32_t column) {
+	const auto fileId = internDebugName(file);
+	for (uint32_t i = 0; i < debugLocations.size(); ++i) {
+		const auto& l = debugLocations[i];
+		if (l.file == fileId && l.line == line && l.column == column) {
+			return i;
+		}
+	}
+	debugLocations.push_back(DebugLocationRecord {fileId, line, column});
+	return static_cast<uint32_t>(debugLocations.size() - 1);
+}
+
+uint32_t Module::regionOf(uint32_t function, uint32_t inst) const {
+	const auto at = static_cast<size_t>(functions[function].firstInst) + inst;
+	return at < debugInstRegions.size() ? debugInstRegions[at] : NONE;
+}
+
 uint32_t Module::internSignature(TypeWord result, std::span<const TypeWord> params) {
 	std::vector<uint32_t> key;
 	key.reserve(params.size() + 1);

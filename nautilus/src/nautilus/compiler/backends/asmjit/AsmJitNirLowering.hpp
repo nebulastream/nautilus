@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/compiler/backends/asmjit/AsmJitCodeMarks.hpp"
 #include "nautilus/compiler/backends/nir/NirBackend.hpp"
 #include "nautilus/nir/Module.hpp"
 #include "nautilus/options.hpp"
@@ -7,6 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 // x86-64 (`X64NirLowering.cpp`) and AArch64 (`A64NirLowering.cpp`) have a NIR lowering.
 #if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) || defined(_M_ARM64)
@@ -24,8 +26,13 @@ struct NirLowerResult {
 	void* basePtr = nullptr;                        ///< Single JIT allocation base; release exactly once.
 	std::unordered_map<std::string, void*> jitPtrs; ///< Per-function pointers within the allocation.
 	uint64_t codeSize = 0;                          ///< Total emitted machine-code size in bytes.
-	std::string asmjitIR;                           ///< AsmJit builder node list (only captured when dumping).
-	std::string assembly;                           ///< Generated assembly listing (only captured when dumping).
+	/// Where the code of each NIR instruction landed, in code order (offsets from `basePtr`); only filled when the
+	/// options ask for a profile (`perf`, `perf.sample`).
+	std::vector<NirCodeMark> marks;
+	/// The offset of each function of the module from `basePtr`, by function index; only filled with `marks`.
+	std::vector<uint32_t> functionOffsets;
+	std::string asmjitIR; ///< AsmJit builder node list (only captured when dumping).
+	std::string assembly; ///< Generated assembly listing (only captured when dumping).
 };
 
 /// Lowers every function of the SSA module `module` into one JIT allocation of `runtime`, with the lowering of the

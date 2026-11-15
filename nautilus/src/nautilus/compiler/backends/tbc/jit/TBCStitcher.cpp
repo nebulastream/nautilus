@@ -251,6 +251,11 @@ public:
 			    program.functions[fn].code.empty() ? nullptr : reinterpret_cast<void*>(base + lay.wordOffs[fn][0]);
 		}
 		code->epilogue = reinterpret_cast<void*>(base + lay.epilogueOff);
+		if (program.recordSources) {
+			code->base = static_cast<uintptr_t>(base);
+			code->functionsEnd = lay.epilogueOff;
+			code->wordOffsets = lay.wordOffs;
+		}
 		return code;
 	}
 

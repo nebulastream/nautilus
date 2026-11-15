@@ -18,6 +18,8 @@ std::shared_ptr<::asmjit::JitRuntime> AsmJitExecutable::sharedRuntime() {
 }
 
 AsmJitExecutable::~AsmJitExecutable() {
+	// the code is about to go: a later compile reusing its addresses must not resolve to its names
+	JitSymbolRegistry::instance().remove(symbols_);
 	// All functions share one JIT allocation — release exactly once.
 	if (basePtr_ && runtime_) {
 		runtime_->release(basePtr_);
