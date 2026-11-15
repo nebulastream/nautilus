@@ -1,5 +1,6 @@
 #include "nautilus/compiler/backends/tbc/TBCProgramSetup.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/compiler/backends/NirCodeProfile.hpp"
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
@@ -59,6 +60,7 @@ void configureProgram(TBCProgram& program, const engine::Options& options) {
 	    clampDispatchMode(parseDispatchMode(options.getOptionOrDefault<std::string>("tbc.dispatch", "auto")));
 	const auto stackSizeKb = options.getOptionOrDefault("tbc.stackSizeKb", 1024);
 	program.minStackSlots = static_cast<uint64_t>(stackSizeKb) * 1024 / sizeof(uint64_t);
+	program.recordSources = profilesCode(options);
 }
 
 void finishProgram(TBCProgram& programRef, const engine::Options& options, CompilationStatistics* statistics,

@@ -1,5 +1,6 @@
 #include "nautilus/compiler/backends/tbc/TBCNirBackend.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/compiler/backends/NirCodeProfile.hpp"
 #include "nautilus/compiler/backends/nir/NirRuntime.hpp"
 #include "nautilus/compiler/backends/tbc/TBCClosure.hpp"
 #include "nautilus/compiler/backends/tbc/TBCExecutable.hpp"
@@ -62,7 +63,39 @@ std::unique_ptr<Executable> TBCNirBackend::compile(std::shared_ptr<const nir::Mo
 	});
 
 	finishProgram(*program, context.options, context.statistics, totalInstructions, maxRegisters, backendStart);
-	return std::make_unique<TBCExecutable>(std::move(program), nirbackend::functionsNeedingCapture(module));
+
+	// D14: the stitched code of the copy-and-patch mode is code in executable memory that no ELF names, so its
+	// functions and regions are published like those of asmjit; each stitched instruction is a mark. The interpreter
+	// runs the handlers of the host binary, which the host's own symbols name.
+	ModuleIndex symbols = NO_MODULE;
+	if (program->recordSources && program->jit != nullptr && program->jit->base != 0) {
+		const auto& jit = *program->jit;
+		NirCodeMap map;
+		map.base = jit.base;
+		map.size = jit.functionsEnd;
+		map.functionOffsets.assign(module.functions.size(), jit.functionsEnd);
+		uint32_t next = jit.functionsEnd;
+		for (uint32_t f = static_cast<uint32_t>(program->functions.size()); f-- > 0;) {
+			const auto& words = jit.wordOffsets[f];
+			if (!words.empty()) {
+				next = words[0];
+			}
+			map.functionOffsets[f] = next;
+		}
+		for (uint32_t f = 0; f < program->functions.size(); ++f) {
+			const auto& words = jit.wordOffsets[f];
+			const auto& sources = program->functions[f].nirInst;
+			for (uint32_t w = 0; w < words.size() && w < sources.size(); ++w) {
+				if (w == 0 || words[w] != 0) {
+					map.marks.push_back(NirCodeMark {f, sources[w], words[w]});
+				}
+			}
+		}
+		symbols = publishNirCode(module, map, context.options, newCodeUnit("tbc"));
+	}
+	auto executable = std::make_unique<TBCExecutable>(std::move(program), nirbackend::functionsNeedingCapture(module));
+	executable->publishedSymbols(symbols);
+	return executable;
 }
 
 } // namespace nautilus::compiler::tbc

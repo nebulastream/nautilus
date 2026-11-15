@@ -7,10 +7,11 @@ set(PROFILING_TEST_SOURCES
         SampleReportTest.cpp
 )
 
-# The sampler needs a JIT backend to have something to symbolize; without the
-# MLIR backend nothing publishes JIT symbols and the test would have nothing to
-# assert. Its pure-formatting half (SampleReportTest) builds either way.
-if (NAUTILUS_PROFILING_SUPPORTED AND ENABLE_MLIR_BACKEND)
+# The sampler needs a JIT backend to have something to symbolize: `mlir` and
+# `asmjit` publish the symbols of their code (D14); without either nothing does
+# and the test would have nothing to assert. Its pure-formatting half
+# (SampleReportTest) builds either way.
+if (NAUTILUS_PROFILING_SUPPORTED AND (ENABLE_MLIR_BACKEND OR ENABLE_ASMJIT_BACKEND))
     list(APPEND PROFILING_TEST_SOURCES SamplerTest.cpp)
 endif ()
 

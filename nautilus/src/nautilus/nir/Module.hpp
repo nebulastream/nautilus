@@ -52,6 +52,22 @@ public:
 	uint32_t internName(std::string_view s);
 	std::string_view name(uint32_t id) const;
 
+	/// Debug names (file names, region names, parameter names) live in their own table, `debugNames`, so that debug
+	/// data never adds to the canonical `names` (§4.9). Equal strings are one id; the lookup is linear because a module
+	/// has a handful of regions and files.
+	uint32_t internDebugName(std::string_view s);
+	std::string_view debugName(uint32_t id) const;
+	/// The index of a source location in `debugLocations`; equal locations are one entry.
+	uint32_t internDebugLocation(std::string_view file, uint32_t line, uint32_t column);
+
+	/// The `debugRegions` index of the region that `function` runs in at instruction `inst` (a function-relative id),
+	/// or NONE. The sections are parallel to `insts`: `debugInstRegions[functions[f].firstInst + inst]`.
+	[[nodiscard]] uint32_t regionOf(uint32_t function, uint32_t inst) const;
+	[[nodiscard]] bool hasDebugData() const {
+		return !debugInstRegions.empty() || !debugInstLocations.empty() || !debugFunctions.empty() ||
+		       !debugRegions.empty();
+	}
+
 	/// Signatures are interned: equal result and type words are one signature (§4.5).
 	uint32_t internSignature(TypeWord result, std::span<const TypeWord> params);
 	TypeWord paramType(const SignatureRecord& sig, uint32_t i) const {

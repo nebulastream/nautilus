@@ -216,6 +216,14 @@ public:
   //! The sections links are dirty (used internally).
   bool _dirtySectionLinks = false;
 
+  //! [Nautilus] Receives the offset in the code buffer of every comment node that carries user data, when the node
+  //! list is serialized (see `serializeTo`). A comment node is not touched by register allocation or the peephole
+  //! passes, so it marks a position in the final code that survives both: the backend uses it to learn at which
+  //! offset the code of an instruction of its own IR landed.
+  typedef void (*MarkerFn)(void* ctx, uint64_t userData, size_t offset);
+  MarkerFn _markerFn = nullptr;
+  void* _markerCtx = nullptr;
+
   //! \}
 
   //! \name Construction & Destruction

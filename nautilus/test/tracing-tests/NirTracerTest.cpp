@@ -1,9 +1,12 @@
 // The direct NIR tracer (tracing/nir/NirTracer): golden pre-SSA dumps of a small corpus and agreement with the 0.3
 // tracer after conversion.
 #include "NirTracerCorpus.hpp"
+#include "nautilus/region.hpp"
+#include <algorithm>
 #include <catch2/catch_all.hpp>
 #include <cstdlib>
 #include <fstream>
+#include <set>
 
 using namespace nautilus;
 using namespace nautilus::testing::nirtracer;
@@ -67,4 +70,98 @@ TEST_CASE("a function that needs a hoisted declaration keeps the arguments of it
 	REQUIRE(diagnostics(module).empty());
 	REQUIRE(nir::print(conversion::convert(module)) ==
 	        nir::print(conversion::convert(trace03(engine::details::createFunctionWrapper(guardedCalls), arena03))));
+}
+
+// ---- debug sections (D14, 13 §4.9)
+// -----------------------------------------------------------------------------------
+
+namespace {
+
+val<int32_t> nestedRegions(val<int32_t> n) {
+	val<int32_t> acc = 0;
+	region("outer", [&]() {
+		for (val<int32_t> i = 0; i < n; i = i + 1) {
+			region("inner", [&]() { acc = acc + i; });
+		}
+	});
+	return acc;
+}
+
+nir::Module traceWith(const engine::Options& options, common::Arena& arena) {
+	std::list<compiler::CompilableFunction> functions;
+	functions.emplace_back("execute", engine::details::createFunctionWrapper(nestedRegions));
+	return std::move(tracing::nirtrace::NirTracer::Trace(functions, options, arena).module);
+}
+
+std::string regionName(const nir::Module& m, uint32_t region) {
+	return region == nir::NONE || m.debugRegions[region].nameId == nir::NONE
+	           ? std::string()
+	           : std::string(m.debugName(m.debugRegions[region].nameId));
+}
+
+} // namespace
+
+TEST_CASE("a trace records no debug data unless a debug option asks for it", "[nir-tracer][debug]") {
+	common::Arena arena;
+	const auto module = traceWith(engine::Options {}, arena);
+	CHECK_FALSE(module.hasDebugData());
+	CHECK(module.debugRegions.empty());
+	CHECK(module.debugInstRegions.empty());
+	CHECK(module.debugFunctions.empty());
+}
+
+TEST_CASE("the regions of a trace reach the SSA module", "[nir-tracer][debug]") {
+	for (const auto* option : {"debug", "perf", "perf.sample"}) {
+		DYNAMIC_SECTION(option) {
+			engine::Options options;
+			options.setOption(option, true);
+			common::Arena arena;
+			const auto pre = traceWith(options, arena);
+			REQUIRE(diagnostics(pre).empty());
+
+			// the region table: two regions, the inner one nested in the outer one, and the function
+			REQUIRE(pre.debugRegions.size() == 2);
+			REQUIRE(pre.debugFunctions.size() == 1);
+			REQUIRE(pre.debugInstRegions.size() == pre.insts.size());
+			REQUIRE(pre.debugInstLocations.size() == pre.insts.size());
+			uint32_t outer = nir::NONE, inner = nir::NONE;
+			for (uint32_t r = 0; r < pre.debugRegions.size(); ++r) {
+				(regionName(pre, r) == "outer" ? outer : inner) = r;
+			}
+			REQUIRE(outer != nir::NONE);
+			REQUIRE(regionName(pre, inner) == "inner");
+			CHECK(pre.debugRegions[outer].parent == nir::NONE);
+			CHECK(pre.debugRegions[inner].parent == outer);
+			// the call sites are in this file
+			REQUIRE(pre.debugRegions[inner].location != nir::NONE);
+			const auto file = pre.debugName(pre.debugLocations[pre.debugRegions[inner].location].file);
+			CHECK(std::string(file).find("NirTracerTest") != std::string::npos);
+
+			// the conversion writes its own per-instruction sections, parallel to its instructions
+			const auto ssa = conversion::convert(pre);
+			REQUIRE(diagnostics(ssa).empty());
+			REQUIRE(ssa.debugInstRegions.size() == ssa.insts.size());
+			REQUIRE(ssa.debugInstLocations.size() == ssa.insts.size());
+			std::set<std::string> seen;
+			for (uint32_t id = 0; id < ssa.functions[0].instCount; ++id) {
+				seen.insert(regionName(ssa, ssa.regionOf(0, id)));
+			}
+			CHECK(seen.contains("")); // the code outside the regions
+			CHECK(seen.contains("outer"));
+			CHECK(seen.contains("inner"));
+
+			// the printer says where every instruction is in the text
+			nir::PrintLines lines;
+			const auto text = nir::print(ssa, lines);
+			CHECK(text == nir::print(ssa));
+			REQUIRE(lines.instruction.size() == ssa.insts.size());
+			const auto textLines = static_cast<uint32_t>(std::count(text.begin(), text.end(), '\n'));
+			for (uint32_t id = 0; id < ssa.insts.size(); ++id) {
+				CHECK(lines.instruction[id] >= 1);
+				CHECK(lines.instruction[id] <= textLines);
+			}
+			CHECK(lines.function[0] < lines.block[0]);
+			CHECK(lines.block[0] <= lines.instruction[ssa.blocks[0].first + ssa.blocks[0].argCount]);
+		}
+	}
 }
