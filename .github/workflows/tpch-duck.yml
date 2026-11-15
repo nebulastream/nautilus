@@ -1,0 +1,76 @@
+name: TPC-H (nautilus-duck)
+
+# The TPC-H job of docs/plans/nautilus-0.4/16-implementation-plan.md (M2.3, rule 5): builds nautilus-duck, an external
+# repository, against this checkout, runs the 22 queries and reports the tracing time, the re-run share, the copies and
+# the operation counts (tools/tpch). The first run of the 0.3 side (`main`) is recorded by the baselines-0.3 workflow.
+#
+# The job needs an owner: nautilus-duck must be reachable (the secret NAUTILUS_DUCK_TOKEN if it is private), and its
+# build and run commands are the variables of tools/tpch/run-tpch.sh. Until the repository variable TPCH_DUCK_ENABLED is
+# set to 'true' the job is skipped, so that a missing prerequisite does not turn the pull requests red. It could not be
+# run when it was written: nothing here has been executed against nautilus-duck.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [nautilus-0.4]
+    paths:
+      - 'nautilus/src/nautilus/tracing/**'
+      - 'nautilus/include/nautilus/**'
+      - 'tools/tpch/**'
+      - '.github/workflows/tpch-duck.yml'
+
+jobs:
+  tpch:
+    if: ${{ vars.TPCH_DUCK_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    name: TPC-H tracing and copies (clang-21)
+    env:
+      CC: clang-21
+      CXX: clang++-21
+    steps:
+      - name: Check out Nautilus
+        uses: actions/checkout@v4
+        with:
+          path: nautilus
+          submodules: recursive
+      - name: Check out main (0.3)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+          submodules: recursive
+      - name: Check out nautilus-duck
+        uses: actions/checkout@v4
+        with:
+          repository: nebulastream/nautilus-duck
+          token: ${{ secrets.NAUTILUS_DUCK_TOKEN || github.token }}
+          path: duck
+      - name: Force apt to use IPv4
+        run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-tpch
+      - name: Install clang + LLVM 21
+        uses: ./nautilus/.github/actions/install-llvm
+        with:
+          llvm-version: "21"
+      - name: Install ninja
+        run: sudo apt-get install -y ninja-build
+      - name: Run the 22 queries against main (0.3), the baseline
+        shell: bash
+        run: nautilus/tools/tpch/run-tpch.sh main duck tpch-0.3
+      - name: Run the 22 queries against this checkout
+        shell: bash
+        run: nautilus/tools/tpch/run-tpch.sh nautilus duck tpch-0.4 tpch-0.3/summary.json
+      - name: Gates of the plan (copies a quarter below 0.3, re-run share at most 35%)
+        shell: bash
+        run: python3 -I nautilus/tools/tpch/summarize.py tpch-0.4/statistics.jsonl --baseline tpch-0.3/summary.json --gate
+      - name: upload the summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: tpch-0.4-${{ github.sha }}
+          path: |
+            tpch-0.4/summary.json
+            tpch-0.3/summary.json
