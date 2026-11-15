@@ -585,10 +585,10 @@ TEST_CASE("Debug info: emits the Nautilus IR dump as the source file") {
 		REQUIRE(fn(1, 2, 3) == 6);
 	});
 
-	// The source file is the Nautilus IR dump, recognizable by the outer
-	// `nautilus { ... } //nautilus` bracket IRGraph::toString() produces.
-	REQUIRE(contents.find("nautilus {") != std::string::npos);
-	REQUIRE(contents.find("//nautilus") != std::string::npos);
+	// The source file is the text form of the NIR module (the 0.4 replacement of the IR dump), recognizable by its
+	// `nir 1.0` header and the `func` it prints for each function.
+	REQUIRE(contents.rfind("nir 1.0", 0) == 0);
+	REQUIRE(contents.find("func export @execute") != std::string::npos);
 }
 
 TEST_CASE("Debug info: the synthesized source file lands in the temp directory") {
@@ -774,8 +774,8 @@ TEST_CASE("Debug info: loop body produces a multi-block IR with N lines for ever
 	    {}, "after_llvm_generation");
 
 	// The dump is in fact multi-block.
-	REQUIRE(ir.sourceText.find("Block_") != std::string::npos);
-	REQUIRE(ir.sourceText.find("return") != std::string::npos);
+	REQUIRE(ir.sourceText.find("^b1") != std::string::npos);
+	REQUIRE(ir.sourceText.find("ret ") != std::string::npos);
 	REQUIRE(std::count(ir.sourceText.begin(), ir.sourceText.end(), '\n') > 5);
 
 	REQUIRE_FALSE(ir.subprograms.empty());
@@ -786,16 +786,17 @@ TEST_CASE("Debug info: loop body produces a multi-block IR with N lines for ever
 }
 
 TEST_CASE("Debug info: nested control flow preserves $N DILocalVariables across blocks") {
-	// Every `$N` in the IR dump -- block-argument declarations in a block
-	// header as well as `$N = ...` definitions -- must surface as a
-	// DILocalVariable, otherwise GDB cannot resolve it across a branch.
+	// Every `%N` in the NIR text -- block-argument declarations in a block
+	// header as well as `%N = ...` definitions -- must surface as a
+	// DILocalVariable (named `vN`), otherwise GDB cannot resolve it across a
+	// branch.
 	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
 		auto fn = engine.registerFunction(debugNestedControlFlow);
 		REQUIRE(fn(10) == 19);
 	});
 
 	std::set<int> irIds;
-	for (std::string::size_type p = 0; (p = ir.sourceText.find('$', p)) != std::string::npos; ++p) {
+	for (std::string::size_type p = 0; (p = ir.sourceText.find('%', p)) != std::string::npos; ++p) {
 		std::string::size_type q = p + 1;
 		int id = 0;
 		bool any = false;
@@ -820,7 +821,7 @@ TEST_CASE("Debug info: nested control flow preserves $N DILocalVariables across 
 	}
 	REQUIRE_FALSE(variableIds.empty());
 	for (int id : irIds) {
-		INFO("IR defines $" << id << " but no matching DILocalVariable was emitted");
+		INFO("the text defines %" << id << " but no matching DILocalVariable was emitted");
 		REQUIRE(variableIds.count(id) == 1);
 	}
 }

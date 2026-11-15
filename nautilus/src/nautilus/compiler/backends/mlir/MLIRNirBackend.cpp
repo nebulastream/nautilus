@@ -47,9 +47,19 @@ std::unique_ptr<Executable> MLIRNirBackend::compileNamed(std::shared_ptr<const n
 	const auto& dumpHandler = compileContext.dumpHandler;
 	const auto backendStart = std::chrono::steady_clock::now();
 
-	const auto debugInfo = debugInfoOptionsFromEngineOptions(options);
+	// D14: with `debug`, `perf` or `perf.sample` the locations point into the text form of the module, which is written
+	// next to the code for a debugger or `perf annotate` to read; the printer's line table replaces 0.3's
+	// IRLocationPass. The regions come from the module's debug sections, which the NIR tracer records for those
+	// options.
+	auto debugInfo = debugInfoOptionsFromEngineOptions(options);
+	nir::PrintLines printLines;
+	NirDebugInfo nirDebug;
 	if (debugInfo.emitDebugInfo()) {
-		throw NotImplementedException("mlir: debug information from NIR comes with the debug producers (M4.9)");
+		const auto text = nir::print(*module, printLines);
+		writeDebugSourceFile(debugInfo, text);
+		nirDebug.sourceFile = debugInfo.sourceFile;
+		nirDebug.lines = &printLines;
+		nirDebug.storeValues = debugInfo.enableDebug;
 	}
 
 	// The context and the target machines of this thread are reused (M4.5, #561).
@@ -62,7 +72,8 @@ std::unique_ptr<Executable> MLIRNirBackend::compileNamed(std::shared_ptr<const n
 	}
 
 	const auto loweringStart = std::chrono::steady_clock::now();
-	auto lowered = lowerNirToMLIR(context, *module, compileContext.host, options, &intrinsicManager);
+	auto lowered = lowerNirToMLIR(context, *module, compileContext.host, options, &intrinsicManager,
+	                              debugInfo.emitDebugInfo() ? &nirDebug : nullptr);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("mlir.loweringFromNir.ms", loweringStart);
 		int64_t opCount = 0;
@@ -102,9 +113,15 @@ std::unique_ptr<Executable> MLIRNirBackend::compileNamed(std::shared_ptr<const n
 	}
 
 	const auto jitStart = std::chrono::steady_clock::now();
-	auto jit =
-	    JITCompiler::jitCompileModule(lowered.module, optPipeline, lowered.proxySymbols, lowered.proxyAddresses,
-	                                  llvm::CodeGenOptLevel::Aggressive, false, false, true, true, true, false, unit);
+	// With `debug` the IR optimizer is clamped to -O0; the machine code is generated at -O1 level so that the register
+	// allocator does not fold distinct values into one register (see MLIRCompilationBackend for the reason). `perf`
+	// and `perf.sample` keep the level of the rest of the pipeline.
+	const auto jitCodeGenLevel =
+	    debugInfo.enableDebug ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
+	auto jit = JITCompiler::jitCompileModule(lowered.module, optPipeline, lowered.proxySymbols, lowered.proxyAddresses,
+	                                         jitCodeGenLevel, debugInfo.enableDebug, debugInfo.enablePerf,
+	                                         debugInfo.perfEmitDebugInfo, debugInfo.perfEmitUnwindInfo,
+	                                         debugInfo.perfRegionSymbols, debugInfo.enableSampleSymbols, unit);
 	// ORC generates machine code on the first lookup of a symbol; with eager compilation it is generated here instead,
 	// inside the compile and its statistics.
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {

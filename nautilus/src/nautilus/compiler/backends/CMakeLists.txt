@@ -16,6 +16,7 @@ add_subdirectory(nir)
 add_source_files(nautilus
         CapturedExceptionTransport.cpp
         CompilationBackend.cpp
+        DebugSource.cpp
         Executable.cpp
 )
 

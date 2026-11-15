@@ -102,6 +102,13 @@ struct DebugInfoOptions {
 // Build a DebugInfoOptions from the string-keyed engine::Options.
 DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& options);
 
+// Writes @p text to `opts.sourceFile`, the file the DWARF line numbers point into. $TMPDIR is almost always writable,
+// but the working directory a perf-only compile uses need not be (a daemon, a read-only container); an unchecked
+// failure would leave the DWARF naming a file that was never written. On failure the source file moves to the temp
+// directory
+// (`opts.sourceFile` is changed, so call this before anything bakes the path into locations).
+void writeDebugSourceFile(DebugInfoOptions& opts, const std::string& text);
+
 // Synthesizes a path under the temp directory (ignoring the perf-only cwd
 // default), for use when the configured source directory turns out not to be
 // writable.

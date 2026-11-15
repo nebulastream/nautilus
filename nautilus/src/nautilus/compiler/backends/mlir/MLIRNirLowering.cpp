@@ -1,5 +1,6 @@
 #include "nautilus/compiler/backends/mlir/MLIRNirLowering.hpp"
 #include "nautilus/compiler/backends/mlir/LLVMBackendHooks.hpp"
+#include "nautilus/compiler/backends/mlir/debug/RegionScopeInfo.hpp"
 #include "nautilus/compiler/backends/nir/NirRuntime.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
@@ -20,6 +21,7 @@
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/Verifier.h>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -86,10 +88,13 @@ struct ExternalKey {
 class Lowering {
 public:
 	Lowering(M::MLIRContext& context, const nir::Module& module, const nirbackend::HostEnvironment& host,
-	         const engine::Options& options, const MLIRIntrinsicManager* intrinsics)
-	    : ctx_(context), m_(module), host_(host), intrinsics_(intrinsics),
+	         const engine::Options& options, const MLIRIntrinsicManager* intrinsics, const NirDebugInfo* debug)
+	    : ctx_(context), m_(module), host_(host), intrinsics_(intrinsics), debug_(debug),
 	      builderOwner_(std::make_unique<M::OpBuilder>(&context)), builder_(*builderOwner_),
 	      loc_(M::UnknownLoc::get(&context)) {
+		if (debug_ != nullptr) {
+			prepareDebugInfo();
+		}
 		const bool inspected = options.getOptionOrDefault("debug", false) ||
 		                       options.getOptionOrDefault("perf", false) ||
 		                       options.getOptionOrDefault("perf.sample", false);
@@ -107,6 +112,10 @@ public:
 		}
 		ctx_.loadDialect<M::arith::ArithDialect, M::cf::ControlFlowDialect, M::LLVM::LLVMDialect,
 		                 M::func::FuncDialect>();
+		// the module's location names the file, which is where the DICompileUnit takes its name from
+		if (debug_ != nullptr) {
+			loc_ = M::FileLineColLoc::get(builder_.getStringAttr(debug_->sourceFile), 1, 1);
+		}
 		module_ = M::ModuleOp::create(loc_);
 		builder_.setInsertionPointToEnd(module_.getBody());
 
@@ -134,6 +143,7 @@ private:
 	const nir::Module& m_;
 	const nirbackend::HostEnvironment& host_;
 	const MLIRIntrinsicManager* intrinsics_;
+	const NirDebugInfo* debug_;
 	std::unique_ptr<M::OpBuilder> builderOwner_;
 	M::OpBuilder& builder_;
 	M::Location loc_;
@@ -160,6 +170,109 @@ private:
 	std::vector<M::Block*> landingPads_;
 	std::vector<M::Value> allocaSlots_;
 	bool personalitySet_ = false;
+
+	// ---- debug information (D14) ------------------------------------------------------------------------------
+	// Locations point into the text form of the module (`NirDebugInfo::sourceFile`), one line per instruction, the way
+	// 0.3's IRLocationMap did for the 0.3 IR. A value is named `$N` after its instruction number (`%N` in the text),
+	// which is what EmitDbgValuePass looks for; regions travel as the chain RegionScopeInfo.hpp describes.
+
+	std::vector<std::optional<M::LocationAttr>> regionScopes_;
+	/// Per module region: the first line of the text that is in it or in a region nested in it (its "call site" for
+	/// DWARF), 0 for an empty region.
+	std::vector<uint32_t> regionOpenLine_;
+	std::unordered_map<uint32_t, M::Value> debugSlots_;
+	uint32_t functionLine_ = 0;
+
+	[[nodiscard]] uint32_t lineOf(uint32_t id) const {
+		return debug_->lines->instruction[m_.functions[f_].firstInst + id];
+	}
+
+	void prepareDebugInfo() {
+		regionScopes_.assign(m_.debugRegions.size(), std::nullopt);
+		regionOpenLine_.assign(m_.debugRegions.size(), 0);
+		for (uint32_t f = 0; f < m_.functions.size(); ++f) {
+			for (uint32_t id = 0; id < m_.functions[f].instCount; ++id) {
+				const auto line = debug_->lines->instruction[m_.functions[f].firstInst + id];
+				if (line == 0) {
+					continue;
+				}
+				for (auto r = m_.regionOf(f, id); r != nir::NONE && r < regionOpenLine_.size();
+				     r = m_.debugRegions[r].parent) {
+					if (regionOpenLine_[r] != 0 && regionOpenLine_[r] <= line) {
+						break; // this region and so its ancestors have an earlier line already
+					}
+					regionOpenLine_[r] = line;
+					if (m_.debugRegions[r].parent >= r) {
+						break; // parents come first; anything else is not a chain
+					}
+				}
+			}
+		}
+	}
+
+	/// The chain of the region(s) `region` is nested in, outermost first, as a location; null for no region.
+	M::LocationAttr regionScope(uint32_t region) {
+		if (region == nir::NONE || region >= m_.debugRegions.size()) {
+			return {};
+		}
+		if (regionScopes_[region].has_value()) {
+			return *regionScopes_[region];
+		}
+		const auto& record = m_.debugRegions[region];
+		M::LocationAttr parent;
+		if (record.parent < region) {
+			parent = regionScope(record.parent);
+		}
+		const std::string name = record.nameId != nir::NONE ? std::string(m_.debugName(record.nameId)) : "<region>";
+		std::string file = debug_->sourceFile;
+		unsigned line = 0, column = 0;
+		if (record.location != nir::NONE && record.location < m_.debugLocations.size()) {
+			const auto& at = m_.debugLocations[record.location];
+			file = std::string(m_.debugName(at.file));
+			line = at.line;
+			column = at.column;
+		}
+		auto scope =
+		    buildRegionScopeChain(&ctx_, name, file, line, column, parent, debug_->sourceFile, regionOpenLine_[region]);
+		regionScopes_[region] = scope;
+		return scope;
+	}
+
+	M::Location fileLine(uint32_t line) {
+		return M::FileLineColLoc::get(builder_.getStringAttr(debug_->sourceFile), line, line != 0 ? 1 : 0);
+	}
+
+	/// The location of instruction `id`: its line, named `$id` if it defines a value, with the region it was traced in.
+	M::Location instLocation(uint32_t id) {
+		const bool defines = insts_[id].type != static_cast<uint8_t>(TypeId::Void);
+		const auto label = defines ? "$" + std::to_string(id) : std::string("nir");
+		return attachRegionScope(&ctx_, M::NameLoc::get(builder_.getStringAttr(label), fileLine(lineOf(id))),
+		                         regionScope(m_.regionOf(f_, id)));
+	}
+
+	/// The shadow slot of value `id` (`debug`): in the entry block, since a slot in a loop would grow the stack.
+	M::Value debugSlot(uint32_t id, M::Type type) {
+		if (auto it = debugSlots_.find(id); it != debugSlots_.end()) {
+			return it->second;
+		}
+		const uint32_t declLine = lineOf(id);
+		M::OpBuilder::InsertionGuard guard(builder_);
+		builder_.setInsertionPointToStart(mlirBlocks_[0]);
+		auto at = M::NameLoc::get(builder_.getStringAttr("$" + std::to_string(id)),
+		                          fileLine(declLine != 0 ? declLine : functionLine_));
+		auto one = M::LLVM::ConstantOp::create(builder_, at, builder_.getI64Type(), builder_.getI64IntegerAttr(1));
+		auto slot = M::LLVM::AllocaOp::create(builder_, at, ptrType(), type, one.getResult(), 0u);
+		slot->setAttr("nautilus.debug.decl_line", builder_.getI32IntegerAttr(declLine));
+		debugSlots_[id] = slot.getResult();
+		return slot.getResult();
+	}
+
+	void storeDebugValue(uint32_t id, M::Value value, M::Location at) {
+		if (!debug_->storeValues || !value) {
+			return;
+		}
+		M::LLVM::StoreOp::create(builder_, at, value, debugSlot(id, value.getType()));
+	}
 
 	// ---- types ----------------------------------------------------------------------------------------------
 
@@ -303,7 +416,13 @@ private:
 		const auto& record = m_.functions[f];
 		const auto& sig = m_.signatures[record.signature];
 		auto type = builder_.getFunctionType(paramTypes(sig), resultTypes(sig));
-		auto function = M::func::FuncOp::create(builder_, loc_, functionSymbol(m_, f), type);
+		// the line of the `func` header, so that the DISubprogram of the function has one (a line of 0 means "none")
+		M::Location location = loc_;
+		if (debug_ != nullptr) {
+			location =
+			    M::NameLoc::get(builder_.getStringAttr(functionSymbol(m_, f)), fileLine(debug_->lines->function[f]));
+		}
+		auto function = M::func::FuncOp::create(builder_, location, functionSymbol(m_, f), type);
 		// the type of the C prototype: where the ABI has the caller extend a narrow argument, say so, so that the
 		// callee does not extend it again; the result is extended by the callee.
 		for (uint32_t p = 0; p < sig.paramCount; ++p) {
@@ -586,6 +705,17 @@ private:
 	}
 
 	void lowerInstruction(uint32_t id) {
+		if (debug_ == nullptr) {
+			return lowerInstructionBody(id);
+		}
+		loc_ = instLocation(id);
+		lowerInstructionBody(id);
+		if (insts_[id].type != static_cast<uint8_t>(TypeId::Void)) {
+			storeDebugValue(id, values_[id], loc_);
+		}
+	}
+
+	void lowerInstructionBody(uint32_t id) {
 		const nir::Inst& inst = insts_[id];
 		const auto op = static_cast<N>(inst.op);
 		const auto type = static_cast<TypeId>(inst.type);
@@ -1096,6 +1226,11 @@ private:
 		personalitySet_ = false;
 		auto function = functions_[f];
 		auto& region = function.getBody();
+		debugSlots_.clear();
+		if (debug_ != nullptr) {
+			functionLine_ = debug_->lines->function[f];
+			loc_ = fileLine(functionLine_);
+		}
 
 		auto* entry = function.addEntryBlock();
 		mlirBlocks_.assign(blocks_.size(), nullptr);
@@ -1113,7 +1248,8 @@ private:
 			}
 			for (uint32_t i = 0; i < blocks_[b].argCount; ++i) {
 				const auto id = blocks_[b].first + i;
-				values_[id] = block->addArgument(mlirType(static_cast<TypeId>(insts_[id].type)), loc_);
+				values_[id] = block->addArgument(mlirType(static_cast<TypeId>(insts_[id].type)),
+				                                 debug_ != nullptr ? instLocation(id) : loc_);
 			}
 		}
 
@@ -1127,10 +1263,24 @@ private:
 			    M::LLVM::AllocaOp::create(builder_, loc_, ptrType(), i8, size, std::max<uint32_t>(slot.align, 1)));
 		}
 
+		if (debug_ != nullptr && debug_->storeValues) {
+			// the parameters are values like any other
+			builder_.setInsertionPointToEnd(entry);
+			for (uint32_t p = 0; p < blocks_[0].argCount; ++p) {
+				storeDebugValue(blocks_[0].first + p, entry->getArgument(p), instLocation(blocks_[0].first + p));
+			}
+		}
+
 		for (uint32_t b = 0; b < blocks_.size(); ++b) {
 			curBlock_ = b;
 			builder_.setInsertionPointToEnd(mlirBlocks_[b]);
 			const auto& block = blocks_[b];
+			if (debug_ != nullptr && debug_->storeValues && b != 0 && (block.flags & nir::BLOCK_LANDING_PAD) == 0) {
+				// a block argument is defined on entry to its block
+				for (uint32_t i = 0; i < block.argCount; ++i) {
+					storeDebugValue(block.first + i, mlirBlocks_[b]->getArgument(i), instLocation(block.first + i));
+				}
+			}
 			for (uint32_t k = block.argCount; k < block.count; ++k) {
 				lowerInstruction(block.first + k);
 			}
@@ -1142,8 +1292,8 @@ private:
 
 MLIRNirModule lowerNirToMLIR(M::MLIRContext& context, const nir::Module& module,
                              const nirbackend::HostEnvironment& host, const engine::Options& options,
-                             const MLIRIntrinsicManager* intrinsics) {
-	return Lowering(context, module, host, options, intrinsics).run();
+                             const MLIRIntrinsicManager* intrinsics, const NirDebugInfo* debug) {
+	return Lowering(context, module, host, options, intrinsics, debug).run();
 }
 
 } // namespace nautilus::compiler::mlir
