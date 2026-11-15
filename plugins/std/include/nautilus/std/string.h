@@ -21,7 +21,7 @@ public:
 	val() : data_ptr(nullptr) {
 		data_ptr = invoke(+[]() -> base_type* { return new base_type(); });
 	}
-	val(val<std::basic_string<CharT, Traits>*> str) : data_ptr(str) {
+	val(const val<std::basic_string<CharT, Traits>*>& str) : data_ptr(str) {
 	}
 	val(const val<const CharT*>& s) : data_ptr(nullptr) {
 		data_ptr = invoke(+[](const CharT* s) -> base_type* { return new base_type(s); }, s);
@@ -35,7 +35,7 @@ public:
 		return *this;
 	}
 
-	val<CharT> at(val<size_type> pos) {
+	val<CharT> at(const val<size_type>& pos) {
 		return invoke(+[](base_type* ptr, size_type p) -> CharT { return ptr->at(p); }, data_ptr, pos);
 	}
 
@@ -45,7 +45,7 @@ public:
 	 * No bounds checking is performed.
 	 * If pos > size(), the behavior is undefined.
 	 */
-	val<CharT> operator[](val<size_type> pos) {
+	val<CharT> operator[](const val<size_type>& pos) {
 		return invoke(+[](base_type* ptr, size_type p) noexcept -> CharT { return ptr->operator[](p); }, data_ptr, pos);
 	}
 
@@ -108,7 +108,7 @@ public:
 	 * appropriately.
 	 * @param new_cap
 	 */
-	void reserve(val<size_type> new_cap) const {
+	void reserve(const val<size_type>& new_cap) const {
 		return invoke(+[](base_type* ptr, size_type s) -> void { return ptr->reserve(s); }, data_ptr, new_cap);
 	}
 
@@ -132,7 +132,7 @@ public:
 	/**
 	 * Inserts characters into the string.
 	 */
-	auto& insert(val<size_type> index, val<size_type> count, val<CharT> ch) const {
+	auto& insert(const val<size_type>& index, const val<size_type>& count, const val<CharT>& ch) const {
 		invoke(
 		    +[](base_type* ptr, size_type index, size_type count, CharT ch) -> void { ptr->insert(index, count, ch); },
 		    data_ptr, index, count, ch);
@@ -142,7 +142,7 @@ public:
 	/**
 	 * Inserts characters into the string.
 	 */
-	auto& insert(val<size_type> index, val<const CharT*> s) const {
+	auto& insert(const val<size_type>& index, const val<const CharT*>& s) const {
 		invoke(
 		    +[](base_type* ptr, size_type index, const CharT* s) -> void { ptr->insert(index, s); }, data_ptr, index,
 		    s);
@@ -152,7 +152,7 @@ public:
 	/**
 	 * Appends additional characters to the string.
 	 */
-	auto& append(val<size_type> count, val<CharT> ch) {
+	auto& append(const val<size_type>& count, const val<CharT>& ch) {
 		invoke(+[](base_type* ptr, size_type count, CharT ch) -> void { ptr->append(count, ch); }, data_ptr, count, ch);
 		return *this;
 	}

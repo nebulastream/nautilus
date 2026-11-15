@@ -164,23 +164,24 @@ namespace nautilus {
 // =====================================================================================
 
 #define NAUTILUS_DEF_LOAD(T, suffix)                                                                                   \
-	val<T> atomic_load_##suffix(val<std::atomic<T>*> obj) noexcept {                                                   \
+	val<T> atomic_load_##suffix(const val<std::atomic<T>*>& obj) noexcept {                                            \
 		return invoke<>(&nautilus_atomic_load_##T##_##suffix, obj);                                                    \
 	}
 #define NAUTILUS_DEF_STORE(T, suffix)                                                                                  \
-	void atomic_store_##suffix(val<std::atomic<T>*> obj, val<T> v) noexcept {                                          \
+	void atomic_store_##suffix(const val<std::atomic<T>*>& obj, const val<T>& v) noexcept {                            \
 		invoke<>(&nautilus_atomic_store_##T##_##suffix, obj, v);                                                       \
 	}
 #define NAUTILUS_DEF_RMW(op, T, suffix)                                                                                \
-	val<T> atomic_##op##_##suffix(val<std::atomic<T>*> obj, val<T> v) noexcept {                                       \
+	val<T> atomic_##op##_##suffix(const val<std::atomic<T>*>& obj, const val<T>& v) noexcept {                         \
 		return invoke<>(&nautilus_atomic_##op##_##T##_##suffix, obj, v);                                               \
 	}
 #define NAUTILUS_DEF_EXCHANGE(T, suffix)                                                                               \
-	val<T> atomic_exchange_##suffix(val<std::atomic<T>*> obj, val<T> v) noexcept {                                     \
+	val<T> atomic_exchange_##suffix(const val<std::atomic<T>*>& obj, const val<T>& v) noexcept {                       \
 		return invoke<>(&nautilus_atomic_exchange_##T##_##suffix, obj, v);                                             \
 	}
 #define NAUTILUS_DEF_CMPXCHG(T)                                                                                        \
-	val<bool> atomic_compare_exchange_strong(val<std::atomic<T>*> obj, val<T*> expected, val<T> desired) noexcept {    \
+	val<bool> atomic_compare_exchange_strong(const val<std::atomic<T>*>& obj, const val<T*>& expected,                 \
+	                                         const val<T>& desired) noexcept {                                         \
 		return invoke<>(&nautilus_atomic_cmpxchg_strong_##T##_seqcst, obj, expected, desired);                         \
 	}
 
@@ -219,61 +220,62 @@ NAUTILUS_DEF_PER_TYPE(uint64_t)
 
 // ---- atomic_ref invoke wrappers ----
 #define NAUTILUS_DEF_REF(T)                                                                                            \
-	val<T> atomic_ref_load_seqcst(val<T*> ptr) noexcept {                                                              \
+	val<T> atomic_ref_load_seqcst(const val<T*>& ptr) noexcept {                                                       \
 		return invoke<>(&nautilus_atomic_ref_load_##T##_seqcst, ptr);                                                  \
 	}                                                                                                                  \
-	val<T> atomic_ref_load_acquire(val<T*> ptr) noexcept {                                                             \
+	val<T> atomic_ref_load_acquire(const val<T*>& ptr) noexcept {                                                      \
 		return invoke<>(&nautilus_atomic_ref_load_##T##_acquire, ptr);                                                 \
 	}                                                                                                                  \
-	val<T> atomic_ref_load_relaxed(val<T*> ptr) noexcept {                                                             \
+	val<T> atomic_ref_load_relaxed(const val<T*>& ptr) noexcept {                                                      \
 		return invoke<>(&nautilus_atomic_ref_load_##T##_relaxed, ptr);                                                 \
 	}                                                                                                                  \
-	void atomic_ref_store_seqcst(val<T*> ptr, val<T> v) noexcept {                                                     \
+	void atomic_ref_store_seqcst(const val<T*>& ptr, const val<T>& v) noexcept {                                       \
 		invoke<>(&nautilus_atomic_ref_store_##T##_seqcst, ptr, v);                                                     \
 	}                                                                                                                  \
-	void atomic_ref_store_release(val<T*> ptr, val<T> v) noexcept {                                                    \
+	void atomic_ref_store_release(const val<T*>& ptr, const val<T>& v) noexcept {                                      \
 		invoke<>(&nautilus_atomic_ref_store_##T##_release, ptr, v);                                                    \
 	}                                                                                                                  \
-	void atomic_ref_store_relaxed(val<T*> ptr, val<T> v) noexcept {                                                    \
+	void atomic_ref_store_relaxed(const val<T*>& ptr, const val<T>& v) noexcept {                                      \
 		invoke<>(&nautilus_atomic_ref_store_##T##_relaxed, ptr, v);                                                    \
 	}                                                                                                                  \
-	val<T> atomic_ref_exchange_seqcst(val<T*> ptr, val<T> v) noexcept {                                                \
+	val<T> atomic_ref_exchange_seqcst(const val<T*>& ptr, const val<T>& v) noexcept {                                  \
 		return invoke<>(&nautilus_atomic_ref_exchange_##T##_seqcst, ptr, v);                                           \
 	}                                                                                                                  \
-	val<T> atomic_ref_exchange_relaxed(val<T*> ptr, val<T> v) noexcept {                                               \
+	val<T> atomic_ref_exchange_relaxed(const val<T*>& ptr, const val<T>& v) noexcept {                                 \
 		return invoke<>(&nautilus_atomic_ref_exchange_##T##_relaxed, ptr, v);                                          \
 	}                                                                                                                  \
-	val<T> atomic_ref_fetch_add_seqcst(val<T*> ptr, val<T> v) noexcept {                                               \
+	val<T> atomic_ref_fetch_add_seqcst(const val<T*>& ptr, const val<T>& v) noexcept {                                 \
 		return invoke<>(&nautilus_atomic_ref_fetch_add_##T##_seqcst, ptr, v);                                          \
 	}                                                                                                                  \
-	val<T> atomic_ref_fetch_add_relaxed(val<T*> ptr, val<T> v) noexcept {                                              \
+	val<T> atomic_ref_fetch_add_relaxed(const val<T*>& ptr, const val<T>& v) noexcept {                                \
 		return invoke<>(&nautilus_atomic_ref_fetch_add_##T##_relaxed, ptr, v);                                         \
 	}                                                                                                                  \
-	val<T> atomic_ref_fetch_sub_seqcst(val<T*> ptr, val<T> v) noexcept {                                               \
+	val<T> atomic_ref_fetch_sub_seqcst(const val<T*>& ptr, const val<T>& v) noexcept {                                 \
 		return invoke<>(&nautilus_atomic_ref_fetch_sub_##T##_seqcst, ptr, v);                                          \
 	}                                                                                                                  \
-	val<T> atomic_ref_fetch_sub_relaxed(val<T*> ptr, val<T> v) noexcept {                                              \
+	val<T> atomic_ref_fetch_sub_relaxed(const val<T*>& ptr, const val<T>& v) noexcept {                                \
 		return invoke<>(&nautilus_atomic_ref_fetch_sub_##T##_relaxed, ptr, v);                                         \
 	}                                                                                                                  \
-	val<T> atomic_ref_fetch_and_seqcst(val<T*> ptr, val<T> v) noexcept {                                               \
+	val<T> atomic_ref_fetch_and_seqcst(const val<T*>& ptr, const val<T>& v) noexcept {                                 \
 		return invoke<>(&nautilus_atomic_ref_fetch_and_##T##_seqcst, ptr, v);                                          \
 	}                                                                                                                  \
-	val<T> atomic_ref_fetch_and_relaxed(val<T*> ptr, val<T> v) noexcept {                                              \
+	val<T> atomic_ref_fetch_and_relaxed(const val<T*>& ptr, const val<T>& v) noexcept {                                \
 		return invoke<>(&nautilus_atomic_ref_fetch_and_##T##_relaxed, ptr, v);                                         \
 	}                                                                                                                  \
-	val<T> atomic_ref_fetch_or_seqcst(val<T*> ptr, val<T> v) noexcept {                                                \
+	val<T> atomic_ref_fetch_or_seqcst(const val<T*>& ptr, const val<T>& v) noexcept {                                  \
 		return invoke<>(&nautilus_atomic_ref_fetch_or_##T##_seqcst, ptr, v);                                           \
 	}                                                                                                                  \
-	val<T> atomic_ref_fetch_or_relaxed(val<T*> ptr, val<T> v) noexcept {                                               \
+	val<T> atomic_ref_fetch_or_relaxed(const val<T*>& ptr, const val<T>& v) noexcept {                                 \
 		return invoke<>(&nautilus_atomic_ref_fetch_or_##T##_relaxed, ptr, v);                                          \
 	}                                                                                                                  \
-	val<T> atomic_ref_fetch_xor_seqcst(val<T*> ptr, val<T> v) noexcept {                                               \
+	val<T> atomic_ref_fetch_xor_seqcst(const val<T*>& ptr, const val<T>& v) noexcept {                                 \
 		return invoke<>(&nautilus_atomic_ref_fetch_xor_##T##_seqcst, ptr, v);                                          \
 	}                                                                                                                  \
-	val<T> atomic_ref_fetch_xor_relaxed(val<T*> ptr, val<T> v) noexcept {                                              \
+	val<T> atomic_ref_fetch_xor_relaxed(const val<T*>& ptr, const val<T>& v) noexcept {                                \
 		return invoke<>(&nautilus_atomic_ref_fetch_xor_##T##_relaxed, ptr, v);                                         \
 	}                                                                                                                  \
-	val<bool> atomic_ref_compare_exchange_strong(val<T*> ptr, val<T*> expected, val<T> desired) noexcept {             \
+	val<bool> atomic_ref_compare_exchange_strong(const val<T*>& ptr, const val<T*>& expected,                          \
+	                                             const val<T>& desired) noexcept {                                     \
 		return invoke<>(&nautilus_atomic_ref_cmpxchg_strong_##T##_seqcst, ptr, expected, desired);                     \
 	}
 

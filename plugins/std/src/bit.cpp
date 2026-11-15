@@ -240,19 +240,19 @@ uint64_t byteswap_u64_impl(uint64_t x) noexcept {
 // countl_zero - Count leading zeros
 // ============================================================================
 
-val<uint8_t> countl_zero(val<uint8_t> x) noexcept {
+val<uint8_t> countl_zero(const val<uint8_t>& x) noexcept {
 	return invoke<uint8_t, uint8_t>(countl_zero_u8_impl, x);
 }
 
-val<uint16_t> countl_zero(val<uint16_t> x) noexcept {
+val<uint16_t> countl_zero(const val<uint16_t>& x) noexcept {
 	return invoke<uint16_t, uint16_t>(countl_zero_u16_impl, x);
 }
 
-val<uint32_t> countl_zero(val<uint32_t> x) noexcept {
+val<uint32_t> countl_zero(const val<uint32_t>& x) noexcept {
 	return invoke<uint32_t, uint32_t>(countl_zero_u32_impl, x);
 }
 
-val<uint64_t> countl_zero(val<uint64_t> x) noexcept {
+val<uint64_t> countl_zero(const val<uint64_t>& x) noexcept {
 	return invoke<uint64_t, uint64_t>(countl_zero_u64_impl, x);
 }
 
@@ -260,19 +260,19 @@ val<uint64_t> countl_zero(val<uint64_t> x) noexcept {
 // countl_one - Count leading ones
 // ============================================================================
 
-val<uint8_t> countl_one(val<uint8_t> x) noexcept {
+val<uint8_t> countl_one(const val<uint8_t>& x) noexcept {
 	return invoke<uint8_t, uint8_t>(countl_one_u8_impl, x);
 }
 
-val<uint16_t> countl_one(val<uint16_t> x) noexcept {
+val<uint16_t> countl_one(const val<uint16_t>& x) noexcept {
 	return invoke<uint16_t, uint16_t>(countl_one_u16_impl, x);
 }
 
-val<uint32_t> countl_one(val<uint32_t> x) noexcept {
+val<uint32_t> countl_one(const val<uint32_t>& x) noexcept {
 	return invoke<uint32_t, uint32_t>(countl_one_u32_impl, x);
 }
 
-val<uint64_t> countl_one(val<uint64_t> x) noexcept {
+val<uint64_t> countl_one(const val<uint64_t>& x) noexcept {
 	return invoke<uint64_t, uint64_t>(countl_one_u64_impl, x);
 }
 
@@ -280,19 +280,19 @@ val<uint64_t> countl_one(val<uint64_t> x) noexcept {
 // countr_zero - Count trailing zeros
 // ============================================================================
 
-val<uint8_t> countr_zero(val<uint8_t> x) noexcept {
+val<uint8_t> countr_zero(const val<uint8_t>& x) noexcept {
 	return invoke<uint8_t, uint8_t>(countr_zero_u8_impl, x);
 }
 
-val<uint16_t> countr_zero(val<uint16_t> x) noexcept {
+val<uint16_t> countr_zero(const val<uint16_t>& x) noexcept {
 	return invoke<uint16_t, uint16_t>(countr_zero_u16_impl, x);
 }
 
-val<uint32_t> countr_zero(val<uint32_t> x) noexcept {
+val<uint32_t> countr_zero(const val<uint32_t>& x) noexcept {
 	return invoke<uint32_t, uint32_t>(countr_zero_u32_impl, x);
 }
 
-val<uint64_t> countr_zero(val<uint64_t> x) noexcept {
+val<uint64_t> countr_zero(const val<uint64_t>& x) noexcept {
 	return invoke<uint64_t, uint64_t>(countr_zero_u64_impl, x);
 }
 
@@ -300,19 +300,19 @@ val<uint64_t> countr_zero(val<uint64_t> x) noexcept {
 // countr_one - Count trailing ones
 // ============================================================================
 
-val<uint8_t> countr_one(val<uint8_t> x) noexcept {
+val<uint8_t> countr_one(const val<uint8_t>& x) noexcept {
 	return invoke<uint8_t, uint8_t>(countr_one_u8_impl, x);
 }
 
-val<uint16_t> countr_one(val<uint16_t> x) noexcept {
+val<uint16_t> countr_one(const val<uint16_t>& x) noexcept {
 	return invoke<uint16_t, uint16_t>(countr_one_u16_impl, x);
 }
 
-val<uint32_t> countr_one(val<uint32_t> x) noexcept {
+val<uint32_t> countr_one(const val<uint32_t>& x) noexcept {
 	return invoke<uint32_t, uint32_t>(countr_one_u32_impl, x);
 }
 
-val<uint64_t> countr_one(val<uint64_t> x) noexcept {
+val<uint64_t> countr_one(const val<uint64_t>& x) noexcept {
 	return invoke<uint64_t, uint64_t>(countr_one_u64_impl, x);
 }
 
@@ -320,19 +320,19 @@ val<uint64_t> countr_one(val<uint64_t> x) noexcept {
 // popcount - Population count (count set bits)
 // ============================================================================
 
-val<uint8_t> popcount(val<uint8_t> x) noexcept {
+val<uint8_t> popcount(const val<uint8_t>& x) noexcept {
 	return invoke<uint8_t, uint8_t>(popcount_u8_impl, x);
 }
 
-val<uint16_t> popcount(val<uint16_t> x) noexcept {
+val<uint16_t> popcount(const val<uint16_t>& x) noexcept {
 	return invoke<uint16_t, uint16_t>(popcount_u16_impl, x);
 }
 
-val<uint32_t> popcount(val<uint32_t> x) noexcept {
+val<uint32_t> popcount(const val<uint32_t>& x) noexcept {
 	return invoke<uint32_t, uint32_t>(popcount_u32_impl, x);
 }
 
-val<uint64_t> popcount(val<uint64_t> x) noexcept {
+val<uint64_t> popcount(const val<uint64_t>& x) noexcept {
 	return invoke<uint64_t, uint64_t>(popcount_u64_impl, x);
 }
 
@@ -340,19 +340,19 @@ val<uint64_t> popcount(val<uint64_t> x) noexcept {
 // has_single_bit - Check if power of two
 // ============================================================================
 
-val<bool> has_single_bit(val<uint8_t> x) noexcept {
+val<bool> has_single_bit(const val<uint8_t>& x) noexcept {
 	return invoke<bool, uint8_t>(has_single_bit_u8_impl, x);
 }
 
-val<bool> has_single_bit(val<uint16_t> x) noexcept {
+val<bool> has_single_bit(const val<uint16_t>& x) noexcept {
 	return invoke<bool, uint16_t>(has_single_bit_u16_impl, x);
 }
 
-val<bool> has_single_bit(val<uint32_t> x) noexcept {
+val<bool> has_single_bit(const val<uint32_t>& x) noexcept {
 	return invoke<bool, uint32_t>(has_single_bit_u32_impl, x);
 }
 
-val<bool> has_single_bit(val<uint64_t> x) noexcept {
+val<bool> has_single_bit(const val<uint64_t>& x) noexcept {
 	return invoke<bool, uint64_t>(has_single_bit_u64_impl, x);
 }
 
@@ -360,19 +360,19 @@ val<bool> has_single_bit(val<uint64_t> x) noexcept {
 // bit_width - Bit width needed to represent value
 // ============================================================================
 
-val<uint8_t> bit_width(val<uint8_t> x) noexcept {
+val<uint8_t> bit_width(const val<uint8_t>& x) noexcept {
 	return invoke<uint8_t, uint8_t>(bit_width_u8_impl, x);
 }
 
-val<uint16_t> bit_width(val<uint16_t> x) noexcept {
+val<uint16_t> bit_width(const val<uint16_t>& x) noexcept {
 	return invoke<uint16_t, uint16_t>(bit_width_u16_impl, x);
 }
 
-val<uint32_t> bit_width(val<uint32_t> x) noexcept {
+val<uint32_t> bit_width(const val<uint32_t>& x) noexcept {
 	return invoke<uint32_t, uint32_t>(bit_width_u32_impl, x);
 }
 
-val<uint64_t> bit_width(val<uint64_t> x) noexcept {
+val<uint64_t> bit_width(const val<uint64_t>& x) noexcept {
 	return invoke<uint64_t, uint64_t>(bit_width_u64_impl, x);
 }
 
@@ -380,19 +380,19 @@ val<uint64_t> bit_width(val<uint64_t> x) noexcept {
 // bit_ceil - Round up to next power of two
 // ============================================================================
 
-val<uint8_t> bit_ceil(val<uint8_t> x) noexcept {
+val<uint8_t> bit_ceil(const val<uint8_t>& x) noexcept {
 	return invoke<uint8_t, uint8_t>(bit_ceil_u8_impl, x);
 }
 
-val<uint16_t> bit_ceil(val<uint16_t> x) noexcept {
+val<uint16_t> bit_ceil(const val<uint16_t>& x) noexcept {
 	return invoke<uint16_t, uint16_t>(bit_ceil_u16_impl, x);
 }
 
-val<uint32_t> bit_ceil(val<uint32_t> x) noexcept {
+val<uint32_t> bit_ceil(const val<uint32_t>& x) noexcept {
 	return invoke<uint32_t, uint32_t>(bit_ceil_u32_impl, x);
 }
 
-val<uint64_t> bit_ceil(val<uint64_t> x) noexcept {
+val<uint64_t> bit_ceil(const val<uint64_t>& x) noexcept {
 	return invoke<uint64_t, uint64_t>(bit_ceil_u64_impl, x);
 }
 
@@ -400,19 +400,19 @@ val<uint64_t> bit_ceil(val<uint64_t> x) noexcept {
 // bit_floor - Round down to previous power of two
 // ============================================================================
 
-val<uint8_t> bit_floor(val<uint8_t> x) noexcept {
+val<uint8_t> bit_floor(const val<uint8_t>& x) noexcept {
 	return invoke<uint8_t, uint8_t>(bit_floor_u8_impl, x);
 }
 
-val<uint16_t> bit_floor(val<uint16_t> x) noexcept {
+val<uint16_t> bit_floor(const val<uint16_t>& x) noexcept {
 	return invoke<uint16_t, uint16_t>(bit_floor_u16_impl, x);
 }
 
-val<uint32_t> bit_floor(val<uint32_t> x) noexcept {
+val<uint32_t> bit_floor(const val<uint32_t>& x) noexcept {
 	return invoke<uint32_t, uint32_t>(bit_floor_u32_impl, x);
 }
 
-val<uint64_t> bit_floor(val<uint64_t> x) noexcept {
+val<uint64_t> bit_floor(const val<uint64_t>& x) noexcept {
 	return invoke<uint64_t, uint64_t>(bit_floor_u64_impl, x);
 }
 
@@ -420,19 +420,19 @@ val<uint64_t> bit_floor(val<uint64_t> x) noexcept {
 // rotl - Rotate left
 // ============================================================================
 
-val<uint8_t> rotl(val<uint8_t> x, val<uint8_t> s) noexcept {
+val<uint8_t> rotl(const val<uint8_t>& x, const val<uint8_t>& s) noexcept {
 	return invoke<uint8_t, uint8_t, uint8_t>(rotl_u8_impl, x, s);
 }
 
-val<uint16_t> rotl(val<uint16_t> x, val<uint16_t> s) noexcept {
+val<uint16_t> rotl(const val<uint16_t>& x, const val<uint16_t>& s) noexcept {
 	return invoke<uint16_t, uint16_t, uint16_t>(rotl_u16_impl, x, s);
 }
 
-val<uint32_t> rotl(val<uint32_t> x, val<uint32_t> s) noexcept {
+val<uint32_t> rotl(const val<uint32_t>& x, const val<uint32_t>& s) noexcept {
 	return invoke<uint32_t, uint32_t, uint32_t>(rotl_u32_impl, x, s);
 }
 
-val<uint64_t> rotl(val<uint64_t> x, val<uint64_t> s) noexcept {
+val<uint64_t> rotl(const val<uint64_t>& x, const val<uint64_t>& s) noexcept {
 	return invoke<uint64_t, uint64_t, uint64_t>(rotl_u64_impl, x, s);
 }
 
@@ -440,19 +440,19 @@ val<uint64_t> rotl(val<uint64_t> x, val<uint64_t> s) noexcept {
 // rotr - Rotate right
 // ============================================================================
 
-val<uint8_t> rotr(val<uint8_t> x, val<uint8_t> s) noexcept {
+val<uint8_t> rotr(const val<uint8_t>& x, const val<uint8_t>& s) noexcept {
 	return invoke<uint8_t, uint8_t, uint8_t>(rotr_u8_impl, x, s);
 }
 
-val<uint16_t> rotr(val<uint16_t> x, val<uint16_t> s) noexcept {
+val<uint16_t> rotr(const val<uint16_t>& x, const val<uint16_t>& s) noexcept {
 	return invoke<uint16_t, uint16_t, uint16_t>(rotr_u16_impl, x, s);
 }
 
-val<uint32_t> rotr(val<uint32_t> x, val<uint32_t> s) noexcept {
+val<uint32_t> rotr(const val<uint32_t>& x, const val<uint32_t>& s) noexcept {
 	return invoke<uint32_t, uint32_t, uint32_t>(rotr_u32_impl, x, s);
 }
 
-val<uint64_t> rotr(val<uint64_t> x, val<uint64_t> s) noexcept {
+val<uint64_t> rotr(const val<uint64_t>& x, const val<uint64_t>& s) noexcept {
 	return invoke<uint64_t, uint64_t, uint64_t>(rotr_u64_impl, x, s);
 }
 
@@ -460,15 +460,15 @@ val<uint64_t> rotr(val<uint64_t> x, val<uint64_t> s) noexcept {
 // byteswap - Reverse byte order
 // ============================================================================
 
-val<uint16_t> byteswap(val<uint16_t> x) noexcept {
+val<uint16_t> byteswap(const val<uint16_t>& x) noexcept {
 	return invoke<uint16_t, uint16_t>(byteswap_u16_impl, x);
 }
 
-val<uint32_t> byteswap(val<uint32_t> x) noexcept {
+val<uint32_t> byteswap(const val<uint32_t>& x) noexcept {
 	return invoke<uint32_t, uint32_t>(byteswap_u32_impl, x);
 }
 
-val<uint64_t> byteswap(val<uint64_t> x) noexcept {
+val<uint64_t> byteswap(const val<uint64_t>& x) noexcept {
 	return invoke<uint64_t, uint64_t>(byteswap_u64_impl, x);
 }
 

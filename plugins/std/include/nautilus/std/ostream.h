@@ -74,7 +74,7 @@ val<std::basic_ostream<_CharT, _Traits>>& oct(val<std::basic_ostream<_CharT, _Tr
 template <class CharT, class Traits>
 class val<std::basic_ostream<CharT, Traits>> {
 public:
-	explicit val(val<std::basic_ostream<CharT, Traits>*> stream) : stream(stream) {
+	explicit val(const val<std::basic_ostream<CharT, Traits>*>& stream) : stream(stream) {
 	}
 	template <class _CharT, class _Traits>
 	val(val<std::basic_ostream<_CharT, _Traits>>& other) : stream(other.stream) {
@@ -91,12 +91,12 @@ public:
 		return *this;
 	}
 
-	val<std::basic_ostream<CharT, Traits>>& put(val<CharT> ch) {
+	val<std::basic_ostream<CharT, Traits>>& put(const val<CharT>& ch) {
 		invoke(put, stream, ch);
 		return *this;
 	}
 
-	val<std::basic_ostream<CharT, Traits>>& write(val<const CharT*> s, val<size_t> count) {
+	val<std::basic_ostream<CharT, Traits>>& write(const val<const CharT*>& s, const val<size_t>& count) {
 		invoke(write, stream, s, count);
 		return *this;
 	}
@@ -106,7 +106,7 @@ public:
 		return *this;
 	}
 
-	val<std::basic_ostream<CharT, Traits>>& seekp(val<typename Traits::pos_type> pos) {
+	val<std::basic_ostream<CharT, Traits>>& seekp(const val<typename Traits::pos_type>& pos) {
 		invoke(seekp, stream, pos);
 		return *this;
 	}
