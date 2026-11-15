@@ -1834,7 +1834,10 @@ void NirTracer::traceScopeExit() {
 		return; // the pass ended in the branch on the loop condition
 	}
 	auto& region = regionState();
-	const std::string what = kind_ == ScopeKind::Region ? "region() " + region.attributes.toString() : "construct";
+	// only an error needs the name: building it costs more than the exit of a small region
+	auto whatIsLeft = [&]() -> std::string {
+		return kind_ == ScopeKind::Region ? "region() " + region.attributes.toString() : "construct";
+	};
 	// Nothing created inside a region may outlive it (docs/region.md); the arms and bodies of explicit constructs obey
 	// the same rule.
 	if (aliveVars.size() > 0) {
@@ -1843,7 +1846,7 @@ void NirTracer::traceScopeExit() {
 			escaped += (escaped.empty() ? "" : ", ") + std::string("$") + std::to_string(ref);
 		});
 		throw RuntimeException(
-		    "Invalid " + what + describeCurrentFunction() + ": a value created inside the body outlives it (" +
+		    "Invalid " + whatIsLeft() + describeCurrentFunction() + ": a value created inside the body outlives it (" +
 		    escaped + "). Carry the value out through a val<T> declared outside the body and assigned to inside it.");
 	}
 	auto& trace = state->trace;
@@ -1858,7 +1861,7 @@ void NirTracer::traceScopeExit() {
 		region.exitSnapshot = snapshot;
 	} else if (*region.exitSnapshot != snapshot) {
 		throw RuntimeException(
-		    "Invalid " + what + describeCurrentFunction() +
+		    "Invalid " + whatIsLeft() + describeCurrentFunction() +
 		    ": the state alive at the end of the body differs between the paths through it, so what escapes the body "
 		    "would depend on which path was explored last. Build the escaping value on every path (assigning to a "
 		    "val<T> declared outside the body merges across branches).");

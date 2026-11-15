@@ -307,14 +307,14 @@ int64_t cfRegionInArmRef(int64_t x) {
 
 // the explicit twin of the corpus' chainedIf
 int chainLength = 30;
-val<int64_t> cfChainedIf(val<int64_t> x) {
+[[maybe_unused]] val<int64_t> cfChainedIf(val<int64_t> x) {
 	val<int64_t> r = 0;
 	for (static_val<int> i = 0; i < chainLength; i++) {
 		If(x > i, [&] { r = r + 1; });
 	}
 	return r;
 }
-int64_t cfChainedIfRef(int64_t x) {
+[[maybe_unused]] int64_t cfChainedIfRef(int64_t x) {
 	int64_t r = 0;
 	for (int i = 0; i < chainLength; ++i) {
 		r += x > i ? 1 : 0;
@@ -375,7 +375,7 @@ int64_t cfOwnedReturnRef(int64_t n) {
 // ---- errors
 // -------------------------------------------------------------------------------------------------------------
 
-val<int64_t> cfBreakThroughRegion(val<int64_t> n) {
+[[maybe_unused]] val<int64_t> cfBreakThroughRegion(val<int64_t> n) {
 	val<int64_t> i = 0;
 	While([&] { return i < n; },
 	      [&] {
@@ -385,7 +385,7 @@ val<int64_t> cfBreakThroughRegion(val<int64_t> n) {
 	return i;
 }
 
-val<int64_t> cfBreakOutsideLoop(val<int64_t> n) {
+[[maybe_unused]] val<int64_t> cfBreakOutsideLoop(val<int64_t> n) {
 	If(n > 0, [&] { Break(); });
 	return n;
 }
@@ -441,7 +441,7 @@ void checkAgainstOracle(const std::vector<std::string>& engines, val<int64_t> (*
 	}
 }
 
-int64_t counter(const compiler::CompilationStatistics& stats, const char* key) {
+[[maybe_unused]] int64_t counter(const compiler::CompilationStatistics& stats, const char* key) {
 	const auto* value = stats.find(key);
 	REQUIRE(value != nullptr);
 	return std::get<int64_t>(*value);
