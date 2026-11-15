@@ -202,7 +202,7 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
                                                            const engine::ModuleOptions& moduleOptions,
                                                            const std::string& backend, const std::string& tierLabel,
                                                            IROptimizationLevel optimization,
-                                                           const GraphReady& graphReady) const {
+                                                           const GraphReady& graphReady, bool latencyCritical) const {
 	// One shared statistics object covers the entire tier compile so the
 	// user's CompiledModule::getStatistics() reflects tracing + IR passes +
 	// backend work in a single report.
@@ -213,7 +213,7 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 	if (graphReady) {
 		graphReady(ir);
 	}
-	auto executable = pipeline_.compileIR(ir, backend, moduleOptions, statistics.get());
+	auto executable = pipeline_.compileIR(ir, backend, moduleOptions, statistics.get(), {}, nullptr, latencyCritical);
 
 	statistics->recordTimingMs("compilation.totalMs", compilationStart);
 	statistics->set("tier", tierLabel);
@@ -345,15 +345,17 @@ void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
 	// With the policy `eager` the promotion is queued as soon as the graph exists, before the tier-0 code generation.
 	std::shared_ptr<PromotionJob> job;
 	bool submitted = false;
-	auto tier0 = compileTier(functions, moduleOptions, config_.tier0.backend, "tier0",
-	                         pipeline_.irOptimizationLevel({config_.tier0.backend, config_.tier1.backend}),
-	                         [&](const std::shared_ptr<ir::IRGraph>& ir) {
-		                         job = createPromotion(state, ir, moduleOptions);
-		                         if (eager && canStartEarly(*ir)) {
-			                         service_->submit(job);
-			                         submitted = true;
-		                         }
-	                         });
+	auto tier0 = compileTier(
+	    functions, moduleOptions, config_.tier0.backend, "tier0",
+	    pipeline_.irOptimizationLevel({config_.tier0.backend, config_.tier1.backend}),
+	    [&](const std::shared_ptr<ir::IRGraph>& ir) {
+		    job = createPromotion(state, ir, moduleOptions);
+		    if (eager && canStartEarly(*ir)) {
+			    service_->submit(job);
+			    submitted = true;
+		    }
+	    },
+	    /*latencyCritical=*/true);
 	{
 		// Install tier 0 only while no tier 1 is: the promotion may have finished first, and then tier 0 is
 		// dropped. Installing it does not bump the version -- no handle exists before compileModule returns, and

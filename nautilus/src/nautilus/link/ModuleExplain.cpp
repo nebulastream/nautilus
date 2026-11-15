@@ -115,7 +115,12 @@ void appendJsonPending(std::string& out, const ModuleExplanation::Pending& pendi
 	appendJsonString(out, pending.status);
 	out += ",\"milestone\":";
 	appendJsonString(out, pending.milestone);
-	out += '}';
+	out += ",\"details\":[";
+	for (size_t i = 0; i < pending.details.size(); ++i) {
+		out += i == 0 ? "" : ",";
+		appendJsonString(out, pending.details[i]);
+	}
+	out += "]}";
 }
 
 } // namespace
@@ -138,6 +143,29 @@ ModuleExplanation CompiledModule::explain() const {
 	report.promotion = promotionName(promotion.state);
 	report.promotionError = promotion.error;
 	report.statistics = statistics;
+	if (statistics != nullptr) {
+		// what the inlining pass of the compile that produced the running code decided (13 §4.4.3)
+		if (const auto* runs = statistics->find("irPasses.inline.runs"); runs != nullptr) {
+			report.inlining.status = "ran";
+			for (const auto* key : {"irPasses.inline.decisions", "irPasses.inline.importedModules"}) {
+				if (const auto* text = statistics->find(key);
+				    text != nullptr && std::holds_alternative<std::string>(*text)) {
+					const auto& lines = std::get<std::string>(*text);
+					size_t start = 0;
+					while (start < lines.size()) {
+						auto end = lines.find_first_of("\n;", start);
+						end = end == std::string::npos ? lines.size() : end;
+						if (end > start) {
+							report.inlining.details.push_back(
+							    (std::string(key) == "irPasses.inline.importedModules" ? "inlined import " : "") +
+							    lines.substr(start, end - start));
+						}
+						start = end + 1;
+					}
+				}
+			}
+		}
+	}
 	report.backend = current == Tier::interpreted ? "interpreter" : backendOf(statistics.get());
 
 	// The tiers: a module with a promotion has two, whose backends the promotion remembers; any other has the one it
@@ -214,6 +242,9 @@ std::string ModuleExplanation::toString() const {
 	}
 	out += fmt::format("persistability = {} ({})\n", persistability.status, persistability.milestone);
 	out += fmt::format("inlining = {} ({})\n", inlining.status, inlining.milestone);
+	for (const auto& d : inlining.details) {
+		out += "  " + d + "\n";
+	}
 	if (statistics != nullptr) {
 		out += "statistics:\n";
 		out += statistics->toString();

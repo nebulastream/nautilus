@@ -109,14 +109,15 @@ TEST_CASE("Explain - a single-tier module reports its tier, backend, functions a
 	CHECK_FALSE(report.persistability.available);
 	CHECK(report.persistability.status == "not available yet");
 	CHECK(report.persistability.milestone == "M5.3");
-	CHECK_FALSE(report.inlining.available);
+	CHECK(report.inlining.available);
+	CHECK(report.inlining.status == "not run"); // ir.inline is off
 	CHECK(report.inlining.milestone == "M3.8");
 
 	const auto text = report.toString();
 	CHECK(contains(text, "tier = tier1"));
 	CHECK(contains(text, "function add_one:"));
 	CHECK(contains(text, "persistability = not available yet (M5.3)"));
-	CHECK(contains(text, "inlining = not available yet (M3.8)"));
+	CHECK(contains(text, "inlining = not run (M3.8)"));
 
 	// the report is the same through the module's own statistics
 	CHECK(report.statistics == compiled.getStatistics());
@@ -134,8 +135,9 @@ TEST_CASE("Explain - the JSON is one well-formed object with stable keys", "[exp
 	for (const auto* key :
 	     {"\"module\":", "\"tier\":\"tier1\"", "\"backend\":\"tbc\"", "\"promotion\":{\"status\":\"none\"",
 	      "\"tiers\":[", "\"functions\":[", "\"functionsAvailable\":true", "\"statistics\":{",
-	      "\"persistability\":{\"available\":false,\"status\":\"not available yet\",\"milestone\":\"M5.3\"}",
-	      "\"inlining\":{\"available\":false,\"status\":\"not available yet\",\"milestone\":\"M3.8\"}"}) {
+	      "\"persistability\":{\"available\":false,\"status\":\"not available "
+	      "yet\",\"milestone\":\"M5.3\",\"details\":[]}",
+	      "\"inlining\":{\"available\":true,\"status\":\"not run\",\"milestone\":\"M3.8\",\"details\":[]}"}) {
 		INFO(key);
 		CHECK(contains(json, key));
 	}
