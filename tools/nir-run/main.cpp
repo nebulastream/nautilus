@@ -24,6 +24,7 @@
 #include "nautilus/nir/Parser.hpp"
 #include "nautilus/nir/Printer.hpp"
 #include "nautilus/nir/Verifier.hpp"
+#include "nautilus/passes/Passes.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -550,6 +551,37 @@ int main(int argc, char** argv) {
 				std::cout << nir::print(*module);
 			}
 			return 1;
+		}
+	}
+	// the optional passes of the options (`ir.inline`, `ir.enableLICM`, `ir.enableStrengthReduction`), on the module
+	// the way the engine runs them before a backend lowers it: the same `; run` directives must hold afterwards
+	{
+		const auto which = passes::optionalPassesOf(options);
+		if (which.any()) {
+			passes::PassManager manager;
+			manager.addGroup(passes::makeOptionalPasses(which), which.maxIterations);
+			passes::PassContext passContext {options};
+			passes::PipelineReport report;
+			std::optional<nir::Module> optimized;
+			try {
+				optimized = manager.run(*module, passContext, report);
+			} catch (const std::exception& e) {
+				std::cerr << path << ": the optional passes failed: " << e.what() << "\n";
+				return 1;
+			}
+			if (optimized) {
+				const auto diagnostics = nir::verify(*optimized);
+				for (const auto& d : diagnostics) {
+					std::cerr << path << ": after the optional passes: " << d.str() << "\n";
+				}
+				if (!diagnostics.empty()) {
+					if (dump) {
+						std::cout << nir::print(*optimized);
+					}
+					return 1;
+				}
+				*module = std::move(*optimized);
+			}
 		}
 	}
 	if (dump) {

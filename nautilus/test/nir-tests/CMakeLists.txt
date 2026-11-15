@@ -15,6 +15,7 @@ add_executable(nautilus-nir-tests
         HashTest.cpp
         ImageConformanceTest.cpp
         ConversionTest.cpp
+        PassTest.cpp
 )
 
 target_link_libraries(nautilus-nir-tests PRIVATE nautilus-nir Catch2::Catch2WithMain)

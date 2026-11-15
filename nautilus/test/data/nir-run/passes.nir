@@ -1,0 +1,176 @@
+; Optional passes (M3.8): loops with invariant computations, strided pointers and internal calls. Every file of this
+; directory also runs with ir.inline, ir.enableLICM and ir.enableStrengthReduction on, and the directives must hold in
+; both.
+nir 1.0
+callee #c0 = internal @twice : (i64) -> i64
+callee #c1 = internal @absOrDouble : (i64) -> i64
+callee #c2 = internal @slot : (i64) -> i64
+callee #c3 = internal @selfSum : (i64) -> i64
+
+; a product of loop-invariant values in the body
+func export @invariant : (i64, i64, i64) -> i64 {
+^b0(%0: i64, %1: i64, %2: i64):
+  br ^b1(0:i64, 0:i64)
+^b1(%4: i64, %5: i64):
+  %6 = cmp.lt.s %4, %0
+  condbr %6, ^b2, ^b3(%5)
+^b2:
+  %8 = mul %1, %2
+  %9 = add %8, %4
+  %10 = add %5, %9
+  %11 = add %4, 1:i64
+  br ^b1(%11, %10)
+^b3(%13: i64):
+  ret %13
+}
+; run @invariant(0, 1, 1) = 0
+; run @invariant(3, 3, 4) = 39
+; run @invariant(10, 2, 5) = 145
+
+; a loop that is entered through a conditional branch: hoisting needs a preheader of its own
+func export @guarded : (i64, i64) -> i64 {
+^b0(%0: i64, %1: i64):
+  %2 = cmp.gt.s %0, 0:i64
+  condbr %2, ^b1(0:i64, 0:i64), ^b2(-1:i64)
+^b1(%4: i64, %5: i64):
+  %6 = mul %1, 3:i64
+  %7 = add %5, %6
+  %8 = add %4, 1:i64
+  %9 = cmp.lt.s %8, %0
+  condbr %9, ^b1(%8, %7), ^b2(%7)
+^b2(%11: i64):
+  ret %11
+}
+; run @guarded(0, 5) = -1
+; run @guarded(1, 2) = 6
+; run @guarded(4, 5) = 60
+
+; a value that is invariant in both loops of a nest
+func export @nested : (i64, i64, i64) -> i64 {
+^b0(%0: i64, %1: i64, %2: i64):
+  br ^b1(0:i64, 0:i64)
+^b1(%4: i64, %5: i64):
+  %6 = cmp.lt.s %4, %0
+  condbr %6, ^b2, ^b6(%5)
+^b2:
+  br ^b3(0:i64, %5)
+^b3(%9: i64, %10: i64):
+  %11 = cmp.lt.s %9, %1
+  condbr %11, ^b4, ^b5
+^b4:
+  %13 = mul %2, %2
+  %14 = add %10, %13
+  %15 = add %14, %9
+  %16 = add %9, 1:i64
+  br ^b3(%16, %15)
+^b5:
+  %18 = add %4, 1:i64
+  br ^b1(%18, %10)
+^b6(%20: i64):
+  ret %20
+}
+; run @nested(0, 3, 5) = 0
+; run @nested(2, 3, 5) = 156
+
+; the address of an array element: base + i * 8, in a loop that stores and in one that loads
+func export @strided : (ptr, i64) -> i64 {
+^b0(%0: ptr, %1: i64):
+  br ^b1(0:i64)
+^b1(%3: i64):
+  %4 = cmp.lt.s %3, %1
+  condbr %4, ^b2, ^b3
+^b2:
+  %6 = mul %3, 8:i64
+  %7 = add %0, %6
+  %8 = mul %3, 3:i64
+  store %7, %8
+  %10 = add %3, 1:i64
+  br ^b1(%10)
+^b3:
+  br ^b4(0:i64, 0:i64)
+^b4(%13: i64, %14: i64):
+  %15 = cmp.lt.s %13, %1
+  condbr %15, ^b5, ^b6(%14)
+^b5:
+  %17 = mul %13, 8:i64
+  %18 = add %0, %17
+  %19 = load %18 : i64
+  %20 = add %14, %19
+  %21 = add %13, 1:i64
+  br ^b4(%21, %20)
+^b6(%23: i64):
+  ret %23
+}
+; run @strided(buf, 0) = 0
+; run @strided(buf, 10) = 135
+; run @strided(buf, 32) = 1488
+
+; a callee with two returns
+func @absOrDouble : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = cmp.lt.s %0, 0:i64
+  condbr %1, ^b1, ^b2
+^b1:
+  %3 = sub 0:i64, %0
+  ret %3
+^b2:
+  %5 = call #c0(%0)
+  ret %5
+}
+func @twice : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = add %0, %0
+  ret %1
+}
+
+; calls in a loop, to a callee that calls another
+func export @loopCalls : (i64) -> i64 {
+^b0(%0: i64):
+  br ^b1(0:i64, 0:i64)
+^b1(%2: i64, %3: i64):
+  %4 = cmp.lt.s %2, %0
+  condbr %4, ^b2, ^b3(%3)
+^b2:
+  %6 = sub %2, 3:i64
+  %7 = call #c1(%6)
+  %8 = add %3, %7
+  %9 = add %2, 1:i64
+  br ^b1(%9, %8)
+^b3(%11: i64):
+  ret %11
+}
+; run @loopCalls(0) = 0
+; run @loopCalls(6) = 12
+
+; a callee with a stack slot, called twice: each copy has a slot of its own
+func @slot : (i64) -> i64 {
+  alloca 8 align 8
+^b0(%0: i64):
+  %1 = alloca 0
+  store %1, %0
+  %3 = load %1 : i64
+  %4 = add %3, 1:i64
+  ret %4
+}
+func export @twoSlots : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = call #c2(%0)
+  %2 = call #c2(%1)
+  ret %2
+}
+; run @twoSlots(5) = 7
+
+; recursion is never inlined
+func export @selfSum : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = cmp.le.s %0, 0:i64
+  condbr %1, ^b1, ^b2
+^b1:
+  ret 0:i64
+^b2:
+  %4 = sub %0, 1:i64
+  %5 = call #c3(%4)
+  %6 = add %5, %0
+  ret %6
+}
+; run @selfSum(10) = 55
