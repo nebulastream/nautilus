@@ -110,9 +110,10 @@ inline std::vector<Config> configs() {
 		// starts over once, so the rollback of what it recorded optimistically is exercised by every construct.
 		result.push_back({backend, "force-construct-restarts",
 		                  [](engine::Options& o) { o.setOption("tracing.forceConstructRestarts", true); }});
-		// A finished pass leaves the traced body by an exception instead of running it out (R4).
-		result.push_back({backend, "unwind-paused-passes",
-		                  [](engine::Options& o) { o.setOption("tracing.unwindPausedPasses", true); }});
+		// Not swept: tracing.unwindPausedPasses (R4). The tail of a finished pass is not run, and the evaluators of
+		// this fuzzer keep host-side stacks (loop frames) that the tail pops; the first run of this peer failed on
+		// exactly that (NAUT-T004 for a frame left behind). R4 is for traced code without such bookkeeping, see
+		// docs/tracing.md.
 		for (auto& c : extra) {
 			result.push_back(std::move(c));
 		}
@@ -244,6 +245,18 @@ void runAcrossSwap(const Config& config, engine::NautilusEngine& engine, Run&& r
 /// and on NAUTILUS_FUZZ_BACKENDS, neither of which changes mid-run, so there
 /// is no reason to re-read the environment and rebuild the option closures for
 /// every one of the (many) inputs a long libFuzzer session executes.
+/// Whether the config traces with the 0.3 tracer (`tracing.nirTracer=false`, or the NIR chain from its trace).
+inline bool usesLegacyTracer(const Config& config) {
+	if (config.backend == "nir-tbc" || config.backend == "nir-tbc-jit") {
+		return true;
+	}
+	engine::Options options;
+	if (config.tweak) {
+		config.tweak(options);
+	}
+	return !options.getOptionOrDefault("tracing.nirTracer", true);
+}
+
 inline const std::vector<Config>& activeConfigs() {
 	static const std::vector<Config> cached = configs();
 	return cached;
@@ -483,6 +496,7 @@ std::vector<Finding> checkOneArity(ByteReader& reader) {
 	for (const auto& cfg : activeConfigs()) {
 		try {
 			auto engine = makeEngine(cfg.backend, cfg.tweak);
+			ExplicitControlFlowGuard explicitGuard(!usesLegacyTracer(cfg));
 			std::function<ArityKernelSignature<T, N>> kernel = [&ast](val<T*> mem, auto... a) {
 				TracedArgs<T, static_cast<std::size_t>(N)> traced {a...};
 				return evalNautilus<T>(ast, mem, traced);
@@ -547,6 +561,7 @@ std::vector<Finding> checkOneMixed(ByteReader& reader) {
 	for (const auto& cfg : activeConfigs()) {
 		try {
 			auto engine = makeEngine(cfg.backend, cfg.tweak);
+			ExplicitControlFlowGuard explicitGuard(!usesLegacyTracer(cfg));
 			std::function<MixedKernelSignature<T>> kernel = [&ast](val<T*> mem, val<S> p0, val<T> p1, val<T> p2) {
 				TracedArgs<T, N> traced {convertClampedTraced<S, T>(p0), p1, p2};
 				return evalNautilus<T>(ast, mem, traced);
@@ -612,6 +627,7 @@ std::vector<Finding> checkOneNarrowReturn(ByteReader& reader) {
 	for (const auto& cfg : activeConfigs()) {
 		try {
 			auto engine = makeEngine(cfg.backend, cfg.tweak);
+			ExplicitControlFlowGuard explicitGuard(!usesLegacyTracer(cfg));
 			std::function<NarrowReturnKernelSignature<T>> kernel = [&ast](val<T*> mem, val<T> a, val<T> b, val<T> c) {
 				TracedArgs<T, N> traced {a, b, c};
 				TracedValue<T> result = evalNautilus<T>(ast, mem, traced);
@@ -683,6 +699,7 @@ std::vector<Finding> checkOneVoidReturn(ByteReader& reader) {
 	for (const auto& cfg : activeConfigs()) {
 		try {
 			auto engine = makeEngine(cfg.backend, cfg.tweak);
+			ExplicitControlFlowGuard explicitGuard(!usesLegacyTracer(cfg));
 			std::function<VoidReturnKernelSignature<T>> kernel = [&ast](val<T*> mem, val<T> a, val<T> b, val<T> c) {
 				TracedArgs<T, N> traced {a, b, c};
 				TracedValue<T> result = evalNautilus<T>(ast, mem, traced);
@@ -803,6 +820,7 @@ inline std::vector<Finding> checkOneEnum(ByteReader& reader) {
 	for (const auto& cfg : activeConfigs()) {
 		try {
 			auto engine = makeEngine(cfg.backend, cfg.tweak);
+			ExplicitControlFlowGuard explicitGuard(!usesLegacyTracer(cfg));
 			// The kernel returns val<Underlying>, not val<FuzzEnum>: unlike
 			// every other domain here, val<FuzzEnum>::raw_type (Underlying) is
 			// NOT val<FuzzEnum> itself (val_enum.hpp), so registerFunction's

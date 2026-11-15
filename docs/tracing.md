@@ -209,7 +209,9 @@ and `tracing.copies.{construct,assign,explicit}`.
 * `tracing.unwindPausedPasses=true` ends a finished pass at once with a private exception that its scope catches, so
   `tracing.pausedOperations` is about 0. User code that swallows it with `catch (...)` is detected
   (`tracing.unwindFallbacks`); a `noexcept` function or a destructor between the traced code and its scope would terminate
-  the process, which is why the option is off by default.
+  the process, which is why the option is off by default. The tail it skips is C++ code too: a body that keeps host-side
+  bookkeeping (a stack that is pushed before an operation and popped after it) is left in the state of the first
+  skipped statement, so the option is only for traced code that is free of such state.
 * A `region()` in a re-run is found by the block the recorded path enters, without a snapshot of its call site.
 * Many re-runs of one scope are the cost to attack: wrap the independent branches in `region()` or write them with the
   explicit constructs of [control-flow.md](control-flow.md#explicit-control-flow).

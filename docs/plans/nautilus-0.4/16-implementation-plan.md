@@ -371,7 +371,9 @@ own PR after PR 9.
   (a private `PausedPass` exception caught in `runScope`, the swallowed case detected after the body returns and counted as
   `tracing.unwindFallbacks`). With R4 on, `tracing.pausedOperations` is 0 on a 24-branch chain (it is in the hundreds without). **The
   R4 default stays off:** the data the plan asks for (NebulaStream, TPC-H) is not available to this PR, a `noexcept` frame
-  or a destructor between the traced code and its scope would terminate the process, and the fuzzer peer `unwind-paused-passes` is new in this PR and has not soaked. Turn it on in a follow-up with the `tpch-duck` and `nebulastream-0.4` numbers; the `tracing.rerun.share` key
+  or a destructor between the traced code and its scope would terminate the process, and the fuzzer found the third reason within minutes: with R4 on, the host-side stacks of its evaluator (loop
+  frames pushed before an operation and popped after it) were left behind by the skipped tail, so a value outlived its
+  construct (`NAUT-T004`). R4 is only for traced code without such bookkeeping, so it has no fuzzer peer. Turn it on in a follow-up with the `tpch-duck` and `nebulastream-0.4` numbers; the `tracing.rerun.share` key
   and `tools/tpch/summarize.py` report what it buys.
 - **M2.3.** The std plugin takes `const val<T>&` (1115 parameters). On the std plugin's own tests the recorded copies fall
   from 4840 to 2504 (-48%), the recorded operations by 9%. `tools/tpch` (`run-tpch.sh`, `summarize.py`), the

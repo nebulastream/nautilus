@@ -54,6 +54,26 @@ using TracedArgs = std::array<TracedValue<T>, N>;
  *     handling here: producing the correct two's-complement result for
  *     `+ - * unary-` is exactly the behavior under test.
  */
+/// Whether the program being traced on this thread may write its If/Loop/While nodes with the explicit constructs. The
+/// peers that trace with the 0.3 tracer run the constructs as native control flow, which that tracer explores
+/// exponentially for nested loops, so they trace the native form of the same program instead.
+inline bool& explicitControlFlowAllowed() {
+	static thread_local bool allowed = true;
+	return allowed;
+}
+
+struct ExplicitControlFlowGuard {
+	explicit ExplicitControlFlowGuard(bool allowed) : previous(explicitControlFlowAllowed()) {
+		explicitControlFlowAllowed() = allowed;
+	}
+	~ExplicitControlFlowGuard() {
+		explicitControlFlowAllowed() = previous;
+	}
+	ExplicitControlFlowGuard(const ExplicitControlFlowGuard&) = delete;
+	ExplicitControlFlowGuard& operator=(const ExplicitControlFlowGuard&) = delete;
+	bool previous;
+};
+
 namespace detail {
 
 template <typename T>
@@ -748,7 +768,9 @@ TracedValue<T> evalNautilus(const Ast& ast, val<T*> basePtr, std::span<const Tra
 	detail::TracedEvalContext<T> ctx;
 	ctx.basePtr = basePtr;
 	ctx.lastPtr = basePtr + static_cast<int32_t>(BUFFER_ELEMS - 1);
-	ctx.explicitMode = static_cast<int>((static_cast<size_t>(ast.root + 1) * 7 + ast.nodes.size()) % 3);
+	ctx.explicitMode = !explicitControlFlowAllowed()
+	                       ? 0
+	                       : static_cast<int>((static_cast<size_t>(ast.root + 1) * 7 + ast.nodes.size()) % 3);
 	return detail::evalNautilusGeneric<T>(ast, ast.root, args, ctx);
 }
 
