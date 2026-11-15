@@ -95,6 +95,9 @@ TEST_CASE("the optional passes report runs, changes and time", "[passes][statist
 }
 
 TEST_CASE("the optional passes do not run on the tier-0 compile unless asked to", "[passes][statistics]") {
+	if (backends().empty()) {
+		SKIP("no compiler in this build: the engine interprets and has no statistics");
+	}
 	Options options;
 	options.setOption("ir.enableLICM", true);
 	options.setOption("ir.runOptimizationPasses", false);
@@ -105,6 +108,9 @@ TEST_CASE("the optional passes do not run on the tier-0 compile unless asked to"
 }
 
 TEST_CASE("explain() reports what the inlining pass decided", "[passes][explain]") {
+	if (backends().empty()) {
+		SKIP("no compiler in this build: nothing is inlined");
+	}
 	Options options;
 	options.setOption("engine.backend", backends().front());
 	options.setOption("ir.inline", true);
