@@ -130,14 +130,16 @@ static val<int64_t> loopBody(val<int64_t> n) {
 	return r;
 }
 
-// A variable that is assigned in the loop body the value it holds anyway (03 §3.2, M3.10): the loop-carried variable is
-// trivial, and everything computed from it folds as it did in 0.3. Counts the refold sweep of the conversion.
+// A variable that is assigned in the loop body the (loop-invariant) value it holds anyway (03 §3.2, M3.10): the
+// loop-carried variable is trivial, and everything computed from it folds as it did in 0.3. Counts the refold sweep of
+// the conversion.
 static val<int64_t> loopInvariantReassign(val<int64_t> n) {
-	val<int64_t> k = 7;
+	val<int64_t> m = n + 7;
+	val<int64_t> k = m;
 	val<int64_t> r = 0;
 	for (val<int64_t> j = 0; j < n; j = j + 1) {
 		for (static_val<int> i = 0; i < N; i++) {
-			k = 7;
+			k = m;
 			r = r + k * i;
 		}
 	}

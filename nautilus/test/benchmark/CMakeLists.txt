@@ -37,6 +37,21 @@ if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
     # operator new to count allocations; it uses only the public engine API.
     add_executable(nautilus-latency-corpus latency-corpus/LatencyCorpus.cpp)
     target_link_libraries(nautilus-latency-corpus PRIVATE nautilus)
+    # the op-count gate of M3 (03 §6): NIR instruction counts against the recorded 0.3 operation counts
+    add_test(NAME latency-corpus-opcounts
+            COMMAND ${CMAKE_COMMAND} -DCORPUS=$<TARGET_FILE:nautilus-latency-corpus> -DBACKEND=tbc
+            -DREPORT=${PROJECT_SOURCE_DIR}/tools/latency/opcount-report.py
+            -DBASELINE=${CMAKE_CURRENT_SOURCE_DIR}/../baselines/0.3/corpus.jsonl
+            -DOUT=${CMAKE_CURRENT_BINARY_DIR}/opcounts.jsonl
+            -P ${PROJECT_SOURCE_DIR}/tools/latency/opcount-gate.cmake)
+    # the same, as a target that prints the table: cmake --build <dir> --target opcounts
+    add_custom_target(opcounts
+            COMMAND ${CMAKE_COMMAND} -DCORPUS=$<TARGET_FILE:nautilus-latency-corpus> -DBACKEND=tbc
+            -DREPORT=${PROJECT_SOURCE_DIR}/tools/latency/opcount-report.py
+            -DBASELINE=${CMAKE_CURRENT_SOURCE_DIR}/../baselines/0.3/corpus.jsonl
+            -DOUT=${CMAKE_CURRENT_BINARY_DIR}/opcounts.jsonl
+            -P ${PROJECT_SOURCE_DIR}/tools/latency/opcount-gate.cmake
+            DEPENDS nautilus-latency-corpus USES_TERMINAL)
 
     # kernels whose loops run long enough for the quality of the generated code to show (tools/asm-diff)
     add_executable(nautilus-asm-kernels ${PROJECT_SOURCE_DIR}/tools/asm-diff/kernels.cpp)
