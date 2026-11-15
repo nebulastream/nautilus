@@ -7,8 +7,8 @@
 
 namespace nautilus::tracing {
 
-/// A problem the tracer found in the user's code (docs/diagnostics.md): a stable code, a title, the source location, what
-/// is wrong and what to do about it (docs/plans/nautilus-0.4/15-agent-experience.md §4.1).
+/// A problem the tracer found in the user's code (docs/diagnostics.md): a stable code, a title, the source location,
+/// what is wrong and what to do about it (docs/plans/nautilus-0.4/15-agent-experience.md §4.1).
 struct TracingDiagnostic {
 	std::string code;    // NAUT-T001
 	std::string title;   // "constant loop"

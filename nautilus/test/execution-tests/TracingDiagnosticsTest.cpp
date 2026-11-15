@@ -18,11 +18,12 @@ namespace nautilus::engine {
 #ifdef ENABLE_TRACING
 
 TEST_CASE("Diagnostics: the text and the JSON form", "[diagnostics]") {
-	tracing::TracingDiagnostic d {"NAUT-T001", "constant loop", "the loop \"x\" is constant", "use static_val",
-	                              "Query.cpp",  42,              "f"};
+	tracing::TracingDiagnostic d {
+	    "NAUT-T001", "constant loop", "the loop \"x\" is constant", "use static_val", "Query.cpp", 42, "f"};
 	CHECK(d.toText() == "NAUT-T001 constant loop at Query.cpp:42: the loop \"x\" is constant; use static_val");
-	CHECK(d.toJson() == "{\"code\":\"NAUT-T001\",\"title\":\"constant loop\",\"message\":\"the loop \\\"x\\\" is "
-	                    "constant\",\"hint\":\"use static_val\",\"file\":\"Query.cpp\",\"line\":42,\"function\":\"f\"}");
+	CHECK(d.toJson() ==
+	      "{\"code\":\"NAUT-T001\",\"title\":\"constant loop\",\"message\":\"the loop \\\"x\\\" is "
+	      "constant\",\"hint\":\"use static_val\",\"file\":\"Query.cpp\",\"line\":42,\"function\":\"f\"}");
 	tracing::TracingDiagnostic unlocated {"NAUT-T002", "path explosion", "m", "", {}, 0, {}};
 	CHECK(unlocated.toText() == "NAUT-T002 path explosion at <unknown location>: m");
 }
@@ -73,10 +74,11 @@ std::vector<val<int64_t>>* escapedStorage = nullptr;
 
 [[maybe_unused]] val<int64_t> breakThroughRegion(val<int64_t> n) {
 	val<int64_t> i = 0;
-	While([&] { return i < n; }, [&] {
-		region([&] { Break(); });
-		i = i + 1;
-	});
+	While([&] { return i < n; },
+	      [&] {
+		      region([&] { Break(); });
+		      i = i + 1;
+	      });
 	return i;
 }
 
@@ -189,8 +191,9 @@ TEST_CASE("Diagnostics: engine.diagnostics=json writes the error as it is raised
 	}
 	for (const auto* mode : {"off", "text", "json"}) {
 		DYNAMIC_SECTION(mode) {
-			const auto message = compileError(
-			    breakOutsideLoop, [&](Options& options) { options.setOption("engine.diagnostics", std::string(mode)); });
+			const auto message = compileError(breakOutsideLoop, [&](Options& options) {
+				options.setOption("engine.diagnostics", std::string(mode));
+			});
 			CHECK(message.find("NAUT-T005 ") == 0);
 		}
 	}
