@@ -239,7 +239,8 @@ TEST_CASE("a required pass runs on the latency-critical compile of a promoted mo
 	REQUIRE(compiled.getFunction<int64_t(int64_t)>("p100")(0) == 101);
 }
 
-TEST_CASE("ir.runOptimizationPasses=true runs the optional passes in the tier-0 compile too", "[passes][plugin][tiered]") {
+TEST_CASE("ir.runOptimizationPasses=true runs the optional passes in the tier-0 compile too",
+          "[passes][plugin][tiered]") {
 	auto [tier0, tier1] = tiers();
 	if (tier0.empty()) {
 		SKIP("two backends are needed for two tiers");
@@ -273,8 +274,8 @@ TEST_CASE("the statistics count the passes that ran", "[passes][plugin]") {
 	compileAndRun(engine, &compiled);
 	auto stats = compiled->getStatistics();
 	REQUIRE(stats != nullptr);
-	for (const char* pass : {"testpass.afterRequired", "testpass.afterOptional", "testpass.beforeRequired",
-	                         "testpass.beforeOptional"}) {
+	for (const char* pass :
+	     {"testpass.afterRequired", "testpass.afterOptional", "testpass.beforeRequired", "testpass.beforeOptional"}) {
 		INFO(pass);
 		const auto* runs = stats->find(std::string("irPasses.") + pass + ".runs");
 		REQUIRE(runs != nullptr);

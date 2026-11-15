@@ -109,7 +109,9 @@ size_t reduceLoop(MutableFunction& fn, const Cfg& cfg, const Loop& loop, nir::Mo
 			});
 		}
 	}
-	auto outside = [&](Ref r) { return defBlock[r] != NONE && !loop.inBody[defBlock[r]]; };
+	auto outside = [&](Ref r) {
+		return defBlock[r] != NONE && !loop.inBody[defBlock[r]];
+	};
 
 	std::vector<Candidate> candidates;
 	const uint16_t argc = fn.blocks[loop.header].argCount();
@@ -125,8 +127,7 @@ size_t reduceLoop(MutableFunction& fn, const Cfg& cfg, const Loop& loop, nir::Mo
 			continue;
 		}
 		const auto& update = fn.blocks[defBlock[updated]].insts[defIndex[updated]];
-		if (update.inst.op != static_cast<uint16_t>(Op::Add) ||
-		    static_cast<TypeId>(update.inst.type) != TypeId::I64) {
+		if (update.inst.op != static_cast<uint16_t>(Op::Add) || static_cast<TypeId>(update.inst.type) != TypeId::I64) {
 			continue;
 		}
 		Ref stepRef = NONE;
@@ -161,7 +162,8 @@ size_t reduceLoop(MutableFunction& fn, const Cfg& cfg, const Loop& loop, nir::Mo
 						if (add.inst.op == static_cast<uint16_t>(Op::Add) &&
 						    static_cast<TypeId>(add.inst.type) == TypeId::Ptr && add.inst.b == mul.uid &&
 						    nir::isValueRef(add.inst.a) && outside(add.inst.a)) {
-							candidates.push_back(Candidate {j, mul.uid, add.uid, add.inst.a, strideRef, *step, stepRef});
+							candidates.push_back(
+							    Candidate {j, mul.uid, add.uid, add.inst.a, strideRef, *step, stepRef});
 						}
 					}
 				}
@@ -206,8 +208,8 @@ size_t reduceLoop(MutableFunction& fn, const Cfg& cfg, const Loop& loop, nir::Mo
 				const auto provenance =
 				    nir::leastTrusted(static_cast<nir::Provenance>(m.consts.record(iv0).provenance),
 				                      static_cast<nir::Provenance>(m.consts.record(c.stride).provenance));
-				auto addInit = makeBinary(Op::Add, TypeId::Ptr, c.base, out.consts.intern(TypeId::I64, provenance, offset),
-				                          fn.freshUid(), location);
+				auto addInit = makeBinary(Op::Add, TypeId::Ptr, c.base,
+				                          out.consts.intern(TypeId::I64, provenance, offset), fn.freshUid(), location);
 				initial = addInit.uid;
 				pre.insts.insert(pre.insts.end() - 1, addInit);
 			}
@@ -221,8 +223,7 @@ size_t reduceLoop(MutableFunction& fn, const Cfg& cfg, const Loop& loop, nir::Mo
 		// the back edge: the pointer advances by step * stride
 		const auto provenance = nir::leastTrusted(static_cast<nir::Provenance>(m.consts.record(c.stepConst).provenance),
 		                                          static_cast<nir::Provenance>(m.consts.record(c.stride).provenance));
-		const Ref advance = out.consts.intern(
-		    TypeId::I64, provenance, static_cast<uint64_t>(c.step) * strideBits);
+		const Ref advance = out.consts.intern(TypeId::I64, provenance, static_cast<uint64_t>(c.step) * strideBits);
 		auto addNext = makeBinary(Op::Add, TypeId::Ptr, arg.uid, advance, fn.freshUid(), location);
 		const uint32_t nextUid = addNext.uid;
 		latchBlock.insts.insert(latchBlock.insts.end() - 1, addNext);

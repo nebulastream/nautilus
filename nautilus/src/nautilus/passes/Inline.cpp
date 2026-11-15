@@ -88,8 +88,8 @@ Components stronglyConnected(const std::vector<std::vector<uint32_t>>& edges) {
 					onStack[w] = 0;
 					component.push_back(w);
 				} while (w != v);
-				const bool cycle = component.size() > 1 ||
-				                   std::find(edges[v].begin(), edges[v].end(), v) != edges[v].end();
+				const bool cycle =
+				    component.size() > 1 || std::find(edges[v].begin(), edges[v].end(), v) != edges[v].end();
 				if (cycle) {
 					for (uint32_t c : component) {
 						result.recursive[c] = 1;
@@ -152,7 +152,8 @@ public:
 						why = "its body calls an import of its own module";
 						return false;
 					}
-					if (callee.kind == static_cast<uint8_t>(CalleeKind::Internal) && seen.insert(callee.target).second) {
+					if (callee.kind == static_cast<uint8_t>(CalleeKind::Internal) &&
+					    seen.insert(callee.target).second) {
 						work.push_back(callee.target);
 					}
 				}
@@ -315,8 +316,8 @@ public:
 		for (const auto& inst : in.insts) {
 			if (inst.op == static_cast<uint16_t>(Op::Call)) {
 				const auto kind = static_cast<CalleeKind>(in.callees[inst.a].kind);
-				if (kind == CalleeKind::Internal || (kind == CalleeKind::Imported && config_.crossModule &&
-				                                     context.imports != nullptr)) {
+				if (kind == CalleeKind::Internal ||
+				    (kind == CalleeKind::Imported && config_.crossModule && context.imports != nullptr)) {
 					candidate = true;
 					break;
 				}
@@ -476,8 +477,8 @@ private:
 			return;
 		}
 		if (exporter.module->functions[root].instCount > config_.maxInsts) {
-			skip("too large (" + std::to_string(exporter.module->functions[root].instCount) + " instructions, ir.inline.maxInsts " +
-			     std::to_string(config_.maxInsts) + ")");
+			skip("too large (" + std::to_string(exporter.module->functions[root].instCount) +
+			     " instructions, ir.inline.maxInsts " + std::to_string(config_.maxInsts) + ")");
 			return;
 		}
 		Transplant transplant(*exporter.module, moduleName, *out_, functions_);
@@ -522,8 +523,8 @@ private:
 				} else if (withAttributes_.count(g) != 0) {
 					why = "the callee has function attributes";
 				} else if (functions_[g].instCount() > config_.maxInsts) {
-					why = "too large (" + std::to_string(functions_[g].instCount()) + " instructions, ir.inline.maxInsts " +
-					      std::to_string(config_.maxInsts) + ")";
+					why = "too large (" + std::to_string(functions_[g].instCount()) +
+					      " instructions, ir.inline.maxInsts " + std::to_string(config_.maxInsts) + ")";
 				} else if (size + functions_[g].instCount() > config_.maxCallerInsts) {
 					why = "the caller would grow beyond " + std::to_string(config_.maxCallerInsts) + " instructions";
 				}
@@ -646,7 +647,8 @@ private:
 				} else {
 					d.list = {0};
 				}
-			} else if (isOp(src, Op::Resume) && inPad && callUnwind != nir::NO_UNWIND && callUnwind != nir::NO_CLEANUP) {
+			} else if (isOp(src, Op::Resume) && inPad && callUnwind != nir::NO_UNWIND &&
+			           callUnwind != nir::NO_CLEANUP) {
 				// the caller's handler continues the unwinding
 				d.inst.op = static_cast<uint16_t>(Op::Br);
 				d.inst.a = callUnwind;
@@ -714,7 +716,8 @@ private:
 			b.insert(b.end(), std::make_move_iterator(tail.begin()), std::make_move_iterator(tail.end()));
 			// the pads are the only blocks to add
 		} else {
-			cont.insts.insert(cont.insts.end(), std::make_move_iterator(tail.begin()), std::make_move_iterator(tail.end()));
+			cont.insts.insert(cont.insts.end(), std::make_move_iterator(tail.begin()),
+			                  std::make_move_iterator(tail.end()));
 			region.push_back(std::move(cont));
 		}
 		blocks.insert(blocks.begin() + bi + 1, std::make_move_iterator(region.begin()),

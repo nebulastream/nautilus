@@ -8,7 +8,8 @@ namespace nautilus::passes {
 /// loop (`ir.enableLICM`). Loads, stores and calls with effects stay.
 std::unique_ptr<Pass> makeLicmPass();
 
-/// Replaces `base + iv * stride` in a counted loop with a pointer the back edge advances (`ir.enableStrengthReduction`).
+/// Replaces `base + iv * stride` in a counted loop with a pointer the back edge advances
+/// (`ir.enableStrengthReduction`).
 std::unique_ptr<Pass> makeStrengthReductionPass();
 
 struct InlineConfig {

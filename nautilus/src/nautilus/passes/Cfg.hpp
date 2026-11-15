@@ -31,8 +31,8 @@ struct Cfg {
 struct Loop {
 	uint32_t header = nir::NONE;
 	std::vector<uint32_t> latches;
-	std::vector<uint32_t> body;     ///< block indices, ascending (layout order), header included
-	std::vector<char> inBody;       ///< per block index
+	std::vector<uint32_t> body;         ///< block indices, ascending (layout order), header included
+	std::vector<char> inBody;           ///< per block index
 	std::vector<uint32_t> outsidePreds; ///< predecessors of the header outside the loop
 };
 

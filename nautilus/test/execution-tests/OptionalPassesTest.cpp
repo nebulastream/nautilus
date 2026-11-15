@@ -1,9 +1,10 @@
-// The optional passes in the engine (plan M3.8, M3.10): the statistics of a default compile and of one with the passes on.
-#include <nautilus/nautilus_function.hpp>
+// The optional passes in the engine (plan M3.8, M3.10): the statistics of a default compile and of one with the passes
+// on.
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
 #include <catch2/catch_all.hpp>
+#include <nautilus/nautilus_function.hpp>
 
 using namespace nautilus;
 using namespace nautilus::engine;

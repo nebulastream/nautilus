@@ -537,7 +537,8 @@ func export @f : (i64) -> i64 {
 
 } // namespace
 
-TEST_CASE("inlining copies the body of an imported callee, with what it calls, into the importer", "[nir][passes][inline]") {
+TEST_CASE("inlining copies the body of an imported callee, with what it calls, into the importer",
+          "[nir][passes][inline]") {
 	auto exporter = std::make_shared<Module>(parseOk(R"(nir 1.0 module "lib"
 pointer #p0 = callee symbol "ext"
 callee #c0 = internal @helper : (i64) -> i64

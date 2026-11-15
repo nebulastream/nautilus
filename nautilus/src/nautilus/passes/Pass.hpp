@@ -14,8 +14,8 @@
 
 /// The optional passes and the plugin pass hooks (docs/plans/nautilus-0.4/03-conversion-and-passes.md §5).
 ///
-/// A pass is a copy pass (02-nir.md §4): it reads an immutable SSA-level module and returns a new one, or nothing when it
-/// has no change to make. Passes run only where a compile asks for them, so a compile that does not pays for none.
+/// A pass is a copy pass (02-nir.md §4): it reads an immutable SSA-level module and returns a new one, or nothing when
+/// it has no change to make. Passes run only where a compile asks for them, so a compile that does not pays for none.
 namespace nautilus::passes {
 
 /// The modules that the imports of the module being compiled name, for inlining across modules (13 §4.4.3).

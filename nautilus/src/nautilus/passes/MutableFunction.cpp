@@ -166,7 +166,8 @@ void encode(const MutableFunction& fn, nir::Module& out) {
 		}
 	}
 
-	// the order: reachable blocks that are not pads in layout order, then the pads in the order of their first reference
+	// the order: reachable blocks that are not pads in layout order, then the pads in the order of their first
+	// reference
 	std::vector<uint32_t> order;
 	order.reserve(nBlocks);
 	std::vector<char> placed(nBlocks, 0);
@@ -221,8 +222,8 @@ void encode(const MutableFunction& fn, nir::Module& out) {
 	uint32_t first = 0;
 	for (uint32_t pos = 0; pos < order.size(); ++pos) {
 		const auto& block = fn.blocks[order[pos]];
-		out.blocks.push_back(nir::BlockRecord {first, static_cast<uint32_t>(block.insts.size()), block.argCount(),
-		                                       block.flags, 0});
+		out.blocks.push_back(
+		    nir::BlockRecord {first, static_cast<uint32_t>(block.insts.size()), block.argCount(), block.flags, 0});
 		first += static_cast<uint32_t>(block.insts.size());
 		for (const auto& mi : block.insts) {
 			MInst copy = mi;
