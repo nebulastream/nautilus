@@ -55,4 +55,9 @@
 - **`explain()`:** `CompiledModule::explain()` (`nautilus/src/nautilus/link/ModuleExplain.cpp`) reads what a compile has
   already recorded: the statistics, the registry's NIR and the promotion's tier backends. A new thing worth showing to
   a user goes into the statistics or the module, then into the report, never into extra work on the compile path.
-  `persistability` and `inlining` stay `not available yet` until M5.3 and M3.8 fill them.
+  `persistability` stays `not available yet` until M5.3; `inlining` reads `irPasses.inline.*` of the statistics.
+- **Optional passes and plugin pass hooks** (`../passes/AGENTS.md`): `runLoweringPasses` in `CompilationPipeline.cpp` runs
+  them in `compileIR` on a copy of the graph's module (the module of the graph is shared by the tiers), required
+  `afterConversion` plugin passes run once in `traceToNir`. The default compile must stay free: one `hasIrOptions()`
+  test and two atomic loads decide that nothing runs, and `irPasses.pipelineIterations` is 0 (the conversion's statistics
+  group sets it).

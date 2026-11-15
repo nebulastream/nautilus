@@ -35,6 +35,7 @@ public:
 	void setOption(const std::string& name, const T& value) {
 		options[name] = value;
 		hasDumpOptions_ = hasDumpOptions_ || name.starts_with("dump.");
+		hasIrOptions_ = hasIrOptions_ || name.starts_with("ir.");
 	}
 
 	/// True iff a value for @p name has been set, whatever its type. Lets a
@@ -63,6 +64,12 @@ public:
 		return hasDumpOptions_;
 	}
 
+	/// True iff an option whose name starts with `ir.` has been set. When none has, no optional pass is enabled and the
+	/// compile skips the lookups that decide it.
+	[[nodiscard]] bool hasIrOptions() const {
+		return hasIrOptions_;
+	}
+
 	/**
 	 * @brief Apply every option value set in @p other on top of this one;
 	 * values present in @p other win.
@@ -74,6 +81,7 @@ public:
 			options[entry.first] = entry.second;
 		}
 		hasDumpOptions_ = hasDumpOptions_ || other.hasDumpOptions_;
+		hasIrOptions_ = hasIrOptions_ || other.hasIrOptions_;
 	}
 
 	/**
@@ -98,6 +106,7 @@ private:
 
 	std::unordered_map<std::string, OptionValue, NameHash, std::equal_to<>> options;
 	bool hasDumpOptions_ = false;
+	bool hasIrOptions_ = false;
 };
 
 /**

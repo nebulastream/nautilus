@@ -21,6 +21,8 @@ add_subdirectory(val-tests)
 add_subdirectory(api-compat)
 add_subdirectory(nir-tests)
 add_subdirectory(extension-tests)
+add_subdirectory(pass-tests)
+add_subdirectory(compile-fail)
 
 # .nir run tests (docs/plans/nautilus-0.4/16-implementation-plan.md, M4.0, M4.1): modules with `; run` directives that
 # nautilus-nir-run compiles with a NIR backend and calls. The tbc backend runs each file as an interpreter in its default
@@ -34,6 +36,10 @@ if (ENABLE_TBC_BACKEND)
                 COMMAND nautilus-nir-run --backend=tbc ${file})
         add_test(NAME nir-run-tbc-switch-${name}
                 COMMAND nautilus-nir-run --backend=tbc --option=tbc.dispatch=switch ${file})
+        # the same files with every optional pass of the NIR pipeline on (M3.8): the directives must still hold
+        add_test(NAME nir-run-tbc-optional-${name}
+                COMMAND nautilus-nir-run --backend=tbc --option=ir.inline=true --option=ir.enableLICM=true
+                --option=ir.enableStrengthReduction=true ${file})
         if (ENABLE_C_BACKEND AND TARGET dyncall_s)
             add_test(NAME nir-run-cpp-${name}
                     COMMAND nautilus-nir-run --backend=cpp ${file})
@@ -45,6 +51,9 @@ if (ENABLE_TBC_BACKEND)
         if (ENABLE_ASMJIT_BACKEND AND TARGET dyncall_s)
             add_test(NAME nir-run-asmjit-${name}
                     COMMAND nautilus-nir-run --backend=asmjit ${file})
+            add_test(NAME nir-run-asmjit-optional-${name}
+                    COMMAND nautilus-nir-run --backend=asmjit --option=ir.inline=true --option=ir.enableLICM=true
+                    --option=ir.enableStrengthReduction=true ${file})
         endif ()
         if (ENABLE_TBC_JIT)
             add_test(NAME nir-run-tbc-jit-${name}

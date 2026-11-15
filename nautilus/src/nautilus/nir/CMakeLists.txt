@@ -20,7 +20,14 @@ add_library(nautilus-nir STATIC
         ../extensions/ExtensionRegistry.cpp
         ../extensions/CoreIntrinsics.cpp
         ../conversion/AttributeInference.cpp
-        ../conversion/Conversion.cpp)
+        ../conversion/Conversion.cpp
+        ../passes/Cfg.cpp
+        ../passes/Inline.cpp
+        ../passes/Licm.cpp
+        ../passes/MutableFunction.cpp
+        ../passes/PassManager.cpp
+        ../passes/Passes.cpp
+        ../passes/StrengthReduction.cpp)
 target_include_directories(nautilus-nir PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>)
 # the public headers: the capture thunk template of intrinsic registration (ExceptionTransport.hpp) is header-only
 target_include_directories(nautilus-nir PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../../include>)

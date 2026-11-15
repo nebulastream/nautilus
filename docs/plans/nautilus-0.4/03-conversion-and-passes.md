@@ -345,8 +345,11 @@ internal form below this point ([05](05-backends.md)).
 - **Optional passes:** LICM, strength reduction and **inlining**, rewritten
   as copy passes ([02 §4](02-nir.md)). They are off on latency-critical
   compiles and enabled per module. Inlining works on internal and imported
-  callees, across modules ([13 §4.4.3](13-nir-spec.md)); inlining of
-  imported callees lands with linking in M4.
+  callees, across modules ([13 §4.4.3](13-nir-spec.md)): the body of an
+  imported callee is copied into the importer with what it reaches in its
+  module (not where it uses `bind.addr`), and the ordinary inlining decides.
+  A compile is *latency-critical* when it is the tier-0 compile of a module
+  that is promoted; `ir.runOptimizationPasses` overrides.
 - **Plugin passes** register at named points (`afterConversion`,
   `beforeLowering`), each marked *required* (correctness, for example the GPU
   partition pass of [17 §4.5](17-gpu.md)) or *optional*. Only required passes run on

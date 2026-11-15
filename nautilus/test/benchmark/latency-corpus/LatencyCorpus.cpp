@@ -130,6 +130,22 @@ static val<int64_t> loopBody(val<int64_t> n) {
 	return r;
 }
 
+// A variable that is assigned in the loop body the (loop-invariant) value it holds anyway (03 §3.2, M3.10): the
+// loop-carried variable is trivial, and everything computed from it folds as it did in 0.3. Counts the refold sweep of
+// the conversion.
+static val<int64_t> loopInvariantReassign(val<int64_t> n) {
+	val<int64_t> m = n + 7;
+	val<int64_t> k = m;
+	val<int64_t> r = 0;
+	for (val<int64_t> j = 0; j < n; j = j + 1) {
+		for (static_val<int> i = 0; i < N; i++) {
+			k = m;
+			r = r + k * i;
+		}
+	}
+	return r;
+}
+
 // N runtime calls.
 static val<int64_t> calls(val<int64_t> x) {
 	val<int64_t> r = x;
@@ -206,6 +222,7 @@ int main(int argc, char** argv) {
 	    {"chainedIf", chainedIf, {10, 100, 300}},
 	    {"chainedIfRegion", chainedIfRegion, {10, 100, 300}},
 	    {"loopBody", loopBody, {100, 1000, 10000}},
+	    {"loopInvariantReassign", loopInvariantReassign, {100, 1000}},
 	    {"calls", calls, {100, 1000, 5000}},
 	    {"distinctSites1024", distinctSites1024, {1}},
 	};
@@ -242,7 +259,8 @@ int main(int argc, char** argv) {
 				}
 				std::vector<double> totals, traces, irgens, passes, backendMs;
 				std::vector<uint64_t> allocs;
-				int64_t irOps = -1, baselineOps = -1;
+				int64_t irOps = -1, baselineOps = -1, nirOps = -1, refoldSweeps = -1, refoldedInsts = -1,
+				        iterations = -1;
 				std::string lastStats;
 				for (int rep = 0; rep < repetitions; rep++) {
 					engine::NautilusEngine engine(options);
@@ -264,6 +282,12 @@ int main(int argc, char** argv) {
 					backendMs.push_back(statMs(*stats, "backend.totalMs"));
 					irOps = statInt(*stats, "ir.operations");
 					baselineOps = statInt(*stats, "irPasses.baseline.operations");
+					// the NIR pipeline: instructions after conversion (the op count against 0.3's `ir_ops`), the refold
+					// sweeps of 03 §3.2 and the rounds of optional passes (0 on a default compile, 03 §6)
+					nirOps = statInt(*stats, "conversion.instructions");
+					refoldSweeps = statInt(*stats, "conversion.refoldSweeps");
+					refoldedInsts = statInt(*stats, "conversion.refoldedInsts");
+					iterations = statInt(*stats, "irPasses.pipelineIterations");
 					lastStats = stats->toJson();
 					// Make sure the code runs (and is not a stale handle).
 					volatile auto result = fn(int64_t {3});
@@ -283,9 +307,12 @@ int main(int argc, char** argv) {
 				             opsForRate > 0 ? total * 1e6 / static_cast<double>(opsForRate) : 0.0);
 				std::printf("{\"function\":\"%s\",\"n\":%d,\"backend\":\"%s\",\"total_ms\":%.4f,\"tracing_ms\":%.4f,"
 				            "\"irgen_ms\":%.4f,\"passes_ms\":%.4f,\"backend_ms\":%.4f,\"ir_ops_before_passes\":%lld,"
-				            "\"ir_ops\":%lld,\"allocations\":%llu,\"stats\":%s}\n",
+				            "\"ir_ops\":%lld,\"nir_ops\":%lld,\"refold_sweeps\":%lld,\"refolded_insts\":%lld,"
+				            "\"pipeline_iterations\":%lld,\"allocations\":%llu,\"stats\":%s}\n",
 				            entry.name, size, backend.c_str(), total, median(traces), median(irgens), median(passes),
 				            median(backendMs), static_cast<long long>(baselineOps), static_cast<long long>(irOps),
+				            static_cast<long long>(nirOps), static_cast<long long>(refoldSweeps),
+				            static_cast<long long>(refoldedInsts), static_cast<long long>(iterations),
 				            static_cast<unsigned long long>(allocs[allocs.size() / 2]), lastStats.c_str());
 				std::fflush(stdout);
 			}

@@ -20,6 +20,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
 		InvokeExceptionExecutionTest.cpp
         LiteralOperandExecutionTest.cpp
         NoThrowInferenceIntegrationTest.cpp
+        OptionalPassesTest.cpp
         MemoryIntrinsicExecutionTest.cpp
         ModuleExplainTest.cpp
         ModuleLifecycleTest.cpp
