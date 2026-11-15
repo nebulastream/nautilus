@@ -110,6 +110,9 @@ inline std::vector<Config> configs() {
 		// starts over once, so the rollback of what it recorded optimistically is exercised by every construct.
 		result.push_back({backend, "force-construct-restarts",
 		                  [](engine::Options& o) { o.setOption("tracing.forceConstructRestarts", true); }});
+		// A finished pass leaves the traced body by an exception instead of running it out (R4).
+		result.push_back({backend, "unwind-paused-passes",
+		                  [](engine::Options& o) { o.setOption("tracing.unwindPausedPasses", true); }});
 		for (auto& c : extra) {
 			result.push_back(std::move(c));
 		}

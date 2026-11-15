@@ -363,6 +363,36 @@ instructions per operation: the tag (about 160), the `val<T>` machinery and refe
 M2.7 (lazy copies) is an investigation; if it is adopted, it lands as its
 own PR after PR 9.
 
+**PR 9 status (M2.2–M2.6, M2.8; M2.7 not done).** Built on the direct tracer of #576 and the cut-over:
+
+- **M2.2.** R3: a paused scope publishes a thread-local flag (`detail::pausedFast`) and the `val` holders return on it
+  (checked on the slow path, so the common case pays nothing). R2: a region in a replay is found by the entry block that
+  the recorded path enters (`FlatTrace::seekBlock`, memo keyed by block id), without a snapshot. R4: `tracing.unwindPausedPasses`
+  (a private `PausedPass` exception caught in `runScope`, the swallowed case detected after the body returns and counted as
+  `tracing.unwindFallbacks`). With R4 on, `tracing.pausedOperations` is 0 on a 24-branch chain (it is in the hundreds without). **The
+  R4 default stays off:** the data the plan asks for (NebulaStream, TPC-H) is not available to this PR, a `noexcept` frame
+  or a destructor between the traced code and its scope would terminate the process, and the fuzzer peer `unwind-paused-passes` is new in this PR and has not soaked. Turn it on in a follow-up with the `tpch-duck` and `nebulastream-0.4` numbers; the `tracing.rerun.share` key
+  and `tools/tpch/summarize.py` report what it buys.
+- **M2.3.** The std plugin takes `const val<T>&` (1115 parameters). On the std plugin's own tests the recorded copies fall
+  from 4840 to 2504 (-48%), the recorded operations by 9%. `tools/tpch` (`run-tpch.sh`, `summarize.py`), the
+  `tpch-duck` workflow and the TPC-H step of `baselines-0.3` implement the job and the 0.3 baseline; **none of it has run**,
+  because nautilus-duck is an external repository that the session that wrote this had no access to. The jobs are skipped
+  until the repository variable `TPCH_DUCK_ENABLED` is `true`; the commands that build and run nautilus-duck are variables of
+  `run-tpch.sh` to confirm with its owner. The "a quarter below the 0.3 baseline on TPC-H" criterion is therefore open.
+- **M2.4.** `NAUT-T001`…`T005` (constant loop, path explosion, replay share, value escaping a region or construct, invalid
+  exit), `engine.diagnostics`, `docs/diagnostics.md`, the `debug-trace` skill. The plan's "state differs at the end" check of a
+  region is folded into `T004`: with `val`s alive at the end already rejected, only a `static_val` that outlives its
+  scope could trigger a separate code, and a region's scope sees none of the outer ones.
+- **M2.5.** As in 01 §5: construct scopes are memoized by entry block, optimistic, restarted after `FlatTrace::rollback`;
+  one difference: the table-by-table truncation of the plan lists the callee queue, data objects and `extra`; those stay
+  (nothing refers to them after the restart, and the canonical form drops what is unused). Tests:
+  `ExplicitControlFlowTest.cpp`, `NirTracerFrontendTest.cpp`; the corpus twins `chainedIfExplicit` and `loopBodyExplicit`; the fuzzer
+  writes If/Loop/While nodes explicitly for none, all or the odd nodes of a program, with a `force-construct-restarts` peer.
+  On the explicit `chainedIf` every size traces in `1 + 2·N` passes (the function, two arms per `if`), zero replayed and
+  zero paused operations.
+- **M2.6.** `nautilus/data.hpp`; the conversion folds loads at constant offsets from `data.addr`. Persistability is M5.3.
+- **M2.7.** Not started.
+
 **Before the cut-over,** PRs 1–5 and 7 can land: they add code the engine
 does not call yet (PR 7's backends are switched on by PR 6). After PR 2,
 PRs 3 and 5 run in parallel; PR 4 needs both; PR 7 runs beside PR 4.
