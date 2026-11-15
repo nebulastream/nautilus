@@ -12,6 +12,9 @@ TypedValueRef::TypedValueRef(ValueRef ref, nautilus::Type type) : ref(ref), type
 
 namespace {
 inline void acquire(ValueRef ref) {
+	if (detail::pausedFast) {
+		return;
+	}
 	if (auto* alive = detail::aliveFast) {
 		alive->increment(ref);
 	} else if (detail::activeTracer != nullptr) {
@@ -19,6 +22,9 @@ inline void acquire(ValueRef ref) {
 	}
 }
 inline void release(ValueRef ref) {
+	if (detail::pausedFast) {
+		return;
+	}
 	if (auto* alive = detail::aliveFast) {
 		if (alive->tryDecrement(ref)) {
 			return;
