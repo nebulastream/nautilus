@@ -106,6 +106,10 @@ inline std::vector<Config> configs() {
 		// un-simplified lowering path against the simplified default.
 		result.push_back({backend, "no-algebraic-simpl",
 		                  legacy([](engine::Options& o) { o.setOption("ir.disableAlgebraicSimplification", true); })});
+		// Every scope of an explicit construct (If/Loop/While nodes the program writes with nautilus/control_flow.hpp)
+		// starts over once, so the rollback of what it recorded optimistically is exercised by every construct.
+		result.push_back({backend, "force-construct-restarts",
+		                  [](engine::Options& o) { o.setOption("tracing.forceConstructRestarts", true); }});
 		for (auto& c : extra) {
 			result.push_back(std::move(c));
 		}

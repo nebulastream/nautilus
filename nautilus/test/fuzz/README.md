@@ -45,6 +45,15 @@ bug because every generated program is fully defined by construction.
     `f64`-only one instead of merging into one bucket; an option-gated miscompile
     breaks out from a plain backend bug — see [Config sweep](#config-sweep)).
 
+## Explicit and implicit control flow
+
+The traced kernel writes the `If`, `Loop` and `While` nodes either with native control flow or with the explicit
+constructs of `nautilus/control_flow.hpp` (`If`, `For`, `While`, `Break`; docs/plans/nautilus-0.4/01-tracing-frontend.md §5).
+The choice is made per program from its shape (`TracedEvalContext::explicitMode`): none, all, or the nodes with an odd
+index, so explicit and native nodes nest in each other. The oracle is unchanged, the `legacy` peers trace the constructs
+as native control flow, and the `force-construct-restarts` peer starts every construct scope over once
+(`tracing.forceConstructRestarts`), which exercises the rollback of optimistic recording in every program.
+
 ## Scope: twelve value domains
 
 Each generated program is monomorphic in one of twelve types, picked from the
