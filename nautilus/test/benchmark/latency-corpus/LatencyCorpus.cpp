@@ -258,12 +258,9 @@ int main(int argc, char** argv) {
 	    {"chainedIf", chainedIf, {10, 100, 300}},
 	    {"chainedIfRegion", chainedIfRegion, {10, 100, 300}},
 	    {"loopBody", loopBody, {100, 1000, 10000}},
-<<<<<<< HEAD
 	    {"chainedIfExplicit", chainedIfExplicit, {10, 100, 300}},
 	    {"loopBodyExplicit", loopBodyExplicit, {100, 1000, 10000}},
-=======
 	    {"loopInvariantReassign", loopInvariantReassign, {100, 1000}},
->>>>>>> origin/claude/m3-8-optional-passes
 	    {"calls", calls, {100, 1000, 5000}},
 	    {"distinctSites1024", distinctSites1024, {1}},
 	};
