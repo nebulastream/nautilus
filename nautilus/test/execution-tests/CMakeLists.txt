@@ -28,6 +28,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         ModuleRegistryTest.cpp
         ModuleTest.cpp
         TieredCompilationTest.cpp
+        TracingDiagnosticsTest.cpp
         TracingFrontendTest.cpp
         PromotionServiceTest.cpp
         ArenaMemoryTest.cpp

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/common/RegionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/nir/Module.hpp"
 #include "nautilus/tracing/Snapshot.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
@@ -16,6 +17,13 @@ namespace nautilus::tracing::nirtrace {
 /// pre-SSA level in recording order, grouped into blocks that a control-flow merge splits and a region seam collapse
 /// joins. The record index is the global id of an operation; a `val<T>` holds it as its value reference, and a tagged
 /// operation is found again through the tag map by that id, which no split rewrites.
+
+/// An operation was reached again in the block it was recorded in: with the same call stack and static state, the
+/// tracer takes it for a loop whose condition never changes (NAUT-T001).
+struct ConstantLoopError : RuntimeException {
+	ConstantLoopError() : RuntimeException("Invalid trace. This is maybe caused by a constant loop.") {
+	}
+};
 
 using FlatRegion = uint32_t;
 inline constexpr FlatRegion NO_FLAT_REGION = 0xFFFFFFFFu;

@@ -95,8 +95,8 @@ ModuleIndex publishNirCode(const nir::Module& m, const NirCodeMap& code, const e
 		ranges.push_back({start, start, name, firstOfFunction, firstOfFunction});
 		for (; nextMark < marks.size() && marks[nextMark].offset < end; ++nextMark) {
 			const auto& mark = marks[nextMark];
-			// instructions of an inlined callee stay in the region of the call; code that belongs to no instruction (the
-			// cold paths) stays in the region it follows
+			// instructions of an inlined callee stay in the region of the call; code that belongs to no instruction
+			// (the cold paths) stays in the region it follows
 			if (mark.inst != nir::NONE && mark.function == f) {
 				region = m.regionOf(f, mark.inst);
 			}
@@ -107,8 +107,8 @@ ModuleIndex publishNirCode(const nir::Module& m, const NirCodeMap& code, const e
 					ranges.pop_back(); // a range of no code
 				}
 				name = std::move(qualified);
-				ranges.push_back({mark.offset, mark.offset, name, static_cast<uint32_t>(nextMark),
-				                  static_cast<uint32_t>(nextMark)});
+				ranges.push_back(
+				    {mark.offset, mark.offset, name, static_cast<uint32_t>(nextMark), static_cast<uint32_t>(nextMark)});
 			}
 			ranges.back().lastMark = static_cast<uint32_t>(nextMark) + 1;
 		}
@@ -155,8 +155,8 @@ ModuleIndex publishNirCode(const nir::Module& m, const NirCodeMap& code, const e
 		for (const auto& range : ranges) {
 			std::vector<JitDumpLine> lines;
 			for (auto k = range.firstMark; k < range.lastMark && k < marks.size(); ++k) {
-				if (const auto line = lineOf(marks[k]); line != 0 && marks[k].offset >= range.start &&
-				                                       marks[k].offset < range.end) {
+				if (const auto line = lineOf(marks[k]);
+				    line != 0 && marks[k].offset >= range.start && marks[k].offset < range.end) {
 					lines.push_back(JitDumpLine {base + marks[k].offset, line, sourceFile});
 				}
 			}

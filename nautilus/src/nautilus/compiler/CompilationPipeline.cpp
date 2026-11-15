@@ -244,6 +244,19 @@ void recordTracingStatistics(CompilationStatistics& statistics, const tracing::T
 	});
 }
 
+/// The warnings of the tracer (docs/diagnostics.md) as `diagnostics.count` and
+/// `diagnostics.<n>.{code,message,hint,location}`.
+void recordTracingDiagnostics(CompilationStatistics& statistics, const std::vector<tracing::TracingDiagnostic>& list) {
+	statistics.set("diagnostics.count", static_cast<int64_t>(list.size()));
+	for (size_t i = 0; i < list.size(); ++i) {
+		const auto prefix = "diagnostics." + std::to_string(i) + ".";
+		statistics.set(prefix + "code", list[i].code);
+		statistics.set(prefix + "message", list[i].message);
+		statistics.set(prefix + "hint", list[i].hint);
+		statistics.set(prefix + "location", list[i].location());
+	}
+}
+
 /// Throws if `module` does not verify; `what` names the module in the message.
 void verifyOrThrow(const nir::Module& module, const std::string& what, const nir::Module* from = nullptr) {
 	auto diagnostics = nir::verify(module);
@@ -324,6 +337,7 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::traceToNir(std::list<Compilabl
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 		recordTracingStatistics(*statistics, traced.statistics);
+		recordTracingDiagnostics(*statistics, traced.diagnostics);
 	}
 	dumpHandler.dump("after_nir_tracing", "nir", [&]() { return nir::print(traced.module); });
 

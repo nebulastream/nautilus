@@ -8,6 +8,7 @@
 #include "nautilus/nir/Operands.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/nir/NirTrace.hpp"
+#include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -687,6 +688,8 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 	unwindPaused_ = options.getOptionOrDefault("tracing.unwindPausedPasses", false);
 	forceRestarts_ = options.getOptionOrDefault("tracing.forceConstructRestarts", false);
 	loops_.clear();
+	diagnosticsMode_ = diagnosticsMode(options);
+	hotTag_ = lastBranchTag_ = lastTag_ = nullptr;
 
 	bool isFirstFunction = true;
 	while (!session.functionsToTrace.empty()) {
@@ -723,7 +726,15 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 		kind_ = ScopeKind::Function;
 		optimistic_ = false;
 		loops_.clear();
-		runScope(wrapperFunc);
+		try {
+			runScope(wrapperFunc);
+		} catch (const ConstantLoopError&) {
+			state.reset();
+			fail(makeDiagnostic("NAUT-T001", "constant loop",
+			                    "an operation was reached again with the same call stack and the same static values, "
+			                    "so the loop it is in has a condition that does not depend on a val",
+			                    "use a val loop variable, or static_val to unroll", nullptr, lastTag_));
+		}
 
 		state.reset();
 		trace.collapseRegionSeams();
@@ -731,7 +742,34 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 		session.emitFunction(index, currentFunction.getName(), trace, exported);
 	}
 	session.finish();
-	NirTraceResult result {std::move(session.module), stats_};
+	NirTraceResult result {std::move(session.module), stats_, {}};
+	{
+		const auto maxPasses = options.getOptionOrDefault("tracing.diagnostics.maxPasses", 256);
+		const auto maxReplayed = options.getOptionOrDefault("tracing.diagnostics.replayedOperations", 100000);
+		if (stats_.maxScopeIterations >= static_cast<uint64_t>(maxPasses)) {
+			result.diagnostics.push_back(makeDiagnostic(
+			    "NAUT-T002", "path explosion",
+			    "a scope of the traced code ran " + std::to_string(stats_.maxScopeIterations) +
+			        " passes, one per explored path",
+			    "wrap independent branches in region(), write them with If/While/For (nautilus/control_flow.hpp), or "
+			    "use select",
+			    nullptr, hotTag_));
+		}
+		const double passTime = stats_.firstRunMs + stats_.rerunMs;
+		if (stats_.replayedOperations >= static_cast<uint64_t>(maxReplayed) && passTime > 0 &&
+		    stats_.rerunMs / passTime > 0.5) {
+			result.diagnostics.push_back(makeDiagnostic(
+			    "NAUT-T003", "replay share",
+			    "re-runs replayed " + std::to_string(stats_.replayedOperations) + " operations and took " +
+			        std::to_string(static_cast<int>(100 * stats_.rerunMs / passTime)) + "% of the tracing time",
+			    "bound the replay with region(), or write the control flow with If/While/For "
+			    "(nautilus/control_flow.hpp)",
+			    nullptr, hotTag_));
+		}
+		for (const auto& diagnostic : result.diagnostics) {
+			reportDiagnostic(diagnostic, diagnosticsMode_);
+		}
+	}
 	sessionState_.reset();
 	return result;
 }
@@ -858,6 +896,9 @@ void NirTracer::runScope(std::function<void()>& body) {
 	}
 	optimistic_ = false;
 	++session_->stats_.scopes;
+	if (static_cast<uint64_t>(traceIteration) > session_->stats_.maxScopeIterations) {
+		session_->hotTag_ = lastBranchTag_;
+	}
 	session_->stats_.maxScopeIterations = std::max<uint64_t>(session_->stats_.maxScopeIterations, traceIteration);
 }
 #if defined(__GNUC__) && !defined(__clang__)
@@ -902,7 +943,15 @@ TypedValueRef& NirTracer::traceOperation(OnCreation&& onCreation) {
 		return follow();
 	}
 	auto tag = recordSnapshot();
-	if (state->trace.checkTag(tag)) {
+	bool isNew;
+	try {
+		isNew = state->trace.checkTag(tag);
+	} catch (const ConstantLoopError&) {
+		// remember where, for the diagnostic; the path without an error pays nothing for the handler
+		session_->lastTag_ = tag.getTag();
+		throw;
+	}
+	if (isNew) {
 		return onCreation(tag);
 	}
 	// already explored from here: enter passive mode
@@ -1486,6 +1535,7 @@ bool NirTracer::traceBool(const TypedValueRef& value, double probability) {
 			const auto first = trace.nextId();
 			emit(NOp::CondBr, TypeId::Void, 0, value.ref, trueBlock, condIndex);
 			trace.markOperation(first, &tag, TypedValueRef(0, Type::v));
+			lastBranchTag_ = tag.getTag();
 			auto recordResult = state->symbolicExecutionContext.record(tag);
 			result = recordResult.branchDirection;
 			shouldTerminate = recordResult.shouldTerminate;
@@ -1909,9 +1959,10 @@ void NirTracer::traceScopeExit() {
 		aliveVars.forEachAlive([&escaped](uint32_t ref, uint32_t) {
 			escaped += (escaped.empty() ? "" : ", ") + std::string("$") + std::to_string(ref);
 		});
-		throw RuntimeException(
-		    "Invalid " + whatIsLeft() + describeCurrentFunction() + ": a value created inside the body outlives it (" +
-		    escaped + "). Carry the value out through a val<T> declared outside the body and assigned to inside it.");
+		fail(makeDiagnostic("NAUT-T004", "value escapes " + whatIsLeft(),
+		                    "a value created inside the body outlives it (" + escaped + ")",
+		                    "carry the value out through a val<T> declared outside the body and assigned to inside it",
+		                    kind_ == ScopeKind::Region ? &region.attributes.location : nullptr, session_->lastTag_));
 	}
 	auto& trace = state->trace;
 	if (optimistic_) {
@@ -1924,11 +1975,12 @@ void NirTracer::traceScopeExit() {
 	if (!region.exitSnapshot.has_value()) {
 		region.exitSnapshot = snapshot;
 	} else if (*region.exitSnapshot != snapshot) {
-		throw RuntimeException(
-		    "Invalid " + whatIsLeft() + describeCurrentFunction() +
-		    ": the state alive at the end of the body differs between the paths through it, so what escapes the body "
-		    "would depend on which path was explored last. Build the escaping value on every path (assigning to a "
-		    "val<T> declared outside the body merges across branches).");
+		fail(makeDiagnostic("NAUT-T004", "state differs at the end of " + whatIsLeft(),
+		                    "the state alive at the end of the body differs between the paths through it, so what "
+		                    "escapes the body would depend on which path was explored last",
+		                    "build the escaping value on every path (assigning to a val<T> declared outside the body "
+		                    "merges across branches)",
+		                    kind_ == ScopeKind::Region ? &region.attributes.location : nullptr, session_->lastTag_));
 	}
 	if (!trace.checkTag(snapshot)) {
 		// this pass's tail was merged with an earlier pass's exit: the pass is over
@@ -2240,13 +2292,14 @@ void NirTracer::emitExitDestructors(size_t depth) {
 void NirTracer::requireNoRegionBetween(const NirTracer* target, const char* what) const {
 	for (const NirTracer* scope = this; scope != target; scope = scope->parent_) {
 		if (scope == nullptr) {
-			throw RuntimeException(
-			    fmt::format("{}{} is not inside the construct it leaves", what, describeCurrentFunction()));
+			fail(makeDiagnostic("NAUT-T005", "invalid exit", fmt::format("{} is not inside the loop it leaves", what),
+			                    "Break and Continue need an enclosing explicit loop"));
 		}
 		if (scope->kind_ == ScopeKind::Region) {
-			throw RuntimeException(fmt::format("Invalid {}{}: it would leave a region() body, which keeps its single "
-			                                   "exit. Do the exit outside the region.",
-			                                   what, describeCurrentFunction()));
+			fail(makeDiagnostic("NAUT-T005", "invalid exit",
+			                    fmt::format("{} would leave a region() body, which keeps its single exit", what),
+			                    "do the exit outside the region, or use a val<bool> flag",
+			                    &scope->regionState_->attributes.location));
 		}
 	}
 }
@@ -2259,11 +2312,13 @@ void NirTracer::exitLoop(bool isBreak) {
 	}
 	auto& frames = session_->loops_;
 	if (frames.empty()) {
-		throw RuntimeException(fmt::format("{}{} outside of an explicit loop", what, describeCurrentFunction()));
+		fail(makeDiagnostic("NAUT-T005", "invalid exit", fmt::format("{} outside of an explicit loop", what),
+		                    "Break and Continue need an enclosing While or For"));
 	}
 	const auto frame = frames.back();
 	if (frame.inHeader) {
-		throw RuntimeException(fmt::format("{}{} in the condition of a loop", what, describeCurrentFunction()));
+		fail(makeDiagnostic("NAUT-T005", "invalid exit", fmt::format("{} in the condition of a loop", what),
+		                    "leave the loop from its body"));
 	}
 	if (isFollowing()) {
 		pauseAndUnwind(); // not reachable on a path that flips later; nothing to record in any case
@@ -2293,8 +2348,9 @@ void NirTracer::traceExplicitReturn(Type resultType, const TypedValueRef& ref) {
 	}
 	for (const NirTracer* scope = this; scope != nullptr; scope = scope->parent_) {
 		if (scope->kind_ == ScopeKind::Region) {
-			throw RuntimeException("Invalid Return()" + describeCurrentFunction() +
-			                       ": it would leave a region() body, which keeps its single exit.");
+			fail(makeDiagnostic("NAUT-T005", "invalid exit",
+			                    "Return() would leave a region() body, which keeps its single exit",
+			                    "return after the region, or use a val<bool> flag"));
 		}
 	}
 	if (isFollowing()) {
@@ -2311,6 +2367,45 @@ void NirTracer::traceExplicitReturn(Type resultType, const TypedValueRef& ref) {
 	}
 	trace.returns.push_back(first);
 	pauseAndUnwind();
+}
+
+} // namespace nautilus::tracing::nirtrace
+
+namespace nautilus::tracing::nirtrace {
+
+TracingDiagnostic NirTracer::makeDiagnostic(const char* code, std::string title, std::string message, std::string hint,
+                                            const SourceLocation* at, const Tag* tag) const {
+	TracingDiagnostic diagnostic {code, title, std::move(message), std::move(hint), {}, 0, {}};
+	const auto& session = *session_->sessionState_;
+	diagnostic.function = session.currentFunctionName;
+	bool located = false;
+	if (at != nullptr && at->isKnown()) {
+		diagnostic.file = at->file;
+		diagnostic.line = at->line;
+		located = true;
+	}
+	if (!located && tag != nullptr) {
+		SourceLocationResolver resolver;
+		const auto stack = resolver.resolveStack(tag);
+		for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+			if (!it->file.empty() && it->line != 0) {
+				diagnostic.file = it->file;
+				diagnostic.line = it->line;
+				located = true;
+				break;
+			}
+		}
+	}
+	if (!located && session.currentFunctionLocation.isKnown()) {
+		diagnostic.file = session.currentFunctionLocation.file;
+		diagnostic.line = session.currentFunctionLocation.line;
+	}
+	return diagnostic;
+}
+
+void NirTracer::fail(const TracingDiagnostic& diagnostic) const {
+	reportDiagnostic(diagnostic, session_->diagnosticsMode_);
+	throw RuntimeException(diagnostic.toText());
 }
 
 } // namespace nautilus::tracing::nirtrace

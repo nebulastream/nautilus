@@ -46,8 +46,8 @@ public:
 private:
 	static void onMark(void* self, uint64_t data, size_t offset) {
 		static_cast<CodeMarks*>(self)->marks_.push_back(NirCodeMark {static_cast<uint32_t>((data >> 32) - 1),
-		                                                              static_cast<uint32_t>(data & 0xFFFFFFFFu),
-		                                                              static_cast<uint32_t>(offset)});
+		                                                             static_cast<uint32_t>(data & 0xFFFFFFFFu),
+		                                                             static_cast<uint32_t>(offset)});
 	}
 
 	bool enabled_ = false;

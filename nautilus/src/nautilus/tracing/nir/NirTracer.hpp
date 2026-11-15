@@ -7,6 +7,7 @@
 #include "nautilus/options.hpp"
 #include "nautilus/tracing/AliveVariableHash.hpp"
 #include "nautilus/tracing/Snapshot.hpp"
+#include "nautilus/tracing/TracingDiagnostics.hpp"
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "nautilus/tracing/TracingStatistics.hpp"
 #include "nautilus/tracing/nir/FlatTrace.hpp"
@@ -28,6 +29,8 @@ namespace nautilus::tracing::nirtrace {
 struct NirTraceResult {
 	::nautilus::nir::Module module;
 	TracingStatistics statistics;
+	/// The warnings of the session (NAUT-T002, NAUT-T003).
+	std::vector<TracingDiagnostic> diagnostics;
 };
 
 /**
@@ -144,6 +147,16 @@ private:
 	void emitExitDestructors(size_t depth);
 	/// The scopes between this one and @p target (exclusive): an exit must not cross a `region()`.
 	void requireNoRegionBetween(const NirTracer* target, const char* what) const;
+	/// A diagnostic at @p at (a place the user wrote down) or at the innermost user frame of @p tag, or at the place
+	/// the traced function was registered at.
+	TracingDiagnostic makeDiagnostic(const char* code, std::string title, std::string message, std::string hint,
+	                                 const SourceLocation* at = nullptr, const Tag* tag = nullptr) const;
+	/// Reports @p diagnostic as `engine.diagnostics` says and fails the compilation with its text.
+	[[noreturn]] void fail(const TracingDiagnostic& diagnostic) const;
+	const Tag* lastBranchTag_ = nullptr;
+	const Tag* hotTag_ = nullptr;
+	const Tag* lastTag_ = nullptr;
+	DiagnosticsMode diagnosticsMode_ = DiagnosticsMode::Off;
 	/// `Break` (@p isBreak) and `Continue`: the destructor calls, the jump, and the pause.
 	void exitLoop(bool isBreak);
 	uint32_t destructorCallee(void* destructor);

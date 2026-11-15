@@ -341,7 +341,7 @@ uint32_t FlatTrace::addJump(uint32_t target, const Snapshot* snapshot) {
 uint32_t FlatTrace::processControlFlowMerge(uint32_t op) {
 	const uint32_t referenceIndex = meta[op].block;
 	if (referenceIndex == currentBlock_) {
-		throw RuntimeException("Invalid trace. This is maybe caused by a constant loop.");
+		throw ConstantLoopError();
 	}
 	const uint32_t merged = createBlock();
 	blocks[merged].merge = true;
