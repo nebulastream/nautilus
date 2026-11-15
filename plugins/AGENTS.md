@@ -19,3 +19,7 @@ by an `ENABLE_<NAME>_PLUGIN` option in the top-level `CMakeLists.txt`.
 - Each plugin's tests run as their own ctest directory:
   `ctest --test-dir build/<preset>/plugins/<name>/test --output-on-failure`.
 - A plugin change must pass its tests on every backend it has a lowering for.
+- A plugin can add passes on NIR with `ExtensionRegistry::registerPass(PassInfo)` from a static initializer
+  (`nautilus/src/nautilus/extensions/PassInfo.hpp`): at `afterConversion` or `beforeLowering`, *required* (part of the program's meaning, runs in
+  every compile) or *optional* (runs where the optional core passes run, not on the tier-0 compile of a promoted module).
+  Registration after the first engine throws. See `nautilus/test/pass-tests/PluginPassTest.cpp`.

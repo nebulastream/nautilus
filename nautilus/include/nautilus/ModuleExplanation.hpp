@@ -42,6 +42,8 @@ struct ModuleExplanation {
 		std::string status = "not available yet";
 		/// The milestone of the plan that fills it in.
 		std::string milestone;
+		/// What the producer reports, one line each.
+		std::vector<std::string> details;
 	};
 
 	/// The module's name; empty for an anonymous module.
@@ -64,9 +66,11 @@ struct ModuleExplanation {
 	/// The statistics of the compile that produced the running executable; null when there is none.
 	std::shared_ptr<const compiler::CompilationStatistics> statistics;
 	/// Why the module cannot be saved (`artifact.ineligibleReason`, 07 §5): filled with M5.3.
-	Pending persistability {false, "not available yet", "M5.3"};
-	/// Which calls were inlined and why others were not: filled with M3.8.
-	Pending inlining {false, "not available yet", "M3.8"};
+	Pending persistability {false, "not available yet", "M5.3", {}};
+	/// Which calls were inlined and why others were not (`irPasses.inline.*` of the statistics): `status` is `not run`
+	/// when the inlining pass did not run in the compile of the running code, else `ran`; `details` are its decisions
+	/// and the imported modules whose bodies it copied, with the hash the compiled code is keyed on (13 §4.4.3).
+	Pending inlining {true, "not run", "M3.8", {}};
 
 	/// One line per fact, for a terminal or a log.
 	[[nodiscard]] std::string toString() const;

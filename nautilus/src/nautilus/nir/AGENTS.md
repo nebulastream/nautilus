@@ -19,6 +19,7 @@ Since the cut-over (plan PR 6) the engine's default pipeline traces to NIR and c
 | `Printer.*`, `Parser.*` | the text form | §9 |
 | `Canonicalize.*`, `Hash.*` | canonical form, structural hash (XXH3-128, vendored in `third_party/xxhash`), key of inlined imports | §7 |
 | `Image.*`, `ImageLoader.*`, `Inspect.*` | the binary image: writer, loader (`NIR-L` codes), description without materializing | §8 |
+| `../passes/*` | the optional copy passes (LICM, strength reduction, inlining) and the pass manager, `../passes/AGENTS.md` | 03 §5 |
 | `../common/OptionRegistry.*` | the typed option registry; compiled into `nautilus-nir` for now | M1.4a |
 
 ## Rules that are easy to break

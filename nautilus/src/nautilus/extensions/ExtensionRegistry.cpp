@@ -193,14 +193,23 @@ uint32_t ExtensionRegistry::registerIntrinsic(IntrinsicInfo info, Owner owner) {
 }
 
 uint32_t ExtensionRegistry::registerPass(std::string name, Owner owner) {
+	PassInfo info;
+	info.name = std::move(name);
+	return registerPass(std::move(info), owner);
+}
+
+uint32_t ExtensionRegistry::registerPass(PassInfo info, Owner owner) {
 	std::lock_guard<std::mutex> lock(mutex_);
 	locks_.fetch_add(1, std::memory_order_relaxed);
-	checkOpen("pass", name);
-	checkName(name, owner, "pass");
-	if (!byName_.emplace("pass:" + name, static_cast<uint32_t>(passes_.size())).second) {
-		throw RegistrationError("pass '" + name + "' is already registered");
+	checkOpen("pass", info.name);
+	checkName(info.name, owner, "pass");
+	if (!byName_.emplace("pass:" + info.name, static_cast<uint32_t>(passes_.size())).second) {
+		throw RegistrationError("pass '" + info.name + "' is already registered");
 	}
-	passes_.push_back(std::move(name));
+	if (info.run) {
+		runnablePasses_[static_cast<size_t>(info.point)].fetch_add(1, std::memory_order_release);
+	}
+	passes_.push_back(std::move(info));
 	return static_cast<uint32_t>(passes_.size() - 1);
 }
 
@@ -270,6 +279,30 @@ size_t ExtensionRegistry::opCount() const {
 }
 size_t ExtensionRegistry::intrinsicCount() const {
 	return read([&] { return intrinsics_.size(); });
+}
+size_t ExtensionRegistry::passCount() const {
+	return read([&] { return passes_.size(); });
+}
+
+const PassInfo* ExtensionRegistry::pass(uint32_t id) const {
+	return read([&]() -> const PassInfo* { return id < passes_.size() ? &passes_[id] : nullptr; });
+}
+
+std::vector<const PassInfo*> ExtensionRegistry::passesAt(PassPoint point) const {
+	return read([&] {
+		std::vector<const PassInfo*> result;
+		for (const auto& p : passes_) {
+			if (p.run && p.point == point) {
+				result.push_back(&p);
+			}
+		}
+		return result;
+	});
+}
+
+bool ExtensionRegistry::hasPassesAt(PassPoint point) const {
+	// a counter, so that the compile that has no plugin pass takes neither a lock nor walks the table
+	return runnablePasses_[static_cast<size_t>(point)].load(std::memory_order_acquire) != 0;
 }
 
 } // namespace nautilus::ext

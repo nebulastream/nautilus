@@ -27,8 +27,19 @@ template <typename T>
 concept is_nautilus_int128 = std::is_same_v<std::remove_cvref_t<T>, detail::int128_t> ||
                              std::is_same_v<std::remove_cvref_t<T>, detail::uint128_t>;
 
+namespace detail {
+template <typename>
+inline constexpr bool always_false = false;
+} // namespace detail
+
+/// The primary template is the type no specialization accepts: it says so (nautilus/test/compile-fail).
 template <typename T>
-class val;
+class val {
+	static_assert(detail::always_false<T>,
+	              "val<T> requires an arithmetic, bool, enum or pointer type; a class type such "
+	              "as std::string cannot be traced. Keep it outside the traced function, or "
+	              "pass its data (a pointer and a size) as val<T> values.");
+};
 
 template <typename T>
 concept is_integral_val = requires {

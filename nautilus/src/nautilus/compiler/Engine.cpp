@@ -3,6 +3,7 @@
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/TieredCompiler.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
+#include "nautilus/extensions/ExtensionRegistry.hpp"
 #include "nautilus/link/ModuleRegistry.hpp"
 #include "nautilus/logging.hpp"
 #include <charconv>
@@ -102,6 +103,8 @@ NautilusEngine::NautilusEngine(const Options& options, std::shared_ptr<common::C
       irArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)),
       jit_(createJITCompiler(applyEnvironmentOptions(options), *traceArenaPool_, *irArenaPool_)),
       options(applyEnvironmentOptions(options)) {
+	// from here on no extension, intrinsic or pass can be registered (04 §3.7)
+	ext::ExtensionRegistry::instance().freeze();
 }
 
 NautilusEngine::NautilusEngine(std::unique_ptr<compiler::JITCompiler> jit, const Options& options)
@@ -110,6 +113,7 @@ NautilusEngine::NautilusEngine(std::unique_ptr<compiler::JITCompiler> jit, const
       traceArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)),
       irArenaPool_(std::make_unique<common::ArenaPool>(*chunkPool_)), jit_(std::move(jit)),
       options(applyEnvironmentOptions(options)) {
+	ext::ExtensionRegistry::instance().freeze();
 }
 
 void NautilusEngine::trimMemory() {

@@ -1,4 +1,4 @@
-# structural hash 2769168ad7e8593d1b72e52c07592bcb
+# structural hash 76eb50960ad1086c48c13433fd6ef6dd
 NIR image, magic ok
 version 1.0
 compat features: none

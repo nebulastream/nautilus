@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/extensions/OpInfo.hpp"
+#include "nautilus/extensions/PassInfo.hpp"
 #include "nautilus/extensions/TypeInfo.hpp"
 #include <atomic>
 #include <cstdint>
@@ -43,8 +44,10 @@ public:
 	uint16_t registerOp(ExtOpInfo info, Owner owner = Owner::Plugin);
 	/// Registers an intrinsic and returns its dense id.
 	uint32_t registerIntrinsic(IntrinsicInfo info, Owner owner = Owner::Plugin);
-	/// Registers a pass by name and returns its dense id (the passes themselves belong to M3.9).
+	/// Registers a pass by name only and returns its dense id: the name is reserved and nothing runs.
 	uint32_t registerPass(std::string name, Owner owner = Owner::Plugin);
+	/// Registers a pass that runs at `info.point` (03 §5, 04 §3.6) and returns its dense id.
+	uint32_t registerPass(PassInfo info, Owner owner = Owner::Plugin);
 
 	/// Freezes the registry. Idempotent; called by every first reader.
 	void freeze();
@@ -65,6 +68,12 @@ public:
 	size_t typeCount() const;
 	size_t opCount() const;
 	size_t intrinsicCount() const;
+	size_t passCount() const;
+	const PassInfo* pass(uint32_t id) const;
+	/// The passes that run at `point`, in registration order. Empty for a build with no plugin pass.
+	std::vector<const PassInfo*> passesAt(PassPoint point) const;
+	/// Whether any pass runs at `point` (cheap: the pipeline asks it on every compile).
+	bool hasPassesAt(PassPoint point) const;
 
 	/// How often a lookup or a registration took the registry's mutex; after the freeze lookups take none.
 	uint64_t lockAcquisitions() const {
@@ -87,7 +96,8 @@ private:
 	std::vector<TypeInfo> types_;
 	std::vector<ExtOpInfo> ops_;
 	std::vector<IntrinsicInfo> intrinsics_;
-	std::vector<std::string> passes_;
+	std::vector<PassInfo> passes_;
+	std::atomic<uint32_t> runnablePasses_[2] {};
 	std::unordered_map<std::string, uint32_t> byName_; // "type:...", "op:...", "intrinsic:...", "pass:..."
 	std::unordered_map<const void*, uint32_t> byFallback_;
 };

@@ -86,12 +86,15 @@ public:
 	 * @param unitId The compilation unit ID of this compile (dump directory, statistics). Empty: a fresh one. A
 	 *        promotion passes the tier-0 unit ID plus `_tier1`, so the dumps of one module sit side by side.
 	 * @param cancellation Checked by the backend at stage boundaries (null for a synchronous compile).
+	 * @param latencyCritical The compile is the tier-0 compile of a module that is promoted: the optional passes
+	 *        (03 §5) do not run unless `ir.runOptimizationPasses` is true, the required passes of plugins do.
 	 * @return Compiled executable; null only if @p cancellation was set
 	 */
 	[[nodiscard]] std::unique_ptr<Executable>
 	compileIR(const std::shared_ptr<ir::IRGraph>& ir, const std::string& backendName,
 	          const engine::ModuleOptions& moduleOptions, CompilationStatistics* statistics = nullptr,
-	          const CompilationUnitID& unitId = {}, const nirbackend::CancellationToken* cancellation = nullptr) const;
+	          const CompilationUnitID& unitId = {}, const nirbackend::CancellationToken* cancellation = nullptr,
+	          bool latencyCritical = false) const;
 
 	/// The compilation unit ID of @p ir: the ID the front end gave the compile that produced the graph. Empty without
 	/// tracing, where no graph exists.

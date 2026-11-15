@@ -143,12 +143,13 @@ private:
 	 * is traced once and shared between the tiers.
 	 * @p graphReady, if set, is called between conversion and the backend: the
 	 * point where an eager promotion starts (§4.5).
+	 * @p latencyCritical marks the tier-0 compile of a module that is promoted: the optional passes do not run in it
+	 * (03 §5), tier 1 runs them.
 	 */
-	[[nodiscard]] std::unique_ptr<Executable> compileTier(std::list<CompilableFunction>& functions,
-	                                                      const engine::ModuleOptions& moduleOptions,
-	                                                      const std::string& backend, const std::string& tierLabel,
-	                                                      IROptimizationLevel optimization,
-	                                                      const GraphReady& graphReady = {}) const;
+	[[nodiscard]] std::unique_ptr<Executable>
+	compileTier(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
+	            const std::string& backend, const std::string& tierLabel, IROptimizationLevel optimization,
+	            const GraphReady& graphReady = {}, bool latencyCritical = false) const;
 
 	/// The promotion job of @p state: compiles @p ir with the tier-1 backend on a worker. Installs the job as the
 	/// state's promotion control and, under the policy `manual`, parks it.
