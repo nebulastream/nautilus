@@ -22,6 +22,7 @@ add_subdirectory(api-compat)
 add_subdirectory(nir-tests)
 add_subdirectory(extension-tests)
 add_subdirectory(pass-tests)
+add_subdirectory(compile-fail)
 
 # .nir run tests (docs/plans/nautilus-0.4/16-implementation-plan.md, M4.0, M4.1): modules with `; run` directives that
 # nautilus-nir-run compiles with a NIR backend and calls. The tbc backend runs each file as an interpreter in its default
