@@ -690,6 +690,10 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 	loops_.clear();
 	diagnosticsMode_ = diagnosticsMode(options);
 	hotTag_ = lastBranchTag_ = lastTag_ = nullptr;
+	hotFile_.clear();
+	hotLine_ = 0;
+	maxPasses_ = static_cast<uint64_t>(options.getOptionOrDefault("tracing.diagnostics.maxPasses", 256));
+	maxReplayed_ = static_cast<uint64_t>(options.getOptionOrDefault("tracing.diagnostics.replayedOperations", 100000));
 
 	bool isFirstFunction = true;
 	while (!session.functionsToTrace.empty()) {
@@ -733,10 +737,19 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 			fail(makeDiagnostic("NAUT-T001", "constant loop",
 			                    "an operation was reached again with the same call stack and the same static values, "
 			                    "so the loop it is in has a condition that does not depend on a val",
-			                    "use a val loop variable, or static_val to unroll", nullptr, lastTag_));
+			                    "use a val loop variable, or static_val to unroll", nullptr,
+			                    trace.lastMerge().getTag()));
 		}
 
 		state.reset();
+		if (hotTag_ != nullptr &&
+		    (stats_.maxScopeIterations >= maxPasses_ || stats_.replayedOperations >= maxReplayed_)) {
+			// the tags are nodes of this function's recorder, which does not outlive the iteration
+			auto located = makeDiagnostic("", "", "", "", nullptr, hotTag_);
+			hotFile_ = located.file;
+			hotLine_ = located.line;
+			hotTag_ = nullptr;
+		}
 		trace.collapseRegionSeams();
 		stats_.operations += trace.recs.size() - 1;
 		session.emitFunction(index, currentFunction.getName(), trace, exported);
@@ -744,27 +757,28 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 	session.finish();
 	NirTraceResult result {std::move(session.module), stats_, {}};
 	{
-		const auto maxPasses = options.getOptionOrDefault("tracing.diagnostics.maxPasses", 256);
-		const auto maxReplayed = options.getOptionOrDefault("tracing.diagnostics.replayedOperations", 100000);
-		if (stats_.maxScopeIterations >= static_cast<uint64_t>(maxPasses)) {
+		const auto maxPasses = maxPasses_;
+		const auto maxReplayed = maxReplayed_;
+		if (stats_.maxScopeIterations >= maxPasses) {
 			result.diagnostics.push_back(makeDiagnostic(
 			    "NAUT-T002", "path explosion",
 			    "a scope of the traced code ran " + std::to_string(stats_.maxScopeIterations) +
 			        " passes, one per explored path",
 			    "wrap independent branches in region(), write them with If/While/For (nautilus/control_flow.hpp), or "
 			    "use select",
-			    nullptr, hotTag_));
+			    nullptr, nullptr));
+			locateHot(result.diagnostics.back());
 		}
 		const double passTime = stats_.firstRunMs + stats_.rerunMs;
-		if (stats_.replayedOperations >= static_cast<uint64_t>(maxReplayed) && passTime > 0 &&
-		    stats_.rerunMs / passTime > 0.5) {
+		if (stats_.replayedOperations >= maxReplayed && passTime > 0 && stats_.rerunMs / passTime > 0.5) {
 			result.diagnostics.push_back(makeDiagnostic(
 			    "NAUT-T003", "replay share",
 			    "re-runs replayed " + std::to_string(stats_.replayedOperations) + " operations and took " +
 			        std::to_string(static_cast<int>(100 * stats_.rerunMs / passTime)) + "% of the tracing time",
 			    "bound the replay with region(), or write the control flow with If/While/For "
 			    "(nautilus/control_flow.hpp)",
-			    nullptr, hotTag_));
+			    nullptr, nullptr));
+			locateHot(result.diagnostics.back());
 		}
 		for (const auto& diagnostic : result.diagnostics) {
 			reportDiagnostic(diagnostic, diagnosticsMode_);
@@ -943,15 +957,7 @@ TypedValueRef& NirTracer::traceOperation(OnCreation&& onCreation) {
 		return follow();
 	}
 	auto tag = recordSnapshot();
-	bool isNew;
-	try {
-		isNew = state->trace.checkTag(tag);
-	} catch (const ConstantLoopError&) {
-		// remember where, for the diagnostic; the path without an error pays nothing for the handler
-		session_->lastTag_ = tag.getTag();
-		throw;
-	}
-	if (isNew) {
+	if (state->trace.checkTag(tag)) {
 		return onCreation(tag);
 	}
 	// already explored from here: enter passive mode
@@ -2401,6 +2407,13 @@ TracingDiagnostic NirTracer::makeDiagnostic(const char* code, std::string title,
 		diagnostic.line = session.currentFunctionLocation.line;
 	}
 	return diagnostic;
+}
+
+void NirTracer::locateHot(TracingDiagnostic& diagnostic) const {
+	if (!hotFile_.empty()) {
+		diagnostic.file = hotFile_;
+		diagnostic.line = hotLine_;
+	}
 }
 
 void NirTracer::fail(const TracingDiagnostic& diagnostic) const {

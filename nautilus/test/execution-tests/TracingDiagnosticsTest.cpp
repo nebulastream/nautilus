@@ -55,15 +55,10 @@ int constantLoopCount = 64;
 	return r;
 }
 
-std::vector<val<int64_t>>* escapedStorage = nullptr;
+std::vector<val<int64_t>> escapedStorage;
 
 [[maybe_unused]] val<int64_t> escapingValueKept(val<int64_t> x) {
-	region([&] {
-		if (escapedStorage == nullptr) {
-			escapedStorage = new std::vector<val<int64_t>>();
-		}
-		escapedStorage->push_back(x + 1);
-	});
+	region([&] { escapedStorage.push_back(x + 1); });
 	return x;
 }
 
@@ -165,7 +160,7 @@ TEST_CASE("Diagnostics: NAUT-T004 a value escaping a region", "[diagnostics]") {
 	INFO(message);
 	CHECK(message.find("NAUT-T004 ") == 0);
 	CHECK(message.find("TracingDiagnosticsTest.cpp:") != std::string::npos); // the region() call
-	escapedStorage = nullptr;
+	escapedStorage.clear();
 }
 
 TEST_CASE("Diagnostics: NAUT-T005 an exit that does not fit", "[diagnostics]") {

@@ -37,9 +37,8 @@ public:
 	~TagMap();
 	/// The record id, or `nir::NONE`.
 	[[nodiscard]] uint32_t find(const Snapshot& key) const {
-		if (key.getTag() == nullptr) {
-			return nir::NONE; // the snapshot of an operation that is recorded without one (optimistic recording)
-		}
+		// a key without a tag (an operation recorded optimistically) is never in the table: the probe ends at a free
+		// slot
 		size_t slot = hashOf(key) & mask_;
 		while (table_[slot].epoch == epoch_) {
 			if (table_[slot].key == key) {
@@ -49,23 +48,14 @@ public:
 		}
 		return nir::NONE;
 	}
+	/// @p key must have a tag.
 	void set(const Snapshot& key, uint32_t op);
 	/// Removes @p key (backward-shift deletion, which keeps the probe sequences of linear probing intact).
 	void erase(const Snapshot& key);
-	/// While a log is open every `set` is remembered with the binding it replaced, so that `undoTo` can take the
-	/// insertions of a rolled-back span of the trace out again.
-	void openLog() {
-		++logDepth_;
-	}
-	void closeLog() {
-		if (--logDepth_ == 0) {
-			log_.clear();
-		}
-	}
-	[[nodiscard]] size_t logSize() const {
-		return log_.size();
-	}
-	void undoTo(size_t mark);
+	/// Removes every entry bound to a record id of @p firstOp or later: the insertions of a rolled-back span of the
+	/// trace. Walks the whole table, which a restart of an optimistic scope can afford and `set` cannot afford to
+	/// avoid.
+	void eraseFrom(uint32_t firstOp);
 	/// Empties the map in constant time (the entries of an earlier epoch count as free); a table that grew beyond
 	/// @p keepCapacity slots is replaced by a small one, so the next trace of a thread starts with the table the last
 	/// one needed and does not grow it again.
@@ -89,12 +79,6 @@ private:
 	void grow();
 	/// Zero-filled, which is a free slot (epoch 0): obtained from `calloc`, so that a table no function fills costs a
 	/// page map instead of a constructor per entry.
-	struct LogEntry {
-		Snapshot key;
-		uint32_t previous;
-	};
-	std::vector<LogEntry> log_;
-	uint32_t logDepth_ = 0;
 	Entry* table_ = nullptr;
 	size_t capacity_ = 0, mask_ = 0, size_ = 0;
 	uint32_t epoch_ = 1;
@@ -200,6 +184,10 @@ public:
 	/// A tagged snapshot that exists means the same operation was reached again: the tail of the other path merges
 	/// with the current block and the recording returns false. True if the snapshot is new.
 	bool checkTag(const Snapshot& snapshot);
+	/// The snapshot of the last operation that was reached again.
+	[[nodiscard]] const Snapshot& lastMerge() const {
+		return lastMerge_;
+	}
 
 	/// Appends a `br` to `target` (a jump a replay passes through) to the current block.
 	uint32_t addJump(uint32_t target, const Snapshot* snapshot);
@@ -212,7 +200,7 @@ public:
 	/// The sizes of the tables when a scope started recording without tags, and the marks of the undo logs.
 	struct Checkpoint {
 		uint32_t records = 0, blocks = 0, conds = 0, allocas = 0, returns = 0, regions = 0, entryBlock = 0;
-		size_t predLog = 0, tagLog = 0;
+		size_t predLog = 0, regionLogSize = 0;
 		FlatRegion currentRegion = NO_FLAT_REGION;
 	};
 	/// Opens a checkpoint. @p entryBlock is the block the scope records into, which exists before the checkpoint; every
@@ -281,6 +269,7 @@ private:
 	uint32_t currentBlock_ = 0;
 	uint32_t cursor_ = 0;
 	uint32_t openCheckpoints_ = 0;
+	Snapshot lastMerge_;
 	std::vector<uint32_t> predLog_; // blocks whose predecessor list got an entry while a checkpoint was open
 	/// A new record of a block that is not the current one never happens, so the position of the cursor in the current
 	/// block is all a replay needs.

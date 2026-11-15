@@ -153,6 +153,11 @@ private:
 	                                 const SourceLocation* at = nullptr, const Tag* tag = nullptr) const;
 	/// Reports @p diagnostic as `engine.diagnostics` says and fails the compilation with its text.
 	[[noreturn]] void fail(const TracingDiagnostic& diagnostic) const;
+	/// The place of the scope with the most passes, resolved before its tag recorder goes away.
+	void locateHot(TracingDiagnostic& diagnostic) const;
+	std::string hotFile_;
+	uint32_t hotLine_ = 0;
+	uint64_t maxPasses_ = 256, maxReplayed_ = 100000;
 	const Tag* lastBranchTag_ = nullptr;
 	const Tag* hotTag_ = nullptr;
 	const Tag* lastTag_ = nullptr;
