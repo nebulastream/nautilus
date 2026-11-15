@@ -369,12 +369,15 @@ own PR after PR 9.
   (checked on the slow path, so the common case pays nothing). R2: a region in a replay is found by the entry block that
   the recorded path enters (`FlatTrace::seekBlock`, memo keyed by block id), without a snapshot. R4: `tracing.unwindPausedPasses`
   (a private `PausedPass` exception caught in `runScope`, the swallowed case detected after the body returns and counted as
-  `tracing.unwindFallbacks`). With R4 on, `tracing.pausedOperations` is 0 on a 24-branch chain (it is in the hundreds without). **The
-  R4 default stays off:** the data the plan asks for (NebulaStream, TPC-H) is not available to this PR, a `noexcept` frame
-  or a destructor between the traced code and its scope would terminate the process, and the fuzzer found the third reason within minutes: with R4 on, the host-side stacks of its evaluator (loop
-  frames pushed before an operation and popped after it) were left behind by the skipped tail, so a value outlived its
-  construct (`NAUT-T004`). R4 is only for traced code without such bookkeeping, so it has no fuzzer peer. Turn it on in a follow-up with the `tpch-duck` and `nebulastream-0.4` numbers; the `tracing.rerun.share` key
-  and `tools/tpch/summarize.py` report what it buys.
+  `tracing.unwindFallbacks`). **The R4 default stays off**, for three reasons. The data the plan asks for (NebulaStream, TPC-H)
+  is not available to this PR. A `noexcept` frame or a destructor between the traced code and its scope would terminate the
+  process. And the fuzzer, given a peer with R4 on, found at once that the skipped C++ tail includes host-side bookkeeping:
+  the loop-frame stacks of its evaluator were left behind, so a value outlived its construct (`NAUT-T004`); R4 is only for traced
+  code without such state, so it has no fuzzer peer. Measured on `chainedIf/100` (`tbc`, dev build, 3 repetitions): without
+  R4 101 passes, 30100 replayed and 14751 paused operations, re-run share 0.91, tracing 0.72 ms; with R4
+  `tracing.pausedOperations` is 0 (99 unwound passes) but tracing takes 1.01 ms, because a throw (about 3.5 µs) costs more
+  than the paused tail it saves (0.10 ms of the re-run time in all). On this corpus R4 does not pay; whether it does on
+  TPC-H or NebulaStream is the open question the `tracing.rerun.share` key and `tools/tpch/summarize.py` can answer.
 - **M2.3.** The std plugin takes `const val<T>&` (1115 parameters). On the std plugin's own tests the recorded copies fall
   from 4840 to 2504 (-48%), the recorded operations by 9%. `tools/tpch` (`run-tpch.sh`, `summarize.py`), the
   `tpch-duck` workflow and the TPC-H step of `baselines-0.3` implement the job and the 0.3 baseline; **none of it has run**,
@@ -390,6 +393,10 @@ own PR after PR 9.
   (nothing refers to them after the restart, and the canonical form drops what is unused). Tests:
   `ExplicitControlFlowTest.cpp`, `NirTracerFrontendTest.cpp`; the corpus twins `chainedIfExplicit` and `loopBodyExplicit`; the fuzzer
   writes If/Loop/While nodes explicitly for none, all or the odd nodes of a program, with a `force-construct-restarts` peer.
+  Callgrind, pinned image: tracing the explicit `chainedIf/300` takes 3.48 M instructions against 153 M for 0.3's implicit one
+  (2.3%), and the whole compile on `tbc` 4.1%; `loopBodyExplicit/10000` compiles in 11% of 0.3's instructions. The other
+  cases stay inside their ratchets: the per-record cost of the frontend work was brought back to the level of the M4.8
+  branch (the undo log of the tag map is gone; a rollback erases the entries of the dropped records by walking the table).
   On the explicit `chainedIf` every size traces in `1 + 2·N` passes (the function, two arms per `if`), zero replayed and
   zero paused operations.
 - **M2.6.** `nautilus/data.hpp`; the conversion folds loads at constant offsets from `data.addr`. Persistability is M5.3.
