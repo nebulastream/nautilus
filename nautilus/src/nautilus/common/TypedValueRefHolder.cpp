@@ -14,7 +14,7 @@ namespace {
 inline void acquire(ValueRef ref) {
 	if (auto* alive = detail::aliveFast) {
 		alive->increment(ref);
-	} else if (detail::activeTracer != nullptr) {
+	} else if (detail::activeTracer != nullptr && !detail::pausedFast) {
 		detail::allocateValRefSlow(ref);
 	}
 }
@@ -24,7 +24,7 @@ inline void release(ValueRef ref) {
 			return;
 		}
 	}
-	if (detail::activeTracer != nullptr) {
+	if (detail::activeTracer != nullptr && !detail::pausedFast) {
 		detail::freeValRefSlow(ref);
 	}
 }

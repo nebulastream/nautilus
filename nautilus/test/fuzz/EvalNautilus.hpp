@@ -5,6 +5,7 @@
 #include "Types.hpp"
 #include <array>
 #include <limits>
+#include <nautilus/control_flow.hpp>
 #include <nautilus/function.hpp>
 #include <nautilus/select.hpp>
 #include <nautilus/static.hpp>
@@ -53,6 +54,26 @@ using TracedArgs = std::array<TracedValue<T>, N>;
  *     handling here: producing the correct two's-complement result for
  *     `+ - * unary-` is exactly the behavior under test.
  */
+/// Whether the program being traced on this thread may write its If/Loop/While nodes with the explicit constructs. The
+/// peers that trace with the 0.3 tracer run the constructs as native control flow, which that tracer explores
+/// exponentially for nested loops, so they trace the native form of the same program instead.
+inline bool& explicitControlFlowAllowed() {
+	static thread_local bool allowed = true;
+	return allowed;
+}
+
+struct ExplicitControlFlowGuard {
+	explicit ExplicitControlFlowGuard(bool allowed) : previous(explicitControlFlowAllowed()) {
+		explicitControlFlowAllowed() = allowed;
+	}
+	~ExplicitControlFlowGuard() {
+		explicitControlFlowAllowed() = previous;
+	}
+	ExplicitControlFlowGuard(const ExplicitControlFlowGuard&) = delete;
+	ExplicitControlFlowGuard& operator=(const ExplicitControlFlowGuard&) = delete;
+	bool previous;
+};
+
 namespace detail {
 
 template <typename T>
@@ -208,6 +229,14 @@ struct TracedEvalContext {
 	std::vector<TracedLoopSignal<T>> signalStack;
 	val<T*> basePtr;
 	val<T*> lastPtr; // basePtr + (BUFFER_ELEMS - 1), precomputed once
+	/// Which If/Loop/While nodes are written with the explicit constructs of nautilus/control_flow.hpp instead of
+	/// native control flow: 0 none, 1 all, 2 the nodes with an odd index (mixed with native ones, which also nest in
+	/// the arms). Derived from the program, so every backend traces the same shape; the 0.3 tracer peers trace the
+	/// constructs as native control flow and are a differential reference for them.
+	int explicitMode = 0;
+	[[nodiscard]] bool useExplicit(int idx) const {
+		return explicitMode == 1 || (explicitMode == 2 && (idx & 1) != 0);
+	}
 };
 
 template <typename T>
@@ -349,6 +378,10 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 		TracedValue<T> result = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
 		val<bool> cond = c != TracedValue<T>(T(0));
 		applyProbabilityHint<T>(n, cond);
+		if (ctx.useExplicit(idx)) {
+			If(cond, [&] { result = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx); });
+			return result;
+		}
 		if (cond) {
 			result = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
 		}
@@ -366,6 +399,21 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 			val<int32_t> trips = clampTripCountTraced<T>(rawCount);
 			TracedValue<T> acc = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
 			ctx.signalStack.push_back(TracedLoopSignal<T> {});
+			if (ctx.useExplicit(idx)) {
+				For(val<int32_t>(0), trips, [&](val<int32_t> i) {
+					ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc});
+					acc = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
+					ctx.loopStack.pop_back();
+					TracedLoopSignal<T>& sig = ctx.signalStack.back();
+					val<bool> doBreak = sig.breakRequested;
+					sig.breakRequested = val<bool>(false);
+					sig.continueRequested = val<bool>(false);
+					// a pending continue is the end of the body anyway
+					If(doBreak, [&] { Break(); });
+				});
+				ctx.signalStack.pop_back();
+				return acc;
+			}
 			for (val<int32_t> i = 0; i < trips; i = i + 1) {
 				ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc});
 				acc = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
@@ -396,6 +444,26 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 	case Kind::While: {
 		TracedValue<T> acc = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
 		ctx.signalStack.push_back(TracedLoopSignal<T> {});
+		if (ctx.useExplicit(idx)) {
+			val<int32_t> trips = 0;
+			While([&] { return trips < val<int32_t>(LOOP_MAX_TRIPS); },
+			      [&] {
+				      ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(trips), acc});
+				      TracedValue<T> condVal = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
+				      // the host state is balanced on every path: the body is run once in C++ whatever Break does
+				      If(condVal == TracedValue<T>(T(0)), [&] { Break(); });
+				      acc = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
+				      ctx.loopStack.pop_back();
+				      TracedLoopSignal<T>& sig = ctx.signalStack.back();
+				      val<bool> doBreak = sig.breakRequested;
+				      sig.breakRequested = val<bool>(false);
+				      sig.continueRequested = val<bool>(false);
+				      If(doBreak, [&] { Break(); });
+				      trips = trips + 1;
+			      });
+			ctx.signalStack.pop_back();
+			return acc;
+		}
 		for (val<int32_t> trips = 0; trips < val<int32_t>(LOOP_MAX_TRIPS); trips = trips + 1) {
 			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(trips), acc});
 			TracedValue<T> condVal = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
@@ -700,6 +768,9 @@ TracedValue<T> evalNautilus(const Ast& ast, val<T*> basePtr, std::span<const Tra
 	detail::TracedEvalContext<T> ctx;
 	ctx.basePtr = basePtr;
 	ctx.lastPtr = basePtr + static_cast<int32_t>(BUFFER_ELEMS - 1);
+	ctx.explicitMode = !explicitControlFlowAllowed()
+	                       ? 0
+	                       : static_cast<int>((static_cast<size_t>(ast.root + 1) * 7 + ast.nodes.size()) % 3);
 	return detail::evalNautilusGeneric<T>(ast, ast.root, args, ctx);
 }
 

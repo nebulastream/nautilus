@@ -53,6 +53,54 @@ void TagMap::set(const Snapshot& key, uint32_t op) {
 	++size_;
 }
 
+void TagMap::erase(const Snapshot& key) {
+	size_t hole = hashOf(key) & mask_;
+	while (table_[hole].epoch == epoch_) {
+		if (table_[hole].key == key) {
+			break;
+		}
+		hole = (hole + 1) & mask_;
+	}
+	if (table_[hole].epoch != epoch_) {
+		return;
+	}
+	--size_;
+	// shift back the entries of the probe sequence that would not be found past the hole
+	size_t next = hole;
+	for (;;) {
+		next = (next + 1) & mask_;
+		if (table_[next].epoch != epoch_) {
+			break;
+		}
+		const size_t home = hashOf(table_[next].key) & mask_;
+		// the entry may move into the hole if its home is not in the cyclic range (hole, next]
+		const bool between = hole <= next ? (hole < home && home <= next) : (hole < home || home <= next);
+		if (!between) {
+			table_[hole] = table_[next];
+			hole = next;
+		}
+	}
+	table_[hole].epoch = 0;
+}
+
+void TagMap::eraseFrom(uint32_t firstOp) {
+	// the survivors are written back into a table of the next epoch
+	std::vector<Entry> survivors;
+	for (size_t i = 0; i < capacity_; ++i) {
+		if (table_[i].epoch == epoch_ && table_[i].op < firstOp) {
+			survivors.push_back(table_[i]);
+		}
+	}
+	size_ = 0;
+	if (++epoch_ == 0) {
+		std::memset(static_cast<void*>(table_), 0, capacity_ * sizeof(Entry));
+		epoch_ = 1;
+	}
+	for (const auto& entry : survivors) {
+		set(entry.key, entry.op);
+	}
+}
+
 void TagMap::grow() {
 	Entry* old = table_;
 	const size_t oldCapacity = capacity_;
@@ -147,6 +195,8 @@ void FlatTrace::reset(nir::Module& module) {
 	currentRegion = NO_FLAT_REGION;
 	currentBlock_ = 0;
 	cursor_ = 0;
+	openCheckpoints_ = 0;
+	predLog_.clear();
 	tags.clear();
 	recs.push_back(nir::Inst {});
 	meta.push_back({});
@@ -179,7 +229,8 @@ void FlatTrace::markOperation(uint32_t first, const Snapshot* snapshot, TypedVal
 	meta[first].flags |= RecGroup;
 	meta[first].result = result.ref;
 	meta[first].type = result.type;
-	if (snapshot != nullptr) {
+	// a snapshot without a tag is the one of an operation recorded optimistically: it has no entry
+	if (snapshot != nullptr && snapshot->getTag() != nullptr) {
 		tags.set(*snapshot, first);
 	}
 }
@@ -268,6 +319,7 @@ bool FlatTrace::checkTag(const Snapshot& snapshot) {
 	// the operation exists: it is reached again, which is a control-flow merge
 	const auto op = tags.find(snapshot);
 	if (op != nir::NONE) {
+		lastMerge_ = snapshot; // for the diagnostic of a constant loop, which this merge may turn out to be
 		processControlFlowMerge(op);
 		return false;
 	}
@@ -288,7 +340,7 @@ uint32_t FlatTrace::addJump(uint32_t target, const Snapshot* snapshot) {
 uint32_t FlatTrace::processControlFlowMerge(uint32_t op) {
 	const uint32_t referenceIndex = meta[op].block;
 	if (referenceIndex == currentBlock_) {
-		throw RuntimeException("Invalid trace. This is maybe caused by a constant loop.");
+		throw ConstantLoopError();
 	}
 	const uint32_t merged = createBlock();
 	blocks[merged].merge = true;
@@ -321,6 +373,68 @@ uint32_t FlatTrace::processControlFlowMerge(uint32_t op) {
 		std::replace(preds.begin(), preds.end(), previousCurrent, merged);
 	});
 	return merged;
+}
+
+FlatTrace::Checkpoint FlatTrace::checkpoint(uint32_t entryBlock) {
+	Checkpoint cp;
+	cp.records = static_cast<uint32_t>(recs.size());
+	cp.blocks = static_cast<uint32_t>(blocks.size());
+	cp.conds = static_cast<uint32_t>(conds.size());
+	cp.allocas = static_cast<uint32_t>(allocas.size());
+	cp.returns = static_cast<uint32_t>(returns.size());
+	cp.regions = static_cast<uint32_t>(regions.size());
+	cp.entryBlock = entryBlock;
+	cp.currentRegion = currentRegion;
+	cp.predLog = predLog_.size();
+	cp.regionLogSize = regionLog.size();
+	++openCheckpoints_;
+	return cp;
+}
+
+void FlatTrace::addPred(uint32_t block, uint32_t pred) {
+	blocks[block].preds.push_back(pred);
+	if (openCheckpoints_ > 0) {
+		predLog_.push_back(block);
+	}
+}
+
+void FlatTrace::release(const Checkpoint&) {
+	--openCheckpoints_;
+	if (openCheckpoints_ == 0) {
+		predLog_.clear();
+	}
+}
+
+void FlatTrace::rollback(const Checkpoint& cp) {
+	tags.eraseFrom(cp.records);
+	// the predecessors added to blocks that existed before the checkpoint (the others are dropped below)
+	while (predLog_.size() > cp.predLog) {
+		const auto block = predLog_.back();
+		predLog_.pop_back();
+		if (block < cp.blocks) {
+			blocks[block].preds.pop_back();
+		}
+	}
+	// the entry block of the scope keeps the records it had; every other older block got none
+	auto& entry = blocks[cp.entryBlock].ops;
+	entry.erase(std::lower_bound(entry.begin(), entry.end(), cp.records), entry.end());
+	while (blocks.size() > cp.blocks) {
+		if (blocks.back().ops.capacity() <= 4096 && spareVectors_.size() < 1024) {
+			blocks.back().ops.clear();
+			spareVectors_.push_back(std::move(blocks.back().ops));
+		}
+		blocks.pop_back();
+	}
+	recs.resize(cp.records);
+	meta.resize(cp.records);
+	conds.resize(cp.conds);
+	allocas.resize(cp.allocas);
+	returns.resize(cp.returns);
+	regions.resize(cp.regions);
+	regionLog.resize(cp.regionLogSize);
+	currentRegion = cp.currentRegion;
+	cursor_ = 0;
+	release(cp);
 }
 
 FlatRegion FlatTrace::addRegion(const RegionAttributes& attributes, uint32_t entryBlock) {

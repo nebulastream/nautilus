@@ -238,7 +238,27 @@ void recordTracingStatistics(CompilationStatistics& statistics, const tracing::T
 		s.set("tracing.rerun.follow.ms", t.rerunFollowMs);
 		s.set("tracing.rerun.record.ms", t.rerunRecordMs);
 		s.set("tracing.rerun.paused.ms", t.rerunPausedMs);
+		// the share of the pass time that went into re-runs (0 when nothing ran twice): the target of R1-R4
+		const double passes = t.firstRunMs + t.rerunMs;
+		s.set("tracing.rerun.share", passes > 0 ? t.rerunMs / passes : 0.0);
+		s.set("tracing.unwoundPasses", static_cast<int64_t>(t.unwoundPasses));
+		s.set("tracing.unwindFallbacks", static_cast<int64_t>(t.unwindFallbacks));
+		s.set("tracing.constructs", static_cast<int64_t>(t.constructs));
+		s.set("tracing.constructRestarts", static_cast<int64_t>(t.constructRestarts));
 	});
+}
+
+/// The warnings of the tracer (docs/diagnostics.md) as `diagnostics.count` and
+/// `diagnostics.<n>.{code,message,hint,location}`.
+void recordTracingDiagnostics(CompilationStatistics& statistics, const std::vector<tracing::TracingDiagnostic>& list) {
+	statistics.set("diagnostics.count", static_cast<int64_t>(list.size()));
+	for (size_t i = 0; i < list.size(); ++i) {
+		const auto prefix = "diagnostics." + std::to_string(i) + ".";
+		statistics.set(prefix + "code", list[i].code);
+		statistics.set(prefix + "message", list[i].message);
+		statistics.set(prefix + "hint", list[i].hint);
+		statistics.set(prefix + "location", list[i].location());
+	}
 }
 
 /// Throws if `module` does not verify; `what` names the module in the message.
@@ -538,6 +558,7 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::traceToNir(std::list<Compilabl
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 		recordTracingStatistics(*statistics, traced.statistics);
+		recordTracingDiagnostics(*statistics, traced.diagnostics);
 	}
 	dumpHandler.dump("after_nir_tracing", "nir", [&]() { return nir::print(traced.module); });
 

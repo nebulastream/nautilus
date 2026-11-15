@@ -57,3 +57,27 @@ The thread keeps the tables of the NIR tracer between traces (the flat trace, th
 write-out scratch of `emitFunction`), so a trace allocates only what it outgrows; anything new that is per trace belongs
 there too, bounded so that one huge trace does not tax the small ones after it. Measure with `nautilus-compile-bench`
 and callgrind on `nautilus-tracing-corpus` (the `perf-investigation` skill).
+
+## Frontend features of M2 (NIR tracer)
+
+- **Paused passes (R3, R4, R2).** A paused scope publishes `detail::pausedFast` (`syncAlive`), so the holders of `val<T>`
+  skip the reference counting; any new code that relies on `allocateValRef` while paused must say so there.
+  `tracing.unwindPausedPasses` makes `pauseAndUnwind` throw `PausedPass` (derived from nothing), which `runScope`
+  catches; a body that returns after the throw swallowed it (`tracing.unwindFallbacks`). Every place that finishes a pass
+  calls `pauseAndUnwind`, except `traceScopeExit`, which runs after the body. A region or construct in a replay is found
+  by its entry block (`FlatTrace::seekBlock`, `regionMemo`), not by a snapshot.
+- **Explicit constructs (`control_flow.hpp`).** `traceIf`/`traceLoop` run the arms, header, body and step as child scopes
+  (`runConstructScope`, kinds in `ScopeKind`) between blocks the construct creates; the construct is memoized by its entry
+  block like a region. A construct scope is *optimistic*: `recordSnapshot()` returns the tag-less snapshot (which
+  `TagMap` ignores) until `traceBool` meets a native branch, then `requestRestart` -> `restartScope` rolls the
+  `FlatTrace` back to the checkpoint taken in `runScope` (`FlatTrace::checkpoint/rollback`). **Any new append to a block
+  that is older than the scope must go through `FlatTrace::addPred` (or be reproduced in `rollback`), and any new table
+  that grows while recording must be truncated there**, or a restart leaves stale state. `tracing.forceConstructRestarts`
+  runs every construct scope through a restart: use it in the test of any change to this code.
+- **Non-local exits** record the destructor calls of the owned values above the loop frame's depth (`emitExitDestructors`),
+  then a jump (`Break`, `Continue`) or `ret` (`Return`), and pause the pass. They never touch `activeDestructors`.
+- **Diagnostics.** `TracingDiagnostics.*` defines `NAUT-T…` codes (`docs/diagnostics.md`); the tracer raises errors through
+  `NirTracer::fail` and collects the warnings of a session in `NirTraceResult::diagnostics`. A new user-facing tracer
+  error gets a code, a catalog entry and a test in `TracingDiagnosticsTest.cpp`.
+- **Constant data.** `traceData` interns a data object; the conversion folds loads from `data.addr` plus constant adds
+  (`FunctionConverter::simplify`, `Op::Load`).

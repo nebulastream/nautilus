@@ -17,6 +17,10 @@ namespace detail {
 /// executable's access is a single `%fs`-relative load.
 inline thread_local TracingInterface* activeTracer = nullptr;
 inline thread_local AliveVariableHash* aliveFast = nullptr;
+/// Set while the active tracer's current scope runs a pass that is already finished (paused): the holders of `val<T>`
+/// then neither count nor call the tracer (the minimal paused path, R3 in
+/// docs/plans/nautilus-0.4/01-tracing-frontend.md).
+inline thread_local bool pausedFast = false;
 /// The slow paths: ask the tracer (paused scopes, values of an enclosing region, no tracer).
 void allocateValRefSlow(ValueRef ref);
 void freeValRefSlow(ValueRef ref);

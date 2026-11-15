@@ -196,6 +196,26 @@ When `dump.graph.full` is false, only the control-flow graph is shown (block-to-
 
 See [graphs.md](graphs.md) for visualization examples.
 
+## Re-runs, Paused Passes and Diagnostics
+
+The tracer runs a scope (the function, a `region()` body, an arm of an explicit construct) once per explored path. A pass
+that reaches an operation it has already recorded is finished (a control-flow merge), but the C++ body still runs to its
+end on a *paused* path. `engine.logStatistics=true` shows what that costs: `tracing.iterations`,
+`tracing.replayedOperations` (operations a re-run stepped over), `tracing.pausedOperations` (operations the paused tails
+ran), `tracing.rerun.{follow,record,paused}.ms`, `tracing.rerun.share` (the part of the pass time that went into re-runs)
+and `tracing.copies.{construct,assign,explicit}`.
+
+* While a pass is paused, a `val<T>` operation does one flag check and no bookkeeping.
+* `tracing.unwindPausedPasses=true` ends a finished pass at once with a private exception that its scope catches, so
+  `tracing.pausedOperations` is about 0. User code that swallows it with `catch (...)` is detected
+  (`tracing.unwindFallbacks`); a `noexcept` function or a destructor between the traced code and its scope would terminate
+  the process, which is why the option is off by default. The tail it skips is C++ code too: a body that keeps host-side
+  bookkeeping (a stack that is pushed before an operation and popped after it) is left in the state of the first
+  skipped statement, so the option is only for traced code that is free of such state.
+* A `region()` in a re-run is found by the block the recorded path enters, without a snapshot of its call site.
+* Many re-runs of one scope are the cost to attack: wrap the independent branches in `region()` or write them with the
+  explicit constructs of [control-flow.md](control-flow.md#explicit-control-flow).
+
 ## Limitations and Considerations
 
 **Functions must be deterministic with respect to control flow.** The tracer executes the function exactly once with symbolic arguments. All branches must be reachable through this symbolic execution. If a branch depends on external state (e.g., the current time), the tracer will only see the path taken during the tracing run.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/common/RegionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/nir/Module.hpp"
 #include "nautilus/tracing/Snapshot.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
@@ -17,6 +18,13 @@ namespace nautilus::tracing::nirtrace {
 /// joins. The record index is the global id of an operation; a `val<T>` holds it as its value reference, and a tagged
 /// operation is found again through the tag map by that id, which no split rewrites.
 
+/// An operation was reached again in the block it was recorded in: with the same call stack and static state, the
+/// tracer takes it for a loop whose condition never changes (NAUT-T001).
+struct ConstantLoopError : RuntimeException {
+	ConstantLoopError() : RuntimeException("Invalid trace. This is maybe caused by a constant loop.") {
+	}
+};
+
 using FlatRegion = uint32_t;
 inline constexpr FlatRegion NO_FLAT_REGION = 0xFFFFFFFFu;
 
@@ -29,6 +37,8 @@ public:
 	~TagMap();
 	/// The record id, or `nir::NONE`.
 	[[nodiscard]] uint32_t find(const Snapshot& key) const {
+		// a key without a tag (an operation recorded optimistically) is never in the table: the probe ends at a free
+		// slot
 		size_t slot = hashOf(key) & mask_;
 		while (table_[slot].epoch == epoch_) {
 			if (table_[slot].key == key) {
@@ -38,7 +48,14 @@ public:
 		}
 		return nir::NONE;
 	}
+	/// @p key must have a tag.
 	void set(const Snapshot& key, uint32_t op);
+	/// Removes @p key (backward-shift deletion, which keeps the probe sequences of linear probing intact).
+	void erase(const Snapshot& key);
+	/// Removes every entry bound to a record id of @p firstOp or later: the insertions of a rolled-back span of the
+	/// trace. Walks the whole table, which a restart of an optimistic scope can afford and `set` cannot afford to
+	/// avoid.
+	void eraseFrom(uint32_t firstOp);
 	/// Empties the map in constant time (the entries of an earlier epoch count as free); a table that grew beyond
 	/// @p keepCapacity slots is replaced by a small one, so the next trace of a thread starts with the table the last
 	/// one needed and does not grow it again.
@@ -145,18 +162,58 @@ public:
 	/// The record the replay is at, passing through jumps.
 	[[nodiscard]] const nir::Inst& currentRecord();
 	[[nodiscard]] uint32_t currentRecordId();
+	/// Moves the cursor through the jumps in front of it until it is at the start of a block for which
+	/// `isWanted(block)` holds; false, with the cursor left where the search stopped, if a record that is not a jump is
+	/// reached first. A replay uses it to find the region it re-enters by its entry block.
+	template <class F>
+	bool seekBlock(F&& isWanted) {
+		for (;;) {
+			const auto& ops = blocks[currentBlock_].ops;
+			if (cursor_ == 0 && isWanted(currentBlock_)) {
+				return true;
+			}
+			if (cursor_ >= ops.size() || !isJump(ops[cursor_])) {
+				return false;
+			}
+			setCurrentBlock(recs[ops[cursor_]].a);
+		}
+	}
 	/// The result of the operation under the cursor, then steps over it.
 	TypedValueRef consumeOperation();
 
 	/// A tagged snapshot that exists means the same operation was reached again: the tail of the other path merges
 	/// with the current block and the recording returns false. True if the snapshot is new.
 	bool checkTag(const Snapshot& snapshot);
+	/// The snapshot of the last operation that was reached again.
+	[[nodiscard]] const Snapshot& lastMerge() const {
+		return lastMerge_;
+	}
 
 	/// Appends a `br` to `target` (a jump a replay passes through) to the current block.
 	uint32_t addJump(uint32_t target, const Snapshot* snapshot);
 
 	/// Splits the block of record `op` there and joins the tail with the current block's path; see ExecutionTrace.
 	uint32_t processControlFlowMerge(uint32_t op);
+
+	// ---- checkpoints (optimistic recording of explicit constructs, 01 §5.2) ------------------------------------
+
+	/// The sizes of the tables when a scope started recording without tags, and the marks of the undo logs.
+	struct Checkpoint {
+		uint32_t records = 0, blocks = 0, conds = 0, allocas = 0, returns = 0, regions = 0, entryBlock = 0;
+		size_t predLog = 0, regionLogSize = 0;
+		FlatRegion currentRegion = NO_FLAT_REGION;
+	};
+	/// Opens a checkpoint. @p entryBlock is the block the scope records into, which exists before the checkpoint; every
+	/// other block the scope appends records to is newer, or has its predecessor appends logged (`addPred`).
+	Checkpoint checkpoint(uint32_t entryBlock);
+	/// Truncates every table back to @p cp, undoes the logged appends to older blocks and the tag-map insertions, and
+	/// closes the checkpoint. The constant pool, the pointers, callees, extra words and data objects stay: nothing
+	/// refers to them any more, and the canonical form drops what is unused.
+	void rollback(const Checkpoint& cp);
+	/// Closes @p cp and keeps what was recorded.
+	void release(const Checkpoint& cp);
+	/// Adds @p pred to the predecessors of @p block, remembering it while a checkpoint is open.
+	void addPred(uint32_t block, uint32_t pred);
 
 	// ---- regions ----------------------------------------------------------------------------------------------
 
@@ -211,6 +268,9 @@ private:
 	void recycleBlocks();
 	uint32_t currentBlock_ = 0;
 	uint32_t cursor_ = 0;
+	uint32_t openCheckpoints_ = 0;
+	Snapshot lastMerge_;
+	std::vector<uint32_t> predLog_; // blocks whose predecessor list got an entry while a checkpoint was open
 	/// A new record of a block that is not the current one never happens, so the position of the cursor in the current
 	/// block is all a replay needs.
 	void passJumps();

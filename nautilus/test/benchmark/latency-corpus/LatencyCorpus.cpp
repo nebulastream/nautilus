@@ -13,6 +13,10 @@
 #include "nautilus/config.hpp"
 #include "nautilus/function.hpp"
 #include "nautilus/region.hpp"
+#if __has_include("nautilus/control_flow.hpp")
+#include "nautilus/control_flow.hpp"
+#define NAUTILUS_CORPUS_EXPLICIT 1
+#endif
 #include "nautilus/static.hpp"
 #include <algorithm>
 #include <atomic>
@@ -155,6 +159,38 @@ static val<int64_t> calls(val<int64_t> x) {
 	return r;
 }
 
+// The explicit control-flow twins of chainedIf and loopBody (docs/plans/nautilus-0.4/01-tracing-frontend.md §5): the
+// same functions written with If and For, which trace in one pass. The corpus is also built against 0.3, which has no
+// explicit constructs: there the twins are the implicit functions, so that the callgrind gate compares the 0.4 twin
+// with the 0.3 cost of the same computation.
+#ifdef NAUTILUS_CORPUS_EXPLICIT
+static val<int64_t> chainedIfExplicit(val<int64_t> x) {
+	val<int64_t> r = 0;
+	for (static_val<int> i = 0; i < N; i++) {
+		If(x > i, [&] { r = r + 1; });
+	}
+	return r;
+}
+
+static val<int64_t> loopBodyExplicit(val<int64_t> n) {
+	val<int64_t> r = 1;
+	For(val<int64_t>(0), n, [&](val<int64_t> j) {
+		for (static_val<int> i = 0; i < N; i++) {
+			r = r + j * i;
+		}
+	});
+	return r;
+}
+#else
+static val<int64_t> chainedIfExplicit(val<int64_t> x) {
+	return chainedIf(x);
+}
+
+static val<int64_t> loopBodyExplicit(val<int64_t> n) {
+	return loopBody(n);
+}
+#endif
+
 // 1024 distinct call sites (no static_val): stresses tag creation / the tag trie.
 #define NAUTILUS_SITE r = r * 3 + 1;
 #define NAUTILUS_SITE4 NAUTILUS_SITE NAUTILUS_SITE NAUTILUS_SITE NAUTILUS_SITE
@@ -222,6 +258,8 @@ int main(int argc, char** argv) {
 	    {"chainedIf", chainedIf, {10, 100, 300}},
 	    {"chainedIfRegion", chainedIfRegion, {10, 100, 300}},
 	    {"loopBody", loopBody, {100, 1000, 10000}},
+	    {"chainedIfExplicit", chainedIfExplicit, {10, 100, 300}},
+	    {"loopBodyExplicit", loopBodyExplicit, {100, 1000, 10000}},
 	    {"loopInvariantReassign", loopInvariantReassign, {100, 1000}},
 	    {"calls", calls, {100, 1000, 5000}},
 	    {"distinctSites1024", distinctSites1024, {1}},

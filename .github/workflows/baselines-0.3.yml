@@ -51,8 +51,22 @@ jobs:
         run: |
           # builds main with the driver, runs the corpus and the execution tests, extracts the IR facts
           driver/tools/baselines/record-0.3.sh main baselines-0.3 5 build
+      - name: Record the TPC-H baseline (needs nautilus-duck, see tpch-duck.yml)
+        if: ${{ vars.TPCH_DUCK_ENABLED == 'true' }}
+        uses: actions/checkout@v4
+        with:
+          repository: nebulastream/nautilus-duck
+          token: ${{ secrets.NAUTILUS_DUCK_TOKEN || github.token }}
+          path: duck
+      - name: Run the 22 queries against main (0.3)
+        if: ${{ vars.TPCH_DUCK_ENABLED == 'true' }}
+        shell: bash
+        run: |
+          driver/tools/tpch/run-tpch.sh main duck baselines-0.3/tpch
       - name: upload the baseline
         uses: actions/upload-artifact@v4
         with:
           name: baselines-0.3-${{ github.sha }}
-          path: baselines-0.3/*.*
+          path: |
+            baselines-0.3/*.*
+            baselines-0.3/tpch/summary.json

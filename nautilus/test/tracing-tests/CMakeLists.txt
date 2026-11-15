@@ -19,7 +19,7 @@ catch_discover_tests(nautilus-tracing-unit-tests EXTRA_ARGS --allow-running-no-t
 
 # The direct NIR tracer: golden pre-SSA dumps and agreement with the 0.3 tracer. NAUTILUS_UPDATE_GOLDEN=1 rewrites the
 # dumps in data/nir-trace.
-target_sources(nautilus-tracing-unit-tests PRIVATE NirTracerTest.cpp)
+target_sources(nautilus-tracing-unit-tests PRIVATE NirTracerTest.cpp NirTracerFrontendTest.cpp)
 target_compile_definitions(nautilus-tracing-unit-tests PRIVATE
         NIR_TRACE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../data/nir-trace")
 

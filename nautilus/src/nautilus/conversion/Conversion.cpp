@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstring>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -474,6 +475,8 @@ private:
 	uint32_t padFor(const std::vector<std::pair<uint32_t, Ref>>& entries);
 	uint32_t convertUnwind(uint32_t b, uint32_t cleanupOffset);
 	Ref simplify(Inst& inst);
+	/// A load from a data object at a constant offset, as the constant it reads (13 §5.8); NONE if it is not one.
+	[[gnu::noinline]] Ref foldDataLoad(const Inst& inst);
 
 	// ---- common subexpressions (M3.4) --------------------------------------------------------------------------
 	// Available values are recorded with the block that computed them, and the blocks are chained to their only static
@@ -1207,6 +1210,56 @@ Ref FunctionConverter::simplify(Inst& ni) {
 	}
 }
 
+Ref FunctionConverter::foldDataLoad(const Inst& ni) {
+	using namespace semantics;
+	const auto type = static_cast<TypeId>(ni.type);
+	auto isC = [&](Ref r) {
+		return isConstRef(r);
+	};
+	auto bitsOf = [&](Ref r) {
+		return out().consts.record(r).bits;
+	};
+	auto make = [&](uint64_t bits, TypeId t, std::initializer_list<Ref>) -> Ref {
+		return out().consts.intern(t, Provenance::Literal, bits);
+	};
+	// a load from a data object at a constant offset reads bytes the module owns (13 §5.8): `data.addr`, possibly
+	// advanced by constant `add`s
+	const bool scalar = type == TypeId::I8 || type == TypeId::I16 || type == TypeId::I32 || type == TypeId::I64 ||
+	                    type == TypeId::F32 || type == TypeId::F64;
+	if (!scalar) {
+		return NONE;
+	}
+	uint64_t offset = 0;
+	Ref base = ni.a;
+	for (int depth = 0; depth < 16 && isTemp(base); ++depth) {
+		base = resolve(base);
+		const auto& t = temps_[base];
+		if (t.kind != Kind::Inst) {
+			return NONE;
+		}
+		if (t.inst.op == static_cast<uint16_t>(Op::DataAddr)) {
+			if (t.inst.a >= pre().data.size()) {
+				return NONE;
+			}
+			const auto& object = pre().data[t.inst.a];
+			const uint64_t size = widthOf(type) / 8;
+			if (offset > object.size || size > object.size - offset || offset % size != 0 || object.align < size) {
+				return NONE; // outside the object or not aligned: undefined, so left to run
+			}
+			uint64_t bits = 0;
+			std::memcpy(&bits, pre().dataBytes.data() + object.byteOffset + offset, size);
+			return make(bits, type, {});
+		}
+		if (t.inst.op == static_cast<uint16_t>(Op::Add) && t.type == TypeId::Ptr && isC(t.inst.b)) {
+			offset += bitsOf(t.inst.b);
+			base = t.inst.a;
+			continue;
+		}
+		return NONE;
+	}
+	return NONE;
+}
+
 void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& inst) {
 	const auto op = static_cast<Op>(inst.op);
 	switch (op) {
@@ -1242,7 +1295,7 @@ void FunctionConverter::convertInstruction(uint32_t b, uint32_t id, const Inst& 
 		ni.c = operand(inst.c, b);
 	}
 	if (optimize_) {
-		if (Ref folded = simplify(ni); folded != NONE) {
+		if (Ref folded = op == Op::Load ? foldDataLoad(ni) : simplify(ni); folded != NONE) {
 			++stats().folded;
 			if (isVariable_[id]) {
 				setDef(id, b, folded);

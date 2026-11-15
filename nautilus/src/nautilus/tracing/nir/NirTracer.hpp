@@ -7,6 +7,7 @@
 #include "nautilus/options.hpp"
 #include "nautilus/tracing/AliveVariableHash.hpp"
 #include "nautilus/tracing/Snapshot.hpp"
+#include "nautilus/tracing/TracingDiagnostics.hpp"
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "nautilus/tracing/TracingStatistics.hpp"
 #include "nautilus/tracing/nir/FlatTrace.hpp"
@@ -28,6 +29,8 @@ namespace nautilus::tracing::nirtrace {
 struct NirTraceResult {
 	::nautilus::nir::Module module;
 	TracingStatistics statistics;
+	/// The warnings of the session (NAUT-T002, NAUT-T003).
+	std::vector<TracingDiagnostic> diagnostics;
 };
 
 /**
@@ -84,6 +87,16 @@ public:
 	TypedValueRef& traceExtOp(uint16_t opcode, uint8_t resultType, const std::vector<TypedValueRef>& inputs) override;
 	TypedValueRef& traceData(std::span<const std::byte> bytes, size_t align) override;
 	TypedValueRef& traceBinding(std::string_view name, size_t size, size_t align) override;
+	bool tracesExplicitControlFlow() const override {
+		return true;
+	}
+	void traceIf(const TypedValueRef& condition, double probability, std::function<void()>& thenArm,
+	             std::function<void()>& elseArm) override;
+	void traceLoop(std::function<void()>& header, std::function<void()>& body, std::function<void()>* step) override;
+	void traceLoopCondition(const TypedValueRef& condition, double probability) override;
+	void traceBreak() override;
+	void traceContinue() override;
+	void traceExplicitReturn(Type type, const TypedValueRef& ref) override;
 	void allocateValRef(ValueRef ref) override;
 	void freeValRef(ValueRef ref) override;
 	void pushStaticVal(void* ptr, size_t size) override;
@@ -112,11 +125,50 @@ private:
 	TypedValueRef& follow();
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(OnCreation&& onCreation);
-	Snapshot recordSnapshot();
+	/// The snapshot of the operation being recorded: a frame walk and a hash of the static and alive values. An
+	/// optimistic scope (explicit constructs, 01 §5.2) records its operations without one, which is a snapshot with no
+	/// tag; @p force takes it anyway, for the constructs and regions that are memo keys.
+	Snapshot recordSnapshot(bool force = false);
 	void runScope(std::function<void()>& body);
 	void traceScopeExit();
 	void initRegionScope(NirTracer& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder,
 	                     const RegionAttributes& attributes);
+	/// What a scope is: the traced function, a `region()` body, or one of the scopes of an explicit construct. They
+	/// differ in how a pass ends (`traceScopeExit`) and in what may leave them (`Break`, `Continue`, `Return`).
+	enum class ScopeKind : uint8_t { Function, Region, Arm, LoopHeader, LoopBody, LoopStep };
+	void initConstructScope(NirTracer& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder, ScopeKind kind);
+	/// Runs @p scopeBody as a scope of kind @p kind of this scope, between @p entry and @p exit, and takes the
+	/// destructor list it ends with back.
+	void runConstructScope(std::function<void()>& scopeBody, uint32_t entry, uint32_t exit, ScopeKind kind,
+	                       TagAddress root);
+	/// Ends the pass of an arm, loop body or step: the jump to the construct's continuation.
+	void constructExit();
+	/// Records the destructor calls of the owned values above @p depth of the destructor list, last registered first.
+	void emitExitDestructors(size_t depth);
+	/// The scopes between this one and @p target (exclusive): an exit must not cross a `region()`.
+	void requireNoRegionBetween(const NirTracer* target, const char* what) const;
+	/// A diagnostic at @p at (a place the user wrote down) or at the innermost user frame of @p tag, or at the place
+	/// the traced function was registered at.
+	TracingDiagnostic makeDiagnostic(const char* code, std::string title, std::string message, std::string hint,
+	                                 const SourceLocation* at = nullptr, const Tag* tag = nullptr) const;
+	/// Reports @p diagnostic as `engine.diagnostics` says and fails the compilation with its text.
+	[[noreturn]] void fail(const TracingDiagnostic& diagnostic) const;
+	/// The place of the scope with the most passes, resolved before its tag recorder goes away.
+	void locateHot(TracingDiagnostic& diagnostic) const;
+	std::string hotFile_;
+	uint32_t hotLine_ = 0;
+	uint64_t maxPasses_ = 256, maxReplayed_ = 100000;
+	const Tag* lastBranchTag_ = nullptr;
+	const Tag* hotTag_ = nullptr;
+	const Tag* lastTag_ = nullptr;
+	DiagnosticsMode diagnosticsMode_ = DiagnosticsMode::Off;
+	/// `Break` (@p isBreak) and `Continue`: the destructor calls, the jump, and the pause.
+	void exitLoop(bool isBreak);
+	uint32_t destructorCallee(void* destructor);
+	/// Called when the scope that was recording optimistically meets an implicit branch.
+	void requestRestart();
+	/// Takes back everything the optimistic pass recorded and records again with snapshots.
+	void restartScope();
 	NirTracer& acquireChildScope();
 	std::string describeCurrentFunction() const;
 
@@ -177,13 +229,34 @@ private:
 		uint32_t exitBlock = 0;
 		RegionAttributes attributes;
 		std::optional<Snapshot> exitSnapshot;
-		std::unordered_map<Snapshot, RegionRecord> regionMemo;
+		/// by the region's entry block: a replay finds the region it re-enters by the block its recorded path enters
+		std::unordered_map<uint32_t, RegionRecord> regionMemo;
 		SymbolicExecutionContext symbolicExecutionContext {8};
 		std::deque<TagRecorder> tagRecorders;
 		std::unique_ptr<NirTracer> childScope;
 	};
 	RegionScopeState& regionState();
 	std::unique_ptr<RegionScopeState> regionState_;
+
+	ScopeKind kind_ = ScopeKind::Function;
+	/// Optimistic recording: no snapshots, no tag-map entries, until an implicit branch restarts the scope. Valid
+	/// between the checkpoint and the end of the scope's first pass.
+	bool optimistic_ = false;
+	bool restart_ = false;
+	bool forcedRestartDone_ = false;
+	std::optional<FlatTrace::Checkpoint> checkpoint_;
+	/// The loops that are being traced, innermost last (on the session's tracer): where `Break` and `Continue` go.
+	struct LoopFrame {
+		uint32_t exitBlock;
+		uint32_t continueBlock;
+		uint32_t bodyBlock;
+		const NirTracer* bodyScope;
+		size_t destructorDepth;
+		bool inHeader;
+	};
+	std::vector<LoopFrame> loops_;
+	/// `tracing.forceConstructRestarts` (on the session's tracer).
+	bool forceRestarts_ = false;
 
 	enum class Phase : uint8_t { None, Follow, Record, Paused };
 	TracingStatistics stats_;
@@ -203,9 +276,16 @@ private:
 	/// Publishes this scope's reference counts for the inline updates of `val<T>` while it is the active one and not
 	/// paused (a paused scope ignores them, which the slow path does).
 	void syncAlive() {
-		publishAliveVariables(paused_ ? nullptr : &aliveVars);
+		publishAliveVariables(paused_ ? nullptr : &aliveVars, paused_);
 	}
+	/// Finishes the pass like `pause`, and, with `tracing.unwindPausedPasses`, leaves the body of the scope (R4).
+	void pauseAndUnwind();
 	void resume();
+	/// `tracing.unwindPausedPasses` of the session (on the session's tracer), whether this scope still unwinds, and
+	/// whether it threw for the pass it is in.
+	bool unwindPaused_ = false;
+	bool unwindEnabled_ = false;
+	bool unwindThrown_ = false;
 
 	std::vector<StaticVarHolder> staticVars;
 	AliveVariableHash aliveVars;

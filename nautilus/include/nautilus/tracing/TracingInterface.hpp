@@ -157,6 +157,35 @@ public:
 	/// Tracers that record NIR implement it; the others throw.
 	virtual TypedValueRef& traceBinding(std::string_view name, size_t size, size_t align);
 
+	/// Whether this tracer records the explicit control-flow constructs of `nautilus/control_flow.hpp` (`If`, `While`,
+	/// `For`, `Break`, `Continue`, `Return`) as blocks. A tracer that does not has the constructs run as the implicit
+	/// control flow they stand for (the lambdas of an `If` trace as a native `if`).
+	virtual bool tracesExplicitControlFlow() const {
+		return false;
+	}
+
+	/// Trace an `If` (docs/plans/nautilus-0.4/01-tracing-frontend.md §5): @p thenArm and @p elseArm are scopes of their
+	/// own, run once per explored path through them, and both end at the construct's exit. @p condition is the
+	/// condition. Only tracers that return true from `tracesExplicitControlFlow` implement the construct hooks; the
+	/// others throw.
+	virtual void traceIf(const TypedValueRef& condition, double probability, std::function<void()>& thenArm,
+	                     std::function<void()>& elseArm);
+
+	/// Trace a loop: @p header evaluates the condition and reports it with `traceLoopCondition`, @p body is the loop
+	/// body, and the optional @p step runs after the body and on `Continue`.
+	virtual void traceLoop(std::function<void()>& header, std::function<void()>& body, std::function<void()>* step);
+
+	/// The condition of the loop whose header is being traced: branches to the body (true) or leaves the loop.
+	virtual void traceLoopCondition(const TypedValueRef& condition, double probability);
+
+	/// Leave the innermost explicit loop, or start its next iteration. The rest of the calling lambda is not recorded.
+	virtual void traceBreak();
+	virtual void traceContinue();
+
+	/// Return from the traced function with @p ref (void if @p type is `Type::v`) from inside an explicit construct.
+	/// The rest of the calling lambda is not recorded.
+	virtual void traceExplicitReturn(Type type, const TypedValueRef& ref);
+
 	/// Increment the reference count of a value.
 	virtual void allocateValRef(ValueRef ref) = 0;
 

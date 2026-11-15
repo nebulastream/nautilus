@@ -119,6 +119,17 @@ Per `val_ptr.hpp:264` the API is `ptr->get(&Struct::field)` / `ptr->set(&Struct:
 
 Rewrite: always go through `get()` / `set()` for fields; use `p[i]` for array indexing.
 
+#### A4. `val<T>` parameters taken by value
+
+A by-value `val<T>` parameter copies its argument when the caller passes an lvalue, and a copy is a recorded operation (a `var` in NIR) with a snapshot in record mode and a cursor step on every re-run. Helpers and library code that only read their parameters should take `const val<T>&`; keep by-value only where the function assigns to the parameter, and pass `std::move` or a temporary there. `tracing.copies.construct` in `engine.logStatistics=true` shows how many there are; `dump.copySites` on the 0.3 tracer lists where they come from.
+
+Bad: `val<int64_t> scale(val<int64_t> x) { return x * 3; }`
+Rewrite: `val<int64_t> scale(const val<int64_t>& x) { return x * 3; }`
+
+#### A5. Lookup tables and strings reached through host pointers
+
+`val<const int*>(table)` traces the host address, so the module depends on that memory, loads from it stay opaque, and the module is not persistable. Use `constData(table)` (`nautilus/data.hpp`, `docs/constant-data.md`): the bytes become part of the module, and a load at a constant index folds.
+
 ### B. Loop strategy
 
 #### B1. Using `val<T>` for a loop bound that is known at trace-construction time
@@ -161,6 +172,10 @@ Rewrite: `for (val<int32_t> i = 0; i < n; i = i + 1) { … }`. Place the compari
 Each cast is a separate IR op. The IR cannot recognize `i` as an induction variable, so strength reduction (e.g., turning `&array[i]` into a running pointer) doesn't fire. Use `val<int32_t> i` from the start.
 
 ### C. Branching
+
+#### C0. Many independent branches in one function
+
+Every native `if` over a `val<bool>` makes the tracer run the function body once more, and a chain of N independent branches replays its prefix N times. Check `tracing.replayedOperations` and `tracing.rerun.share`. Wrap each independent branch in `region()` (`docs/region.md`), or write it with `If`, `While` and `For` from `nautilus/control_flow.hpp`, which trace in one pass and mix freely with native control flow. A diagnostic `NAUT-T002` or `NAUT-T003` says the same (`docs/diagnostics.md`).
 
 #### C1. `if/else` that only chooses between two values
 

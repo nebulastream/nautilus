@@ -23,7 +23,7 @@ public:
 		data_ptr = val<base_type*>(string_vew);
 	}
 
-	val(val<const CharT*> s, val<size_type> count) : data_ptr(nullptr) {
+	val(const val<const CharT*>& s, const val<size_type>& count) : data_ptr(nullptr) {
 		// call new on val<base_type *>
 		auto raw_s = details::RawValueResolver<const CharT*>::getRawValue(s);
 		auto raw_count = details::RawValueResolver<size_type>::getRawValue(count);
@@ -31,7 +31,7 @@ public:
 		data_ptr = val<base_type*>(string_vew);
 	}
 
-	val(val<const CharT*> s) : data_ptr(nullptr) {
+	val(const val<const CharT*>& s) : data_ptr(nullptr) {
 		// call new on val<base_type *>
 		// auto raw_s = details::RawValueResolver<typename
 		// std::remove_cvref_t<decltype((s))>::raw_type>::getRawValue(s); auto string_vew = new
@@ -56,7 +56,7 @@ public:
 		return invoke(+[](std::basic_string_view<CharT, Traits>* ptr) noexcept { return ptr->cend(); }, data_ptr);
 	}
 
-	val<value_type> operator[](val<size_type> pos) const {
+	val<value_type> operator[](const val<size_type>& pos) const {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type pos) noexcept -> value_type {
 			    return ptr->operator[](pos);
@@ -64,7 +64,7 @@ public:
 		    data_ptr, pos);
 	}
 
-	const val<value_type> at(val<size_type> index) const {
+	const val<value_type> at(const val<size_type>& index) const {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type index) -> value_type { return ptr->at(index); },
 		    data_ptr, index);
@@ -100,13 +100,13 @@ public:
 		return invoke(+[](std::basic_string_view<CharT, Traits>* ptr) noexcept { return ptr->data(); }, data_ptr);
 	}
 
-	void remove_prefix(val<size_type> n) {
+	void remove_prefix(const val<size_type>& n) {
 		invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type n) noexcept -> void { ptr->remove_prefix(n); },
 		    data_ptr, n);
 	}
 
-	void remove_suffix(val<size_type> n) {
+	void remove_suffix(const val<size_type>& n) {
 		invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type n) noexcept -> void { ptr->remove_suffix(n); },
 		    data_ptr, n);
@@ -119,7 +119,7 @@ public:
 		    data_ptr, v.data_ptr);
 	}
 
-	val<size_type> copy(val<CharT*> dest, val<size_type> count, val<size_type> pos = 0) {
+	val<size_type> copy(const val<CharT*>& dest, const val<size_type>& count, val<size_type> pos = 0) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, CharT* dest, size_type count, size_type pos) -> size_type {
 			    return ptr->copy(dest, count, pos);
@@ -128,14 +128,14 @@ public:
 	}
 
 	/*
-	val<std::basic_string_view<CharT, Traits>> substr(val<size_type> count, val<size_type> pos = 0) {
+	val<std::basic_string_view<CharT, Traits>> substr(const val<size_type>& count, val<size_type> pos = 0) {
 	    return invoke(+[](std::basic_string_view<CharT, Traits> *ptr,
 	               size_type count, size_type pos) -> std::basic_string_view<CharT, Traits> {
 	      return ptr->substr(count, pos);
 	    }, data_ptr, count, pos);
 	}
 
-	val<std::basic_string_view<CharT, Traits>> substr(val<size_type> count, val<size_type> pos = 0) {
+	val<std::basic_string_view<CharT, Traits>> substr(const val<size_type>& count, val<size_type> pos = 0) {
 	    return invoke(+[](std::basic_string_view<CharT, Traits> *ptr,
 	                      size_type count, size_type pos) -> std::basic_string_view<CharT, Traits> {
 	        return ptr->substr(count, pos);
@@ -149,15 +149,15 @@ public:
 		    data_ptr, v.data_ptr);
 	}
 
-	val<int> compare(val<size_type> pos1, val<size_type> count1, val<std::basic_string_view<CharT, Traits>>& v) {
+	val<int> compare(const val<size_type>& pos1, const val<size_type>& count1, val<std::basic_string_view<CharT, Traits>>& v) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type pos1, size_t count1,
 		        std::basic_string_view<CharT, Traits>* v) -> int { return ptr->compare(pos1, count1, *v); },
 		    data_ptr, pos1, count1, v.data_ptr);
 	}
 
-	val<int> compare(val<size_type> pos1, val<size_type> count1, val<std::basic_string_view<CharT, Traits>>& v,
-	                 val<size_type> pos2, val<size_type> count2) {
+	val<int> compare(const val<size_type>& pos1, const val<size_type>& count1, val<std::basic_string_view<CharT, Traits>>& v,
+	                 const val<size_type>& pos2, const val<size_type>& count2) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type pos1, size_t count1,
 		        std::basic_string_view<CharT, Traits>* v, size_type pos2,
@@ -165,13 +165,13 @@ public:
 		    data_ptr, pos1, count1, v.data_ptr, pos2, count2);
 	}
 
-	val<int> compare(val<const CharT*> s) {
+	val<int> compare(const val<const CharT*>& s) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, const CharT* s) noexcept -> int { return ptr->compare(s); },
 		    data_ptr, s);
 	}
 
-	val<int> compare(val<size_type> pos1, val<size_type> count1, val<const CharT*> s) {
+	val<int> compare(const val<size_type>& pos1, const val<size_type>& count1, const val<const CharT*>& s) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type pos1, size_t count1, const CharT* s) -> int {
 			    return ptr->compare(pos1, count1, s);
@@ -179,8 +179,8 @@ public:
 		    data_ptr, pos1, count1, s);
 	}
 
-	val<int> compare(val<size_type> pos1, val<size_type> count1, val<const CharT*> s, val<size_type> pos2,
-	                 val<size_type> count2) {
+	val<int> compare(const val<size_type>& pos1, const val<size_type>& count1, const val<const CharT*>& s, const val<size_type>& pos2,
+	                 const val<size_type>& count2) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type pos1, size_t count1, const CharT* s,
 		        size_type pos2, size_t count2) -> int { return ptr->compare(pos1, count1, s, pos2, count2); },
@@ -195,7 +195,7 @@ public:
 		    data_ptr, v.data_ptr);
 	}
 
-	val<bool> start_with(val<const CharT*> s) {
+	val<bool> start_with(const val<const CharT*>& s) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, const CharT* s) noexcept -> bool {
 			    return ptr->starts_with(s);
@@ -203,7 +203,7 @@ public:
 		    data_ptr, s);
 	}
 
-	val<bool> start_with(val<CharT> s) {
+	val<bool> start_with(const val<CharT>& s) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, CharT s) noexcept -> bool { return ptr->starts_with(s); },
 		    data_ptr, s);
@@ -217,7 +217,7 @@ public:
 		    data_ptr, v.data_ptr);
 	}
 
-	val<bool> end_with(val<const CharT*> s) {
+	val<bool> end_with(const val<const CharT*>& s) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, const CharT* s) noexcept -> bool {
 			    return ptr->ends_with(s);
@@ -225,7 +225,7 @@ public:
 		    data_ptr, s);
 	}
 
-	val<bool> end_with(val<CharT> s) {
+	val<bool> end_with(const val<CharT>& s) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, CharT s) noexcept -> bool { return ptr->ends_with(s); },
 		    data_ptr, s);
@@ -241,7 +241,7 @@ public:
 		    data_ptr, v.data_ptr);
 	}
 
-	val<bool> contains(val<const CharT*> s) {
+	val<bool> contains(const val<const CharT*>& s) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, const CharT* s) noexcept -> bool {
 			    return ptr->contains(s);
@@ -249,7 +249,7 @@ public:
 		    data_ptr, s);
 	}
 
-	val<bool> contains(val<CharT> s) {
+	val<bool> contains(const val<CharT>& s) {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr, CharT s) noexcept -> bool { return ptr->contains(s); },
 		    data_ptr, s);
