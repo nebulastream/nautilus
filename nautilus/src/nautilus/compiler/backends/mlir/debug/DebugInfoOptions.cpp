@@ -1,8 +1,10 @@
 
 #include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
+#include "nautilus/compiler/backends/DebugSource.hpp"
 #include <atomic>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <sys/types.h>
@@ -11,45 +13,6 @@
 namespace nautilus::compiler::mlir {
 
 namespace {
-
-// Returns $TMPDIR, $TEMP, or "/tmp" if neither is set. The debug
-// source file is written under this directory.
-std::string tempDir() {
-	if (const char* t = std::getenv("TMPDIR")) {
-		return t;
-	}
-	if (const char* t = std::getenv("TEMP")) {
-		return t;
-	}
-	return "/tmp";
-}
-
-// Directory the synthesized source file is written to: the temp directory,
-// unless this is a perf-only compile (see below).
-//
-// A profiling compile (`perf` or `perf.sample` without `enableDebug`) needs the
-// working directory instead: the IR dump has to outlive the compile and be
-// findable next to perf.data when `perf inject` / `perf annotate` run, minutes
-// or hours later -- and $TMPDIR is routinely cleaned between record and report.
-std::filesystem::path sourceDir(const DebugInfoOptions& opts) {
-	if (opts.emitPerfMetadata() && !opts.enableDebug) {
-		return std::filesystem::current_path();
-	}
-	return tempDir();
-}
-
-// Generate a path like `<dir>/nautilus_debug_<pid>_<counter>.<ext>` that is
-// unique across parallel compilations within the same process.
-std::string synthesizeSourcePathIn(const std::filesystem::path& dir, const std::string& extension) {
-	static std::atomic<uint64_t> counter {0};
-	auto name =
-	    "nautilus_debug_" + std::to_string(::getpid()) + "_" + std::to_string(counter.fetch_add(1)) + "." + extension;
-	return (dir / name).string();
-}
-
-std::string synthesizeSourcePath(const DebugInfoOptions& opts, const std::string& extension) {
-	return synthesizeSourcePathIn(sourceDir(opts), extension);
-}
 
 // Cell 4 (`enableDebug=true, enablePerf=true`) composes literally: the debug
 // clamp wins, so a jitdump produced this way profiles -O0 code -- not a
@@ -67,17 +30,6 @@ void warnOnce() {
 	}
 }
 
-// DWARF that names a relative file leaves the debugger resolving it against
-// DW_AT_comp_dir, which for a JIT module is not a directory the user controls.
-std::string makeAbsolute(const std::string& path) {
-	std::error_code ec;
-	auto absolute = std::filesystem::absolute(path, ec);
-	if (ec) {
-		return path;
-	}
-	return absolute.lexically_normal().string();
-}
-
 } // namespace
 
 DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& options) {
@@ -91,13 +43,20 @@ DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& option
 	}
 
 	if (opts.emitDebugInfo()) {
-		opts.sourceFile = makeAbsolute(synthesizeSourcePath(opts, "ir"));
+		// a profiling-only compile writes next to perf.data, see DebugSource.hpp
+		opts.sourceFile = newDebugSourcePath(opts.emitPerfMetadata() && !opts.enableDebug, "ir");
 	}
 	return opts;
 }
 
+void writeDebugSourceFile(DebugInfoOptions& opts, const std::string& text) {
+	if (!opts.sourceFile.empty()) {
+		opts.sourceFile = writeDebugSource(opts.sourceFile, text);
+	}
+}
+
 std::string debugSourceFallbackPath(const std::string& extension) {
-	return synthesizeSourcePathIn(tempDir(), extension);
+	return compiler::debugSourceFallbackPath(extension);
 }
 
 } // namespace nautilus::compiler::mlir

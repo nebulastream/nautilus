@@ -138,6 +138,9 @@ public:
 			bind(exitLabel_);
 			emit(Op::RET, kNoReg);
 		}
+		if (program_.recordSources) {
+			out_.nirInst.resize(out_.code.size(), nir::NONE);
+		}
 		patchFixups();
 		finalize();
 	}
@@ -338,6 +341,9 @@ private:
 		const auto& block = blocks_[b];
 		for (uint32_t k = block.argCount; k < block.count; ++k) {
 			lowerInstruction(block.first + k);
+			if (program_.recordSources) {
+				out_.nirInst.resize(out_.code.size(), block.first + k);
+			}
 			releaseAfter(block.first + k);
 		}
 	}
@@ -809,6 +815,9 @@ private:
 		// a cold block may add more cold blocks only through newLabel, never through cold_
 		for (size_t i = 0; i < cold_.size(); ++i) {
 			cold_[i]();
+		}
+		if (program_.recordSources) {
+			out_.nirInst.resize(out_.code.size(), nir::NONE);
 		}
 	}
 

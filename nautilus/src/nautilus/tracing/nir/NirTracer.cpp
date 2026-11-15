@@ -134,6 +134,12 @@ struct NirTracer::SessionState {
 	/// Writes the finished trace of function `index` into the module as a pre-SSA function.
 	void emitFunction(uint32_t index, const std::string& name, FlatTrace& trace, bool exported);
 
+	/// Whether the debug sections are recorded (D14): `debug`, `perf` or `perf.sample`. Off, a trace pays nothing.
+	bool debugInfo = false;
+	/// Writes the debug data of the function just emitted: its location, its region table and the region of every
+	/// instruction (the region of the block it is in).
+	void emitDebugData(uint32_t index, const FlatTrace& trace, const std::vector<uint32_t>& order);
+
 	/// Gives the callees of internal functions the signatures and attributes their functions ended up with.
 	void finish();
 };
@@ -400,6 +406,9 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 		const auto extraBefore = module.extra.size();
 		if (emitInLayoutOrder(module, trace, scratch, b, paramTypes)) {
 			b.endFunction();
+			if (debugInfo) {
+				emitDebugData(index, trace, scratch.order);
+			}
 			scratch.trim();
 			return;
 		}
@@ -567,7 +576,60 @@ void NirTracer::SessionState::emitFunction(uint32_t index, const std::string& na
 		b.appendPreSSABlock(blockInsts);
 	}
 	b.endFunction();
+	if (debugInfo) {
+		emitDebugData(index, trace, scratch.order);
+	}
 	scratch.trim();
+}
+
+void NirTracer::SessionState::emitDebugData(uint32_t index, const FlatTrace& trace,
+                                            const std::vector<uint32_t>& order) {
+	const auto location = [&](const SourceLocation& at) {
+		return at.isKnown() ? module.internDebugLocation(at.file, at.line, at.column) : nir::NONE;
+	};
+	// the region table of this function: the module index of a region is its position in the trace plus a base
+	const auto regionBase = static_cast<uint32_t>(module.debugRegions.size());
+	for (const auto& spec : trace.regions) {
+		nir::RegionRecord record {index, nir::NONE, location(spec.attributes.location),
+		                          spec.parent == NO_FLAT_REGION ? nir::NONE : regionBase + spec.parent};
+		if (spec.attributes.hasName()) {
+			record.nameId = module.internDebugName(spec.attributes.name);
+		}
+		module.debugRegions.push_back(record);
+	}
+	module.debugFunctions.push_back(nir::DebugFunctionRecord {index, location(currentFunctionLocation), 0, 0});
+
+	// the sections are parallel to `insts`
+	module.debugInstRegions.resize(module.insts.size(), nir::NONE);
+	module.debugInstLocations.resize(module.insts.size(), nir::NONE);
+	const auto& fn = module.functions[index];
+	const auto blocks = module.functionBlocks(index);
+	const auto moduleRegion = [&](FlatRegion region) {
+		return region == NO_FLAT_REGION ? nir::NONE : regionBase + region;
+	};
+	for (size_t i = 0; i < blocks.size() && i < order.size(); ++i) {
+		// The instructions of a block are, from the end, its records in order (the parameters of the entry block and
+		// the declarations a hoist adds come first and are in no region); each is in the region its record was made in.
+		const auto& ops = trace.blocks[order[i]].ops;
+		const auto count = blocks[i].count;
+		uint32_t skipped = 0;
+		for (auto id : ops) {
+			skipped += trace.recs[id].op == static_cast<uint16_t>(NOp::BlockArg) ? 1 : 0;
+		}
+		const auto records = static_cast<uint32_t>(ops.size()) - skipped;
+		if (records > count) {
+			continue; // the numbering does not match; leave the block without a region rather than guess
+		}
+		uint32_t at = count - records;
+		for (auto id : ops) {
+			if (trace.recs[id].op == static_cast<uint16_t>(NOp::BlockArg)) {
+				continue;
+			}
+			module.debugInstRegions[fn.firstInst + module.extra[blocks[i].first + at]] =
+			    moduleRegion(trace.regionOfRecord(id));
+			++at;
+		}
+	}
 }
 
 void NirTracer::SessionState::finish() {
@@ -616,6 +678,8 @@ NirTraceResult NirTracer::traceSession(std::list<compiler::CompilableFunction>& 
 	for (const auto& f : functions) {
 		session.indexOf(f.getName());
 	}
+	session.debugInfo = options.getOptionOrDefault("debug", false) || options.getOptionOrDefault("perf", false) ||
+	                    options.getOptionOrDefault("perf.sample", false);
 	setActiveTracer(this);
 	syncAlive();
 	ActiveTracerGuard activeTracerGuard;

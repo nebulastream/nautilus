@@ -4,7 +4,10 @@
 #include "nautilus/nir/Module.hpp"
 #include "nautilus/tracing/Snapshot.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
+#include <algorithm>
 #include <cstdint>
+#include <iterator>
+#include <utility>
 #include <vector>
 
 namespace nautilus::tracing::nirtrace {
@@ -131,6 +134,16 @@ public:
 
 	std::vector<nir::Inst> recs;
 	std::vector<RecordMeta> meta;
+	/// Where the current region changed: the id of the first record made in it, and the region. The regions of the
+	/// records follow from it (`regionOfRecord`), which costs nothing per record; a block can hold the code of several
+	/// regions after a seam collapses, so the region of a block alone cannot name the region of its instructions (D14).
+	std::vector<std::pair<uint32_t, FlatRegion>> regionLog;
+	/// The region that was open when record `id` was made.
+	[[nodiscard]] FlatRegion regionOfRecord(uint32_t id) const {
+		auto after = std::upper_bound(regionLog.begin(), regionLog.end(), id,
+		                              [](uint32_t value, const auto& entry) { return value < entry.first; });
+		return after == regionLog.begin() ? NO_FLAT_REGION : std::prev(after)->second;
+	}
 	std::vector<FlatBlock> blocks;
 	TagMap tags;
 

@@ -189,6 +189,7 @@ void FlatTrace::reset(nir::Module& module) {
 	};
 	shrink(recs, 1u << 20);
 	shrink(meta, 1u << 20);
+	regionLog.clear();
 	conds.clear();
 	allocas.clear();
 	parameters.clear();
@@ -448,6 +449,7 @@ FlatRegion FlatTrace::addRegion(const RegionAttributes& attributes, uint32_t ent
 FlatRegion FlatTrace::setCurrentRegion(FlatRegion region) {
 	const auto previous = currentRegion;
 	currentRegion = region;
+	regionLog.emplace_back(static_cast<uint32_t>(recs.size()), region);
 	return previous;
 }
 
