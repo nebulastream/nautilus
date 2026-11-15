@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/Executable.hpp"
+#include "nautilus/compiler/JitSymbolRegistry.hpp"
 #include "nautilus/compiler/backends/tbc/TBCCode.hpp"
 #include <memory>
 #include <string>
@@ -31,6 +32,13 @@ public:
 	///        pushing one for it.
 	TBCExecutable(std::shared_ptr<TBCProgram> program, std::unordered_set<std::string> functionsNeedingCapture);
 
+	~TBCExecutable() override;
+
+	/// The registry handle of the symbols published for the stitched code (`perf.sample`), withdrawn with it.
+	void publishedSymbols(ModuleIndex symbols) {
+		symbols_ = symbols;
+	}
+
 	[[nodiscard]] void* getInvocableFunctionPtr(const std::string& member) override;
 	bool hasInvocableFunctionPtr() override;
 	std::unique_ptr<GenericInvocable> getGenericInvocable(const std::string& member) override;
@@ -47,6 +55,7 @@ public:
 private:
 	std::shared_ptr<TBCProgram> program;
 	std::unordered_set<std::string> functionsNeedingCapture_;
+	ModuleIndex symbols_ = NO_MODULE;
 };
 
 } // namespace nautilus::compiler::tbc

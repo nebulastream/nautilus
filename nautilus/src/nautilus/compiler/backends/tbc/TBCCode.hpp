@@ -46,6 +46,9 @@ struct TBCFunction {
 	std::vector<uint16_t> argRegs;
 	std::vector<Type> argTypes;
 	Type returnType = Type::v;
+	/// The NIR instruction each word of `code` was lowered from (`nir::NONE`: none, the cold paths and the exit); only
+	/// recorded when the program is profiled (`TBCProgram::recordSources`).
+	std::vector<uint32_t> nirInst;
 
 	std::string toString() const;
 };
@@ -60,6 +63,12 @@ struct TBCJitCode {
 	std::vector<void*> entries; // per-function stitched entry point
 	void* epilogue = nullptr;   // entry-frame landing pad (@EPILOGUE stencil)
 	size_t codeBytes = 0;       // stitched span size (statistics)
+	/// For a profile (`TBCProgram::recordSources`): the start of the span, where the functions end in it, and the
+	/// offset of every word of every function that starts a stitched instruction (0 for the continuation words of a
+	/// two-word instruction).
+	uintptr_t base = 0;
+	uint32_t functionsEnd = 0;
+	std::vector<std::vector<uint32_t>> wordOffsets;
 	virtual ~TBCJitCode() = default;
 };
 
@@ -83,6 +92,8 @@ struct TBCProgram {
 	~TBCProgram();
 
 	std::vector<TBCFunction> functions;
+	/// Whether the lowering records which NIR instruction each word came from (`perf`, `perf.sample`).
+	bool recordSources = false;
 	/// Keeps what the code refers to by address alive: for a program lowered from NIR, the module with its data
 	/// objects.
 	std::shared_ptr<const void> owner;

@@ -48,7 +48,8 @@ endif ()
 
 if (ENABLE_ASMJIT_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
-            backends/asmjit/ConcurrentExecutionTest.cpp)
+            backends/asmjit/ConcurrentExecutionTest.cpp
+            backends/asmjit/ProfilingSymbolsTest.cpp)
 endif ()
 
 if (ENABLE_MLIR_BACKEND)

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/Executable.hpp"
+#include "nautilus/compiler/JitSymbolRegistry.hpp"
 #include <asmjit/core.h>
 #include <memory>
 #include <string>
@@ -36,6 +37,11 @@ public:
 	                 std::shared_ptr<const void> owner = nullptr);
 	~AsmJitExecutable() override;
 
+	/// The registry handle of the symbols published for this code (`perf.sample`); withdrawn when the code is freed.
+	void publishedSymbols(ModuleIndex symbols) {
+		symbols_ = symbols;
+	}
+
 	void* getInvocableFunctionPtr(const std::string& member) override;
 	bool hasInvocableFunctionPtr() override;
 
@@ -56,6 +62,7 @@ private:
 	/// Per-function pointers (offsets within the JIT block).
 	std::unordered_map<std::string, void*> jitPtrs_;
 	std::unordered_set<std::string> functionsNeedingCapture_;
+	ModuleIndex symbols_ = NO_MODULE;
 };
 
 } // namespace nautilus::compiler::asmjit

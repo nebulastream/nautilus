@@ -1,10 +1,13 @@
 #include "common/ProfilingTestSupport.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/compiler/JitSymbolRegistry.hpp"
+#include "nautilus/config.hpp"
 #include "nautilus/profiling/sampler.hpp"
 #include "nautilus/region.hpp"
 #include "nautilus/val.hpp"
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/generators/catch_generators_range.hpp>
 #include <cstdint>
 #include <set>
 #include <string>
@@ -48,14 +51,27 @@ val<int64_t> twoRegions(val<int64_t> iterations) {
 	return state;
 }
 
-engine::Options samplingOptions() {
+/// The backends whose code a profile can name: `mlir` through the DWARF of its objects, `asmjit` through the symbols
+/// and line table its lowering publishes (D14). The tests that do not depend on the backend run on each of them.
+std::vector<std::string> sampledBackends() {
+	std::vector<std::string> backends;
+#ifdef ENABLE_MLIR_BACKEND
+	backends.emplace_back("mlir");
+#endif
+#ifdef ENABLE_ASMJIT_BACKEND
+	backends.emplace_back("asmjit");
+#endif
+	return backends;
+}
+
+engine::Options samplingOptions(const std::string& backend = sampledBackends().front()) {
 	engine::Options options;
 	// Both are load-bearing, and for different reasons: `perf.sample` is what
 	// makes the backend publish code ranges at all, and pinning the backend
 	// keeps tiered compilation from starting on an interpreting tier that
 	// registers nothing (docs/profiling.md).
 	options.setOption("perf.sample", true);
-	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("engine.backend", backend);
 	return options;
 }
 
@@ -72,12 +88,14 @@ bool sawSymbolContaining(const profiling::SampleReport& report, std::string_view
 } // namespace
 
 TEST_CASE("perf.sample makes the backend publish JIT symbols", "[profiling][sampler][registry]") {
+	const auto backend = GENERATE_COPY(from_range(sampledBackends()));
+	INFO("backend: " << backend);
 	// The precondition everything else here rests on, asserted separately so a
 	// failure says whether the backend stopped publishing or the sampler stopped
 	// resolving.
 	compiler::JitSymbolRegistry::instance().clear();
 
-	engine::NautilusEngine nautilusEngine(samplingOptions());
+	engine::NautilusEngine nautilusEngine(samplingOptions(backend));
 	auto compiled = nautilusEngine.registerFunction(twoRegions);
 	// LLJIT materializes lazily, so the code is not linked -- and no symbol
 	// published -- until the function is actually called.
@@ -112,6 +130,8 @@ TEST_CASE("an unavailable sampler degrades instead of throwing", "[profiling][sa
 }
 
 TEST_CASE("samples land in JIT-compiled code and are named", "[profiling][sampler]") {
+	const auto backend = GENERATE_COPY(from_range(sampledBackends()));
+	INFO("backend: " << backend);
 	NAUTILUS_PROFILING_SKIP_IF_UNAVAILABLE();
 
 	// A short period: the window is one kernel invocation, so the default
@@ -121,7 +141,7 @@ TEST_CASE("samples land in JIT-compiled code and are named", "[profiling][sample
 		SKIP("sampler unavailable: " << sampler.unavailableReason());
 	}
 
-	engine::NautilusEngine nautilusEngine(samplingOptions());
+	engine::NautilusEngine nautilusEngine(samplingOptions(backend));
 	auto compiled = nautilusEngine.registerFunction(twoRegions);
 
 	// Warm up outside the window. LLJIT materializes lazily, so the first call
@@ -154,6 +174,8 @@ TEST_CASE("samples land in JIT-compiled code and are named", "[profiling][sample
 }
 
 TEST_CASE("region names survive into the profile", "[profiling][sampler]") {
+	const auto backend = GENERATE_COPY(from_range(sampledBackends()));
+	INFO("backend: " << backend);
 	NAUTILUS_PROFILING_SKIP_IF_UNAVAILABLE();
 
 	profiling::Sampler sampler {{"cycles", 20000, false, 256}};
@@ -161,7 +183,7 @@ TEST_CASE("region names survive into the profile", "[profiling][sampler]") {
 		SKIP("sampler unavailable: " << sampler.unavailableReason());
 	}
 
-	engine::NautilusEngine nautilusEngine(samplingOptions());
+	engine::NautilusEngine nautilusEngine(samplingOptions(backend));
 	auto compiled = nautilusEngine.registerFunction(twoRegions);
 
 	// Warm up outside the window. LLJIT materializes lazily, so the first call
@@ -210,15 +232,17 @@ TEST_CASE("region names survive into the profile", "[profiling][sampler]") {
 // the registry, and a destroyed one must take its ranges with it.
 
 TEST_CASE("two live modules publish under distinct module handles", "[profiling][registry]") {
+	const auto backend = GENERATE_COPY(from_range(sampledBackends()));
+	INFO("backend: " << backend);
 	compiler::JitSymbolRegistry::instance().clear();
 
-	engine::NautilusEngine firstEngine(samplingOptions());
+	engine::NautilusEngine firstEngine(samplingOptions(backend));
 	auto first = firstEngine.registerFunction(twoRegions);
 	first(10);
 	const auto afterFirst = compiler::JitSymbolRegistry::instance().snapshot();
 	REQUIRE_FALSE(afterFirst.empty());
 
-	engine::NautilusEngine secondEngine(samplingOptions());
+	engine::NautilusEngine secondEngine(samplingOptions(backend));
 	auto second = secondEngine.registerFunction(twoRegions);
 	second(10);
 	const auto afterSecond = compiler::JitSymbolRegistry::instance().snapshot();
@@ -239,11 +263,13 @@ TEST_CASE("two live modules publish under distinct module handles", "[profiling]
 }
 
 TEST_CASE("destroying a module withdraws its ranges", "[profiling][registry]") {
+	const auto backend = GENERATE_COPY(from_range(sampledBackends()));
+	INFO("backend: " << backend);
 	compiler::JitSymbolRegistry::instance().clear();
 
 	size_t whileAlive = 0;
 	{
-		engine::NautilusEngine nautilusEngine(samplingOptions());
+		engine::NautilusEngine nautilusEngine(samplingOptions(backend));
 		auto compiled = nautilusEngine.registerFunction(twoRegions);
 		compiled(10);
 		whileAlive = compiler::JitSymbolRegistry::instance().size();
@@ -293,6 +319,8 @@ TEST_CASE("removing a module leaves other modules' ranges alone", "[profiling][r
 }
 
 TEST_CASE("the same calls sample a whole pool", "[profiling][sampler]") {
+	const auto backend = GENERATE_COPY(from_range(sampledBackends()));
+	INFO("backend: " << backend);
 	NAUTILUS_PROFILING_SKIP_IF_UNAVAILABLE();
 
 	constexpr uint16_t WORKERS = 4;
@@ -301,7 +329,7 @@ TEST_CASE("the same calls sample a whole pool", "[profiling][sampler]") {
 		SKIP("sampler unavailable: " << sampler.unavailableReason());
 	}
 
-	engine::NautilusEngine nautilusEngine(samplingOptions());
+	engine::NautilusEngine nautilusEngine(samplingOptions(backend));
 	auto compiled = nautilusEngine.registerFunction(twoRegions);
 	compiled(10); // warm up off the measured window
 
@@ -351,11 +379,13 @@ TEST_CASE("stopAll is idempotent", "[profiling][sampler]") {
 }
 
 TEST_CASE("perf.sample publishes an IR line table", "[profiling][registry]") {
+	const auto backend = GENERATE_COPY(from_range(sampledBackends()));
+	INFO("backend: " << backend);
 	// The precondition for annotation, asserted without a PMU: the line table
 	// and the dump it points at come from the compile, not from sampling.
 	compiler::JitSymbolRegistry::instance().clear();
 
-	engine::NautilusEngine nautilusEngine(samplingOptions());
+	engine::NautilusEngine nautilusEngine(samplingOptions(backend));
 	auto compiled = nautilusEngine.registerFunction(twoRegions);
 	compiled(10);
 
@@ -384,9 +414,11 @@ TEST_CASE("perf.sample publishes an IR line table", "[profiling][registry]") {
 }
 
 TEST_CASE("destroying a module withdraws its lines too", "[profiling][registry]") {
+	const auto backend = GENERATE_COPY(from_range(sampledBackends()));
+	INFO("backend: " << backend);
 	compiler::JitSymbolRegistry::instance().clear();
 	{
-		engine::NautilusEngine nautilusEngine(samplingOptions());
+		engine::NautilusEngine nautilusEngine(samplingOptions(backend));
 		auto compiled = nautilusEngine.registerFunction(twoRegions);
 		compiled(10);
 	}

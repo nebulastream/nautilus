@@ -9,6 +9,11 @@
 
 namespace nautilus::compiler::tbc {
 
+TBCExecutable::~TBCExecutable() {
+	// the stitched code goes with the program: a later compile reusing its addresses must not resolve to its names
+	JitSymbolRegistry::instance().remove(symbols_);
+}
+
 namespace {
 
 /// Normalize a C++ value into a 64-bit register slot per the declared IR type
