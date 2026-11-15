@@ -21,10 +21,10 @@
  *   While([&] { return a != b; }, [&] { If(a > b, [&] { Break(); }); ... });
  * @endcode
  *
- * Each construct emits its blocks directly. The arms, the loop header, the body and the step are scopes of their own, as
- * a `region()` body is, so they can be mixed with native control flow: a native `if` inside an arm replays only that arm,
- * and a native `if` outside a construct skips it when the enclosing function runs again. A function written entirely
- * with these constructs traces in one pass.
+ * Each construct emits its blocks directly. The arms, the loop header, the body and the step are scopes of their own,
+ * as a `region()` body is, so they can be mixed with native control flow: a native `if` inside an arm replays only that
+ * arm, and a native `if` outside a construct skips it when the enclosing function runs again. A function written
+ * entirely with these constructs traces in one pass.
  *
  * `Break()` and `Continue()` leave the innermost explicit loop, and `Return(v)` leaves the function. They are plain
  * function calls, so the code after them in the same lambda still runs in C++, but it is not recorded. The owned values
@@ -74,9 +74,13 @@ void loop(CondFn& condFn, StepFn* stepFn, BodyFn& bodyFn) {
 			val<bool> condition = condFn();
 			reportCondition(condition);
 		};
-		std::function<void()> body = [&]() { bodyFn(); };
+		std::function<void()> body = [&]() {
+			bodyFn();
+		};
 		if (stepFn != nullptr) {
-			std::function<void()> step = [&]() { (*stepFn)(); };
+			std::function<void()> step = [&]() {
+				(*stepFn)();
+			};
 			tracing::getActiveTracer()->traceLoop(header, body, &step);
 		} else {
 			tracing::getActiveTracer()->traceLoop(header, body, nullptr);
@@ -107,8 +111,12 @@ template <typename ThenFn, typename ElseFn>
 void If(const val<bool>& condition, ThenFn&& thenBody, ElseFn&& elseBody) {
 #ifdef ENABLE_TRACING
 	if (cf_detail::explicitTracing()) {
-		std::function<void()> thenArm = [&]() { thenBody(); };
-		std::function<void()> elseArm = [&]() { elseBody(); };
+		std::function<void()> thenArm = [&]() {
+			thenBody();
+		};
+		std::function<void()> elseArm = [&]() {
+			elseBody();
+		};
 		tracing::getActiveTracer()->traceIf(details::StateResolver<const val<bool>&>::getState(condition),
 		                                    condition.getIsTrueProbability(), thenArm, elseArm);
 		return;
@@ -139,8 +147,7 @@ template <typename ThenFn, typename ElseFn>
 auto If(const val<bool>& condition, ThenFn&& thenBody, ElseFn&& elseBody) -> std::invoke_result_t<ThenFn> {
 	using Result = std::invoke_result_t<ThenFn>;
 	Result result {};
-	If(
-	    condition, [&]() { result = thenBody(); }, [&]() { result = elseBody(); });
+	If(condition, [&]() { result = thenBody(); }, [&]() { result = elseBody(); });
 	return result;
 }
 
@@ -228,9 +235,15 @@ void While(CondFn&& condFn, BodyFn&& bodyFn) {
 template <typename T, typename BodyFn>
 void For(val<T> begin, val<T> end, val<T> step, BodyFn&& bodyFn) {
 	val<T> i = begin;
-	auto condFn = [&]() { return i < end; };
-	auto stepFn = [&]() { i = i + step; };
-	auto body = [&]() { bodyFn(i); };
+	auto condFn = [&]() {
+		return i < end;
+	};
+	auto stepFn = [&]() {
+		i = i + step;
+	};
+	auto body = [&]() {
+		bodyFn(i);
+	};
 	cf_detail::loop(condFn, &stepFn, body);
 }
 

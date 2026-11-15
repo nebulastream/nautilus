@@ -25,8 +25,7 @@ namespace {
 
 val<int64_t> cfIfElse(val<int64_t> x) {
 	val<int64_t> r = 0;
-	If(
-	    x > 0, [&] { r = 1; }, [&] { r = 2; });
+	If(x > 0, [&] { r = 1; }, [&] { r = 2; });
 	return r * 10 + x;
 }
 int64_t cfIfElseRef(int64_t x) {
@@ -36,8 +35,7 @@ int64_t cfIfElseRef(int64_t x) {
 val<int64_t> cfValueIf(val<int64_t> x) {
 	val<int64_t> a = x * 3;
 	val<int64_t> b = x + 100;
-	val<int64_t> m = If(
-	    a > b, [&] { return a; }, [&] { return b; });
+	val<int64_t> m = If(a > b, [&] { return a; }, [&] { return b; });
 	return m;
 }
 int64_t cfValueIfRef(int64_t x) {
@@ -60,11 +58,12 @@ int64_t cfSumForRef(int64_t n) {
 val<int64_t> cfWhileBreak(val<int64_t> n) {
 	val<int64_t> i = 0;
 	val<int64_t> sum = 0;
-	While([&] { return i < 100; }, [&] {
-		If(i == n, [&] { Break(); });
-		sum = sum + i;
-		i = i + 1;
-	});
+	While([&] { return i < 100; },
+	      [&] {
+		      If(i == n, [&] { Break(); });
+		      sum = sum + i;
+		      i = i + 1;
+	      });
 	return sum;
 }
 int64_t cfWhileBreakRef(int64_t n) {
@@ -101,14 +100,15 @@ int64_t cfForContinueRef(int64_t n) {
 val<int64_t> cfOpsAfterBreak(val<int64_t> n) {
 	val<int64_t> i = 0;
 	val<int64_t> sum = 0;
-	While([&] { return i < n; }, [&] {
-		If(i == 3, [&] {
-			Break();
-			sum = sum + 1000; // not recorded
-		});
-		sum = sum + i;
-		i = i + 1;
-	});
+	While([&] { return i < n; },
+	      [&] {
+		      If(i == 3, [&] {
+			      Break();
+			      sum = sum + 1000; // not recorded
+		      });
+		      sum = sum + i;
+		      i = i + 1;
+	      });
 	return sum;
 }
 int64_t cfOpsAfterBreakRef(int64_t n) {
@@ -153,16 +153,17 @@ int64_t cfReturnNestedRef(int64_t n) {
 val<int64_t> cfAllArmsLeave(val<int64_t> n) {
 	val<int64_t> sum = 0;
 	val<int64_t> i = 0;
-	While([&] { return i < n; }, [&] {
-		If(
-		    i > 2, [&] { Break(); }, [&] { Continue(); });
-		sum = sum + 1000; // unreachable
-	});
+	While([&] { return i < n; },
+	      [&] {
+		      If(i > 2, [&] { Break(); }, [&] { Continue(); });
+		      sum = sum + 1000; // unreachable
+	      });
 	i = i + 1;
 	return sum + i;
 }
 int64_t cfAllArmsLeaveRef(int64_t n) {
-	// the loop never advances i inside the body: Continue re-checks i < n forever for n > 0, so the oracle runs only n <= 0
+	// the loop never advances i inside the body: Continue re-checks i < n forever for n > 0, so the oracle runs only n
+	// <= 0
 	(void) n;
 	return 1;
 }
@@ -170,10 +171,8 @@ int64_t cfAllArmsLeaveRef(int64_t n) {
 val<int64_t> cfNested(val<int64_t> n) {
 	val<int64_t> total = 0;
 	For(val<int64_t>(0), n, [&](val<int64_t> i) {
-		For(val<int64_t>(0), i, [&](val<int64_t> j) {
-			If(
-			    (i + j) % 3 == 0, [&] { total = total + 1; }, [&] { total = total + 2; });
-		});
+		For(val<int64_t>(0), i,
+		    [&](val<int64_t> j) { If((i + j) % 3 == 0, [&] { total = total + 1; }, [&] { total = total + 2; }); });
 	});
 	return total;
 }
@@ -247,14 +246,15 @@ int64_t cfNativeBeforeAndAfterRef(int64_t x) {
 val<int64_t> cfNativeLoopInBody(val<int64_t> n) {
 	val<int64_t> i = 0;
 	val<int64_t> s = 0;
-	While([&] { return i < n; }, [&] {
-		val<int64_t> j = 0;
-		while (j < i) {
-			s = s + 1;
-			j = j + 1;
-		}
-		i = i + 1;
-	});
+	While([&] { return i < n; },
+	      [&] {
+		      val<int64_t> j = 0;
+		      while (j < i) {
+			      s = s + 1;
+			      j = j + 1;
+		      }
+		      i = i + 1;
+	      });
 	return s;
 }
 int64_t cfNativeLoopInBodyRef(int64_t n) {
@@ -269,13 +269,14 @@ int64_t cfNativeLoopInBodyRef(int64_t n) {
 val<int64_t> cfBreakInNativeIf(val<int64_t> n) {
 	val<int64_t> i = 0;
 	val<int64_t> sum = 0;
-	While([&] { return i < 1000; }, [&] {
-		if (i >= n) {
-			Break();
-		}
-		sum = sum + i;
-		i = i + 1;
-	});
+	While([&] { return i < 1000; },
+	      [&] {
+		      if (i >= n) {
+			      Break();
+		      }
+		      sum = sum + i;
+		      i = i + 1;
+	      });
 	return sum;
 }
 int64_t cfBreakInNativeIfRef(int64_t n) {
@@ -321,7 +322,8 @@ int64_t cfChainedIfRef(int64_t x) {
 	return r;
 }
 
-// ---- owned values -----------------------------------------------------------------------------------------------------
+// ---- owned values
+// -----------------------------------------------------------------------------------------------------
 
 struct Tracked {
 	static inline int constructed = 0;
@@ -341,12 +343,13 @@ val<int64_t> cfOwnedBreak(val<int64_t> n) {
 	val<Tracked> outer;
 	val<int64_t> i = 0;
 	val<int64_t> sum = 0;
-	While([&] { return i < n; }, [&] {
-		val<Tracked> inner;
-		If(i == 3, [&] { Break(); });
-		sum = sum + i;
-		i = i + 1;
-	});
+	While([&] { return i < n; },
+	      [&] {
+		      val<Tracked> inner;
+		      If(i == 3, [&] { Break(); });
+		      sum = sum + i;
+		      i = i + 1;
+	      });
 	return sum;
 }
 int64_t cfOwnedBreakRef(int64_t n) {
@@ -369,14 +372,16 @@ int64_t cfOwnedReturnRef(int64_t n) {
 	return n > 2 ? 2 : -1;
 }
 
-// ---- errors -------------------------------------------------------------------------------------------------------------
+// ---- errors
+// -------------------------------------------------------------------------------------------------------------
 
 val<int64_t> cfBreakThroughRegion(val<int64_t> n) {
 	val<int64_t> i = 0;
-	While([&] { return i < n; }, [&] {
-		region([&] { Break(); });
-		i = i + 1;
-	});
+	While([&] { return i < n; },
+	      [&] {
+		      region([&] { Break(); });
+		      i = i + 1;
+	      });
 	return i;
 }
 
@@ -385,7 +390,8 @@ val<int64_t> cfBreakOutsideLoop(val<int64_t> n) {
 	return n;
 }
 
-// ---- the harness ---------------------------------------------------------------------------------------------------------
+// ---- the harness
+// ---------------------------------------------------------------------------------------------------------
 
 /// The engines that trace with the NIR tracer, where every construct is recorded as blocks, and the interpreter.
 std::vector<std::string> nirEngines() {
@@ -470,12 +476,10 @@ TEST_CASE("Explicit control flow: If, value If, For, While with Break and Contin
 
 TEST_CASE("Explicit control flow: Return from nested arms", "[explicit-control-flow]") {
 	SECTION("Return in an arm") {
-		checkAgainstOracle(tracedEngines(), cfReturnInArm, cfReturnInArmRef,
-		                   {-4, 0, 4});
+		checkAgainstOracle(tracedEngines(), cfReturnInArm, cfReturnInArmRef, {-4, 0, 4});
 	}
 	SECTION("Return in a nested arm of a loop") {
-		checkAgainstOracle(tracedEngines(), cfReturnNested, cfReturnNestedRef,
-		                   {0, 3, 4, 5, 9});
+		checkAgainstOracle(tracedEngines(), cfReturnNested, cfReturnNestedRef, {0, 3, 4, 5, 9});
 	}
 }
 
@@ -526,7 +530,8 @@ TEST_CASE("Explicit control flow: owned values die on the exit path", "[explicit
 				Tracked::constructed = Tracked::destroyed = 0;
 				CHECK(compiled(10) == cfOwnedBreakRef(10));
 				CHECK(Tracked::constructed == Tracked::destroyed);
-				CHECK(Tracked::constructed == 1 + 4); // the outer value and one inner per iteration, the last one broken
+				CHECK(Tracked::constructed ==
+				      1 + 4); // the outer value and one inner per iteration, the last one broken
 				Tracked::constructed = Tracked::destroyed = 0;
 				CHECK(compiled(2) == cfOwnedBreakRef(2));
 				CHECK(Tracked::constructed == Tracked::destroyed);
@@ -598,32 +603,35 @@ TEST_CASE("Explicit control flow: snapshots are one per construct and per operat
 	for (const auto& name : tracedEngines()) {
 		DYNAMIC_SECTION(name) {
 			// the same function with bigger arms and a bigger loop body: the operations inside constructs take none
-			const auto small = snapshotsOf(name, +[](val<int64_t> x) -> val<int64_t> {
-				val<int64_t> r = 0;
-				If(x > 0, [&] { r = r + 1; });
-				return r;
-			});
-			const auto large = snapshotsOf(name, +[](val<int64_t> x) -> val<int64_t> {
-				val<int64_t> r = 0;
-				If(x > 0, [&] {
-					r = r + 1;
-					r = r * 3;
-					r = r - x;
-					r = r + x * 7;
-					r = r ^ 5;
-				});
-				return r;
-			});
+			const auto small = snapshotsOf(
+			    name, +[](val<int64_t> x) -> val<int64_t> {
+				    val<int64_t> r = 0;
+				    If(x > 0, [&] { r = r + 1; });
+				    return r;
+			    });
+			const auto large = snapshotsOf(
+			    name, +[](val<int64_t> x) -> val<int64_t> {
+				    val<int64_t> r = 0;
+				    If(x > 0, [&] {
+					    r = r + 1;
+					    r = r * 3;
+					    r = r - x;
+					    r = r + x * 7;
+					    r = r ^ 5;
+				    });
+				    return r;
+			    });
 			CHECK(small == large);
 			// per construct: one snapshot; outside: one per recorded operation (the constant, the comparison, the
 			// constant of the comparison's literal, the return)
-			const auto none = snapshotsOf(name, +[](val<int64_t> x) -> val<int64_t> {
-				val<int64_t> r = 0;
-				if (x > 0) {
-					r = r + 1;
-				}
-				return r;
-			});
+			const auto none = snapshotsOf(
+			    name, +[](val<int64_t> x) -> val<int64_t> {
+				    val<int64_t> r = 0;
+				    if (x > 0) {
+					    r = r + 1;
+				    }
+				    return r;
+			    });
 			CHECK(small < none);
 		}
 	}
@@ -646,7 +654,9 @@ TEST_CASE("Explicit control flow: restarts roll back what an arm recorded", "[ex
 }
 
 TEST_CASE("Explicit control flow: every arm restarted once gives the same results", "[explicit-control-flow]") {
-	const auto force = [](Options& options) { options.setOption("tracing.forceConstructRestarts", true); };
+	const auto force = [](Options& options) {
+		options.setOption("tracing.forceConstructRestarts", true);
+	};
 	const auto engines = tracedEngines();
 	SECTION("If and loops") {
 		checkAgainstOracle(engines, cfNested, cfNestedRef, {0, 1, 5}, force);

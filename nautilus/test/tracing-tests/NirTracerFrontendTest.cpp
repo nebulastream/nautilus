@@ -34,24 +34,23 @@ val<char> constDataString(val<int32_t> i) {
 
 val<int64_t> explicitIf(val<int64_t> x) {
 	val<int64_t> r = 0;
-	If(
-	    x > 0, [&] { r = r + 1; }, [&] { r = r - 1; });
+	If(x > 0, [&] { r = r + 1; }, [&] { r = r - 1; });
 	return r;
 }
 
 val<int64_t> explicitValueIf(val<int64_t> a, val<int64_t> b) {
-	return If(
-	    a > b, [&] { return a; }, [&] { return b; });
+	return If(a > b, [&] { return a; }, [&] { return b; });
 }
 
 val<int64_t> explicitWhileBreak(val<int64_t> n) {
 	val<int64_t> i = 0;
 	val<int64_t> sum = 0;
-	While([&] { return i < 100; }, [&] {
-		If(i == n, [&] { Break(); });
-		sum = sum + i;
-		i = i + 1;
-	});
+	While([&] { return i < 100; },
+	      [&] {
+		      If(i == n, [&] { Break(); });
+		      sum = sum + i;
+		      i = i + 1;
+	      });
 	return sum;
 }
 
@@ -108,7 +107,8 @@ std::vector<Entry> entries() {
 
 } // namespace
 
-TEST_CASE("frontend features: pre-SSA output verifies, converts and matches the golden dump", "[nir-tracer][frontend]") {
+TEST_CASE("frontend features: pre-SSA output verifies, converts and matches the golden dump",
+          "[nir-tracer][frontend]") {
 	for (const auto& entry : entries()) {
 		DYNAMIC_SECTION(entry.name) {
 			common::Arena arena;

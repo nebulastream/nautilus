@@ -6,10 +6,10 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/control_flow.hpp"
-#include "nautilus/val_std.hpp"
 #include "nautilus/region.hpp"
 #include "nautilus/static.hpp"
 #include "nautilus/val.hpp"
+#include "nautilus/val_std.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 #include <string>
@@ -87,9 +87,8 @@ struct RerunRun {
 
 template <typename F>
 RerunRun runWith(bool unwind, F fn, int64_t argument) {
-	auto engine = testing::makeEngine(pinnedBackend(), [&](Options& options) {
-		options.setOption("tracing.unwindPausedPasses", unwind);
-	});
+	auto engine = testing::makeEngine(
+	    pinnedBackend(), [&](Options& options) { options.setOption("tracing.unwindPausedPasses", unwind); });
 	auto function = engine.registerFunction(fn);
 	RerunRun run;
 	run.result = function(argument);
@@ -146,9 +145,8 @@ TEST_CASE("Paused passes: a region in a re-run is found without a snapshot of it
 	}
 	for (const bool unwind : {false, true}) {
 		DYNAMIC_SECTION("unwindPausedPasses=" << unwind) {
-			auto engine = testing::makeEngine(pinnedBackend(), [&](Options& options) {
-				options.setOption("tracing.unwindPausedPasses", unwind);
-			});
+			auto engine = testing::makeEngine(
+			    pinnedBackend(), [&](Options& options) { options.setOption("tracing.unwindPausedPasses", unwind); });
 			auto function = engine.registerFunction(rerunRegionsAfterBranch);
 			CHECK(function(3, 0) == 3);
 			CHECK(function(3, 9) == 1003);
