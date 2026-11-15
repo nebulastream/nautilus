@@ -44,6 +44,15 @@ puts an assigning block before the block that declared a variable (a constant re
 layout puts an assigning block before the block that declared a variable (a constant reached again on the second
 path), `emitFunction` hoists the declaration to the entry block and leaves an assign at the original site.
 
+**Debug sections (D14).** With `debug`, `perf` or `perf.sample` the tracer writes the optional debug sections of the
+module (13 §4.9) in `SessionState::emitDebugData`, once per function: the region table (`debugRegions`: name, call-site
+location, parent; the flat trace already keeps it for `region()`), the location of the function (`debugFunctions`) and the
+region of every instruction, which is that of its block (`debugInstRegions`); `debugInstLocations` is `NONE` (the C++
+location of each operation is not recorded: 0.3 never put it in DWARF either, which points at the IR text). The
+conversion copies the regions of the instructions it emits from their pre-SSA block (`FunctionConverter::emit`) and the
+passes that rebuild a function must do the same or the backends lose the regions. Off, a trace pays one branch per
+function.
+
 The thread keeps the tables of the NIR tracer between traces (the flat trace, the symbolic execution context, the
 write-out scratch of `emitFunction`), so a trace allocates only what it outgrows; anything new that is per trace belongs
 there too, bounded so that one huge trace does not tax the small ones after it. Measure with `nautilus-compile-bench`
