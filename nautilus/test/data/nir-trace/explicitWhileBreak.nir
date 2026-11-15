@@ -1,0 +1,30 @@
+nir 1.0
+
+func export pressa @execute : (i64) -> i64 {
+^b0(%0: i64):
+  %1 = var 0:i64
+  %2 = var 0:i64
+  [3] br ^b1
+^b1:
+  %4 = var 100:i64
+  %5 = cmp.lt.s %1, %4
+  [6] condbr %5, ^b2, ^b7 prob 2147483647
+^b2:
+  %7 = cmp.eq %1, %0
+  [8] br ^b3
+^b3:
+  [9] condbr %7, ^b4, ^b5 prob 2147483647
+^b4:
+  [10] br ^b7
+^b5:
+  [11] br ^b6
+^b6:
+  %12 = add %2, %1
+  [13] assign %2, %12
+  %14 = var 1:i64
+  %15 = add %1, %14
+  [16] assign %1, %15
+  [17] br ^b1
+^b7:
+  [18] ret %2
+}

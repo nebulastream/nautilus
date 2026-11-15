@@ -1,0 +1,13 @@
+nir 1.0
+data #d0 align 4 = x"0b00000016000000210000002c0000003700000042000000"
+
+func export pressa @execute : (i32 sext) -> i32 sext {
+^b0(%0: i32):
+  %1 = data.addr #d0
+  %2 = var 4:i64
+  %3 = cast.sext %0 : i64
+  %4 = mul %3, %2
+  %5 = add %1, %4
+  %6 = load %5 : i32
+  [7] ret %6
+}

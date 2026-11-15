@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstring>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -1198,6 +1199,44 @@ Ref FunctionConverter::simplify(Inst& ni) {
 					return make(*r, type, {ni.a});
 				}
 			}
+		}
+		return NONE;
+	}
+	case Op::Load: {
+		// a load from a data object at a constant offset reads bytes the module owns (13 §5.8): `data.addr`, possibly
+		// advanced by constant `add`s
+		const bool scalar = type == TypeId::I8 || type == TypeId::I16 || type == TypeId::I32 || type == TypeId::I64 ||
+		                    type == TypeId::F32 || type == TypeId::F64;
+		if (!scalar) {
+			return NONE;
+		}
+		uint64_t offset = 0;
+		Ref base = ni.a;
+		for (int depth = 0; depth < 16 && isTemp(base); ++depth) {
+			base = resolve(base);
+			const auto& t = temps_[base];
+			if (t.kind != Kind::Inst) {
+				return NONE;
+			}
+			if (t.inst.op == static_cast<uint16_t>(Op::DataAddr)) {
+				if (t.inst.a >= pre().data.size()) {
+					return NONE;
+				}
+				const auto& object = pre().data[t.inst.a];
+				const uint64_t size = widthOf(type) / 8;
+				if (offset > object.size || size > object.size - offset || offset % size != 0 || object.align < size) {
+					return NONE; // outside the object or not aligned: undefined, so left to run
+				}
+				uint64_t bits = 0;
+				std::memcpy(&bits, pre().dataBytes.data() + object.byteOffset + offset, size);
+				return make(bits, type, {});
+			}
+			if (t.inst.op == static_cast<uint16_t>(Op::Add) && t.type == TypeId::Ptr && isC(t.inst.b)) {
+				offset += bitsOf(t.inst.b);
+				base = t.inst.a;
+				continue;
+			}
+			return NONE;
 		}
 		return NONE;
 	}
