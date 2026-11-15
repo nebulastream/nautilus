@@ -291,7 +291,7 @@ changes M4.2 and §2 step 2 as follows:
   counters are the 0.3 ones; D10/D11 are explicit (cold block for checked `div`/`rem`, masked narrow shifts, saturating
   casts); the plugins' intrinsic handlers take an `IntrinsicCallContext` and serve both lowerings. See the notes of
   `backends/AGENTS.md`. Deferred: the 0.3 providers stay for `legacy-asmjit` until M4.2; the line table of 05 §4.4
-  step 3 and `perf`/`debug` come with M4.9; the callgrind ratio gate is the `callgrind-gate` leg (it has the backend ratios on `tbc` and `asmjit`; the `asm-diff` leg
+  step 3 and `perf`/`debug` came with M4.8; the callgrind ratio gate is the `callgrind-gate` leg (it has the backend ratios on `tbc` and `asmjit`; the `asm-diff` leg
   compares code size against the recorded 0.3 corpus).
 - **M4.5 (`mlir` on NIR) is done in PR 8**, stacked on PR 7, by the same method (the loop: autoresearch, metric = failing assertions
   and crashed tests of `ctest --preset full`): 1582 for the scaffold that throws (1579 failed assertions, 3 crashed), 9 with the
@@ -311,9 +311,7 @@ changes M4.2 and §2 step 2 as follows:
   of the conversion; `engine.normalizeFunctionNames` gives `runtimeFunc<N>` names in the lowering since the NIR tracer does not
   normalize); the `inlining` suite passes on NIR.
   **Not done, and why:** (1) DWARF and the instruction -> line map of the NIR printer (the replacement of `IRLocationPass`), and
-  `DebugInfoExecutionTest` on the NIR text form: `debug`, `perf` and `perf.sample` still select the 0.3 pipeline because the NIR
-  tracer produces no source tags or region tables until the debug producers (M4.9); `MLIRNirBackend` throws for them rather than
-  emit DWARF without lines, and `DebugInfoExecutionTest`, `PerfJitDumpExecutionTest` stay on `MLIRLoweringProvider`. (2) The
+  `DebugInfoExecutionTest` on the NIR text form: done in M4.8 (below). (2) The
   engine-owned worker pool sized by `engine.tiered.promotionThreads` (M4.7): contexts are per thread and have no pool. LLJIT
   still builds a `TargetMachine` per module for code generation, as ORC may generate code on any thread at the first call.
   (3) `MLIRLoweringProvider`, the `IRLocationMap` source and `MLIRCompilationBackend`'s IR path stay for the 0.3 pipeline, like
@@ -328,9 +326,8 @@ changes M4.2 and §2 step 2 as follows:
   pipeline) and `tools/vscode-nautilus-ir`: they call the 0.3 API directly, which is still there. `test/data` is not
   regenerated for the same reason. Not started: the `api-compat` leg change, the corpus gates against the 0.3 baselines
   (the corpus statistics now count the bridged IR), and the fuzzer's generation of D10/D11 edge cases.
-- **Debug information and perf stay on the 0.3 trace.** `debug`, `perf`, `perf.sample` and `dump.copySites` select the 0.3
-  pipeline: DWARF lines, `region()` scopes and jitdump symbols need its source tags and region tables, which NIR gets with
-  the debug producers (M4.9). This is the one place the default depends on options.
+- **Debug information and perf** ran on the 0.3 trace until M4.8, which gave NIR its debug producers; only `dump.copySites`
+  still selects the 0.3 pipeline, and it is the one place the default depends on options.
 - **Found on the way.** Both NIR tracers wrote cleanup lists in registration order, although 13 §3.4 says destruction
   order, so pads destroyed in construction order; fixed in its own commit. The 0.3 backends' `ir.*` options configure
   the fallback only.
@@ -1359,6 +1356,43 @@ checked at M4.2.
   pass; a `perf.sample` test passes on `asmjit`, including per-operation
   attribution through `JitSymbolRegistry::resolveLine`; the `profiling`
   plugin suite passes.
+- **Status (stacked on #594).** Built:
+  - *Producers.* With `debug`, `perf` or `perf.sample` the NIR tracer writes the debug sections of 13 §4.9
+    (`SessionState::emitDebugData`): the region table (name, call-site location, parent) from the regions the flat trace
+    already kept, the location of each function, and `debugInstRegions` from a per-record region (`FlatTrace::recRegion`,
+    kept only on request); the conversion carries the region of every instruction it emits (`bodySrc_`, the pre-SSA
+    instruction each temporary came from). `debugInstLocations` is `NONE`: the C++ location of each operation is not
+    recorded (0.3 never put it in DWARF; the lines are those of the NIR text). The pipeline no longer selects the 0.3 trace
+    for these options. Off, a trace pays a branch per function and the conversion one flag.
+  - *The printer's side output.* `nir::print(module, PrintLines&)` returns the text and the line of every instruction, block
+    and function: the replacement of `IRLocationPass` (03 §2.1). `Module::internDebugName/internDebugLocation/regionOf`.
+  - *`mlir`.* `MLIRNirBackend` writes the text where 0.3 wrote its IR dump (`backends/DebugSource.hpp`, shared with
+    `asmjit`), `MLIRNirLowering` gives every operation a `FileLineColLoc` in it (named `$<instruction>`, fused with the
+    region chain of `RegionScopeInfo`), the function header line, the shadow slot of every value under `debug`; the passes
+    of `mlir/debug/` and the jitdump and registry plugins are the 0.3 ones. It no longer throws for these options, and the
+    JIT is given the same flags as in 0.3 (codegen level under `debug`, jitdump, registry).
+  - *`asmjit` and `tbc.mode=jit`.* `asmjit` marks the code of each NIR instruction with a comment node (a `[Nautilus]` patch
+    of `BaseBuilder::serializeTo` reports its buffer offset; the node survives allocation and the peephole pass);
+    `tbc` records the NIR instruction of each bytecode word and the stitcher the offset of each stitched instruction.
+    `publishNirCode` (`backends/NirCodeProfile.cpp`) turns that into a symbol per function and per `region()` run in
+    `JitSymbolRegistry` (`execute::outer::hot`, as `mlir` names them), the line table `resolveLine` serves (the lines of the
+    printed module, written to the working directory), and, for `perf`, jitdump records written by `PerfJitDump` (the
+    format of the LLVM writer, its own file). The executables withdraw their symbols when they are destroyed.
+  - *Tests.* `DebugInfoExecutionTest` and `PerfJitDumpExecutionTest` run on the NIR pipeline (the expectations that named the
+    0.3 text, `nautilus {` and `Block_`, name the NIR text now); `ProfilingSymbolsTest` (symbols per function and region
+    on `asmjit` and the stitched `tbc`, per-operation attribution through `resolveLine` by what the lines of the two regions
+    do, withdrawal, nothing published unasked, tier 0 of the default engine, the jitdump pairing of debug-info and load
+    records); `SamplerTest` of the `profiling` plugin runs on `mlir` and `asmjit` (it is built without MLIR now); two
+    tracer tests on the debug sections (`NirTracerTest.cpp`). The `profiling` plugin suite was already a step of `pr.yml`.
+  **Not done, and why:** (1) the C++ source location of each operation (`debugInstLocations`, the "source tag" of 02 §3.2):
+  it needs the tag of every record resolved through DWARF, which no consumer reads yet; (2) `tbc` in interpreter mode
+  publishes nothing: its handlers are host code that the ELF symbols name, and a handler is shared by every instruction,
+  so an address says nothing about the NIR instruction (a per-handler range would be the host's own symbol size); (3)
+  the text form of NIR has no `loc`/`region` suffixes (the grammar of 13 §9 has them, the printer and parser do not), so
+  a module with debug sections prints without them and an image round trip is the way to keep them; (4) `debug` on
+  `asmjit` or `tbc` still records the sections and does nothing with them (no debugger interface for generated code
+  other than LLVM's); (5) `perf` jitdump files of `asmjit` and `mlir` are two files with the same pid in one process, which
+  `perf inject --jit` reads one after the other; not tried against a real `perf` here (no PMU in the session).
 
 #### M4.9 Agent items for M4 · M · deps: M4.7, M3.8
 - **Builds:** `CompiledModule::explain()` (also as JSON; fields for

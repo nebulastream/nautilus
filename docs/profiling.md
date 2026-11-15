@@ -14,8 +14,9 @@ yourself: hardware counters around exactly one pipeline, and a sampling profiler
 that resolves JIT frames to `region()`-qualified names. Nothing external is
 involved and the result is a value your program can read.
 
-**Out of process**, the `perf` engine option makes the MLIR backend write the
-Linux **jitdump** protocol, so `perf record` + `perf inject --jit` produce a
+**Out of process**, the `perf` engine option makes the code-generating backends
+(`mlir`, `asmjit`, and `tbc` in its copy-and-patch mode) write the Linux
+**jitdump** protocol, so `perf record` + `perf inject --jit` produce a
 profile in which JIT frames are symbolized and attributed all the way down to
 individual Nautilus IR operations.
 
@@ -205,7 +206,7 @@ Those are the same region-qualified names `perf report` shows after a `perf inje
 ### Three things to get right
 
 - **`perf.sample` on the engine options.** Without it the backend publishes no code ranges and JIT frames come back as bare addresses under `unresolved`.
-- **`engine.backend=mlir`.** The default tiered compiler starts every function on an interpreting tier-0 backend that publishes nothing, exactly as it emits no jitdump.
+- **A backend that publishes its code.** `mlir` and `asmjit` do (`tbc` does in its copy-and-patch mode, `tbc.mode=jit`), so the default tiered compiler is profiled from tier 0 on. The interpreting mode of `tbc` generates no code: its samples are in the handlers of the host binary, which the ELF resolver names. Pin `engine.backend` to profile one tier. `asmjit` names regions like `mlir` (`execute::hot`) and attributes samples to NIR instructions through a line table into the text form of the module, which it writes to the working directory.
 - **Warm up before the window.** LLJIT materializes lazily, so the first call is what triggers LLVM codegen — and that compile runs *in this process*. Sampling across it profiles the compiler, not the compiled code; a cold first run yields a report full of `llvm::SelectionDAG` frames.
 
 `report().total()` and the table's JIT share make all three visible, so none of these mistakes is silent.
@@ -374,7 +375,7 @@ Generated code lives in anonymous memory that no ELF file on disk describes. A s
 
 So the plugin resolves in two layers:
 
-1. **`nautilus::compiler::JitSymbolRegistry`** (`nautilus/compiler/JitSymbolRegistry.hpp`), a process-wide, thread-safe map from code address to name. When `perf.sample` is set, the MLIR backend publishes every linked code range into it, named exactly the way the jitdump writer would name it — including `region()` nesting recovered from the DWARF inline stack.
+1. **`nautilus::compiler::JitSymbolRegistry`** (`nautilus/compiler/JitSymbolRegistry.hpp`), a process-wide, thread-safe map from code address to name. When `perf.sample` is set, the backends publish every code range into it, named exactly the way the jitdump writer would name it — including `region()` nesting, which `mlir` recovers from the DWARF inline stack and `asmjit` from the region table of the module's debug section.
 2. **perf-cpp's ELF resolver**, for everything the registry does not claim.
 
 The registry is public, so it is queryable directly — useful for asserting that a compile published what you expected:
@@ -445,9 +446,10 @@ Four things in that recipe are not optional:
   the `perf.data` timeline using the monotonic clock, and refuses to run without
   it: `error, jitted code must be sampled with perf record -k 1`.
 - **`engine.backend=mlir`.** The default is tiered compilation, which starts
-  every function on an interpreting tier-0 backend (`asmjit`/`tbc`) that emits no
-  jitdump at all and promotes to MLIR in the background — so a profile would be
-  split across two artifacts at two addresses, only one of which perf can name.
+  every function on a tier-0 backend (`asmjit`, or the interpreter) and promotes
+  to MLIR in the background — so a profile is split across two artifacts at two
+  addresses. `asmjit` writes its own jitdump records (to a file of its own next
+  to the one LLVM writes), the interpreter has no code to name.
   See [Tiered compilation splits the profile](#tiered-compilation-splits-the-profile).
 - **Staying in the same working directory.** `perf` on its own (without `debug`)
   writes the Nautilus-IR dump its line numbers point into to the *working*
@@ -857,7 +859,7 @@ files up; delete them yourself once the profile has been read.
 | A thread's work is missing from the totals | It found no free slot. Raise `maxThreads`; `unavailableReason()` names it. |
 | A thread measures nothing after a pool was replaced | A recycled `std::thread::id` inherited a dead thread's counters. Call `reset()` when the thread set changes. |
 | JIT frames show as `unresolved` hex addresses | `perf.sample` was not set on the engine options. |
-| Symbols named `execute` with no region qualification | The region names did not survive the optimizer, or `perf.sample` was set without the MLIR backend. |
+| Symbols named `execute` with no region qualification | The region names did not survive the optimizer, or the backend is the interpreting mode of `tbc`, which publishes no code. |
 
 ### Out of process
 
@@ -907,9 +909,10 @@ several are live at once.
 ### Tiered compilation splits the profile
 
 The default is tier-0 (`asmjit`/`tbc`/interpreter) with background promotion to
-MLIR. One logical function therefore exists as two artifacts at two addresses,
-and the tier-0 backends neither emit a jitdump nor publish a symbol. Profiling
-runs should pin `engine.backend=mlir`, either way.
+MLIR. One logical function therefore exists as two artifacts at two addresses.
+`asmjit` and `mlir` both publish their symbols (and the jitdump with `perf`), so
+both halves of the profile are named; the interpreting `tbc` has no code to name.
+A profiling run that wants one artifact pins `engine.backend`.
 
 ### Code ranges outlive their code, out of process
 
