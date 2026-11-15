@@ -1119,6 +1119,42 @@ criteria: [03 §6](03-conversion-and-passes.md).
 - **Done when:** `.nir` tests per pass; fuzzer clean with every optional
   pass enabled.
 
+- **Status (PR 10).** Built, in `passes/` (part of `nautilus-nir`, see its `AGENTS.md`): the copy-pass interface and
+  `PassManager` (groups run as fixed points up to `ir.maxPipelineIterations`, a `PipelineReport` per run), a mutable
+  per-function form (`MutableFunction`: stable uids, `encode` writes dense ids, pads last in order of first reference,
+  unreachable blocks dropped), a CFG with dominators and natural loops, and the three passes. **LICM** hoists
+  instructions without effect that cannot throw and read no memory (pure core and extension operations, unchecked
+  `div`/`rem`, calls with all six guarantee bits and `NO_UNWIND`) into the preheader, innermost loop first, making a
+  preheader block where the loop is entered through a branch or from several places; loads and stores stay (no alias
+  analysis). **Strength reduction** turns `base + iv * stride` into a loop-carried pointer for a 64-bit `iv` that the
+  one back edge steps by a constant (narrower than 0.3's: a 32-bit index would need a proof that it does not wrap).
+  **Inlining** replaces calls of non-recursive internal callees without function string attributes and at most
+  `ir.inline.maxInsts` instructions, callees first (Tarjan order), merging a single-block callee into the caller's block,
+  joining several returns in a block argument, copying alloca slots, continuing `resume` of a callee pad in the caller's
+  pad, and removing the internal functions nothing refers to afterwards (not when the module has debug regions). The
+  options: `ir.inline`, `ir.inline.maxInsts`, `ir.inline.crossModule`, `ir.enableLICM`, `ir.enableStrengthReduction`,
+  `ir.maxPipelineIterations`; `ir.runPasses` and `ir.runOptimizationPasses` pin them (03 §5, `docs/options.md`). The
+  options of the 0.3 passes the conversion replaced (`ir.disableConstantFolding` ... `ir.enableLocalCSE`) are accepted
+  and warn once. The passes run per compile in `CompilationPipeline::compileIR`, on a copy of the graph's module: the
+  tier-0 compile of a promoted module is latency-critical and skips them unless `ir.runOptimizationPasses` is true, tier
+  1 runs them. Statistics: `irPasses.<pass>.ms/.runs/.changes` (`inline`, `licm`, `strengthReduction`, plugin passes by
+  name), `irPasses.pipelineIterations`, `irPasses.totalMs`, `irPasses.inline.decisions` and `.importedModules`;
+  `explain()` shows them as `inlining`. The default compile does no work for any of it: one `hasIrOptions()` test and
+  two atomic loads. Tests: `PassTest.cpp` (every pass, the pass manager, the options), `data/nir-run/passes.nir` and
+  the nested pad case in `exceptions.nir`, and every `nir-run` file again with all passes on (`nir-run-tbc-optional-*`,
+  `nir-run-asmjit-optional-*`), `OptionalPassesTest.cpp` (statistics, engine, `explain()`).
+  **Cross-module inlining (from M4.6)** is built: an imported callee whose exporter is known (the registry's NIR, the
+  hash recorded at the link) has its body, with the internal functions of its module that it reaches, copied into the
+  importer as internal functions (`Transplant`), the call is retargeted and the ordinary inlining decides. A closure that
+  uses `bind.addr`, an extension operation, a function string attribute or an import of its own is not copied, nor one
+  above `4 * ir.inline.maxInsts` instructions; the reason is in `irPasses.inline.decisions`. The exporter hash of every
+  copied import is in `irPasses.inline.importedModules` (the key of 13 §7.3 is `nir::keyWithInlinedImports`; the caches
+  of M5 use it). **Not done, and why:** (1) the fuzzer harness has no mode that turns the optional passes on; the
+  `nir-run` corpus and the engine tests stand in until M2's fuzzer work (the replay driver reads `NAUTILUS_OPTIONS`, so
+  `ir.inline=true;ir.enableLICM=true;ir.enableStrengthReduction=true` runs it with every pass on); (2) loads are not
+  hoisted; (3) a copied exporter body keeps no debug locations; (4) a promoted exporter is not seen by an importer that
+  inlined it (13 §4.4.3: the name refers to one module while the importer is linked).
+
 #### M3.9 Plugin pass hooks · S · deps: M3.7
 - **Builds:** `afterConversion` and `beforeLowering` with required/optional
   marking ([03 §5](03-conversion-and-passes.md)).
@@ -1126,6 +1162,19 @@ criteria: [03 §6](03-conversion-and-passes.md).
   any engine is constructed (the registry freezes then, M1.7).
 - **Done when:** a test plugin's required pass runs on latency-critical
   compiles and its optional pass does not.
+
+- **Status (PR 10).** Built: `ExtensionRegistry::registerPass(PassInfo)` (`extensions/PassInfo.hpp`: a name
+  `<plugin>.<name>`, `PassPoint::AfterConversion` or `BeforeLowering`, `PassRequirement::Required` or `Optional`, a
+  function `optional<Module>(const Module&, const PassEnvironment&)` that gets the options and, before lowering, the
+  backend), `passesAt`, `hasPassesAt` (an atomic counter: a build without plugin passes pays one load), and the freeze at
+  `NautilusEngine` construction, which M1.7 specified and the engine had not done. Required `afterConversion` passes run
+  once per module in `traceToNir`, before the link; all others per compile in `compileIR` with the core optional passes
+  (optional `afterConversion`, core, then `beforeLowering` in registration order), so tier 1 runs what the
+  latency-critical tier 0 skipped; legalization does not exist as a pass yet, so `beforeLowering` is the point right
+  before the backend. Tests: `nautilus/test/pass-tests/PluginPassTest.cpp`, a binary of its own with a plugin that
+  registers four passes from a static initializer and rewrites constants so that the test sees which module the
+  backend got: required passes run on the tier-0 compile of a two-tier module, optional ones only on tier 1 (or with
+  `ir.runOptimizationPasses=true`), neither optional kind with it `false`, required ones always.
 
 #### M3.10 M3 gate · S · deps: M3.2–M3.6
 - **Builds:** the op-count report against the 0.3 baseline in the corpus
@@ -1136,6 +1185,16 @@ criteria: [03 §6](03-conversion-and-passes.md).
   and, once the `tpch-duck` job exists, on TPC-H kernels; no IR pass runs
   on a default compile (`irPasses.pipelineIterations` = 0, checked
   exactly).
+
+- **Status (PR 10).** Built: the corpus output has `nir_ops` (NIR instructions after the conversion), `refold_sweeps`,
+  `refolded_insts` and `pipeline_iterations` per case, and a case `loopInvariantReassign` (a variable assigned the value
+  it holds, inside the loop, N times); `tools/latency/opcount-report.py` compares `nir_ops` with the recorded 0.3
+  `ir_ops` and fails on more operations or on a pass on a default compile; the `latency-corpus` job runs it. The
+  compile-fail suite (`nautilus/test/compile-fail/`: each file names the message it must produce; the primary
+  `val<T>` now says what is wrong) and `OptionalPassesTest.cpp` (`irPasses.pipelineIterations` is exactly 0 on every
+  built backend). The callgrind gate's thresholds are unchanged. **Not done:** the TPC-H kernels (no `tpch-duck` job
+  yet) and the µs/op numbers on the reference machine; the PR description states what the instruction-count gate
+  allows, not measured reference-machine times.
 
 ## 10. M4 Backends, the cut-over, tiering
 
@@ -1307,8 +1366,8 @@ checked at M4.2.
   `frameThunk`: `callInExceptionFrame` for MLIR, which pushes an exception frame for a capturing exporter and rethrows
   from it). An import without thunks (a hand-written module) is called directly, which is right when exporter and
   importer have the same mode.
-  **Not done, and why:** (1) Cross-module inlining. It is a mode of the inlining pass of M3.8, which does not exist on
-  this branch; the registry keeps what it needs (the exporter's SSA module, `ModuleHandle::module()`, and its structural
+  **Not done, and why:** (1) Cross-module inlining was not built here; it is done in M3.8 (PR 10). It is a mode of the
+  inlining pass of M3.8, which did not exist on this branch; the registry keeps what it needs (the exporter's SSA module, `ModuleHandle::module()`, and its structural
   hash, recorded in `ImportLink::bindings` at the link, for the key of compiled code that inlines, 13 §7.3), but there is
   no pass to inline with, and so no use for the rule that functions with `bind.addr` stay out. (2) `funcaddr` of an
   imported function (the stub that calls through the slot): no front end takes such an address, and every backend
